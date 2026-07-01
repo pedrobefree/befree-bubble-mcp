@@ -94,10 +94,6 @@ MCP client to send JSON-RPC messages over standard input.
 
 ## Current implementation status
 
-The current MCP server exposes only:
-
-- `bubble_health_check`
-- `bubble_profile_list`
-
-Mutation tools are not implemented or exposed. The server reports
-`mutations: false` in its health metadata.
+The MCP server exposes profile, context, planning, session, eval, and write
+tools. Mutating tools require a locally imported Bubble editor session. They
+preview requests unless the caller passes `execute=true`.

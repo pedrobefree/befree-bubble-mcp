@@ -52,7 +52,7 @@ def list_tool_schemas() -> list[dict[str, Any]]:
             },
         },
         {
-            "name": "bubble_plan_dry_run",
+            "name": "bubble_plan",
             "description": "Create and validate a deterministic Bubble plan.",
             "inputSchema": {
                 "type": "object",
@@ -66,8 +66,36 @@ def list_tool_schemas() -> list[dict[str, Any]]:
             },
         },
         {
-            "name": "bubble_import_html_dry_run",
+            "name": "bubble_plan_dry_run",
+            "description": "Compatibility alias for bubble_plan.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"},
+                    "context": {"type": "string"},
+                    "parent": {"type": "string"},
+                },
+                "required": ["message"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_import_html",
             "description": "Convert HTML text into a validated Bubble plan.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "html": {"type": "string"},
+                    "context": {"type": "string"},
+                    "parent": {"type": "string"},
+                },
+                "required": ["html"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_import_html_dry_run",
+            "description": "Compatibility alias for bubble_import_html.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

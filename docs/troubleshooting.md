@@ -67,15 +67,15 @@ To verify it responds:
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' | bubble-mcp-server
 ```
 
-## MCP server starts but has no mutation tools
+## MCP server starts but writes do not execute
 
-This is expected in the current implementation. The server exposes:
+Check these items:
 
-- `bubble_health_check`
-- `bubble_profile_list`
-
-Mutation tools are not implemented or exposed. `bubble_health_check` reports
-`mutations: false`.
+- `bubble_health_check` should report `mutations: true`.
+- `bubble_session_list` should show a session for the target profile.
+- `bubble_editor_write` and `bubble_execute_plan` preview requests unless
+  `execute=true` is passed.
+- The payload must contain Bubble's `changes` array.
 
 ## `Unknown Bubble MCP tool`
 

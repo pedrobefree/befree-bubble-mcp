@@ -1,4 +1,4 @@
-"""Convert simple HTML documents into Bubble dry-run plans."""
+"""Convert simple HTML documents into Bubble plans."""
 
 from __future__ import annotations
 
@@ -41,7 +41,6 @@ def html_to_plan(html: str, context: str = "index", parent: str = "index") -> Bu
                         "context": context,
                         "parent": parent,
                         "name": element_name or class_name or f"html_group_{group_count}",
-                        "dry_run": True,
                     },
                 )
             )
@@ -60,13 +59,12 @@ def html_to_plan(html: str, context: str = "index", parent: str = "index") -> Bu
                         "parent": parent,
                         "content": text,
                         "name": f"html_text_{text_count}",
-                        "dry_run": True,
                     },
                 )
             )
 
     return BubblePlan(
-        message="Import HTML as Bubble dry-run plan",
+        message="Import HTML as Bubble plan",
         steps=steps,
         risk="routine_visual_mutation" if steps else "unknown",
         requires_approval=False,

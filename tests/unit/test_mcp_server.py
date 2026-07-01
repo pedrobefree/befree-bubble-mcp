@@ -36,14 +36,14 @@ def test_health_tool_returns_text_content() -> None:
     assert payload["capabilities"]["mutations"] is True
 
 
-def test_plan_tool_returns_valid_dry_run_plan() -> None:
+def test_plan_tool_returns_valid_plan() -> None:
     response = handle_request(
         {
             "jsonrpc": "2.0",
             "id": 4,
             "method": "tools/call",
             "params": {
-                "name": "bubble_plan_dry_run",
+                "name": "bubble_plan",
                 "arguments": {"message": "Create a text saying Hello"},
             },
         }

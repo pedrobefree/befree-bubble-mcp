@@ -1,11 +1,12 @@
 # Getting Started
 
-`befree-bubble-mcp` is currently a local-first Python package. It gives Bubble
-developers a small CLI for profile setup and a stdio MCP server that MCP clients
-can launch.
+`befree-bubble-mcp` is a local-first Python package. It gives Bubble developers
+a CLI for profile/session setup and a stdio MCP server that MCP clients can
+launch.
 
-The current server is read-only. It exposes profile listing and health metadata;
-Bubble mutation tools are not implemented yet.
+The server supports real Bubble editor writes through `/appeditor/write` when a
+valid local session is imported and the caller explicitly sets `execute=true`.
+Without execution opt-in, write commands preview the normalized request.
 
 ## 1. Install locally
 
@@ -75,7 +76,33 @@ bubble-mcp-server
 The server speaks newline-delimited JSON-RPC over stdio. In normal use, your MCP
 client starts this command for you.
 
-## 5. Connect an MCP client
+## 5. Import a Bubble editor session
+
+Create a JSON file with the session headers/cookies captured from an authenticated
+Bubble editor request:
+
+```json
+{
+  "appId": "my-bubble-app",
+  "url": "https://bubble.io/page?id=my-bubble-app",
+  "headers": {
+    "Cookie": "..."
+  },
+  "appVersion": "test"
+}
+```
+
+Import it locally:
+
+```bash
+bubble-mcp session import --profile my-app --file ./bubble-session.json
+bubble-mcp session list
+```
+
+Session files are stored under `~/.config/bubble-mcp/sessions/` and are never
+committed by this repository.
+
+## 6. Connect an MCP client
 
 For Codex or another MCP client, add a stdio server entry that runs
 `bubble-mcp-server`:
@@ -112,5 +139,7 @@ After connecting, the available tools should be:
 
 - `bubble_health_check`
 - `bubble_profile_list`
-
-No Bubble editor mutations are currently exposed.
+- `bubble_session_list`
+- `bubble_session_import`
+- `bubble_editor_write`
+- `bubble_execute_plan`

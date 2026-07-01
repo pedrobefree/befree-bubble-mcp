@@ -89,13 +89,48 @@ bubble-mcp context find "button" --file /path/to/context.json --limit 10
 
 ## `bubble-mcp plan`
 
-Creates and semantically validates a local dry-run Bubble plan from a message.
+Creates and semantically validates a local Bubble plan from a message.
 
 ```bash
 bubble-mcp plan "add a button to the index page" --context index --parent index
 ```
 
-This does not mutate Bubble.
+This command does not mutate Bubble by itself. Use `execute-plan --execute` for
+plans whose steps include `args.write_payload`.
+
+## `bubble-mcp session import`
+
+Imports local Bubble editor session headers/cookies.
+
+```bash
+bubble-mcp session import --profile my-app --file ./bubble-session.json
+```
+
+## `bubble-mcp session list`
+
+Lists imported session metadata without printing secrets.
+
+```bash
+bubble-mcp session list
+```
+
+## `bubble-mcp write`
+
+Sends an exact Bubble `/appeditor/write` payload. Without `--execute`, this
+prints the normalized request and redacted headers.
+
+```bash
+bubble-mcp write --profile my-app --payload ./write-payload.json
+bubble-mcp write --profile my-app --payload ./write-payload.json --execute
+```
+
+## `bubble-mcp execute-plan`
+
+Executes a plan whose steps include `args.write_payload`.
+
+```bash
+bubble-mcp execute-plan --profile my-app --file ./plan.json --execute
+```
 
 ## `bubble-mcp validate-plan`
 
@@ -127,5 +162,12 @@ Implemented tools:
 
 - `bubble_health_check`
 - `bubble_profile_list`
-
-Mutation tools are not implemented.
+- `bubble_context_summary`
+- `bubble_context_find`
+- `bubble_plan`
+- `bubble_import_html`
+- `bubble_eval_run`
+- `bubble_session_list`
+- `bubble_session_import`
+- `bubble_editor_write`
+- `bubble_execute_plan`

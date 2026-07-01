@@ -71,8 +71,15 @@ listed below.
 - `bubble_profile_list`: lists configured local Bubble profiles.
 - `bubble_context_summary`: summarizes a compact context JSON file.
 - `bubble_context_find`: searches a compact context JSON file.
-- `bubble_plan_dry_run`: creates a validated deterministic dry-run plan.
-- `bubble_import_html_dry_run`: converts HTML text into a validated dry-run plan.
+- `bubble_plan`: creates a validated deterministic plan.
+- `bubble_plan_dry_run`: compatibility alias for `bubble_plan`.
+- `bubble_import_html`: converts HTML text into a validated plan.
+- `bubble_import_html_dry_run`: compatibility alias for `bubble_import_html`.
 - `bubble_eval_run`: runs a deterministic planning eval dataset.
+- `bubble_session_list`: lists locally imported Bubble editor sessions.
+- `bubble_session_import`: imports session headers/cookies into local storage.
+- `bubble_editor_write`: posts an exact Bubble `/appeditor/write` payload. Set `execute=true` to mutate Bubble.
+- `bubble_execute_plan`: executes plan steps that include `args.write_payload`. Set `execute=true` to mutate Bubble.
 
-Direct mutating Bubble execution is not implemented in the current server and is not exposed to MCP clients.
+Mutating calls require a stored local session. Calls without `execute=true`
+return a preview instead of posting to Bubble.

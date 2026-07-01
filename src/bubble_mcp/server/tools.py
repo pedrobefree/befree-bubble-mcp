@@ -64,7 +64,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             "ok": True,
             "results": search_context(context, str(args.get("query") or ""), int(args.get("limit") or 10)),
         }
-    if name == "bubble_plan_dry_run":
+    if name in {"bubble_plan", "bubble_plan_dry_run"}:
         args = arguments or {}
         plan = plan_message(
             str(args.get("message") or ""),
@@ -72,7 +72,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             parent=str(args.get("parent") or "index"),
         ).to_dict()
         return {"ok": True, "plan": plan, "validation": validate_plan(plan)}
-    if name == "bubble_import_html_dry_run":
+    if name in {"bubble_import_html", "bubble_import_html_dry_run"}:
         args = arguments or {}
         plan = html_to_plan(
             str(args.get("html") or ""),
