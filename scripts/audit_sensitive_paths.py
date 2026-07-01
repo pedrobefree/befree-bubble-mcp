@@ -60,7 +60,9 @@ ALLOWLIST = {
     "SECURITY.md",
     "docs/source-audit.md",
     "src/bubble_mcp/core/redaction.py",
+    "bridge/figma/server.mjs",
     "scripts/audit_sensitive_paths.py",
+    "test-node/figma-bridge.test.mjs",
     "tests/unit/test_redaction.py",
     "tests/unit/test_sensitive_audit.py",
 }

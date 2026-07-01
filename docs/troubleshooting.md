@@ -2,10 +2,37 @@
 
 ## `bubble-mcp` command not found
 
-Install with `pipx` or activate your virtual environment:
+Install the package or activate the virtual environment where it is installed:
 
 ```bash
 . .venv/bin/activate
+pip install -e .
+bubble-mcp --help
+```
+
+For `pipx`, install from the local checkout with `pipx install .` or from the
+published package with `pipx install befree-bubble-mcp`.
+
+## MCP client cannot find `bubble-mcp-server`
+
+Many desktop MCP clients do not inherit your shell's activated virtual
+environment. Use the absolute path to the console script in the client config:
+
+```json
+{
+  "mcpServers": {
+    "befree-bubble-mcp": {
+      "command": "/absolute/path/to/befree-bubble-mcp/.venv/bin/bubble-mcp-server",
+      "args": []
+    }
+  }
+}
+```
+
+You can find the path from an activated virtual environment:
+
+```bash
+command -v bubble-mcp-server
 ```
 
 ## No profiles returned
@@ -17,6 +44,41 @@ bubble-mcp init
 bubble-mcp profile add my-app --app-id my-bubble-app
 ```
 
+If you used a custom config directory, pass the same environment variable to the
+CLI and MCP server:
+
+```bash
+export BUBBLE_MCP_CONFIG_DIR=/path/to/bubble-mcp-config
+bubble-mcp init
+bubble-mcp profile add my-app --app-id my-bubble-app
+bubble-mcp profile list
+```
+
+Use the same `BUBBLE_MCP_CONFIG_DIR` in your MCP client config.
+
+## Server appears to hang when run manually
+
+This is expected. `bubble-mcp-server` is a stdio MCP server and waits for
+newline-delimited JSON-RPC input.
+
+To verify it responds:
+
+```bash
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' | bubble-mcp-server
+```
+
 ## MCP server starts but has no mutation tools
 
-This is expected in the bootstrap version. Mutation tools will be exposed only after session capture, planner, validation, and dry-run gates are extracted.
+This is expected in the current implementation. The server exposes:
+
+- `bubble_health_check`
+- `bubble_profile_list`
+
+Mutation tools are not implemented or exposed. `bubble_health_check` reports
+`mutations: false`.
+
+## `Unknown Bubble MCP tool`
+
+The client requested a tool that the server does not implement. Run `tools/list`
+from the client or use the manual protocol check above to confirm the available
+tool names.

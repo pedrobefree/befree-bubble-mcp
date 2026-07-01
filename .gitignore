@@ -10,6 +10,7 @@ __pycache__/
 node_modules/
 dist/
 build/
+*.egg-info/
 tmp/
 logs/
 captures/

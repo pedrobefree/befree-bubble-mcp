@@ -7,6 +7,9 @@ import json
 import sys
 from pathlib import Path
 
+from bubble_mcp.converters.html.converter import html_to_plan
+from bubble_mcp.context.queries import search_context
+from bubble_mcp.context.source import load_context
 from bubble_mcp.core.config import (
     BubbleMcpSettings,
     BubbleProfile,
@@ -15,6 +18,9 @@ from bubble_mcp.core.config import (
     save_settings,
     with_profile,
 )
+from bubble_mcp.harness.eval_runner import run_eval
+from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.validators.semantic import validate_plan
 
 
 def emit_json(payload: object) -> None:
@@ -63,6 +69,49 @@ def command_profile_list(_args: argparse.Namespace) -> int:
     return 0
 
 
+def command_context_summary(args: argparse.Namespace) -> int:
+    context = load_context(Path(args.file))
+    emit_json({"ok": True, "summary": context.summary()})
+    return 0
+
+
+def command_context_find(args: argparse.Namespace) -> int:
+    context = load_context(Path(args.file))
+    emit_json({"ok": True, "results": search_context(context, args.query, args.limit)})
+    return 0
+
+
+def command_plan(args: argparse.Namespace) -> int:
+    plan = plan_message(args.message, context=args.context, parent=args.parent)
+    payload = plan.to_dict()
+    emit_json({"ok": True, "plan": payload, "validation": validate_plan(payload)})
+    return 0
+
+
+def command_validate_plan(args: argparse.Namespace) -> int:
+    payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    emit_json({"ok": True, "validation": validate_plan(payload)})
+    return 0
+
+
+def command_import_html(args: argparse.Namespace) -> int:
+    html = Path(args.file).read_text(encoding="utf-8")
+    plan = html_to_plan(html, context=args.context, parent=args.parent)
+    payload = plan.to_dict()
+    emit_json({"ok": True, "plan": payload, "validation": validate_plan(payload)})
+    return 0
+
+
+def command_eval_run(args: argparse.Namespace) -> int:
+    report = run_eval(Path(args.dataset))
+    if args.report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    emit_json({"ok": True, "report": report})
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bubble-mcp")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -83,6 +132,44 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_parser = profile_subparsers.add_parser("list", help="List configured profiles.")
     list_parser.set_defaults(func=command_profile_list)
+
+    context_parser = subparsers.add_parser("context", help="Inspect compact Bubble context.")
+    context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
+
+    summary_parser = context_subparsers.add_parser("summary", help="Summarize a context file.")
+    summary_parser.add_argument("--file", required=True, help="Path to compact context JSON.")
+    summary_parser.set_defaults(func=command_context_summary)
+
+    find_parser = context_subparsers.add_parser("find", help="Search a context file.")
+    find_parser.add_argument("query")
+    find_parser.add_argument("--file", required=True, help="Path to compact context JSON.")
+    find_parser.add_argument("--limit", type=int, default=10)
+    find_parser.set_defaults(func=command_context_find)
+
+    plan_parser = subparsers.add_parser("plan", help="Create a dry-run Bubble plan.")
+    plan_parser.add_argument("message")
+    plan_parser.add_argument("--context", default="index")
+    plan_parser.add_argument("--parent", default="index")
+    plan_parser.set_defaults(func=command_plan)
+
+    validate_parser = subparsers.add_parser("validate-plan", help="Validate a plan JSON file.")
+    validate_parser.add_argument("--file", required=True)
+    validate_parser.set_defaults(func=command_validate_plan)
+
+    import_parser = subparsers.add_parser("import", help="Import external design artifacts.")
+    import_subparsers = import_parser.add_subparsers(dest="import_command", required=True)
+    html_parser = import_subparsers.add_parser("html", help="Convert HTML to a Bubble dry-run plan.")
+    html_parser.add_argument("--file", required=True)
+    html_parser.add_argument("--context", default="index")
+    html_parser.add_argument("--parent", default="index")
+    html_parser.set_defaults(func=command_import_html)
+
+    eval_parser = subparsers.add_parser("eval", help="Run planning evals.")
+    eval_subparsers = eval_parser.add_subparsers(dest="eval_command", required=True)
+    run_parser = eval_subparsers.add_parser("run", help="Run an eval dataset.")
+    run_parser.add_argument("--dataset", required=True)
+    run_parser.add_argument("--report", default="")
+    run_parser.set_defaults(func=command_eval_run)
 
     return parser
 

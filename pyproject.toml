@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "befree-bubble-mcp"
@@ -29,11 +29,15 @@ server = [
 bubble-mcp = "bubble_mcp.cli.main:main"
 bubble-mcp-server = "bubble_mcp.server.stdio:main"
 
-[tool.hatch.build.targets.wheel]
-packages = ["src/bubble_mcp"]
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.ruff]
 line-length = 100

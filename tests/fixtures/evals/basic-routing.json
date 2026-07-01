@@ -1,0 +1,22 @@
+[
+  {
+    "id": "create_text_hello",
+    "message": "Create a text saying \"Hello\"",
+    "expected_tool": "create_text",
+    "expected_args": {
+      "context": "index",
+      "content": "Hello",
+      "dry_run": true
+    }
+  },
+  {
+    "id": "create_group_card",
+    "message": "Create a card group",
+    "expected_tool": "create_group",
+    "expected_args": {
+      "context": "index",
+      "name": "Generated group",
+      "dry_run": true
+    }
+  }
+]

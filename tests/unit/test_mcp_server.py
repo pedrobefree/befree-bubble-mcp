@@ -34,3 +34,22 @@ def test_health_tool_returns_text_content() -> None:
     payload = json.loads(text)
     assert payload["ok"] is True
     assert payload["capabilities"]["mutations"] is False
+
+
+def test_plan_tool_returns_valid_dry_run_plan() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_plan_dry_run",
+                "arguments": {"message": "Create a text saying Hello"},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["validation"]["ok"] is True
+    assert payload["plan"]["steps"][0]["tool_name"] == "create_text"

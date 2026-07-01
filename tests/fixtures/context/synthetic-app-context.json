@@ -1,0 +1,50 @@
+{
+  "app_id": "synthetic-app",
+  "source": "synthetic-fixture",
+  "nodes": [
+    {
+      "id": "page:index",
+      "label": "index",
+      "type": "page",
+      "metadata": {
+        "description": "Main landing page"
+      }
+    },
+    {
+      "id": "reusable:header",
+      "label": "Header",
+      "type": "reusable",
+      "metadata": {
+        "description": "Shared navigation header"
+      }
+    },
+    {
+      "id": "datatype:user",
+      "label": "User",
+      "type": "data_type",
+      "metadata": {
+        "fields": "email, name"
+      }
+    },
+    {
+      "id": "workflow:signup",
+      "label": "Signup workflow",
+      "type": "workflow",
+      "metadata": {
+        "writes": "User"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "page:index",
+      "target": "reusable:header",
+      "type": "uses"
+    },
+    {
+      "source": "workflow:signup",
+      "target": "datatype:user",
+      "type": "writes"
+    }
+  ]
+}

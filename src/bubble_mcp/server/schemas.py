@@ -27,4 +27,66 @@ def list_tool_schemas() -> list[dict[str, Any]]:
                 "additionalProperties": False,
             },
         },
+        {
+            "name": "bubble_context_summary",
+            "description": "Summarize a compact Bubble context JSON file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"file": {"type": "string"}},
+                "required": ["file"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_context_find",
+            "description": "Search a compact Bubble context JSON file.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string"},
+                    "query": {"type": "string"},
+                    "limit": {"type": "integer"},
+                },
+                "required": ["file", "query"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_plan_dry_run",
+            "description": "Create and validate a deterministic dry-run Bubble plan.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "message": {"type": "string"},
+                    "context": {"type": "string"},
+                    "parent": {"type": "string"},
+                },
+                "required": ["message"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_import_html_dry_run",
+            "description": "Convert HTML text into a validated Bubble dry-run plan.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "html": {"type": "string"},
+                    "context": {"type": "string"},
+                    "parent": {"type": "string"},
+                },
+                "required": ["html"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_eval_run",
+            "description": "Run a deterministic planning eval dataset.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {"dataset": {"type": "string"}},
+                "required": ["dataset"],
+                "additionalProperties": False,
+            },
+        },
     ]
