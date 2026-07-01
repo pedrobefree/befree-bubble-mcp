@@ -1,0 +1,59 @@
+{
+  "appId": "synthetic-app",
+  "crawledAt": "2026-07-01T00:00:00Z",
+  "lastChange": 1,
+  "sectionHashes": {},
+  "pages": [
+    {
+      "id": "pgIndex",
+      "name": "index",
+      "elements": {
+        "elCard": {
+          "%x": "Group",
+          "%p": {
+            "%nm": "Card"
+          },
+          "%el": {
+            "elTitle": {
+              "%x": "Text",
+              "%p": {
+                "%nm": "Title",
+                "%3": "Welcome"
+              }
+            }
+          }
+        }
+      },
+      "workflows": {
+        "wfSignup": {
+          "%p": {
+            "%nm": "Signup workflow"
+          }
+        }
+      },
+      "crawledAt": "2026-07-01T00:00:00Z"
+    }
+  ],
+  "reusables": [],
+  "backendWorkflows": [],
+  "pageIndex": {
+    "index": "pgIndex"
+  },
+  "reusableIndex": {},
+  "apiIndex": {},
+  "idToPath": {
+    "elCard": "%p3.pgIndex.%el.elCard",
+    "elTitle": "%p3.pgIndex.%el.elCard.%el.elTitle"
+  },
+  "dataTypes": {
+    "user": {
+      "%p": {
+        "%nm": "User"
+      }
+    }
+  },
+  "optionSets": {},
+  "source": "full_crawl",
+  "apiCallCount": 1,
+  "durationMs": 10
+}

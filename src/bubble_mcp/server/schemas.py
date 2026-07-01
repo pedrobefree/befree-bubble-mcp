@@ -52,6 +52,20 @@ def list_tool_schemas() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "bubble_context_import",
+            "description": "Import a Bubble .bubble/consolelog JSON or crawler-index JSON into compact context.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "file": {"type": "string"},
+                    "kind": {"type": "string", "enum": ["auto", "bubble", "crawler"]},
+                    "output": {"type": "string"},
+                },
+                "required": ["file"],
+                "additionalProperties": False,
+            },
+        },
+        {
             "name": "bubble_plan",
             "description": "Create and validate a deterministic Bubble plan.",
             "inputSchema": {

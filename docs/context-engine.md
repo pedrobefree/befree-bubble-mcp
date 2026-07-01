@@ -1,20 +1,37 @@
 # Context Engine
 
-The context engine will make Bubble automation more accurate by building compact, queryable project context.
+The context engine makes Bubble automation more accurate by building compact, queryable project context.
 
-Planned inputs:
+Supported inputs:
 
-- `.bubble` exports.
-- Split module trees.
+- `.bubble`/consolelog-style JSON exports.
 - Crawler indexes.
-- Mutation overlays.
 - Synthetic fixtures for public tests.
 
-Planned outputs:
+Outputs:
 
 - Project summary.
 - Project graph.
 - Context lookup APIs.
-- Usage traces for pages, reusables, data types, fields, styles, workflows, and API connector calls.
+- Pages, reusables, nested elements, workflows, data types, option sets, Bubble ids, and path arrays.
+
+## Import
+
+```bash
+bubble-mcp context import \
+  --file ./my-app-crawler-index.json \
+  --kind crawler \
+  --output ./my-app-context.json
+```
+
+```bash
+bubble-mcp context import \
+  --file ./my-app.bubble.json \
+  --kind bubble \
+  --output ./my-app-context.json
+```
+
+The compiler can use imported context to place new elements under an existing
+parent by name.
 
 No real project snapshots should be committed to this repository.

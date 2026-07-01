@@ -8,8 +8,9 @@ from pathlib import Path
 from bubble_mcp import __version__
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
+from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.queries import search_context
-from bubble_mcp.context.source import load_context
+from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import load_settings
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.execution.executor import execute_plan
@@ -65,6 +66,16 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             "ok": True,
             "results": search_context(context, str(args.get("query") or ""), int(args.get("limit") or 10)),
         }
+    if name == "bubble_context_import":
+        args = arguments or {}
+        context = import_context_artifact(
+            Path(str(args.get("file") or "")),
+            kind=str(args.get("kind") or "auto"),
+        )
+        output = str(args.get("output") or "").strip()
+        if output:
+            save_context(context, Path(output))
+        return {"ok": True, "summary": context.summary(), "output": output or None}
     if name in {"bubble_plan", "bubble_plan_dry_run"}:
         args = arguments or {}
         plan = plan_message(

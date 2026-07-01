@@ -9,8 +9,9 @@ from pathlib import Path
 
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
+from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.queries import search_context
-from bubble_mcp.context.source import load_context
+from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import (
     BubbleMcpSettings,
     BubbleProfile,
@@ -83,6 +84,14 @@ def command_context_summary(args: argparse.Namespace) -> int:
 def command_context_find(args: argparse.Namespace) -> int:
     context = load_context(Path(args.file))
     emit_json({"ok": True, "results": search_context(context, args.query, args.limit)})
+    return 0
+
+
+def command_context_import(args: argparse.Namespace) -> int:
+    context = import_context_artifact(Path(args.file), kind=args.kind)
+    if args.output:
+        save_context(context, Path(args.output))
+    emit_json({"ok": True, "summary": context.summary(), "output": args.output or None})
     return 0
 
 
@@ -220,6 +229,15 @@ def build_parser() -> argparse.ArgumentParser:
     find_parser.add_argument("--file", required=True, help="Path to compact context JSON.")
     find_parser.add_argument("--limit", type=int, default=10)
     find_parser.set_defaults(func=command_context_find)
+
+    import_context_parser = context_subparsers.add_parser(
+        "import",
+        help="Import a Bubble .bubble/consolelog JSON or crawler-index JSON into compact context.",
+    )
+    import_context_parser.add_argument("--file", required=True)
+    import_context_parser.add_argument("--kind", choices=["auto", "bubble", "crawler"], default="auto")
+    import_context_parser.add_argument("--output", default="")
+    import_context_parser.set_defaults(func=command_context_import)
 
     plan_parser = subparsers.add_parser("plan", help="Create a Bubble plan.")
     plan_parser.add_argument("message")

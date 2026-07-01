@@ -17,7 +17,7 @@ bubble-mcp-server
 - Bubble-focused CLI.
 - MCP server for agent clients.
 - Local profile management.
-- Compact synthetic context loading and search.
+- Compact context loading, search, and import from `.bubble`/consolelog or crawler-index JSON.
 - Deterministic planner and semantic validator.
 - Basic HTML-to-Bubble converter.
 - Local session import/listing for Bubble editor credentials.

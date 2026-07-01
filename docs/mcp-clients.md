@@ -71,6 +71,7 @@ listed below.
 - `bubble_profile_list`: lists configured local Bubble profiles.
 - `bubble_context_summary`: summarizes a compact context JSON file.
 - `bubble_context_find`: searches a compact context JSON file.
+- `bubble_context_import`: imports `.bubble`/consolelog or crawler-index JSON into compact context.
 - `bubble_plan`: creates a validated deterministic plan.
 - `bubble_plan_dry_run`: compatibility alias for `bubble_plan`.
 - `bubble_import_html`: converts HTML text into a validated plan.

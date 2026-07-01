@@ -24,7 +24,7 @@ SENSITIVE_PATTERNS = [
         r"\baria\.db\b",
         r"\bbefree-page\b",
         r"\bcli-test-project-graph\b",
-        r"\bcrawler-index\b",
+        r"\b(?:befree|cli-test|prod|live)[a-z0-9_-]*-crawler-index\.json\b",
         r"\bmutation-overlay\b",
         r"\bproject-graph\b",
     ]
