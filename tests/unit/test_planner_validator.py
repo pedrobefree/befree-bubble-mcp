@@ -1,5 +1,5 @@
 from bubble_mcp.planner.deterministic import plan_message
-from bubble_mcp.validators.semantic import validate_plan
+from bubble_mcp.validators.semantic import validate_plan, validate_write_payload
 
 
 def test_plans_create_text() -> None:
@@ -48,3 +48,37 @@ def test_validation_checks_write_payload_shape() -> None:
 
     assert result["ok"] is False
     assert "changes array" in result["errors"][0]
+
+
+def test_validate_write_payload_accepts_create_element() -> None:
+    errors = validate_write_payload(
+        {
+            "appname": "synthetic-app",
+            "changes": [
+                {
+                    "intent": {"name": "CreateElement"},
+                    "path_array": ["%p3", "index"],
+                    "body": {"%x": "Text", "%p": {"%nm": "Title", "%3": "Hello"}},
+                }
+            ],
+        }
+    )
+
+    assert errors == []
+
+
+def test_validate_write_payload_rejects_create_element_property_path() -> None:
+    errors = validate_write_payload(
+        {
+            "appname": "synthetic-app",
+            "changes": [
+                {
+                    "intent": {"name": "CreateElement"},
+                    "path_array": ["%p3", "index", "%p", "%3"],
+                    "body": {"%x": "Text", "%p": {"%nm": "Title"}},
+                }
+            ],
+        }
+    )
+
+    assert any("must not include %p" in error for error in errors)

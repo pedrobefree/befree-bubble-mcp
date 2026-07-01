@@ -25,6 +25,55 @@ REQUIRED_ARGS = {
 }
 
 
+def validate_write_payload(payload: dict[str, Any]) -> list[str]:
+    """Return semantic errors for a Bubble /appeditor/write payload."""
+
+    errors: list[str] = []
+    appname = str(payload.get("appname") or "").strip()
+    if not appname:
+        errors.append("write_payload missing appname.")
+    changes = payload.get("changes")
+    if not isinstance(changes, list):
+        errors.append("write_payload must include a changes array.")
+        return errors
+    if not changes:
+        errors.append("write_payload changes array must not be empty.")
+        return errors
+
+    for index, change in enumerate(changes):
+        prefix = f"write_payload changes[{index}]"
+        if not isinstance(change, dict):
+            errors.append(f"{prefix} must be an object.")
+            continue
+        intent = change.get("intent")
+        if not isinstance(intent, dict) or not str(intent.get("name") or "").strip():
+            errors.append(f"{prefix} missing intent.name.")
+        path_array = change.get("path_array")
+        if not isinstance(path_array, list) or not path_array:
+            errors.append(f"{prefix} missing path_array.")
+        elif "%p" in path_array and str(_intent_name(change)) == "CreateElement":
+            errors.append(f"{prefix} CreateElement path_array must not include %p.")
+        body = change.get("body")
+        if _intent_name(change) == "CreateElement":
+            if not isinstance(body, dict):
+                errors.append(f"{prefix} CreateElement body must be an object.")
+            else:
+                element_type = str(body.get("%x") or body.get("type") or "").strip()
+                properties = body.get("%p")
+                if not element_type:
+                    errors.append(f"{prefix} CreateElement body missing %x element type.")
+                if not isinstance(properties, dict):
+                    errors.append(f"{prefix} CreateElement body missing %p properties.")
+                elif not str(properties.get("%nm") or properties.get("name") or "").strip():
+                    errors.append(f"{prefix} CreateElement properties missing %nm name.")
+    return errors
+
+
+def _intent_name(change: dict[str, Any]) -> str:
+    intent = change.get("intent")
+    return str(intent.get("name") or "") if isinstance(intent, dict) else ""
+
+
 def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
     """Validate a serialized plan."""
 
@@ -51,7 +100,7 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
             payload = args.get("write_payload")
             if not isinstance(payload, dict):
                 errors.append(f"{tool_name} write_payload must be an object.")
-            elif not isinstance(payload.get("changes"), list):
-                errors.append(f"{tool_name} write_payload must include a changes array.")
+            else:
+                errors.extend(f"{tool_name} {error}" for error in validate_write_payload(payload))
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}
