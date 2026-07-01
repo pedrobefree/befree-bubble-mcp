@@ -119,3 +119,37 @@ def test_compile_schema_option_theme_and_workflow_tools() -> None:
     assert payloads[0]["changes"][0]["path_array"][:2] == ["data_types", "audit_log"]
     assert payloads[2]["changes"][0]["path_array"][:2] == ["option_sets", "os_status"]
     assert payloads[6]["changes"][0]["path_array"][:3] == ["%p3", "index", "%wf"]
+
+
+def test_compile_generic_visual_catalog_tools() -> None:
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "create_button",
+                "args": {"context": "index", "parent": "index", "name": "CTA", "label": "Continue"},
+            },
+            {
+                "id": "s2",
+                "tool_name": "update_input",
+                "args": {"context": "index", "element_name": "email_input", "placeholder": "Email"},
+            },
+            {
+                "id": "s3",
+                "tool_name": "delete_button",
+                "args": {"context": "index", "element_name": "old_button"},
+            },
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
+
+    create_payload = compiled["steps"][0]["args"]["write_payload"]
+    update_payload = compiled["steps"][1]["args"]["write_payload"]
+    delete_payload = compiled["steps"][2]["args"]["write_payload"]
+
+    assert create_payload["changes"][0]["body"]["%x"] == "Button"
+    assert create_payload["changes"][0]["body"]["%p"]["%3"] == "Continue"
+    assert update_payload["changes"][0]["intent"]["name"] == "SetData"
+    assert update_payload["changes"][0]["body"]["placeholder"] == "Email"
+    assert delete_payload["changes"][0]["intent"]["name"] == "Delete"

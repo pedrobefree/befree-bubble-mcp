@@ -16,6 +16,99 @@ from bubble_mcp.context.models import BubbleProjectContext
 
 
 ROOT_PARENT_NAMES = {"", "root", "page", "index"}
+VISUAL_CREATE_TYPES = {
+    "create_text": "Text",
+    "create_group": "Group",
+    "create_button": "Button",
+    "create_input": "Input",
+    "create_multiline_input": "MultilineInput",
+    "create_dropdown": "Dropdown",
+    "create_searchbox": "SearchBox",
+    "create_checkbox": "Checkbox",
+    "create_datepicker": "DateInput",
+    "create_radio": "RadioButtons",
+    "create_slider": "SliderInput",
+    "create_file_uploader": "FileUploader",
+    "create_picture_uploader": "PictureUploader",
+    "create_shape": "Shape",
+    "create_video": "Video",
+    "create_image": "Image",
+    "create_icon": "Icon",
+    "create_html": "HTML",
+    "create_link": "Link",
+    "create_alert": "Alert",
+    "create_map": "Map",
+    "create_popup": "Popup",
+    "create_floating_group": "FloatingGroup",
+    "create_group_focus": "GroupFocus",
+    "create_repeating_group": "RepeatingGroup",
+    "create_table": "Table",
+    "create_reusable_instance": "ReusableElement",
+}
+VISUAL_UPDATE_TOOLS = {
+    "update_text",
+    "update_text_element",
+    "update_group",
+    "update_group_focus",
+    "update_floating_group",
+    "update_repeating_group",
+    "update_table",
+    "update_button",
+    "update_input",
+    "update_multiline_input",
+    "update_dropdown",
+    "update_searchbox",
+    "update_link",
+    "update_alert",
+    "update_image",
+    "update_image_element",
+    "update_icon",
+    "update_icon_element",
+    "update_checkbox",
+    "update_datepicker",
+    "update_radio",
+    "update_slider",
+    "update_file_uploader",
+    "update_picture_uploader",
+    "update_shape",
+    "update_video",
+    "update_map",
+    "update_html",
+    "update_popup",
+    "update_layout",
+    "update_name",
+    "update_placeholder",
+    "update_style",
+}
+VISUAL_DELETE_TOOLS = {
+    "delete_element",
+    "delete_text",
+    "delete_button",
+    "delete_checkbox",
+    "delete_radio",
+    "delete_input",
+    "delete_multiline_input",
+    "delete_dropdown",
+    "delete_datepicker",
+    "delete_file_uploader",
+    "delete_picture_uploader",
+    "delete_searchbox",
+    "delete_slider",
+    "delete_icon",
+    "delete_image",
+    "delete_link",
+    "delete_shape",
+    "delete_alert",
+    "delete_video",
+    "delete_html",
+    "delete_map",
+    "delete_group",
+    "delete_group_focus",
+    "delete_floating_group",
+    "delete_repeating_group",
+    "delete_table",
+    "delete_popup",
+}
 
 
 def bubble_element_id(length: int = 5) -> str:
@@ -168,6 +261,59 @@ def compile_create_text_step(
     }
 
 
+def collect_visual_properties(args: dict[str, Any], *, element_type: str) -> dict[str, Any]:
+    name = str(args.get("name") or args.get("element_name") or f"Generated {element_type}").strip()
+    properties: dict[str, Any] = {"%nm": name}
+    mapping = {
+        "content": "%3",
+        "text": "%3",
+        "label": "%3",
+        "placeholder": "placeholder",
+        "initial_content": "initial_content",
+        "font_size": "%fs",
+        "font_color": "%fc",
+        "font_alignment": "%fa",
+        "bg_color": "%bgc",
+        "background_style": "%bas",
+        "border_radius": "%br",
+        "url": "url",
+        "image_url": "image_url",
+        "icon": "%9i",
+        "data_source": "%ds",
+        "type_of_content": "%gt",
+        "style": "%s1",
+        "tooltip": "tooltip",
+    }
+    for source_key, wire_key in mapping.items():
+        if args.get(source_key) is not None:
+            properties[wire_key] = args[source_key]
+    if element_type in {"Group", "FloatingGroup", "GroupFocus", "RepeatingGroup", "Table", "Popup"}:
+        layout = str(args.get("layout") or "column").strip().lower().replace("-", "_").replace(" ", "_")
+        if layout == "align_to_parent":
+            layout = "relative"
+        properties["container_layout"] = layout
+        for source_key, wire_key in (
+            ("row_gap", "row_gap"),
+            ("column_gap", "column_gap"),
+            ("rows", "%rs"),
+            ("columns", "columns"),
+        ):
+            if args.get(source_key) is not None:
+                properties[wire_key] = args[source_key]
+    return properties
+
+
+def compile_create_visual_step(
+    tool_name: str,
+    args: dict[str, Any],
+    *,
+    context: BubbleProjectContext | None,
+) -> dict[str, Any]:
+    element_type = VISUAL_CREATE_TYPES[tool_name]
+    properties = collect_visual_properties(args, element_type=element_type)
+    return {"%x": element_type, "%p": properties, "id": bubble_element_id()}
+
+
 def compile_create_group_step(
     args: dict[str, Any],
     *,
@@ -240,6 +386,22 @@ def compile_update_group_changes(
             properties[wire_key] = value
     if not properties:
         raise ValueError("update_group requires at least one supported property.")
+    return [set_data_change(path, properties, session_id)]
+
+
+def compile_update_visual_changes(
+    args: dict[str, Any],
+    *,
+    context: BubbleProjectContext | None,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    path = [*resolve_element_path(args, context=context), "%p"]
+    properties = collect_visual_properties(args, element_type="Element")
+    properties = {key: value for key, value in properties.items() if key != "%nm" or args.get("name") is not None}
+    if args.get("content") is not None or args.get("new_text") is not None:
+        properties["%3"] = args.get("content") if args.get("content") is not None else args.get("new_text")
+    if not properties:
+        raise ValueError("update tool requires at least one supported property.")
     return [set_data_change(path, properties, session_id)]
 
 
@@ -401,11 +563,16 @@ def compile_step_to_payload(
     elif tool_name == "create_group":
         body = compile_create_group_step(args, context=context)
         changes = [create_change(resolve_parent_path(args, context=context), body, session_id)]
+    elif tool_name in VISUAL_CREATE_TYPES:
+        body = compile_create_visual_step(tool_name, args, context=context)
+        changes = [create_change(resolve_parent_path(args, context=context), body, session_id)]
     elif tool_name == "update_text":
         changes = compile_update_text_changes(args, context=context, session_id=session_id)
     elif tool_name == "update_group":
         changes = compile_update_group_changes(args, context=context, session_id=session_id)
-    elif tool_name == "delete_element":
+    elif tool_name in VISUAL_UPDATE_TOOLS:
+        changes = compile_update_visual_changes(args, context=context, session_id=session_id)
+    elif tool_name in VISUAL_DELETE_TOOLS:
         changes = compile_delete_element_changes(args, context=context, session_id=session_id)
     elif tool_name in {"create_data_type", "create_data_field"}:
         changes = compile_schema_changes(tool_name, args, session_id)
