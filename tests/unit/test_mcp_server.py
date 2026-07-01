@@ -1,6 +1,7 @@
 import json
 
 from bubble_mcp.server.stdio import handle_request
+from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 
 
 def test_initialize_returns_server_info() -> None:
@@ -61,6 +62,38 @@ def test_tools_list_includes_mutating_write_tool() -> None:
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert "bubble_editor_write" in names
+
+
+def test_tools_list_includes_full_aria_catalog() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 7, "method": "tools/list"})
+
+    assert response is not None
+    names = {tool["name"] for tool in response["result"]["tools"]}
+    assert len(ARIA_BUBBLE_TOOL_NAMES) == 196
+    assert set(ARIA_BUBBLE_TOOL_NAMES).issubset(names)
+
+
+def test_direct_catalog_tool_call_compiles_when_supported() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "tools/call",
+            "params": {
+                "name": "create_text",
+                "arguments": {
+                    "app_id": "synthetic-app",
+                    "context": "index",
+                    "content": "Hello",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["compiled"] is True
+    assert payload["plan"]["steps"][0]["args"]["write_payload"]["changes"][0]["body"]["%x"] == "Text"
 
 
 def test_compile_plan_tool_returns_write_payload() -> None:

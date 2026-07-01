@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
+
 
 READ_ONLY_TOOLS = {
     "bubble_health_check",
@@ -17,6 +19,7 @@ MUTATING_TOOLS = {
     "create_group",
     "bubble_editor_write",
 }
+CATALOG_TOOLS = set(ARIA_BUBBLE_TOOL_NAMES)
 
 REQUIRED_ARGS = {
     "create_text": {"context", "content"},
@@ -90,7 +93,7 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         tool_name = str(step.get("tool_name") or "")
         raw_args = step.get("args")
         args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
-        if tool_name not in READ_ONLY_TOOLS and tool_name not in MUTATING_TOOLS:
+        if tool_name not in READ_ONLY_TOOLS and tool_name not in MUTATING_TOOLS and tool_name not in CATALOG_TOOLS:
             errors.append(f"Unsupported tool: {tool_name or '<empty>'}.")
             continue
         missing = sorted(REQUIRED_ARGS.get(tool_name, set()) - set(args.keys()))

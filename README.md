@@ -16,6 +16,7 @@ bubble-mcp-server
 
 - Bubble-focused CLI.
 - MCP server for agent clients.
+- Full Aria Bubble MCP tool catalog exposed over MCP.
 - Local profile management.
 - Compact context loading, search, and import from `.bubble`/consolelog or crawler-index JSON.
 - Deterministic planner and semantic validator.

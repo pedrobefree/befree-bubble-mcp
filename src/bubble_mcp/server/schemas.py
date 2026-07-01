@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from typing import Any
 
+from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES, legacy_tool_schema
+
 
 def list_tool_schemas() -> list[dict[str, Any]]:
     """Return MCP-compatible tool schema definitions."""
 
-    return [
+    native_tools = [
         {
             "name": "bubble_profile_list",
             "description": "List local Bubble MCP profiles. This is read-only.",
@@ -202,3 +204,10 @@ def list_tool_schemas() -> list[dict[str, Any]]:
             },
         },
     ]
+    native_names = {tool["name"] for tool in native_tools}
+    legacy_tools = [
+        legacy_tool_schema(name)
+        for name in ARIA_BUBBLE_TOOL_NAMES
+        if name not in native_names
+    ]
+    return [*native_tools, *legacy_tools]

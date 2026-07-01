@@ -67,6 +67,11 @@ listed below.
 
 ## Available tools
 
+The server exposes the complete 196-tool Aria Bubble MCP catalog, plus native
+standalone helper tools. Catalog tools accept their original arguments. For
+standalone execution, pass `app_id` for compiler-supported families or
+`write_payload` for exact Bubble editor writes.
+
 - `bubble_health_check`: reports local server capabilities.
 - `bubble_profile_list`: lists configured local Bubble profiles.
 - `bubble_context_summary`: summarizes a compact context JSON file.

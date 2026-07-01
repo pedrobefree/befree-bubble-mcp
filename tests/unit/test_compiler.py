@@ -70,3 +70,52 @@ def test_execute_plan_can_compile_missing_payload_before_execution() -> None:
     assert result["ok"] is True
     assert result["results"][0]["result"]["payload"]["changes"][0]["body"]["%x"] == "Text"
 
+
+def test_compile_update_text_and_delete_element() -> None:
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "update_text",
+                "args": {"context": "index", "element_name": "Title", "content": "Updated"},
+            },
+            {
+                "id": "s2",
+                "tool_name": "delete_element",
+                "args": {"context": "index", "element_name": "Old"},
+            },
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
+
+    assert compiled["steps"][0]["args"]["write_payload"]["changes"][0]["intent"]["name"] == "SetData"
+    assert compiled["steps"][0]["args"]["write_payload"]["changes"][0]["path_array"][-2:] == ["%p", "%3"]
+    assert compiled["steps"][1]["args"]["write_payload"]["changes"][0]["intent"]["name"] == "Delete"
+
+
+def test_compile_schema_option_theme_and_workflow_tools() -> None:
+    plan = {
+        "steps": [
+            {"id": "s1", "tool_name": "create_data_type", "args": {"name": "Audit Log"}},
+            {
+                "id": "s2",
+                "tool_name": "create_data_field",
+                "args": {"data_type_key": "audit_log", "field_name": "Severity", "field_type": "text"},
+            },
+            {"id": "s3", "tool_name": "create_option_set", "args": {"name": "Status"}},
+            {"id": "s4", "tool_name": "create_option_value", "args": {"option_set_key": "os_status", "label": "Open"}},
+            {"id": "s5", "tool_name": "create_color", "args": {"name": "Brand", "rgba": "rgba(1,2,3,1)"}},
+            {"id": "s6", "tool_name": "create_style", "args": {"name": "Primary", "element_type": "Button"}},
+            {"id": "s7", "tool_name": "create_workflow", "args": {"context": "index", "event": "click", "element_name": "Button"}},
+            {"id": "s8", "tool_name": "add_action", "args": {"context": "index", "workflow_id": "wf1", "action_type": "navigate"}},
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
+
+    payloads = [step["args"]["write_payload"] for step in compiled["steps"]]
+    assert all(payload["changes"] for payload in payloads)
+    assert payloads[0]["changes"][0]["path_array"][:2] == ["data_types", "audit_log"]
+    assert payloads[2]["changes"][0]["path_array"][:2] == ["option_sets", "os_status"]
+    assert payloads[6]["changes"][0]["path_array"][:3] == ["%p3", "index", "%wf"]

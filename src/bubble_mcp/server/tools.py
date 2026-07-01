@@ -16,6 +16,7 @@ from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
 
@@ -39,6 +40,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                 "dry_run": "optional",
                 "figma_bridge": True,
                 "figma_plugin": False,
+                "aria_tool_catalog_count": len(ARIA_BUBBLE_TOOL_NAMES),
             },
         }
     if name == "bubble_profile_list":
@@ -171,4 +173,85 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             compile_missing=bool(args.get("compile")),
             context=execution_context,
         )
+    if name in ARIA_BUBBLE_TOOL_NAMES:
+        return call_legacy_catalog_tool(name, arguments or {})
     raise ValueError(f"Unknown Bubble MCP tool: {name}")
+
+
+def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Handle a ported Aria Bubble MCP tool name.
+
+    The standalone package exposes every Aria tool name. Families implemented by
+    the local compiler can be compiled/executed directly. Any family can execute
+    when the caller provides an exact Bubble ``write_payload``.
+    """
+
+    write_payload = args.get("write_payload") or args.get("payload")
+    profile = str(args.get("profile") or "").strip()
+    execute = bool(args.get("execute"))
+
+    if isinstance(write_payload, dict):
+        if not profile:
+            return {
+                "ok": True,
+                "tool_name": name,
+                "executed": False,
+                "requires_profile": execute,
+                "plan": {
+                    "steps": [
+                        {"id": "step_1", "tool_name": name, "args": {"write_payload": write_payload}}
+                    ]
+                },
+                "validation": validate_plan(
+                    {"steps": [{"id": "step_1", "tool_name": "bubble_editor_write", "args": {"write_payload": write_payload}}]}
+                ),
+            }
+        session = load_session(profile)
+        if session is None:
+            raise ValueError(f"No Bubble session stored for profile '{profile}'.")
+        return BubbleEditorClient().write(write_payload, session, dry_run=not execute)
+
+    app_id = str(args.get("app_id") or args.get("appname") or "").strip()
+    plan = {"steps": [{"id": "step_1", "tool_name": name, "args": dict(args)}]}
+    if app_id:
+        context = None
+        context_file = str(args.get("context_file") or "").strip()
+        if context_file:
+            context = load_context(Path(context_file))
+        compiled_plan = compile_plan_to_write_payloads(
+            plan,
+            app_id=app_id,
+            app_version=str(args.get("app_version") or "test"),
+            context=context,
+        )
+        can_execute = any(
+            isinstance(step, dict)
+            and isinstance(step.get("args"), dict)
+            and isinstance(step["args"].get("write_payload"), dict)
+            for step in compiled_plan.get("steps", [])
+        )
+        if profile and can_execute:
+            return execute_plan(
+                compiled_plan,
+                profile=profile,
+                execute=execute,
+                app_id=app_id,
+                app_version=str(args.get("app_version") or "test"),
+            )
+        return {
+            "ok": can_execute,
+            "tool_name": name,
+            "compiled": can_execute,
+            "executed": False,
+            "plan": compiled_plan,
+            "validation": validate_plan(compiled_plan),
+        }
+
+    return {
+        "ok": False,
+        "tool_name": name,
+        "compiled": False,
+        "executed": False,
+        "error": "This tool is exposed from the full Aria catalog, but standalone execution requires app_id for compiler support or write_payload for exact execution.",
+        "plan": plan,
+    }
