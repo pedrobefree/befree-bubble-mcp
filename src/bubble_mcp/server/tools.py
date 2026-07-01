@@ -6,6 +6,7 @@ from typing import Any
 from pathlib import Path
 
 from bubble_mcp import __version__
+from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context
@@ -83,6 +84,27 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_eval_run":
         args = arguments or {}
         return {"ok": True, "report": run_eval(Path(str(args.get("dataset") or "")))}
+    if name == "bubble_compile_plan":
+        args = arguments or {}
+        compile_plan = args.get("plan")
+        if not isinstance(compile_plan, dict):
+            raise ValueError("bubble_compile_plan requires a plan object.")
+        app_id = str(args.get("app_id") or "").strip()
+        if not app_id:
+            raise ValueError("bubble_compile_plan requires app_id.")
+        compile_context = None
+        context_file = str(args.get("context_file") or "").strip()
+        if context_file:
+            compile_context = load_context(Path(context_file))
+        return {
+            "ok": True,
+            "plan": compile_plan_to_write_payloads(
+                compile_plan,
+                app_id=app_id,
+                app_version=str(args.get("app_version") or "test"),
+                context=compile_context,
+            ),
+        }
     if name == "bubble_session_list":
         return {"ok": True, "sessions": list_sessions()}
     if name == "bubble_session_import":
@@ -125,5 +147,17 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         execution_plan = args.get("plan")
         if not isinstance(execution_plan, dict):
             raise ValueError("bubble_execute_plan requires a plan object.")
-        return execute_plan(execution_plan, profile=profile, execute=bool(args.get("execute")))
+        execution_context = None
+        context_file = str(args.get("context_file") or "").strip()
+        if context_file:
+            execution_context = load_context(Path(context_file))
+        return execute_plan(
+            execution_plan,
+            profile=profile,
+            execute=bool(args.get("execute")),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+            compile_missing=bool(args.get("compile")),
+            context=execution_context,
+        )
     raise ValueError(f"Unknown Bubble MCP tool: {name}")

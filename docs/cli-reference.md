@@ -106,6 +106,16 @@ Imports local Bubble editor session headers/cookies.
 bubble-mcp session import --profile my-app --file ./bubble-session.json
 ```
 
+## `bubble-mcp session login`
+
+Opens a local Chromium browser through Playwright and captures Bubble cookies.
+
+```bash
+pip install "befree-bubble-mcp[browser]"
+playwright install chromium
+bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 120
+```
+
 ## `bubble-mcp session list`
 
 Lists imported session metadata without printing secrets.
@@ -126,10 +136,21 @@ bubble-mcp write --profile my-app --payload ./write-payload.json --execute
 
 ## `bubble-mcp execute-plan`
 
-Executes a plan whose steps include `args.write_payload`.
+Executes a plan. If the plan contains abstract `create_text` or `create_group`
+steps, pass `--compile` and `--app-id` to compile those steps into
+`args.write_payload` before execution.
 
 ```bash
 bubble-mcp execute-plan --profile my-app --file ./plan.json --execute
+bubble-mcp execute-plan --profile my-app --file ./plan.json --app-id my-bubble-app --compile --execute
+```
+
+## `bubble-mcp compile-plan`
+
+Compiles supported abstract plan steps into Bubble write payloads.
+
+```bash
+bubble-mcp compile-plan --file ./plan.json --app-id my-bubble-app --output ./compiled-plan.json
 ```
 
 ## `bubble-mcp validate-plan`
@@ -166,6 +187,7 @@ Implemented tools:
 - `bubble_context_find`
 - `bubble_plan`
 - `bubble_import_html`
+- `bubble_compile_plan`
 - `bubble_eval_run`
 - `bubble_session_list`
 - `bubble_session_import`

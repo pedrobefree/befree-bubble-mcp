@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
+from bubble_mcp.context.models import BubbleProjectContext
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.store import BubbleSessionData, load_session
 
@@ -20,9 +22,27 @@ def execute_plan(
     *,
     profile: str,
     execute: bool = False,
+    app_id: str | None = None,
+    app_version: str = "test",
+    context: BubbleProjectContext | None = None,
+    compile_missing: bool = False,
     session: BubbleSessionData | None = None,
     client: BubbleEditorClient | None = None,
 ) -> dict[str, Any]:
+    if compile_missing:
+        target_app_id = app_id or (session.app_id if session else None)
+        if not target_app_id:
+            loaded_for_app = load_session(profile)
+            target_app_id = loaded_for_app.app_id if loaded_for_app else None
+        if not target_app_id:
+            raise ValueError("app_id is required when compile_missing is true.")
+        plan = compile_plan_to_write_payloads(
+            plan,
+            app_id=target_app_id,
+            app_version=app_version,
+            context=context,
+        )
+
     steps = plan.get("steps")
     if not isinstance(steps, list):
         raise ValueError("Plan must include a steps array.")

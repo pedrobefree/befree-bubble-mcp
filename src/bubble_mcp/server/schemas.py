@@ -118,6 +118,21 @@ def list_tool_schemas() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "bubble_compile_plan",
+            "description": "Compile supported abstract plan steps into Bubble /appeditor/write payloads.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "plan": {"type": "object"},
+                    "app_id": {"type": "string"},
+                    "app_version": {"type": "string"},
+                    "context_file": {"type": "string"},
+                },
+                "required": ["plan", "app_id"],
+                "additionalProperties": False,
+            },
+        },
+        {
             "name": "bubble_session_list",
             "description": "List locally imported Bubble editor session metadata.",
             "inputSchema": {
@@ -163,6 +178,10 @@ def list_tool_schemas() -> list[dict[str, Any]]:
                     "profile": {"type": "string"},
                     "plan": {"type": "object"},
                     "execute": {"type": "boolean"},
+                    "compile": {"type": "boolean"},
+                    "app_id": {"type": "string"},
+                    "app_version": {"type": "string"},
+                    "context_file": {"type": "string"},
                 },
                 "required": ["profile", "plan"],
                 "additionalProperties": False,

@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context
@@ -22,6 +23,7 @@ from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
 
@@ -146,9 +148,43 @@ def command_execute_plan(args: argparse.Namespace) -> int:
     plan = json.loads(Path(args.file).read_text(encoding="utf-8"))
     if not isinstance(plan, dict):
         raise ValueError("Plan file must contain a JSON object.")
-    result = execute_plan(plan, profile=args.profile, execute=args.execute)
+    result = execute_plan(
+        plan,
+        profile=args.profile,
+        execute=args.execute,
+        app_id=args.app_id or None,
+        app_version=args.app_version,
+        compile_missing=args.compile,
+    )
     emit_json(result)
     return 0 if result.get("ok") else 1
+
+
+def command_compile_plan(args: argparse.Namespace) -> int:
+    plan = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    if not isinstance(plan, dict):
+        raise ValueError("Plan file must contain a JSON object.")
+    compiled = compile_plan_to_write_payloads(
+        plan,
+        app_id=args.app_id,
+        app_version=args.app_version,
+    )
+    if args.output:
+        Path(args.output).write_text(json.dumps(compiled, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    emit_json({"ok": True, "plan": compiled})
+    return 0
+
+
+def command_session_login(args: argparse.Namespace) -> int:
+    session = capture_session_with_playwright(
+        app_id=args.app_id,
+        editor_url=args.editor_url or None,
+        headless=args.headless,
+        wait_seconds=args.wait_seconds,
+    )
+    target = save_session(args.profile, session)
+    emit_json({"ok": True, "profile": args.profile, "path": str(target), "session": session.to_dict(redact=True)})
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -222,6 +258,17 @@ def build_parser() -> argparse.ArgumentParser:
     session_import_parser.add_argument("--app-id", default="")
     session_import_parser.set_defaults(func=command_session_import)
 
+    session_login_parser = session_subparsers.add_parser(
+        "login",
+        help="Open a local browser and capture Bubble cookies for a profile.",
+    )
+    session_login_parser.add_argument("--profile", required=True)
+    session_login_parser.add_argument("--app-id", required=True)
+    session_login_parser.add_argument("--editor-url", default="")
+    session_login_parser.add_argument("--wait-seconds", type=int, default=120)
+    session_login_parser.add_argument("--headless", action="store_true")
+    session_login_parser.set_defaults(func=command_session_login)
+
     session_list_parser = session_subparsers.add_parser("list", help="List imported session metadata.")
     session_list_parser.set_defaults(func=command_session_list)
 
@@ -241,12 +288,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
     execute_plan_parser.add_argument("--profile", required=True)
     execute_plan_parser.add_argument("--file", required=True)
+    execute_plan_parser.add_argument("--app-id", default="")
+    execute_plan_parser.add_argument("--app-version", default="test")
+    execute_plan_parser.add_argument("--compile", action="store_true", help="Compile supported abstract steps before execution.")
     execute_plan_parser.add_argument(
         "--execute",
         action="store_true",
         help="Actually post write steps to Bubble. Without this flag the plan is previewed.",
     )
     execute_plan_parser.set_defaults(func=command_execute_plan)
+
+    compile_plan_parser = subparsers.add_parser(
+        "compile-plan",
+        help="Compile supported abstract plan steps into Bubble write_payload objects.",
+    )
+    compile_plan_parser.add_argument("--file", required=True)
+    compile_plan_parser.add_argument("--app-id", required=True)
+    compile_plan_parser.add_argument("--app-version", default="test")
+    compile_plan_parser.add_argument("--output", default="")
+    compile_plan_parser.set_defaults(func=command_compile_plan)
 
     return parser
 

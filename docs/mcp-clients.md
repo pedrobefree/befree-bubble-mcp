@@ -75,11 +75,12 @@ listed below.
 - `bubble_plan_dry_run`: compatibility alias for `bubble_plan`.
 - `bubble_import_html`: converts HTML text into a validated plan.
 - `bubble_import_html_dry_run`: compatibility alias for `bubble_import_html`.
+- `bubble_compile_plan`: compiles supported abstract plan steps into Bubble write payloads.
 - `bubble_eval_run`: runs a deterministic planning eval dataset.
 - `bubble_session_list`: lists locally imported Bubble editor sessions.
 - `bubble_session_import`: imports session headers/cookies into local storage.
 - `bubble_editor_write`: posts an exact Bubble `/appeditor/write` payload. Set `execute=true` to mutate Bubble.
-- `bubble_execute_plan`: executes plan steps that include `args.write_payload`. Set `execute=true` to mutate Bubble.
+- `bubble_execute_plan`: executes plan steps. Set `compile=true` with `app_id` to compile supported abstract steps before execution. Set `execute=true` to mutate Bubble.
 
 Mutating calls require a stored local session. Calls without `execute=true`
 return a preview instead of posting to Bubble.

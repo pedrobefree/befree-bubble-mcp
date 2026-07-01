@@ -24,6 +24,9 @@ server = [
   "fastapi>=0.110.0",
   "uvicorn>=0.29.0"
 ]
+browser = [
+  "playwright>=1.45.0"
+]
 
 [project.scripts]
 bubble-mcp = "bubble_mcp.cli.main:main"

@@ -1,7 +1,7 @@
 # Session Capture
 
-Session storage is enabled through manual import. Browser-assisted capture
-providers remain planned.
+Session storage is enabled through manual import and optional browser-assisted
+login.
 
 Current manual format:
 
@@ -26,7 +26,7 @@ bubble-mcp session import --profile my-app --file ./bubble-session.json
 Provider roadmap:
 
 - `manual`: import a local session.
-- `headless`: open a local browser for Bubble login.
+- `browser`: open a local Chromium browser for Bubble login through Playwright.
 - `extension`: receive session metadata from a browser extension.
 - `aria-adapter`: optional private adapter outside the open source core.
 

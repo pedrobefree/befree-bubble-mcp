@@ -61,3 +61,32 @@ def test_tools_list_includes_mutating_write_tool() -> None:
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert "bubble_editor_write" in names
+
+
+def test_compile_plan_tool_returns_write_payload() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_compile_plan",
+                "arguments": {
+                    "app_id": "synthetic-app",
+                    "plan": {
+                        "steps": [
+                            {
+                                "id": "s1",
+                                "tool_name": "create_text",
+                                "args": {"context": "index", "content": "Hello"},
+                            }
+                        ]
+                    },
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["plan"]["steps"][0]["args"]["write_payload"]["changes"][0]["body"]["%x"] == "Text"

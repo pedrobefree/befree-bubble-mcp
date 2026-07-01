@@ -55,3 +55,26 @@ def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # 
     assert main(["session", "list"]) == 0
     listed = json.loads(capsys.readouterr().out)
     assert listed["sessions"][0]["profile"] == "dev"
+
+
+def test_cli_compile_plan_outputs_write_payload(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(
+        json.dumps(
+            {
+                "steps": [
+                    {
+                        "id": "s1",
+                        "tool_name": "create_text",
+                        "args": {"context": "index", "content": "Hello"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert main(["compile-plan", "--file", str(plan_path), "--app-id", "synthetic-app"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["plan"]["steps"][0]["args"]["write_payload"]["changes"][0]["body"]["%x"] == "Text"

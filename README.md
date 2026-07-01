@@ -22,12 +22,13 @@ bubble-mcp-server
 - Basic HTML-to-Bubble converter.
 - Local session import/listing for Bubble editor credentials.
 - Authenticated `/appeditor/write` execution through CLI and MCP.
+- Compiler for basic `create_text` and `create_group` plans into executable Bubble write payloads.
+- Browser-assisted session login through optional Playwright support.
 - Eval harness for deterministic routing.
 - Local Figma bridge skeleton. Figma-side integration code is intentionally outside this repository.
 
 ## Planned Capabilities
 
-- Browser-assisted session capture providers.
 - Context engine from `.bubble` exports and crawler artifacts.
 - Richer planner and semantic validator ported from Aria.
 - Richer Bubble payload compilation for generated visual/schema/workflow plans.
