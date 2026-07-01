@@ -1,0 +1,90 @@
+"""Minimal MCP stdio server."""
+
+from __future__ import annotations
+
+import json
+import sys
+from typing import Any, TextIO
+
+from bubble_mcp import __version__
+from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.server.schemas import list_tool_schemas
+from bubble_mcp.server.tools import call_tool
+
+
+JSONRPC_VERSION = "2.0"
+
+
+def success_response(request_id: Any, result: Any) -> dict[str, Any]:
+    return {"jsonrpc": JSONRPC_VERSION, "id": request_id, "result": result}
+
+
+def error_response(request_id: Any, code: int, message: str) -> dict[str, Any]:
+    return {
+        "jsonrpc": JSONRPC_VERSION,
+        "id": request_id,
+        "error": {"code": code, "message": message},
+    }
+
+
+def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
+    """Handle a JSON-RPC request."""
+
+    request_id = request.get("id")
+    method = request.get("method")
+    params = request.get("params") if isinstance(request.get("params"), dict) else {}
+
+    try:
+        if method == "initialize":
+            return success_response(
+                request_id,
+                {
+                    "protocolVersion": "2024-11-05",
+                    "serverInfo": {"name": "befree-bubble-mcp", "version": __version__},
+                    "capabilities": {"tools": {}},
+                },
+            )
+        if method == "tools/list":
+            return success_response(request_id, {"tools": list_tool_schemas()})
+        if method == "tools/call":
+            name = str(params.get("name") or "")
+            arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            result = call_tool(name, arguments)
+            return success_response(
+                request_id,
+                {"content": [{"type": "text", "text": json.dumps(redact_sensitive(result))}]},
+            )
+        if method and str(method).startswith("notifications/"):
+            return None
+        return error_response(request_id, -32601, f"Method not found: {method}")
+    except Exception as exc:
+        return error_response(request_id, -32000, str(exc))
+
+
+def serve(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.stdout) -> None:
+    """Serve newline-delimited JSON-RPC over stdio."""
+
+    for line in input_stream:
+        if not line.strip():
+            continue
+        try:
+            request = json.loads(line)
+            if not isinstance(request, dict):
+                response = error_response(None, -32600, "Invalid request")
+            else:
+                response = handle_request(request)
+        except json.JSONDecodeError as exc:
+            response = error_response(None, -32700, f"Parse error: {exc.msg}")
+
+        if response is not None:
+            output_stream.write(json.dumps(response, separators=(",", ":")) + "\n")
+            output_stream.flush()
+
+
+def main() -> int:
+    serve()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
