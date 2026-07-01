@@ -53,7 +53,7 @@ def list_tool_schemas() -> list[dict[str, Any]]:
         },
         {
             "name": "bubble_plan_dry_run",
-            "description": "Create and validate a deterministic dry-run Bubble plan.",
+            "description": "Create and validate a deterministic Bubble plan.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -67,7 +67,7 @@ def list_tool_schemas() -> list[dict[str, Any]]:
         },
         {
             "name": "bubble_import_html_dry_run",
-            "description": "Convert HTML text into a validated Bubble dry-run plan.",
+            "description": "Convert HTML text into a validated Bubble plan.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -86,6 +86,57 @@ def list_tool_schemas() -> list[dict[str, Any]]:
                 "type": "object",
                 "properties": {"dataset": {"type": "string"}},
                 "required": ["dataset"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_session_list",
+            "description": "List locally imported Bubble editor session metadata.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_session_import",
+            "description": "Import a local Bubble editor session object with headers/cookies for a profile.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "app_id": {"type": "string"},
+                    "session": {"type": "object"},
+                },
+                "required": ["profile", "session"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_editor_write",
+            "description": "Send a Bubble /appeditor/write payload using a stored local session. Set execute=true to mutate Bubble; otherwise it previews the request.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "payload": {"type": "object"},
+                    "execute": {"type": "boolean"},
+                },
+                "required": ["profile", "payload"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_execute_plan",
+            "description": "Execute a Bubble plan whose steps include args.write_payload. Set execute=true to mutate Bubble; otherwise it previews the plan.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "plan": {"type": "object"},
+                    "execute": {"type": "boolean"},
+                },
+                "required": ["profile", "plan"],
                 "additionalProperties": False,
             },
         },

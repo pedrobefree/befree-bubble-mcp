@@ -33,7 +33,7 @@ def test_health_tool_returns_text_content() -> None:
     text = response["result"]["content"][0]["text"]
     payload = json.loads(text)
     assert payload["ok"] is True
-    assert payload["capabilities"]["mutations"] is False
+    assert payload["capabilities"]["mutations"] is True
 
 
 def test_plan_tool_returns_valid_dry_run_plan() -> None:
@@ -53,3 +53,11 @@ def test_plan_tool_returns_valid_dry_run_plan() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["validation"]["ok"] is True
     assert payload["plan"]["steps"][0]["tool_name"] == "create_text"
+
+
+def test_tools_list_includes_mutating_write_tool() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 5, "method": "tools/list"})
+
+    assert response is not None
+    names = [tool["name"] for tool in response["result"]["tools"]]
+    assert "bubble_editor_write" in names

@@ -15,11 +15,13 @@ READ_ONLY_TOOLS = {
 MUTATING_TOOLS = {
     "create_text",
     "create_group",
+    "bubble_editor_write",
 }
 
 REQUIRED_ARGS = {
     "create_text": {"context", "content"},
     "create_group": {"context", "name"},
+    "bubble_editor_write": {"write_payload"},
 }
 
 
@@ -45,7 +47,11 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
         missing = sorted(REQUIRED_ARGS.get(tool_name, set()) - set(args.keys()))
         if missing:
             errors.append(f"{tool_name} missing required args: {', '.join(missing)}.")
-        if tool_name in MUTATING_TOOLS and args.get("dry_run") is not True:
-            errors.append(f"{tool_name} must include dry_run=true in the bootstrap package.")
+        if "write_payload" in args:
+            payload = args.get("write_payload")
+            if not isinstance(payload, dict):
+                errors.append(f"{tool_name} write_payload must be an object.")
+            elif not isinstance(payload.get("changes"), list):
+                errors.append(f"{tool_name} write_payload must include a changes array.")
 
     return {"ok": not errors, "errors": errors, "warnings": warnings}

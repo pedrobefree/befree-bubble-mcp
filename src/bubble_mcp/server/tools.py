@@ -10,8 +10,11 @@ from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context
 from bubble_mcp.core.config import load_settings
+from bubble_mcp.execution.client import BubbleEditorClient
+from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
 
 
@@ -30,7 +33,10 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                 "planner": True,
                 "html_import": True,
                 "evals": True,
-                "mutations": False,
+                "mutations": True,
+                "dry_run": "optional",
+                "figma_bridge": True,
+                "figma_plugin": False,
             },
         }
     if name == "bubble_profile_list":
@@ -77,4 +83,47 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_eval_run":
         args = arguments or {}
         return {"ok": True, "report": run_eval(Path(str(args.get("dataset") or "")))}
+    if name == "bubble_session_list":
+        return {"ok": True, "sessions": list_sessions()}
+    if name == "bubble_session_import":
+        args = arguments or {}
+        raw_session = args.get("session")
+        if not isinstance(raw_session, dict):
+            raise ValueError("bubble_session_import requires a session object.")
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_session_import requires a profile.")
+        imported_session = session_from_payload(
+            raw_session,
+            default_app_id=str(args.get("app_id") or "") or None,
+        )
+        path = save_session(profile, imported_session)
+        return {
+            "ok": True,
+            "profile": profile,
+            "path": str(path),
+            "session": imported_session.to_dict(redact=True),
+        }
+    if name == "bubble_editor_write":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_editor_write requires a profile.")
+        write_payload = args.get("payload")
+        if not isinstance(write_payload, dict):
+            raise ValueError("bubble_editor_write requires a payload object.")
+        write_session = load_session(profile)
+        if write_session is None:
+            raise ValueError(f"No Bubble session stored for profile '{profile}'.")
+        execute = bool(args.get("execute"))
+        return BubbleEditorClient().write(write_payload, write_session, dry_run=not execute)
+    if name == "bubble_execute_plan":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_execute_plan requires a profile.")
+        execution_plan = args.get("plan")
+        if not isinstance(execution_plan, dict):
+            raise ValueError("bubble_execute_plan requires a plan object.")
+        return execute_plan(execution_plan, profile=profile, execute=bool(args.get("execute")))
     raise ValueError(f"Unknown Bubble MCP tool: {name}")

@@ -45,7 +45,6 @@ def plan_message(message: str, context: str = "index", parent: str = "index") ->
                         "context": context,
                         "parent": parent,
                         "content": content,
-                        "dry_run": True,
                     },
                 )
             ],
@@ -64,7 +63,6 @@ def plan_message(message: str, context: str = "index", parent: str = "index") ->
                         "context": context,
                         "parent": parent,
                         "name": "Generated group",
-                        "dry_run": True,
                     },
                 )
             ],

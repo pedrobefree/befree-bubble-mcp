@@ -18,8 +18,11 @@ from bubble_mcp.core.config import (
     save_settings,
     with_profile,
 )
+from bubble_mcp.execution.client import BubbleEditorClient
+from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
 
 
@@ -112,6 +115,42 @@ def command_eval_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_session_import(args: argparse.Namespace) -> int:
+    payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Session import file must contain a JSON object.")
+    session = session_from_payload(payload, default_app_id=args.app_id or None)
+    target = save_session(args.profile, session)
+    emit_json({"ok": True, "profile": args.profile, "path": str(target), "session": session.to_dict(redact=True)})
+    return 0
+
+
+def command_session_list(_args: argparse.Namespace) -> int:
+    emit_json({"ok": True, "sessions": list_sessions()})
+    return 0
+
+
+def command_write(args: argparse.Namespace) -> int:
+    session = load_session(args.profile)
+    if session is None:
+        raise ValueError(f"No Bubble session stored for profile '{args.profile}'.")
+    payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Write payload file must contain a JSON object.")
+    result = BubbleEditorClient().write(payload, session, dry_run=not args.execute)
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_execute_plan(args: argparse.Namespace) -> int:
+    plan = json.loads(Path(args.file).read_text(encoding="utf-8"))
+    if not isinstance(plan, dict):
+        raise ValueError("Plan file must contain a JSON object.")
+    result = execute_plan(plan, profile=args.profile, execute=args.execute)
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bubble-mcp")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -146,7 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
     find_parser.add_argument("--limit", type=int, default=10)
     find_parser.set_defaults(func=command_context_find)
 
-    plan_parser = subparsers.add_parser("plan", help="Create a dry-run Bubble plan.")
+    plan_parser = subparsers.add_parser("plan", help="Create a Bubble plan.")
     plan_parser.add_argument("message")
     plan_parser.add_argument("--context", default="index")
     plan_parser.add_argument("--parent", default="index")
@@ -158,7 +197,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     import_parser = subparsers.add_parser("import", help="Import external design artifacts.")
     import_subparsers = import_parser.add_subparsers(dest="import_command", required=True)
-    html_parser = import_subparsers.add_parser("html", help="Convert HTML to a Bubble dry-run plan.")
+    html_parser = import_subparsers.add_parser("html", help="Convert HTML to a Bubble plan.")
     html_parser.add_argument("--file", required=True)
     html_parser.add_argument("--context", default="index")
     html_parser.add_argument("--parent", default="index")
@@ -170,6 +209,44 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--dataset", required=True)
     run_parser.add_argument("--report", default="")
     run_parser.set_defaults(func=command_eval_run)
+
+    session_parser = subparsers.add_parser("session", help="Manage local Bubble editor sessions.")
+    session_subparsers = session_parser.add_subparsers(dest="session_command", required=True)
+
+    session_import_parser = session_subparsers.add_parser(
+        "import",
+        help="Import a Bubble editor session JSON with headers/cookies.",
+    )
+    session_import_parser.add_argument("--profile", required=True)
+    session_import_parser.add_argument("--file", required=True)
+    session_import_parser.add_argument("--app-id", default="")
+    session_import_parser.set_defaults(func=command_session_import)
+
+    session_list_parser = session_subparsers.add_parser("list", help="List imported session metadata.")
+    session_list_parser.set_defaults(func=command_session_list)
+
+    write_parser = subparsers.add_parser("write", help="Send a Bubble /appeditor/write payload.")
+    write_parser.add_argument("--profile", required=True)
+    write_parser.add_argument("--payload", required=True)
+    write_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually post to Bubble. Without this flag the command validates and prints the request.",
+    )
+    write_parser.set_defaults(func=command_write)
+
+    execute_plan_parser = subparsers.add_parser(
+        "execute-plan",
+        help="Execute a plan whose steps include args.write_payload.",
+    )
+    execute_plan_parser.add_argument("--profile", required=True)
+    execute_plan_parser.add_argument("--file", required=True)
+    execute_plan_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually post write steps to Bubble. Without this flag the plan is previewed.",
+    )
+    execute_plan_parser.set_defaults(func=command_execute_plan)
 
     return parser
 

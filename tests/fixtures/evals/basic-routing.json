@@ -5,8 +5,7 @@
     "expected_tool": "create_text",
     "expected_args": {
       "context": "index",
-      "content": "Hello",
-      "dry_run": true
+      "content": "Hello"
     }
   },
   {
@@ -15,8 +14,7 @@
     "expected_tool": "create_group",
     "expected_args": {
       "context": "index",
-      "name": "Generated group",
-      "dry_run": true
+      "name": "Generated group"
     }
   }
 ]
