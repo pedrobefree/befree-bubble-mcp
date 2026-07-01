@@ -12,14 +12,14 @@ from pathlib import Path
 SENSITIVE_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in [
-        r"\bcookie\b",
-        r"\bauthorization\b",
+        r"\bcookie\s*[:=]\s*[^,\n]{12,}",
+        r"\bauthorization\s*[:=]\s*[^,\n]{12,}",
         r"\bbearer\s+[a-z0-9._~+/-]{12,}",
-        r"\bapi[_-]?token\b",
-        r"\baccess[_-]?token\b",
-        r"\brefresh[_-]?token\b",
-        r"\bclient[_-]?secret\b",
-        r"\bpassword\b",
+        r"\bapi[_-]?token\s*[:=]\s*[^,\n]{8,}",
+        r"\baccess[_-]?token\s*[:=]\s*[^,\n]{8,}",
+        r"\brefresh[_-]?token\s*[:=]\s*[^,\n]{8,}",
+        r"\bclient[_-]?secret\s*[:=]\s*[^,\n]{8,}",
+        r"\bpassword\s*[:=]\s*[^,\n]{8,}",
         r"\bcredentials\.enc\b",
         r"\baria\.db\b",
         r"\bbefree-page\b",
