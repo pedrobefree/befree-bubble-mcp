@@ -112,12 +112,16 @@ def command_import_html(args: argparse.Namespace) -> int:
     html = Path(args.file).read_text(encoding="utf-8")
     plan = html_to_plan(html, context=args.context, parent=args.parent)
     payload = plan.to_dict()
+    if args.compile:
+        if not args.app_id:
+            raise ValueError("HTML import compilation requires --app-id.")
+        payload = compile_plan_to_write_payloads(payload, app_id=args.app_id, app_version=args.app_version)
     emit_json({"ok": True, "plan": payload, "validation": validate_plan(payload)})
     return 0
 
 
 def command_eval_run(args: argparse.Namespace) -> int:
-    report = run_eval(Path(args.dataset))
+    report = run_eval(Path(args.dataset), app_id=args.app_id or None, compile_plans=args.compile)
     if args.report:
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -255,6 +259,9 @@ def build_parser() -> argparse.ArgumentParser:
     html_parser.add_argument("--file", required=True)
     html_parser.add_argument("--context", default="index")
     html_parser.add_argument("--parent", default="index")
+    html_parser.add_argument("--compile", action="store_true")
+    html_parser.add_argument("--app-id", default="")
+    html_parser.add_argument("--app-version", default="test")
     html_parser.set_defaults(func=command_import_html)
 
     eval_parser = subparsers.add_parser("eval", help="Run planning evals.")
@@ -262,6 +269,8 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = eval_subparsers.add_parser("run", help="Run an eval dataset.")
     run_parser.add_argument("--dataset", required=True)
     run_parser.add_argument("--report", default="")
+    run_parser.add_argument("--compile", action="store_true")
+    run_parser.add_argument("--app-id", default="")
     run_parser.set_defaults(func=command_eval_run)
 
     session_parser = subparsers.add_parser("session", help="Manage local Bubble editor sessions.")

@@ -56,6 +56,29 @@ def test_plan_tool_returns_valid_plan() -> None:
     assert payload["plan"]["steps"][0]["tool_name"] == "create_text"
 
 
+def test_import_html_tool_can_compile_to_write_payloads() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 9,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_import_html",
+                "arguments": {
+                    "html": "<section><h1>Welcome</h1></section>",
+                    "compile": True,
+                    "app_id": "synthetic-app",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["validation"]["ok"] is True
+    assert payload["plan"]["steps"][0]["args"]["write_payload"]["changes"][0]["body"]["%x"] == "Group"
+
+
 def test_tools_list_includes_mutating_write_tool() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 5, "method": "tools/list"})
 

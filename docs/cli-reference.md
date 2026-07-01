@@ -98,6 +98,21 @@ bubble-mcp plan "add a button to the index page" --context index --parent index
 This command does not mutate Bubble by itself. Use `execute-plan --execute` for
 plans whose steps include `args.write_payload`.
 
+## `bubble-mcp import html`
+
+Converts a simple HTML file into a validated Bubble plan.
+
+```bash
+bubble-mcp import html --file component.html --context index --parent index
+```
+
+Add `--compile --app-id` to convert supported generated steps into
+`args.write_payload` objects immediately.
+
+```bash
+bubble-mcp import html --file component.html --context index --parent index --compile --app-id my-bubble-app
+```
+
 ## `bubble-mcp session import`
 
 Imports local Bubble editor session headers/cookies.
@@ -151,6 +166,16 @@ Compiles supported abstract plan steps into Bubble write payloads.
 
 ```bash
 bubble-mcp compile-plan --file ./plan.json --app-id my-bubble-app --output ./compiled-plan.json
+```
+
+## `bubble-mcp eval run`
+
+Runs a deterministic planning dataset. Use `--compile --app-id` to require
+compiler coverage and include write-payload/token metrics in the report.
+
+```bash
+bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json
+bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --compile --app-id my-bubble-app --report reports/basic-compiled.json
 ```
 
 ## `bubble-mcp validate-plan`

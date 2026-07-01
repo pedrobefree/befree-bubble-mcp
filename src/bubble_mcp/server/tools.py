@@ -93,10 +93,26 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             context=str(args.get("context") or "index"),
             parent=str(args.get("parent") or "index"),
         ).to_dict()
+        if bool(args.get("compile")):
+            app_id = str(args.get("app_id") or "").strip()
+            if not app_id:
+                raise ValueError("bubble_import_html compilation requires app_id.")
+            plan = compile_plan_to_write_payloads(
+                plan,
+                app_id=app_id,
+                app_version=str(args.get("app_version") or "test"),
+            )
         return {"ok": True, "plan": plan, "validation": validate_plan(plan)}
     if name == "bubble_eval_run":
         args = arguments or {}
-        return {"ok": True, "report": run_eval(Path(str(args.get("dataset") or "")))}
+        return {
+            "ok": True,
+            "report": run_eval(
+                Path(str(args.get("dataset") or "")),
+                app_id=str(args.get("app_id") or "") or None,
+                compile_plans=bool(args.get("compile")),
+            ),
+        }
     if name == "bubble_compile_plan":
         args = arguments or {}
         compile_plan = args.get("plan")

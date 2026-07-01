@@ -34,6 +34,28 @@ def test_cli_import_html_outputs_validated_plan(capsys) -> None:  # type: ignore
     assert payload["plan"]["steps"][0]["tool_name"] == "create_group"
 
 
+def test_cli_import_html_can_compile_to_write_payloads(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert (
+        main(
+            [
+                "import",
+                "html",
+                "--file",
+                "tests/fixtures/html/login-card.html",
+                "--compile",
+                "--app-id",
+                "synthetic-app",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["validation"]["ok"] is True
+    assert payload["plan"]["steps"][0]["args"]["write_payload"]["changes"][0]["body"]["%x"] == "Group"
+
+
 def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     session_path = tmp_path / "session.json"

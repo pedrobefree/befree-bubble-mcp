@@ -79,10 +79,10 @@ standalone execution, pass `app_id` for compiler-supported families or
 - `bubble_context_import`: imports `.bubble`/consolelog or crawler-index JSON into compact context.
 - `bubble_plan`: creates a validated deterministic plan.
 - `bubble_plan_dry_run`: compatibility alias for `bubble_plan`.
-- `bubble_import_html`: converts HTML text into a validated plan.
+- `bubble_import_html`: converts HTML text into a validated plan. Pass `compile=true` and `app_id` to return compiled Bubble write payloads.
 - `bubble_import_html_dry_run`: compatibility alias for `bubble_import_html`.
 - `bubble_compile_plan`: compiles supported abstract plan steps into Bubble write payloads.
-- `bubble_eval_run`: runs a deterministic planning eval dataset.
+- `bubble_eval_run`: runs a deterministic planning eval dataset. Pass `compile=true` and `app_id` to include compiler coverage and token estimates.
 - `bubble_session_list`: lists locally imported Bubble editor sessions.
 - `bubble_session_import`: imports session headers/cookies into local storage.
 - `bubble_editor_write`: posts an exact Bubble `/appeditor/write` payload. Set `execute=true` to mutate Bubble.
