@@ -1,0 +1,14 @@
+{
+  "name": "@befree/bubble-mcp-bridge",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Local bridge utilities for Bubble MCP integrations.",
+  "scripts": {
+    "test": "node --test",
+    "figma:bridge": "node bridge/figma/server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
