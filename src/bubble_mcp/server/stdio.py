@@ -32,7 +32,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
 
     request_id = request.get("id")
     method = request.get("method")
-    params = request.get("params") if isinstance(request.get("params"), dict) else {}
+    raw_params = request.get("params")
+    params: dict[str, Any] = raw_params if isinstance(raw_params, dict) else {}
 
     try:
         if method == "initialize":
@@ -48,7 +49,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             return success_response(request_id, {"tools": list_tool_schemas()})
         if method == "tools/call":
             name = str(params.get("name") or "")
-            arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+            raw_arguments = params.get("arguments")
+            arguments: dict[str, Any] = raw_arguments if isinstance(raw_arguments, dict) else {}
             result = call_tool(name, arguments)
             return success_response(
                 request_id,
@@ -72,7 +74,10 @@ def serve(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.stdout) 
             if not isinstance(request, dict):
                 response = error_response(None, -32600, "Invalid request")
             else:
-                response = handle_request(request)
+                maybe_response = handle_request(request)
+                if maybe_response is None:
+                    continue
+                response = maybe_response
         except json.JSONDecodeError as exc:
             response = error_response(None, -32700, f"Parse error: {exc.msg}")
 

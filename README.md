@@ -2,7 +2,7 @@
 
 Local-first Bubble automation toolkit for developers who want safer, more accurate agent-assisted Bubble work.
 
-This project is being extracted from Befree/Aria as a standalone open source platform. The first target is a practical developer workflow:
+This project is being extracted from Befree/Aria as a standalone open source platform. The current package is already installable and exposes a safe dry-run MCP server:
 
 ```bash
 pipx install befree-bubble-mcp
@@ -12,16 +12,44 @@ bubble-mcp profile list
 bubble-mcp-server
 ```
 
-## What This Will Include
+## Current Capabilities
 
 - Bubble-focused CLI.
 - MCP server for agent clients.
-- Local-only session capture interfaces.
+- Local profile management.
+- Compact synthetic context loading and search.
+- Deterministic dry-run planner and semantic validator.
+- Basic HTML-to-Bubble dry-run converter.
+- Eval harness for deterministic routing.
+- Local Figma bridge skeleton.
+
+## Planned Capabilities
+
+- Full local session capture providers.
 - Context engine from `.bubble` exports and crawler artifacts.
-- Planner and semantic validator.
-- HTML-to-Bubble converter.
+- Richer planner and semantic validator ported from Aria.
 - Figma bridge/plugin workflow.
-- Harness and eval tools for improving routing accuracy and reducing token usage.
+- Mutation execution after dry-run, approval, session, and validation gates are in place.
+
+## Codex MCP Setup
+
+Use the installed stdio server in your MCP config:
+
+```json
+{
+  "mcpServers": {
+    "befree-bubble-mcp": {
+      "command": "bubble-mcp-server",
+      "args": [],
+      "env": {
+        "BUBBLE_MCP_CONFIG_DIR": "/Users/me/.config/bubble-mcp"
+      }
+    }
+  }
+}
+```
+
+If the client does not inherit your shell path, point `command` to the absolute `bubble-mcp-server` path.
 
 ## Safety Defaults
 
@@ -32,4 +60,4 @@ bubble-mcp-server
 
 ## Status
 
-Early bootstrap. APIs and commands are expected to change before the first alpha.
+Early alpha. The MCP server is intentionally read-only/dry-run for Bubble operations.

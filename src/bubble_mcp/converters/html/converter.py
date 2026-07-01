@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bs4 import BeautifulSoup
+from bs4.element import Tag
 
 from bubble_mcp.planner.models import BubblePlan, PlanStep
 
@@ -24,9 +25,14 @@ def html_to_plan(html: str, context: str = "index", parent: str = "index") -> Bu
     text_count = 0
 
     for element in soup.find_all(True):
+        if not isinstance(element, Tag):
+            continue
         tag = element.name.lower()
         if tag in GROUP_TAGS:
             group_count += 1
+            classes = element.get("class")
+            class_name = classes[0] if isinstance(classes, list) and classes else None
+            element_name = element.get("id") if isinstance(element.get("id"), str) else None
             steps.append(
                 PlanStep(
                     id=f"step_{len(steps) + 1}",
@@ -34,7 +40,7 @@ def html_to_plan(html: str, context: str = "index", parent: str = "index") -> Bu
                     args={
                         "context": context,
                         "parent": parent,
-                        "name": element.get("id") or element.get("class", [f"html_group_{group_count}"])[0],
+                        "name": element_name or class_name or f"html_group_{group_count}",
                         "dry_run": True,
                     },
                 )

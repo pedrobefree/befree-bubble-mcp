@@ -37,7 +37,8 @@ def validate_plan(plan: dict[str, Any]) -> dict[str, Any]:
             errors.append(f"Step {index + 1} must be an object.")
             continue
         tool_name = str(step.get("tool_name") or "")
-        args = step.get("args") if isinstance(step.get("args"), dict) else {}
+        raw_args = step.get("args")
+        args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
         if tool_name not in READ_ONLY_TOOLS and tool_name not in MUTATING_TOOLS:
             errors.append(f"Unsupported tool: {tool_name or '<empty>'}.")
             continue

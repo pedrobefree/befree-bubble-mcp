@@ -27,7 +27,8 @@ def run_eval(dataset_path: Path) -> dict[str, Any]:
     for case in cases:
         message = str(case.get("message") or "")
         expected_tool = str(case.get("expected_tool") or "")
-        expected_args = case.get("expected_args") if isinstance(case.get("expected_args"), dict) else {}
+        raw_expected_args = case.get("expected_args")
+        expected_args: dict[str, Any] = raw_expected_args if isinstance(raw_expected_args, dict) else {}
         plan = plan_message(message).to_dict()
         first_step = plan["steps"][0] if plan["steps"] else {}
         validation = validate_plan(plan)

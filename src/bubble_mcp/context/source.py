@@ -20,16 +20,19 @@ def load_context(path: Path) -> BubbleProjectContext:
     if not isinstance(payload, dict):
         raise ValueError("Context document must be a JSON object")
 
-    nodes = [
-        BubbleContextNode(
-            id=str(item.get("id") or ""),
-            label=str(item.get("label") or ""),
-            type=str(item.get("type") or "unknown"),
-            metadata=item.get("metadata") if isinstance(item.get("metadata"), dict) else {},
+    nodes: list[BubbleContextNode] = []
+    for item in _as_list(payload.get("nodes")):
+        if not isinstance(item, dict) or not item.get("id") or not item.get("label"):
+            continue
+        metadata = item.get("metadata")
+        nodes.append(
+            BubbleContextNode(
+                id=str(item.get("id") or ""),
+                label=str(item.get("label") or ""),
+                type=str(item.get("type") or "unknown"),
+                metadata=metadata if isinstance(metadata, dict) else {},
+            )
         )
-        for item in _as_list(payload.get("nodes"))
-        if isinstance(item, dict) and item.get("id") and item.get("label")
-    ]
     edges = [
         BubbleContextEdge(
             source=str(item.get("source") or ""),

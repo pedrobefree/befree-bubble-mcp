@@ -69,6 +69,10 @@ listed below.
 
 - `bubble_health_check`: reports local server capabilities.
 - `bubble_profile_list`: lists configured local Bubble profiles.
+- `bubble_context_summary`: summarizes a compact context JSON file.
+- `bubble_context_find`: searches a compact context JSON file.
+- `bubble_plan_dry_run`: creates a validated deterministic dry-run plan.
+- `bubble_import_html_dry_run`: converts HTML text into a validated dry-run plan.
+- `bubble_eval_run`: runs a deterministic planning eval dataset.
 
-Mutating Bubble tools are not implemented in the current server and are not
-exposed to MCP clients.
+Direct mutating Bubble execution is not implemented in the current server and is not exposed to MCP clients.
