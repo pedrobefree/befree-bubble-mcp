@@ -207,3 +207,71 @@ def test_figma_bridge_preserves_auto_layout_frame_min_height(tmp_path, monkeypat
         for payload in writes
         for change in payload.get("changes", [])
     )
+
+
+def test_figma_bridge_routes_style_sync_to_style_runtime(tmp_path, monkeypatch) -> None:
+    _configure_smoke_profile(tmp_path, monkeypatch)
+    calls = []
+
+    class FakePayloadBuilder:
+        def send_to_webhook(self, _url):
+            return {"ok": True}
+
+    class FakeBubbleSdk:
+        PayloadBuilder = FakePayloadBuilder
+
+    class FakeBubbleCliModule:
+        inquirer = None
+
+        class BubbleCLI:
+            def __init__(self, **kwargs):
+                calls.append(("init", kwargs))
+
+            def sync_component(self, **_kwargs):
+                raise AssertionError("style sync must not use component sync")
+
+            def sync_figma_style(self, **kwargs):
+                calls.append(("style", kwargs))
+                return kwargs.get("style_name")
+
+    monkeypatch.setattr(
+        "bubble_mcp.figma_bridge._load_aria_runtime_modules",
+        lambda: (FakeBubbleCliModule, FakeBubbleSdk),
+    )
+    bridge_payload = {
+        "action": "sync_component",
+        "meta": {
+            "profile": "smoke",
+            "dry_run": False,
+            "sync_type": "style",
+            "style_name": "Button / Primary / lg",
+            "style_type": "Button",
+            "element_type": "",
+            "style_state": "Hover",
+            "text_alignment": "center",
+            "style_default": True,
+        },
+        "content": {
+            "id": "1:button",
+            "name": "Size=lg, Hierarchy=Primary, State=Hover, Icon only=False",
+            "type": "COMPONENT",
+            "width": 177,
+            "height": 44,
+            "layout": {"mode": "HORIZONTAL"},
+            "children": [],
+        },
+    }
+    payload_path = tmp_path / "style-payload.json"
+    payload_path.write_text(json.dumps(bridge_payload), encoding="utf-8")
+
+    result = sync_bridge_payload_file(payload_path)
+
+    assert result["ok"] is True
+    assert result["action"] == "sync_style"
+    style_call = next(call for name, call in calls if name == "style")
+    assert style_call["bridge_file"] == str(payload_path)
+    assert style_call["style_name"] == "Button / Primary / lg"
+    assert style_call["element_type"] == "Button"
+    assert style_call["state"] == "Hover"
+    assert style_call["text_alignment"] == "center"
+    assert style_call["default_style"] is True

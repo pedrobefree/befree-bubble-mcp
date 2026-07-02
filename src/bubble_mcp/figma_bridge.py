@@ -296,16 +296,39 @@ def _sync_component_with_aria_runtime(
                 webhook_url="local://bubble-mcp",
                 profile_name=profile,
             )
-            success = cli.sync_component(
-                bridge_file=str(_current_bridge_payload_path(payload)),
-                element_type=element_type,
-                name_override=component_name,
-                dry_run=not execute,
-                import_mode=import_mode,
-                context=child_context,
-                parent=child_parent,
-                export_images=export_images,
-            )
+            bridge_file = str(_current_bridge_payload_path(payload))
+            sync_type = str(meta.get("sync_type") or meta.get("syncType") or "").strip().lower()
+            if sync_type == "style":
+                style_element_type = str(
+                    meta.get("style_type")
+                    or meta.get("styleType")
+                    or meta.get("element_type")
+                    or meta.get("elementType")
+                    or element_type
+                    or "Button"
+                ).strip() or "Button"
+                success = cli.sync_figma_style(
+                    bridge_file=bridge_file,
+                    style_name=meta.get("style_name") or meta.get("styleName"),
+                    element_type=style_element_type,
+                    state=meta.get("style_state") or meta.get("styleState") or None,
+                    text_alignment=meta.get("text_alignment") or meta.get("textAlignment"),
+                    default_style=meta.get("style_default") is True or meta.get("styleDefault") is True,
+                    dry_run=not execute,
+                )
+                action = "sync_style"
+            else:
+                success = cli.sync_component(
+                    bridge_file=bridge_file,
+                    element_type=element_type,
+                    name_override=component_name,
+                    dry_run=not execute,
+                    import_mode=import_mode,
+                    context=child_context,
+                    parent=child_parent,
+                    export_images=export_images,
+                )
+                action = payload.get("action") or "sync_component"
     finally:
         bubble_sdk.PayloadBuilder.send_to_webhook = original_send
 
@@ -318,7 +341,7 @@ def _sync_component_with_aria_runtime(
         "profile": profile,
         "app_id": app_id,
         "app_version": app_version,
-        "action": payload.get("action") or "sync_component",
+        "action": action,
         "import_mode": import_mode,
         "component_name": component_name,
         "executed": execute,
