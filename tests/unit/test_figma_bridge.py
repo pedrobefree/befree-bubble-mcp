@@ -5,7 +5,7 @@ from bubble_mcp.figma_bridge import sync_bridge_payload_file
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
 
-def test_figma_bridge_dry_run_uses_aria_runtime(tmp_path, monkeypatch) -> None:
+def _configure_smoke_profile(tmp_path, monkeypatch):
     config_dir = tmp_path / "config"
     bubble_file = config_dir / "contexts" / "smoke" / "synthetic-app.bubble"
     bubble_file.parent.mkdir(parents=True, exist_ok=True)
@@ -58,6 +58,10 @@ def test_figma_bridge_dry_run_uses_aria_runtime(tmp_path, monkeypatch) -> None:
             }
         ),
     )
+
+
+def test_figma_bridge_dry_run_uses_aria_runtime(tmp_path, monkeypatch) -> None:
+    _configure_smoke_profile(tmp_path, monkeypatch)
     bridge_payload = {
         "action": "sync_component",
         "meta": {
@@ -92,3 +96,114 @@ def test_figma_bridge_dry_run_uses_aria_runtime(tmp_path, monkeypatch) -> None:
     assert result["component_name"] == "mcp_pricing"
     assert "Syncing component: mcp_pricing" in result["logs"]
     assert "Creating Reusable 'mcp_pricing'" in result["logs"]
+
+
+def test_figma_bridge_preserves_auto_layout_frame_min_height(tmp_path, monkeypatch) -> None:
+    _configure_smoke_profile(tmp_path, monkeypatch)
+    writes = []
+
+    class FakeBubbleEditorClient:
+        def write(self, payload, _session, dry_run=False):
+            writes.append(payload)
+            return {"ok": True, "status": 200, "dry_run": dry_run}
+
+    monkeypatch.setattr("bubble_mcp.figma_bridge.BubbleEditorClient", FakeBubbleEditorClient)
+    bridge_payload = {
+        "action": "sync_component",
+        "meta": {
+            "profile": "smoke",
+            "dry_run": False,
+            "import_mode": "reusable",
+            "component_name": "mcp-pricing",
+            "element_type": "Group",
+        },
+        "content": {
+            "id": "1:root",
+            "name": "Pricing card",
+            "type": "INSTANCE",
+            "width": 384,
+            "height": 562,
+            "layout": {
+                "mode": "VERTICAL",
+                "primarySizing": "AUTO",
+                "counterSizing": "FIXED",
+                "primaryAlign": "MIN",
+                "counterAlign": "MIN",
+                "gap": 0,
+                "padding": {"top": 0, "right": 0, "bottom": 0, "left": 0},
+            },
+            "children": [
+                {
+                    "id": "1:items",
+                    "name": "Check items",
+                    "type": "FRAME",
+                    "width": 320,
+                    "height": 184,
+                    "x": 32,
+                    "y": 32,
+                    "layout": {
+                        "mode": "VERTICAL",
+                        "primarySizing": "AUTO",
+                        "counterSizing": "FIXED",
+                        "primaryAlign": "MIN",
+                        "counterAlign": "MIN",
+                        "gap": 16,
+                        "padding": {"top": 0, "right": 0, "bottom": 0, "left": 0},
+                    },
+                    "children": [
+                        {
+                            "id": "1:row-a",
+                            "name": "Feature row A",
+                            "type": "FRAME",
+                            "width": 320,
+                            "height": 24,
+                            "x": 0,
+                            "y": 0,
+                            "layout": {"mode": "HORIZONTAL", "gap": 12},
+                            "children": [
+                                {"id": "1:text-a", "name": "Text", "type": "TEXT", "text_content": "Feature A", "width": 284, "height": 24, "x": 36, "y": 0}
+                            ],
+                        },
+                        {
+                            "id": "1:row-b",
+                            "name": "Feature row B",
+                            "type": "FRAME",
+                            "width": 320,
+                            "height": 24,
+                            "x": 0,
+                            "y": 40,
+                            "layout": {"mode": "HORIZONTAL", "gap": 12},
+                            "children": [
+                                {"id": "1:text-b", "name": "Text", "type": "TEXT", "text_content": "Feature B", "width": 284, "height": 24, "x": 36, "y": 0}
+                            ],
+                        },
+                    ],
+                }
+            ],
+        },
+    }
+    payload_path = tmp_path / "payload.json"
+    payload_path.write_text(json.dumps(bridge_payload), encoding="utf-8")
+
+    result = sync_bridge_payload_file(payload_path)
+
+    assert result["ok"] is True
+    group_bodies = [
+        change["body"]
+        for payload in writes
+        for change in payload.get("changes", [])
+        if isinstance(change.get("body"), dict) and change["body"].get("%x") == "Group"
+    ]
+    check_items = next(body for body in group_bodies if body.get("%dn") == "Check items")
+    assert check_items["%p"]["row_gap"] == 16
+    assert check_items["%p"]["use_gap"] is True
+    assert check_items["%p"]["min_height_css"] == "184px"
+    assert check_items["%p"]["max_height_css"] == "184px"
+    assert check_items["%p"]["fit_height"] is False
+    assert check_items["%p"]["fixed_height"] is True
+    assert check_items["%p"]["single_height"] is True
+    assert any(
+        change.get("path_array", [])[-2:] == ["%p", "fit_height"] and change.get("body") is True
+        for payload in writes
+        for change in payload.get("changes", [])
+    )

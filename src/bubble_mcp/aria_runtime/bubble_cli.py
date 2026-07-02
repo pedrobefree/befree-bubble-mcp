@@ -31053,8 +31053,7 @@ class BubbleCLI:
             pb.add_set_data(normalized_cp + ["%p", "%fc"], font_color)
         if fit_width:
             pb.add_set_data(normalized_cp + ["%p", "fit_width"], True)
-        if fit_height:
-            pb.add_set_data(normalized_cp + ["%p", "fit_height"], True)
+        pb.add_set_data(normalized_cp + ["%p", "fit_height"], True)
         for layout_key in (
             "order",
             "nonant_alignment",
@@ -50940,6 +50939,18 @@ class BubbleCLI:
                     group_kwargs["fixed_height"] = True
                     group_kwargs["min_height"] = f"{node_h}px"
                     group_kwargs["max_height"] = f"{node_h}px"
+
+            if node.get("layout") and not use_align_to_parent:
+                node_w = int(round(float(node.get("width", 0) or 0)))
+                node_h = int(round(float(node.get("height", 0) or 0)))
+                if node_w > 0 and "min_width_css" not in group_kwargs:
+                    group_kwargs["min_width_css"] = f"{node_w}px"
+                if node_h > 0 and "min_height_css" not in group_kwargs:
+                    group_kwargs["min_height_css"] = f"{node_h}px"
+                if node_h > 0:
+                    fit_height = False
+                    group_kwargs["fixed_height"] = True
+                    group_kwargs["max_height_css"] = f"{node_h}px"
 
             created_id = self.create_group(
                 context_name=context,
