@@ -68,6 +68,25 @@ def list_tool_schemas() -> list[dict[str, Any]]:
             },
         },
         {
+            "name": "bubble_context_detect",
+            "description": "Detect and materialize Bubble project context using local artifacts, consolelog fallback, then the editor crawler.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "app_id": {"type": "string"},
+                    "app_version": {"type": "string"},
+                    "output": {"type": "string"},
+                    "bubble_file": {"type": "string"},
+                    "consolelog_file": {"type": "string"},
+                    "force": {"type": "boolean"},
+                    "skip_id_to_path": {"type": "boolean"},
+                },
+                "required": ["profile"],
+                "additionalProperties": False,
+            },
+        },
+        {
             "name": "bubble_plan",
             "description": "Create and validate a deterministic Bubble plan.",
             "inputSchema": {

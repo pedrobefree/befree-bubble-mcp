@@ -160,7 +160,9 @@ bubble-mcp write --profile my-app --payload ./write-payload.json --execute
 
 Executes a plan. If the plan contains abstract `create_text` or `create_group`
 steps, pass `--compile` and `--app-id` to compile those steps into
-`args.write_payload` before execution.
+`args.write_payload` before execution. When `--compile` is used and no
+`--context-file` is supplied, the CLI detects project context automatically
+from the profile/session before compiling.
 
 ```bash
 bubble-mcp execute-plan --profile my-app --file ./plan.json --execute
@@ -176,6 +178,9 @@ the `CreateElement` change at the resolved `%p3.<page-id>.%el.<slot-id>` path.
 Bubble can return HTTP 200 for a write that does not appear in the editor when
 these index paths target the wrong page or parent.
 
+Use `--no-auto-context` only when deliberately compiling without live project
+context.
+
 ## `bubble-mcp compile-plan`
 
 Compiles supported abstract plan steps into Bubble write payloads.
@@ -183,6 +188,18 @@ Compiles supported abstract plan steps into Bubble write payloads.
 ```bash
 bubble-mcp compile-plan --file ./plan.json --app-id my-bubble-app --output ./compiled-plan.json
 bubble-mcp compile-plan --file ./plan.json --app-id my-bubble-app --context-file ./my-app-context.json
+```
+
+## `bubble-mcp context detect`
+
+Detects and materializes project context. It tries local `.bubble` or
+`console.log(app)` artifacts when provided, then falls back to the Bubble editor
+crawler using the captured session.
+
+```bash
+bubble-mcp context detect --profile my-app --app-id my-bubble-app --force
+bubble-mcp context detect --profile my-app --app-id my-bubble-app --bubble-file ./app.bubble
+bubble-mcp context detect --profile my-app --app-id my-bubble-app --consolelog-file ./consolelog-app.txt
 ```
 
 ## `bubble-mcp eval run`

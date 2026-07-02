@@ -30,6 +30,16 @@ def _element_type(record: dict[str, Any]) -> str:
     return str(record.get("%x") or record.get("type") or props.get("%x") or "element")
 
 
+def _element_children(record: dict[str, Any]) -> list[str]:
+    return [str(key) for key in _obj(record.get("%el") or record.get("elements")).keys()]
+
+
+def _root_id(record: dict[str, Any]) -> str | None:
+    props = _obj(record.get("%p") or record.get("properties"))
+    value = record.get("rootId") or record.get("root_id") or record.get("id") or props.get("id")
+    return str(value).strip() or None
+
+
 def _encoded_path_to_array(path: str) -> list[str]:
     return [part for part in str(path or "").split(".") if part]
 
@@ -60,6 +70,7 @@ def _walk_elements(
                     "context": context_node_id,
                     "path_array": element_path,
                     "properties": props,
+                    "children": _element_children(raw),
                 },
             )
         )
@@ -106,6 +117,8 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                     "key": page_id,
                     "path_array": ["%p3", page_id],
                     "properties": _obj(page.get("properties")),
+                    "root_id": _root_id(page),
+                    "children": [str(key) for key in _obj(page.get("elements")).keys()],
                 },
             )
         )
@@ -150,6 +163,8 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                     "key": reusable_id,
                     "path_array": [root_key, reusable_id],
                     "properties": _obj(reusable.get("properties")),
+                    "root_id": _root_id(reusable),
+                    "children": [str(key) for key in _obj(reusable.get("elements")).keys()],
                 },
             )
         )
@@ -210,6 +225,7 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
                 "id": key,
                 "name": _label(_obj(value), key),
                 "properties": _obj(_obj(value).get("%p") or _obj(value).get("properties")),
+                "rootId": _root_id(_obj(value)),
                 "elements": _obj(_obj(value).get("%el") or _obj(value).get("elements")),
                 "workflows": _obj(_obj(value).get("%wf") or _obj(value).get("workflows")),
             }
@@ -221,6 +237,7 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
                 "name": _label(_obj(value), key),
                 "sourceKey": "element_definitions",
                 "properties": _obj(_obj(value).get("%p") or _obj(value).get("properties")),
+                "rootId": _root_id(_obj(value)),
                 "elements": _obj(_obj(value).get("%el") or _obj(value).get("elements")),
                 "workflows": _obj(_obj(value).get("%wf") or _obj(value).get("workflows")),
             }

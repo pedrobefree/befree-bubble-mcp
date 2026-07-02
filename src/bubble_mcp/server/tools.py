@@ -9,6 +9,7 @@ from bubble_mcp import __version__
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
+from bubble_mcp.context.detector import detect_project_context
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import load_settings
@@ -78,6 +79,24 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         if output:
             save_context(context, Path(output))
         return {"ok": True, "summary": context.summary(), "output": output or None}
+    if name in {"bubble_context_detect", "crawl_project", "get_project_index"}:
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError(f"{name} requires a profile.")
+        result = detect_project_context(
+            profile=profile,
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+            force=bool(args.get("force")),
+            output=Path(str(args.get("output"))) if str(args.get("output") or "").strip() else None,
+            bubble_file=Path(str(args.get("bubble_file"))) if str(args.get("bubble_file") or "").strip() else None,
+            consolelog_file=Path(str(args.get("consolelog_file")))
+            if str(args.get("consolelog_file") or "").strip()
+            else None,
+            include_id_to_path=not bool(args.get("skip_id_to_path")),
+        )
+        return result.to_dict()
     if name in {"bubble_plan", "bubble_plan_dry_run"}:
         args = arguments or {}
         plan = plan_message(

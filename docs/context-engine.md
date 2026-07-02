@@ -34,6 +34,35 @@ bubble-mcp context import \
 The compiler can use imported context to place new elements under an existing
 parent by name.
 
+## Detection
+
+For real editor writes, prefer detecting context before executing plans. The
+detector follows the same source priority used by Aria's Bubble tooling:
+
+1. Use a provided `.bubble` export when available.
+2. Use a provided `console.log(app)` capture when available.
+3. Attempt best-effort `.bubble` export discovery.
+4. Fall back to the editor path crawler using the captured Bubble session.
+
+```bash
+bubble-mcp context detect \
+  --profile smoke \
+  --app-id bovichain-g3 \
+  --force
+```
+
+The detector writes a compact context file under the local Bubble MCP config
+directory and, when the crawler runs, also writes a `{appId}-crawler-index.json`
+artifact next to it. These files are local project data and should not be
+committed.
+
+You can also seed the detector with local artifacts:
+
+```bash
+bubble-mcp context detect --profile smoke --app-id bovichain-g3 --bubble-file ./app.bubble
+bubble-mcp context detect --profile smoke --app-id bovichain-g3 --consolelog-file ./consolelog-app.txt
+```
+
 For real Bubble editor writes, context is also used to resolve the internal page
 or reusable key used in write paths. Visual creation payloads must update Bubble
 editor indexes as well as create the element body:

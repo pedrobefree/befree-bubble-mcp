@@ -10,6 +10,7 @@ from pathlib import Path
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
+from bubble_mcp.context.detector import detect_project_context
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.redaction import redact_sensitive
@@ -95,6 +96,21 @@ def command_context_import(args: argparse.Namespace) -> int:
     if args.output:
         save_context(context, Path(args.output))
     emit_json({"ok": True, "summary": context.summary(), "output": args.output or None})
+    return 0
+
+
+def command_context_detect(args: argparse.Namespace) -> int:
+    result = detect_project_context(
+        profile=args.profile,
+        app_id=args.app_id or None,
+        app_version=args.app_version,
+        force=args.force,
+        output=Path(args.output) if args.output else None,
+        bubble_file=Path(args.bubble_file) if args.bubble_file else None,
+        consolelog_file=Path(args.consolelog_file) if args.consolelog_file else None,
+        include_id_to_path=not args.skip_id_to_path,
+    )
+    emit_json(result.to_dict())
     return 0
 
 
@@ -199,6 +215,7 @@ def command_execute_plan(args: argparse.Namespace) -> int:
         app_version=args.app_version,
         context=context,
         compile_missing=args.compile,
+        auto_context=not args.no_auto_context,
     )
     emit_json(result)
     return 0 if result.get("ok") else 1
@@ -282,6 +299,20 @@ def build_parser() -> argparse.ArgumentParser:
     import_context_parser.add_argument("--kind", choices=["auto", "bubble", "crawler"], default="auto")
     import_context_parser.add_argument("--output", default="")
     import_context_parser.set_defaults(func=command_context_import)
+
+    detect_context_parser = context_subparsers.add_parser(
+        "detect",
+        help="Detect and materialize context using .bubble/consolelog fallback and editor crawler.",
+    )
+    detect_context_parser.add_argument("--profile", required=True)
+    detect_context_parser.add_argument("--app-id", default="")
+    detect_context_parser.add_argument("--app-version", default="test")
+    detect_context_parser.add_argument("--output", default="")
+    detect_context_parser.add_argument("--bubble-file", default="")
+    detect_context_parser.add_argument("--consolelog-file", default="")
+    detect_context_parser.add_argument("--force", action="store_true")
+    detect_context_parser.add_argument("--skip-id-to-path", action="store_true")
+    detect_context_parser.set_defaults(func=command_context_detect)
 
     plan_parser = subparsers.add_parser("plan", help="Create a Bubble plan.")
     plan_parser.add_argument("message")
@@ -375,6 +406,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--context-file",
         default="",
         help="Optional imported Bubble context JSON used while compiling abstract steps.",
+    )
+    execute_plan_parser.add_argument(
+        "--no-auto-context",
+        action="store_true",
+        help="Disable automatic project context detection while compiling.",
     )
     execute_plan_parser.add_argument("--compile", action="store_true", help="Compile supported abstract steps before execution.")
     execute_plan_parser.add_argument(

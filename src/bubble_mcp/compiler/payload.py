@@ -202,6 +202,47 @@ def resolve_parent_index_id(
     return parent if parent and parent.lower() not in ROOT_PARENT_NAMES else ""
 
 
+def resolve_context_children(
+    parent_id: str,
+    *,
+    context: BubbleProjectContext | None,
+    context_name: str,
+    parent: str,
+) -> list[str]:
+    if context is None:
+        return []
+    target_parent = str(parent or "").strip()
+    target_id = str(parent_id or "").strip()
+    target_context = str(context_name or "").strip()
+    for node in context.nodes:
+        if node.type == "element":
+            matches = (
+                node.id == target_id
+                or node.id.endswith(f":{target_id}")
+                or str(node.metadata.get("bubble_id") or "") == target_id
+                or node.label == target_parent
+                or node.id == target_parent
+                or node.id.endswith(f":{target_parent}")
+            )
+        else:
+            matches = (
+                node.type in {"page", "reusable"}
+                and (
+                    node.label == target_context
+                    or node.id == target_context
+                    or node.id.endswith(f":{target_context}")
+                    or str(node.metadata.get("bubble_id") or "") == target_context
+                    or str(node.metadata.get("key") or "") == target_context
+                    or str(node.metadata.get("root_id") or "") == target_id
+                )
+            )
+        if matches:
+            children = node.metadata.get("children")
+            if isinstance(children, list):
+                return [str(item) for item in children if str(item).strip()]
+    return []
+
+
 def resolve_parent_path(
     args: dict[str, Any],
     *,
@@ -303,7 +344,12 @@ def create_visual_element_changes(
         update_index_change(["_index", "issues_list", object_id], "[]", session_id),
     ]
     if parent_id:
-        children = resolve_existing_children(args)
+        children = resolve_existing_children(args) or resolve_context_children(
+            parent_id,
+            context=context,
+            context_name=context_name,
+            parent=str(args.get("parent") or ""),
+        )
         if object_id not in children:
             children.append(object_id)
         import json
