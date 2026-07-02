@@ -31,7 +31,9 @@ bubble-mcp --help
 ## Local editable install
 
 Use this when developing from a checkout or testing the package before
-publishing while editing source files:
+publishing while editing source files. For real Bubble smoke tests, prefer the
+normal local smoke install above so the console scripts import the packaged
+module exactly as an end user will run it.
 
 ```bash
 python3.11 -m venv .venv

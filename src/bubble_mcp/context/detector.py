@@ -163,6 +163,15 @@ def detect_project_context(
             app_version=app_version,
             include_id_to_path=include_id_to_path,
         )
+        if _needs_editor_network_capture(crawler_index):
+            network_index = _try_capture_editor_network_index(
+                profile=profile,
+                app_id=resolved_app_id,
+                app_version=app_version,
+                attempts=attempts,
+            )
+            if network_index is not None:
+                crawler_index = _merge_crawler_indexes(crawler_index, network_index)
         crawler_path = default_crawler_index_path(profile, resolved_app_id)
         crawler_path.parent.mkdir(parents=True, exist_ok=True)
         crawler_path.write_text(json.dumps(crawler_index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -266,6 +275,177 @@ def crawl_project_index(
         "apiCallCount": 4 + len(page_name_to_id) * 3 + len(custom_name_to_id) * 3 + len(backend_ids),
         "durationMs": int((time.time() - start) * 1000),
     }
+
+
+def _needs_editor_network_capture(index: dict[str, Any]) -> bool:
+    if _obj(index.get("idToPath")):
+        return False
+    pages = index.get("pages")
+    if isinstance(pages, list) and any(_obj(page).get("elements") for page in pages):
+        return False
+    return True
+
+
+def _try_capture_editor_network_index(
+    *,
+    profile: str,
+    app_id: str,
+    app_version: str,
+    attempts: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    try:
+        from playwright.sync_api import sync_playwright
+    except Exception as exc:
+        attempts.append({"source": "editor_network_capture", "ok": False, "reason": f"playwright unavailable: {exc}"})
+        return None
+
+    user_data_dir = get_config_dir() / "browser-profiles" / profile
+    if not user_data_dir.exists():
+        attempts.append(
+            {"source": "editor_network_capture", "ok": False, "reason": f"browser profile not found: {user_data_dir}"}
+        )
+        return None
+
+    captured: dict[str, Any] = {
+        "pageNameToId": {},
+        "pageNameToPath": {},
+        "customNameToId": {},
+        "idToPath": {},
+        "issuesSub": {},
+        "dataTypes": {},
+        "optionSets": {},
+        "styles": {},
+    }
+
+    def absorb_data(data: Any) -> None:
+        if not isinstance(data, dict):
+            return
+        if _looks_like_id_to_path(data):
+            captured["idToPath"].update({str(key): str(value) for key, value in data.items()})
+            return
+        if _looks_like_issues_sub(data):
+            captured["issuesSub"].update({str(key): str(value) for key, value in data.items()})
+            return
+        if _looks_like_custom_name_to_id(data):
+            captured["customNameToId"].update(data)
+
+    try:
+        with sync_playwright() as playwright:
+            context = playwright.chromium.launch_persistent_context(
+                str(user_data_dir),
+                headless=True,
+            )
+            page = context.pages[0] if context.pages else context.new_page()
+
+            def on_response(response: Any) -> None:
+                if "/appeditor/load_" not in str(response.url):
+                    return
+                try:
+                    payload = response.json()
+                except Exception:
+                    return
+                if not isinstance(payload, dict):
+                    return
+                data = payload.get("data")
+                if isinstance(data, list):
+                    for item in data:
+                        if not isinstance(item, dict) or "data" not in item:
+                            continue
+                        item_data = item.get("data")
+                        absorb_data(item_data)
+                        if _looks_like_page_name_to_id(item_data):
+                            captured["pageNameToId"].update(_string_map(item_data))
+                        if _looks_like_page_name_to_path(item_data):
+                            captured["pageNameToPath"].update(_string_map(item_data))
+                else:
+                    absorb_data(data)
+
+            page.on("response", on_response)
+            page.goto(
+                f"https://bubble.io/page?id={app_id}&tab=Design&name=index",
+                wait_until="domcontentloaded",
+                timeout=60_000,
+            )
+            page.wait_for_timeout(15_000)
+            context.close()
+    except Exception as exc:
+        attempts.append({"source": "editor_network_capture", "ok": False, "reason": str(exc)})
+        return None
+
+    id_to_path = _string_map(captured["idToPath"])
+    page_name_to_path = _string_map(captured["pageNameToPath"])
+    page_name_to_id = _string_map(captured["pageNameToId"])
+    issues_sub = _string_map(captured["issuesSub"])
+    if not id_to_path and not page_name_to_path:
+        attempts.append({"source": "editor_network_capture", "ok": False, "reason": "no editor index data captured"})
+        return None
+
+    pages = []
+    for name, encoded_path in page_name_to_path.items():
+        page_key = _last_path_segment(encoded_path) or page_name_to_id.get(name) or name
+        root_id = page_name_to_id.get(name) or _root_id_for_path(id_to_path, encoded_path) or page_key
+        children = _decode_children(issues_sub.get(root_id)) or _top_level_children_from_id_to_path(
+            id_to_path,
+            encoded_path,
+        )
+        pages.append(
+            {
+                "id": page_key,
+                "name": name,
+                "rootId": root_id,
+                "properties": {},
+                "elements": {child_id: {"id": child_id} for child_id in children},
+                "workflows": {},
+                "crawledAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        )
+
+    attempts.append(
+        {
+            "source": "editor_network_capture",
+            "ok": True,
+            "pages": len(pages),
+            "id_to_path": len(id_to_path),
+        }
+    )
+    return {
+        "appId": app_id,
+        "profile": profile,
+        "crawledAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "lastChange": 0,
+        "sectionHashes": {},
+        "pages": pages,
+        "reusables": [],
+        "backendWorkflows": [],
+        "apiConnectorCalls": [],
+        "pageIndex": {page["name"]: page["id"] for page in pages},
+        "reusableIndex": {},
+        "apiIndex": {},
+        "idToPath": id_to_path,
+        "dataTypes": _obj(captured["dataTypes"]),
+        "optionSets": _obj(captured["optionSets"]),
+        "styles": _obj(captured["styles"]),
+        "source": "editor_network_capture",
+        "apiCallCount": 0,
+        "durationMs": 0,
+        "_issuesSub": issues_sub,
+        "_appVersion": app_version,
+    }
+
+
+def _merge_crawler_indexes(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key in ("idToPath", "dataTypes", "optionSets", "styles"):
+        merged[key] = {**_obj(base.get(key)), **_obj(overlay.get(key))}
+    for key in ("pages", "reusables", "backendWorkflows", "apiConnectorCalls"):
+        if overlay.get(key):
+            merged[key] = overlay[key]
+    for key in ("pageIndex", "reusableIndex", "apiIndex"):
+        merged[key] = {**_obj(base.get(key)), **_obj(overlay.get(key))}
+    if overlay.get("_issuesSub"):
+        merged["_issuesSub"] = overlay["_issuesSub"]
+    merged["source"] = overlay.get("source") or base.get("source")
+    return merged
 
 
 def _crawl_page(api: BubblePathApiClient, name: str, page_id: str, encoded_path: str) -> dict[str, Any] | None:
@@ -502,3 +682,78 @@ def _api_connector_calls(value: Any) -> list[dict[str, str]]:
                 }
             )
     return calls
+
+
+def _looks_like_id_to_path(value: Any) -> bool:
+    data = _obj(value)
+    if len(data) < 3:
+        return False
+    sample = [item for item in data.values() if isinstance(item, str)][:50]
+    return bool(sample) and sum("%p3." in item or "%ed." in item for item in sample) >= max(1, len(sample) // 3)
+
+
+def _looks_like_issues_sub(value: Any) -> bool:
+    data = _obj(value)
+    if len(data) < 3:
+        return False
+    sample = [item for item in data.values() if isinstance(item, str)][:50]
+    return bool(sample) and sum(item.strip().startswith("[") for item in sample) >= max(1, len(sample) // 2)
+
+
+def _looks_like_custom_name_to_id(value: Any) -> bool:
+    data = _obj(value)
+    if not data:
+        return False
+    sample = [item for item in data.values() if isinstance(item, dict)][:10]
+    return bool(sample) and all("custom_id" in item and "name" in item for item in sample)
+
+
+def _looks_like_page_name_to_id(value: Any) -> bool:
+    data = _obj(value)
+    if not data or not all(isinstance(item, str) for item in data.values()):
+        return False
+    return any(key in data for key in ("index", "404", "reset_pw")) and not _looks_like_page_name_to_path(data)
+
+
+def _looks_like_page_name_to_path(value: Any) -> bool:
+    data = _obj(value)
+    return bool(data) and all(isinstance(item, str) and item.startswith("%p") for item in data.values())
+
+
+def _last_path_segment(encoded_path: str) -> str:
+    parts = [part for part in str(encoded_path or "").split(".") if part]
+    return parts[-1] if parts else ""
+
+
+def _root_id_for_path(id_to_path: dict[str, str], encoded_path: str) -> str:
+    normalized = str(encoded_path or "").strip()
+    for item_id, item_path in id_to_path.items():
+        if item_path == normalized:
+            return item_id
+    return ""
+
+
+def _top_level_children_from_id_to_path(id_to_path: dict[str, str], encoded_path: str) -> list[str]:
+    prefix = f"{str(encoded_path or '').strip()}.%el."
+    children: set[str] = set()
+    for item_id, item_path in id_to_path.items():
+        if not item_path.startswith(prefix):
+            continue
+        remainder = item_path[len(prefix) :]
+        if ".%el." in remainder:
+            continue
+        if item_id and item_id not in {"index", "404", "reset_pw"}:
+            children.add(item_id)
+    return sorted(children)
+
+
+def _decode_children(raw: str | None) -> list[str]:
+    if not raw:
+        return []
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(decoded, list):
+        return []
+    return [str(item) for item in decoded if str(item).strip()]

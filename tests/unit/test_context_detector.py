@@ -104,3 +104,60 @@ def test_detect_context_falls_back_to_editor_crawler(tmp_path, monkeypatch) -> N
     assert Path(result.crawler_index_path).exists()
     context = load_context(result.context_path)
     assert any(node.metadata.get("path_array") == ["%p3", "pgIndex", "%el", "elTitle"] for node in context.nodes)
+
+
+def test_detect_context_merges_editor_network_capture_when_path_api_is_sparse(
+    tmp_path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    save_session(
+        "dev",
+        session_from_payload({"appId": "synthetic-app", "headers": {"Cookie": "sid=secret"}}),
+    )
+
+    def sparse_crawl(**_kwargs):  # type: ignore[no-untyped-def]
+        return {
+            "appId": "synthetic-app",
+            "pages": [{"id": "catalogIndex", "name": "index", "elements": {}, "workflows": {}}],
+            "reusables": [],
+            "backendWorkflows": [],
+            "pageIndex": {"index": "catalogIndex"},
+            "reusableIndex": {},
+            "apiIndex": {},
+            "idToPath": {},
+            "source": "full_crawl",
+        }
+
+    def network_capture(**_kwargs):  # type: ignore[no-untyped-def]
+        return {
+            "appId": "synthetic-app",
+            "pages": [
+                {
+                    "id": "pgIndex",
+                    "name": "index",
+                    "rootId": "rootIndex",
+                    "elements": {"elTitle": {"id": "elTitle"}},
+                    "workflows": {},
+                }
+            ],
+            "reusables": [],
+            "backendWorkflows": [],
+            "pageIndex": {"index": "pgIndex"},
+            "reusableIndex": {},
+            "apiIndex": {},
+            "idToPath": {"rootIndex": "%p3.pgIndex", "elTitle": "%p3.pgIndex.%el.elTitle"},
+            "source": "editor_network_capture",
+        }
+
+    monkeypatch.setattr("bubble_mcp.context.detector.crawl_project_index", sparse_crawl)
+    monkeypatch.setattr("bubble_mcp.context.detector._try_capture_editor_network_index", network_capture)
+
+    result = detect_project_context(profile="dev", app_id="synthetic-app", force=True)
+    context = load_context(result.context_path)
+
+    page = next(node for node in context.nodes if node.type == "page")
+    assert page.metadata["bubble_id"] == "pgIndex"
+    assert page.metadata["root_id"] == "rootIndex"
+    assert page.metadata["children"] == ["elTitle"]
+    assert any(node.id == "element:elTitle" for node in context.nodes)

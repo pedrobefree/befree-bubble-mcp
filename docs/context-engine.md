@@ -43,6 +43,9 @@ detector follows the same source priority used by Aria's Bubble tooling:
 2. Use a provided `console.log(app)` capture when available.
 3. Attempt best-effort `.bubble` export discovery.
 4. Fall back to the editor path crawler using the captured Bubble session.
+5. If Bubble's path API only returns sparse hashes, open the authenticated
+   Playwright editor profile and capture the editor's own network-loaded indexes
+   such as `id_to_path` and `issues_sub`.
 
 ```bash
 bubble-mcp context detect \

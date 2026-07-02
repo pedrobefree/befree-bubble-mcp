@@ -70,14 +70,14 @@ class BubblePathApiClient:
             results=[self._parse_path_entry(item) for item in data] if isinstance(data, list) else [],
         )
 
-    def load_single_path(self, path_hash: str, *segments: str) -> Any:
+    def load_single_path(self, path_hash: str, *segments: str) -> PathResult:
         suffix = "/".join(parse.quote(str(part), safe="") for part in (path_hash, *segments))
         url = (
             f"{BUBBLE_BASE_URL}/appeditor/load_single_path/"
             f"{self.app_id}/{self.app_version}/{suffix}"
         )
         raw = self._request_json("GET", url)
-        return raw.get("data") if isinstance(raw, dict) else raw
+        return self._parse_path_entry(raw)
 
     def resolve_path(self, path_array: list[str]) -> PathResult:
         response = self.load_multiple_paths([path_array])
@@ -88,11 +88,19 @@ class BubblePathApiClient:
         response = self.load_multiple_paths(path_arrays)
         return response.last_change, [self.auto_resolve(result) for result in response.results]
 
-    def auto_resolve(self, result: PathResult, *extra_segments: str) -> PathResult:
+    def auto_resolve(self, result: PathResult, *extra_segments: str, max_depth: int = 8) -> PathResult:
         if result.type != "hash":
             return result
+        current = result
         try:
-            return PathResult(type="data", data=self.load_single_path(result.hash, *extra_segments))
+            for _depth in range(max_depth):
+                resolved = self.load_single_path(current.hash, *extra_segments)
+                if resolved.type != "hash":
+                    return resolved
+                if resolved.hash == current.hash:
+                    break
+                current = resolved
+            return PathResult(type="error", message=f"Unresolved Bubble path hash after {max_depth} hops.")
         except Exception as exc:
             return PathResult(type="error", message=str(exc))
 
