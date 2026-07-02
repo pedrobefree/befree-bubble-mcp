@@ -1,0 +1,12 @@
+{
+  "name": "bubble-editor-renderer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "renderer:extract": "node scripts/extract_rendered_html.mjs",
+    "renderer:server": "node scripts/render_server.mjs"
+  },
+  "dependencies": {
+    "puppeteer": "^24.0.0"
+  }
+}

@@ -2,6 +2,7 @@ import json
 
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
+from bubble_mcp.sessions.store import BubbleSessionData, save_session
 
 
 def first_change(payload: dict, intent_name: str) -> dict:  # type: ignore[type-arg]
@@ -131,6 +132,67 @@ def test_tools_list_includes_mutating_write_tool() -> None:
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert "bubble_editor_write" in names
+
+
+def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_session(
+        "smoke",
+        BubbleSessionData(
+            app_id="synthetic-app",
+            url="https://bubble.io/page?id=synthetic-app",
+            method="POST",
+            headers={"cookie": "sid=secret"},
+            cookies="sid=secret",
+            app_version="test",
+            captured_at="2026-07-02T00:00:00+00:00",
+            source="test",
+        ),
+    )
+
+    payload = {
+        "appname": "synthetic-app",
+        "app_version": "test",
+        "appVersion": "test",
+        "changes": [
+            {
+                "intent": {"name": "CreatePage"},
+                "path_array": ["%p3", "mcp01"],
+                "body": {"id": "mcp01", "%nm": "mcp-01"},
+            }
+        ],
+    }
+
+    def fake_write(self, write_payload, session, *, dry_run=False):  # type: ignore[no-untyped-def]
+        return {
+            "ok": True,
+            "dry_run": dry_run,
+            "response": {"last_change": "1"},
+            "request": {"payload": write_payload},
+        }
+
+    monkeypatch.setattr("bubble_mcp.server.tools.BubbleEditorClient.write", fake_write)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_editor_write",
+                "arguments": {"profile": "smoke", "execute": True, "payload": payload},
+            },
+        }
+    )
+
+    assert response is not None
+    result = json.loads(response["result"]["content"][0]["text"])
+    assert result["ok"] is True
+
+    overlay_path = tmp_path / "contexts" / "smoke" / "synthetic-app-mutation-overlay.json"
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    assert overlay["entries"][0]["source"] == "bubble_editor_write"
+    assert overlay["entries"][0]["changes"][0]["path_array"] == ["%p3", "mcp01"]
 
 
 def test_tools_list_includes_full_aria_catalog() -> None:

@@ -5,6 +5,12 @@ The package exposes two HTML-to-Bubble paths:
 - `bubble-mcp import html` without `--runtime`: conservative compatibility converter that returns a validated plan.
 - `bubble-mcp import html --runtime`: Aria's advanced `create-from-html` runtime, with selector support, style translation, rendered DOM support, and direct Bubble writes when `--execute` is set.
 
+The advanced runtime resolves Bubble contexts from the same unified discovery shape
+used by Aria: the current `.bubble` export is the base, then the crawler index and
+the local mutation overlay are applied when present. Successful MCP writes append
+to the mutation overlay, so pages or elements created through MCP can be resolved
+before the next `.bubble` export catches up.
+
 Convert HTML into a validated Bubble plan:
 
 ```bash

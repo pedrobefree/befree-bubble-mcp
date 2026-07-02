@@ -34383,7 +34383,13 @@ class BubbleCLI:
                 "--timeout", str(timeout_ms),
                 "--output", tmp_path
             ]
-            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=max(int(timeout_ms / 1000) + 15, 45))
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=max(int(timeout_ms / 1000) + 15, 45),
+                env=self._renderer_subprocess_env()
+            )
             if proc.returncode != 0:
                 err = (proc.stderr or proc.stdout or "").strip().splitlines()
                 err_line = err[-1] if err else f"exit code {proc.returncode}"
@@ -34391,7 +34397,13 @@ class BubbleCLI:
                 if self._render_bool("auto_install_local_renderer", True):
                     bootstrapped = self._bootstrap_local_renderer()
                     if bootstrapped:
-                        proc_retry = subprocess.run(cmd, capture_output=True, text=True, timeout=max(int(timeout_ms / 1000) + 15, 45))
+                        proc_retry = subprocess.run(
+                            cmd,
+                            capture_output=True,
+                            text=True,
+                            timeout=max(int(timeout_ms / 1000) + 15, 45),
+                            env=self._renderer_subprocess_env()
+                        )
                         if proc_retry.returncode == 0:
                             with open(tmp_path, "r", encoding="utf-8") as f:
                                 data = json.load(f)
@@ -34426,6 +34438,40 @@ class BubbleCLI:
                     pass
         return None
 
+    def _renderer_subprocess_env(self) -> Dict[str, str]:
+        env = os.environ.copy()
+        browser_path = self._local_browser_executable()
+        if browser_path:
+            env.setdefault("BUBBLE_CLI_BROWSER_PATH", browser_path)
+            env.setdefault("PUPPETEER_EXECUTABLE_PATH", browser_path)
+            env.setdefault("PUPPETEER_SKIP_DOWNLOAD", "true")
+        return env
+
+    def _local_browser_executable(self) -> Optional[str]:
+        configured = str(
+            self._render_get("browser_path", "")
+            or self._render_get("executable_path", "")
+            or os.getenv("BUBBLE_CLI_BROWSER_PATH", "")
+            or os.getenv("PUPPETEER_EXECUTABLE_PATH", "")
+        ).strip()
+        if configured and os.path.exists(configured):
+            return configured
+        candidates = [
+            "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+            "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
+            "/Applications/Chromium.app/Contents/MacOS/Chromium",
+            os.path.expanduser("~/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"),
+            os.path.expanduser("~/Applications/Chromium.app/Contents/MacOS/Chromium"),
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
+        for binary in ("google-chrome", "google-chrome-stable", "chromium", "chromium-browser", "chrome"):
+            resolved = shutil.which(binary)
+            if resolved:
+                return resolved
+        return None
+
     def _bootstrap_local_renderer(self) -> bool:
         project_dir = os.path.dirname(__file__)
         node_bin = str(self._render_get("node_bin", "") or os.getenv("BUBBLE_CLI_NODE_BIN", "node"))
@@ -34457,13 +34503,26 @@ class BubbleCLI:
                 cwd=project_dir,
                 capture_output=True,
                 text=True,
-                timeout=900
+                timeout=900,
+                env=self._renderer_subprocess_env()
             )
             if install.returncode != 0:
                 err = (install.stderr or install.stdout or "").strip().splitlines()
                 err_line = err[-1] if err else f"exit code {install.returncode}"
                 logger.error(f"Renderer dependency installation failed: {err_line}")
                 return False
+            browser_install = subprocess.run(
+                [npm_bin, "exec", "--", "puppeteer", "browsers", "install", "chrome"],
+                cwd=project_dir,
+                capture_output=True,
+                text=True,
+                timeout=900,
+                env=self._renderer_subprocess_env()
+            )
+            if browser_install.returncode != 0:
+                err = (browser_install.stderr or browser_install.stdout or "").strip().splitlines()
+                err_line = err[-1] if err else f"exit code {browser_install.returncode}"
+                logger.warning(f"Renderer browser installation failed: {err_line}")
             logger.success("Local renderer dependency installed.")
             return True
         except Exception as e:

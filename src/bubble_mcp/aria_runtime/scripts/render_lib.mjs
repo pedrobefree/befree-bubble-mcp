@@ -412,14 +412,19 @@ export async function extractRenderedHtml({
   };
   let browser = null;
   try {
+    const executablePath =
+      String(process.env.BUBBLE_CLI_BROWSER_PATH || process.env.PUPPETEER_EXECUTABLE_PATH || "").trim() ||
+      undefined;
     if (engine === "playwright") {
       browser = await playwrightChromium.launch({
         headless: true,
+        ...(executablePath ? { executablePath } : {}),
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
     } else {
       browser = await puppeteerLib.launch({
         headless: true,
+        ...(executablePath ? { executablePath } : {}),
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
       });
     }

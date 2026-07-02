@@ -9,8 +9,15 @@ from io import StringIO
 from pathlib import Path
 from typing import Any
 
-from bubble_mcp.context.detector import detect_project_context
-from bubble_mcp.core.config import load_settings, resolve_profile
+from bubble_mcp.context.detector import default_crawler_index_path, detect_project_context
+from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mutation_overlay
+from bubble_mcp.core.config import (
+    get_settings_path,
+    load_json_file,
+    load_settings,
+    normalize_profile_name,
+    resolve_profile,
+)
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.store import load_session
 
@@ -24,6 +31,75 @@ def _load_aria_runtime_modules() -> tuple[Any, Any]:
     import bubble_sdk  # type: ignore[import-not-found]
 
     return bubble_cli, bubble_sdk
+
+
+def _raw_profile_config(profile: str) -> dict[str, Any]:
+    settings_path = get_settings_path()
+    try:
+        payload = load_json_file(settings_path)
+    except Exception:
+        return {}
+    raw_profiles = payload.get("profiles")
+    if not isinstance(raw_profiles, dict):
+        return {}
+    exact = raw_profiles.get(profile)
+    if isinstance(exact, dict):
+        return dict(exact)
+    target = normalize_profile_name(profile)
+    if target:
+        matches = [
+            raw
+            for name, raw in raw_profiles.items()
+            if normalize_profile_name(str(name)) == target and isinstance(raw, dict)
+        ]
+        if len(matches) == 1:
+            return dict(matches[0])
+    return {}
+
+
+def _render_config_from_profile(raw_profile: dict[str, Any]) -> dict[str, Any]:
+    known_profile_fields = {
+        "app_id",
+        "appname",
+        "editor_url",
+        "app_version",
+        "appVersion",
+        "app_json_path",
+        "consolelog_json_path",
+    }
+    render_config: dict[str, Any] = {}
+    nested = raw_profile.get("render")
+    if isinstance(nested, dict):
+        render_config.update(nested)
+    for key, value in raw_profile.items():
+        if key in known_profile_fields:
+            continue
+        if key.startswith("render_") or key in {
+            "rendered_html_default",
+            "renderer_mode",
+            "render_endpoint",
+            "render_timeout_ms",
+            "render_cache_enabled",
+            "render_cache_dir",
+            "render_cache_ttl_hours",
+            "auto_install_local_renderer",
+            "allow_render_fallback",
+            "node_bin",
+            "npm_bin",
+            "enable_specialized_converters",
+        }:
+            render_config[key] = value
+    return render_config
+
+
+def _resolve_optional_profile_path(raw_profile: dict[str, Any], key: str) -> str | None:
+    value = str(raw_profile.get(key) or "").strip()
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    if not path.is_absolute():
+        path = get_settings_path().parent / path
+    return str(path) if path.exists() else None
 
 
 def create_from_html_runtime(
@@ -56,6 +132,7 @@ def create_from_html_runtime(
 
     settings = load_settings()
     profile_config = resolve_profile(settings, profile)
+    raw_profile = _raw_profile_config(profile)
     session = load_session(profile)
     resolved_app_id = str(
         app_id
@@ -81,6 +158,12 @@ def create_from_html_runtime(
     bubble_file = detected.context_path.with_name(f"{resolved_app_id}.bubble")
     if not bubble_file.exists():
         raise ValueError(f"Bubble export not found for Aria runtime: {bubble_file}")
+    crawler_index_path = detected.crawler_index_path or default_crawler_index_path(profile, resolved_app_id)
+    resolved_crawler_index_path = str(crawler_index_path) if crawler_index_path and crawler_index_path.exists() else None
+    resolved_consolelog_path = _resolve_optional_profile_path(raw_profile, "consolelog_json_path")
+    resolved_mutation_overlay_path = str(mutation_overlay_path(profile, resolved_app_id))
+    if not Path(resolved_mutation_overlay_path).exists():
+        resolved_mutation_overlay_path = _resolve_optional_profile_path(raw_profile, "mutation_overlay_path") or resolved_mutation_overlay_path
     if execute and session is None:
         raise ValueError(f"No Bubble session stored for profile '{profile}'.")
 
@@ -108,6 +191,14 @@ def create_from_html_runtime(
             return {"ok": True, "dry_run": True}
         assert session is not None
         result = BubbleEditorClient().write(write_payload, session, dry_run=False)
+        if result.get("ok"):
+            record_mutation_overlay(
+                profile=profile,
+                app_id=resolved_app_id,
+                payload=result.get("request", {}).get("payload") or write_payload,
+                source="create_from_html",
+                response=result.get("response"),
+            )
         captured_results.append({"ok": bool(result.get("ok")), "executed": True, "result": result})
         if not result.get("ok"):
             raise RuntimeError(str(result.get("error") or result.get("reason") or "Bubble write failed"))
@@ -120,9 +211,13 @@ def create_from_html_runtime(
         with redirect_stdout(stdout), redirect_stderr(stderr):
             cli = bubble_cli.BubbleCLI(
                 app_json_path=str(bubble_file),
+                consolelog_json_path=resolved_consolelog_path,
+                crawler_index_path=resolved_crawler_index_path,
+                mutation_overlay_path=resolved_mutation_overlay_path,
                 appname=resolved_app_id,
                 webhook_url="local://bubble-mcp",
                 profile_name=profile,
+                render_config=_render_config_from_profile(raw_profile),
             )
             success = cli.create_from_html(
                 context,
@@ -145,8 +240,15 @@ def create_from_html_runtime(
             except Exception:
                 pass
 
+    runtime_logs = "\n".join(part for part in (stdout.getvalue().strip(), stderr.getvalue().strip()) if part)
     if not success:
-        raise RuntimeError("Aria HTML import runtime failed.")
+        detail = runtime_logs.strip()
+        if len(detail) > 2000:
+            detail = detail[-2000:]
+        raise RuntimeError(
+            "Aria HTML import runtime failed."
+            + (f"\nRuntime logs:\n{detail}" if detail else "")
+        )
 
     return {
         "ok": all(bool(item.get("ok")) for item in captured_results),
@@ -158,7 +260,15 @@ def create_from_html_runtime(
         "context": context,
         "parent": parent,
         "executed": execute,
+        "context_sources": {
+            "bubble_file": str(bubble_file),
+            "consolelog_json_path": resolved_consolelog_path,
+            "crawler_index_path": resolved_crawler_index_path,
+            "mutation_overlay_path": resolved_mutation_overlay_path
+            if Path(resolved_mutation_overlay_path).exists()
+            else None,
+        },
         "write_count": len(captured_payloads),
         "results": [{"index": index, **item} for index, item in enumerate(captured_results, start=1)],
-        "logs": "\n".join(part for part in (stdout.getvalue().strip(), stderr.getvalue().strip()) if part),
+        "logs": runtime_logs,
     }

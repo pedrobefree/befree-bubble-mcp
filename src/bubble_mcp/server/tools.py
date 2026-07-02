@@ -10,6 +10,7 @@ from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import detect_project_context
+from bubble_mcp.context.mutation_overlay import record_mutation_overlay
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import load_settings
@@ -187,7 +188,16 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         if write_session is None:
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
         execute = bool(args.get("execute"))
-        return BubbleEditorClient().write(write_payload, write_session, dry_run=not execute)
+        result = BubbleEditorClient().write(write_payload, write_session, dry_run=not execute)
+        if execute and result.get("ok"):
+            record_mutation_overlay(
+                profile=profile,
+                app_id=str(result.get("request", {}).get("payload", {}).get("appname") or write_session.app_id),
+                payload=result.get("request", {}).get("payload") or write_payload,
+                source="bubble_editor_write",
+                response=result.get("response"),
+            )
+        return result
     if name == "bubble_execute_plan":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()
@@ -266,7 +276,16 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         session = load_session(profile)
         if session is None:
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
-        return BubbleEditorClient().write(write_payload, session, dry_run=not execute)
+        result = BubbleEditorClient().write(write_payload, session, dry_run=not execute)
+        if execute and result.get("ok"):
+            record_mutation_overlay(
+                profile=profile,
+                app_id=str(result.get("request", {}).get("payload", {}).get("appname") or session.app_id),
+                payload=result.get("request", {}).get("payload") or write_payload,
+                source=name,
+                response=result.get("response"),
+            )
+        return result
 
     app_id = str(args.get("app_id") or args.get("appname") or "").strip()
     plan = {"steps": [{"id": "step_1", "tool_name": name, "args": dict(args)}]}

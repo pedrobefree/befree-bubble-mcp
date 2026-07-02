@@ -7,6 +7,7 @@ from typing import Any
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.detector import detect_project_context
 from bubble_mcp.context.models import BubbleProjectContext
+from bubble_mcp.context.mutation_overlay import record_mutation_overlay
 from bubble_mcp.context.source import load_context
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.store import BubbleSessionData, load_session
@@ -104,6 +105,14 @@ def execute_plan(
 
         assert resolved_session is not None
         write_result = editor_client.write(payload, resolved_session, dry_run=False)
+        if write_result.get("ok"):
+            record_mutation_overlay(
+                profile=profile,
+                app_id=str(payload.get("appname") or resolved_session.app_id or ""),
+                payload=write_result.get("request", {}).get("payload") or payload,
+                source="execute_plan",
+                response=write_result.get("response"),
+            )
         results.append(
             {
                 "step_id": step_id,
