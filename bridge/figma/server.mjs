@@ -4,8 +4,8 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_HOST = "127.0.0.1";
-const DEFAULT_PORT = 47831;
+const DEFAULT_HOST = "0.0.0.0";
+const DEFAULT_PORT = 3333;
 
 function sendJson(res, statusCode, body) {
   const payload = JSON.stringify(body);
@@ -58,7 +58,7 @@ function readRequestJson(req) {
 
 async function readProfiles(configDir) {
   if (!configDir) {
-    return [];
+    return { names: [], defaultProfile: "", details: {} };
   }
 
   try {
@@ -67,17 +67,30 @@ async function readProfiles(configDir) {
     const profiles = settings?.profiles;
 
     if (Array.isArray(profiles)) {
-      return profiles;
+      const names = profiles
+        .map((profile) => profile?.name ?? profile?.id ?? profile?.app_id ?? profile?.appname)
+        .filter(Boolean)
+        .map(String);
+      return {
+        names,
+        defaultProfile: String(settings?.default_profile || names[0] || ""),
+        details: profiles,
+      };
     }
 
     if (profiles && typeof profiles === "object") {
-      return profiles;
+      const names = Object.keys(profiles);
+      return {
+        names,
+        defaultProfile: String(settings?.default_profile || names[0] || ""),
+        details: profiles,
+      };
     }
 
-    return [];
+    return { names: [], defaultProfile: "", details: {} };
   } catch (error) {
     if (error?.code === "ENOENT") {
-      return [];
+      return { names: [], defaultProfile: "", details: {} };
     }
 
     throw error;
@@ -114,12 +127,18 @@ export function createFigmaBridgeServer(options = {}) {
       }
 
       if (req.method === "GET" && url.pathname === "/health") {
-        sendJson(res, 200, { ok: true });
+        sendJson(res, 200, { ok: true, service: "figma-bridge" });
         return;
       }
 
       if (req.method === "GET" && url.pathname === "/profiles") {
-        sendJson(res, 200, { profiles: await readProfiles(configDir) });
+        const profiles = await readProfiles(configDir);
+        sendJson(res, 200, {
+          ok: true,
+          profiles: profiles.names,
+          default: profiles.defaultProfile,
+          profile_details: profiles.details,
+        });
         return;
       }
 

@@ -11,7 +11,8 @@ GET /profiles
 POST /sync
 ```
 
-By default the bridge listens on `http://127.0.0.1:47831`. Override with
+By default the bridge listens on `http://localhost:3333`, matching the
+existing Befree Figma plugin. Override with
 `BUBBLE_MCP_BRIDGE_HOST` and `BUBBLE_MCP_BRIDGE_PORT` when the Figma-side
 integration expects a different local endpoint.
 

@@ -41,7 +41,7 @@ test("GET /health returns ok", async () => {
 
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("access-control-allow-origin"), "*");
-    assert.deepEqual(body, { ok: true });
+    assert.deepEqual(body, { ok: true, service: "figma-bridge" });
   });
 });
 
@@ -67,7 +67,12 @@ test("GET /profiles reads settings.json profiles when available", async () => {
   await mkdir(configDir);
   await writeFile(
     path.join(configDir, "settings.json"),
-    JSON.stringify({ profiles: [{ id: "default", name: "Default" }] }),
+    JSON.stringify({
+      default_profile: "smoke",
+      profiles: {
+        smoke: { app_id: "bovichain-g3", appname: "bovichain-g3" },
+      },
+    }),
     "utf8",
   );
 
@@ -75,7 +80,14 @@ test("GET /profiles reads settings.json profiles when available", async () => {
     const { response, body } = await jsonRequest(baseUrl, "/profiles");
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body, { profiles: [{ id: "default", name: "Default" }] });
+    assert.deepEqual(body, {
+      ok: true,
+      profiles: ["smoke"],
+      default: "smoke",
+      profile_details: {
+        smoke: { app_id: "bovichain-g3", appname: "bovichain-g3" },
+      },
+    });
   });
 });
 
@@ -86,7 +98,7 @@ test("GET /profiles returns an empty list when settings.json is missing", async 
     const { response, body } = await jsonRequest(baseUrl, "/profiles");
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body, { profiles: [] });
+    assert.deepEqual(body, { ok: true, profiles: [], default: "", profile_details: {} });
   });
 });
 
