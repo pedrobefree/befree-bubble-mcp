@@ -154,9 +154,15 @@ class BubbleEditorClient:
         data = parse_response_body(response.body)
 
         if response.status in (401, 403):
-            raise RuntimeError(
-                f"Bubble blocked the editor write ({response.status}). Capture/import session again."
-            )
+            return {
+                "ok": False,
+                "dry_run": False,
+                "status": response.status,
+                "error": f"Bubble blocked the editor write ({response.status}).",
+                "reason": "auth_blocked",
+                "response": data,
+                "request": safe_request,
+            }
         if isinstance(data, str) and data.lstrip().startswith("<"):
             raise RuntimeError("Bubble session expired: received HTML instead of JSON.")
 

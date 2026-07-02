@@ -12,6 +12,7 @@ from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context, save_context
+from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.core.config import (
     BubbleMcpSettings,
     BubbleProfile,
@@ -20,7 +21,7 @@ from bubble_mcp.core.config import (
     save_settings,
     with_profile,
 )
-from bubble_mcp.execution.client import BubbleEditorClient
+from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.planner.deterministic import plan_message
@@ -142,6 +143,32 @@ def command_session_import(args: argparse.Namespace) -> int:
 
 def command_session_list(_args: argparse.Namespace) -> int:
     emit_json({"ok": True, "sessions": list_sessions()})
+    return 0
+
+
+def command_session_inspect(args: argparse.Namespace) -> int:
+    session = load_session(args.profile)
+    if session is None:
+        raise ValueError(f"No Bubble session stored for profile '{args.profile}'.")
+    app_id = args.app_id or session.app_id
+    sample_payload: dict[str, object] = {
+        "appname": app_id,
+        "app_version": session.app_version or "test",
+        "changes": [],
+    }
+    write_headers = build_editor_write_headers(session, sample_payload)
+    emit_json(
+        {
+            "ok": True,
+            "profile": args.profile,
+            "session": session.to_dict(redact=True),
+            "stored_header_keys": sorted(session.headers.keys()),
+            "cookie_present": bool(session.cookies),
+            "cookie_length": len(session.cookies or ""),
+            "computed_write_header_keys": sorted(write_headers.keys()),
+            "computed_write_headers": redact_sensitive(write_headers),
+        }
+    )
     return 0
 
 
@@ -305,6 +332,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     session_list_parser = session_subparsers.add_parser("list", help="List imported session metadata.")
     session_list_parser.set_defaults(func=command_session_list)
+
+    session_inspect_parser = session_subparsers.add_parser(
+        "inspect",
+        help="Inspect redacted session data and computed Bubble write headers.",
+    )
+    session_inspect_parser.add_argument("--profile", required=True)
+    session_inspect_parser.add_argument("--app-id", default="")
+    session_inspect_parser.set_defaults(func=command_session_inspect)
 
     write_parser = subparsers.add_parser("write", help="Send a Bubble /appeditor/write payload.")
     write_parser.add_argument("--profile", required=True)

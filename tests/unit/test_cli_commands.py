@@ -78,6 +78,13 @@ def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # 
     listed = json.loads(capsys.readouterr().out)
     assert listed["sessions"][0]["profile"] == "dev"
 
+    assert main(["session", "inspect", "--profile", "dev"]) == 0
+    inspected = json.loads(capsys.readouterr().out)
+    assert inspected["cookie_present"] is True
+    assert inspected["session"]["headers"]["Cookie"] == "[REDACTED]"
+    assert inspected["computed_write_headers"]["cookie"] == "[REDACTED]"
+    assert "x-bubble-appname" in inspected["computed_write_header_keys"]
+
 
 def test_cli_compile_plan_outputs_write_payload(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
     plan_path = tmp_path / "plan.json"

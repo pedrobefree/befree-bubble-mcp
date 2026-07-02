@@ -71,6 +71,19 @@ def test_editor_client_blocks_html_login_response() -> None:
         BubbleEditorClient(transport=fake_transport).write(write_payload(), synthetic_session())
 
 
+def test_editor_client_returns_structured_auth_block() -> None:
+    def fake_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        return HttpResponse(status=401, body='{"error":"unauthorized"}', headers={})
+
+    result = BubbleEditorClient(transport=fake_transport).write(write_payload(), synthetic_session())
+
+    assert result["ok"] is False
+    assert result["status"] == 401
+    assert result["reason"] == "auth_blocked"
+    assert result["request"]["headers"]["cookie"] == "[REDACTED]"
+    assert result["request"]["headers"]["x-bubble-appname"] == "synthetic-app"
+
+
 def test_execute_plan_runs_write_payload_steps_with_fake_client() -> None:
     class FakeClient:
         def write(self, payload, session, *, dry_run=False):  # type: ignore[no-untyped-def]

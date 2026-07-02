@@ -30,6 +30,7 @@ python -m pip install "befree-bubble-mcp[browser]"
 python -m playwright install chromium
 bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180
 bubble-mcp session list
+bubble-mcp session inspect --profile my-app
 ```
 
 `session login` uses a persistent local Chromium profile under the Bubble MCP
@@ -38,6 +39,10 @@ window is open. `--wait-seconds` is the maximum capture window. After logging
 in, leave the editor open for a few seconds before closing the browser so the
 latest cookies can be captured. If you close the window early, the command saves
 the most recent cookies captured during that run.
+
+Use `session inspect` to verify, without printing secrets, which session header
+keys were stored and which Bubble write headers will be computed for
+`/appeditor/write`.
 
 Provider roadmap:
 
