@@ -21,7 +21,7 @@ Run the advanced Aria importer in preview mode:
 
 ```bash
 bubble-mcp import html \
-  --file component.html \
+  --url https://example.com/page.html \
   --runtime \
   --profile smoke \
   --app-id my-bubble-app \
@@ -35,7 +35,7 @@ Execute the advanced import against Bubble:
 
 ```bash
 bubble-mcp import html \
-  --file component.html \
+  --url https://example.com/page.html \
   --runtime \
   --profile smoke \
   --app-id my-bubble-app \

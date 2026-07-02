@@ -133,12 +133,13 @@ def command_validate_plan(args: argparse.Namespace) -> int:
 
 
 def command_import_html(args: argparse.Namespace) -> int:
+    html_source = str(getattr(args, "url", "") or args.file or "").strip()
     if args.runtime:
         result = create_from_html_runtime(
             profile=args.profile,
             context=args.context,
             parent=args.parent,
-            html_file=args.file,
+            html_file=html_source,
             app_id=args.app_id or None,
             app_version=args.app_version,
             execute=args.execute,
@@ -154,6 +155,8 @@ def command_import_html(args: argparse.Namespace) -> int:
         emit_json(result)
         return 0 if result.get("ok") else 1
 
+    if not args.file:
+        raise ValueError("Non-runtime HTML import requires --file.")
     html = Path(args.file).read_text(encoding="utf-8")
     plan = html_to_plan(html, context=args.context, parent=args.parent)
     payload = plan.to_dict()
@@ -363,7 +366,8 @@ def build_parser() -> argparse.ArgumentParser:
     import_parser = subparsers.add_parser("import", help="Import external design artifacts.")
     import_subparsers = import_parser.add_subparsers(dest="import_command", required=True)
     html_parser = import_subparsers.add_parser("html", help="Convert HTML to a Bubble plan.")
-    html_parser.add_argument("--file", required=True)
+    html_parser.add_argument("--file", default="", help="Path to an HTML file. Runtime mode also accepts URLs here for compatibility.")
+    html_parser.add_argument("--url", default="", help="URL to hydrate with the advanced runtime importer.")
     html_parser.add_argument("--context", default="index")
     html_parser.add_argument("--parent", default="index")
     html_parser.add_argument("--runtime", action="store_true", help="Use Aria's advanced create-from-html runtime.")

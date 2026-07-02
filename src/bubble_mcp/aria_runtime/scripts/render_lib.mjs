@@ -93,6 +93,15 @@ function browserEvaluateFn(selector) {
     "transform-origin",
   ];
   const PSEUDO_STYLE_PROPS = [
+    "display",
+    "position",
+    "inset",
+    "top",
+    "right",
+    "bottom",
+    "left",
+    "width",
+    "height",
     "background",
     "background-image",
     "background-size",
@@ -102,6 +111,57 @@ function browserEvaluateFn(selector) {
     "transform",
     "z-index",
   ];
+
+  const stabilizeDynamicUi = () => {
+    const style = document.createElement("style");
+    style.setAttribute("data-bubble-mcp-render-freeze", "1");
+    style.textContent = [
+      "*, *::before, *::after {",
+      "  animation-delay: 0s !important;",
+      "  animation-duration: 0s !important;",
+      "  animation-iteration-count: 1 !important;",
+      "  transition-delay: 0s !important;",
+      "  transition-duration: 0s !important;",
+      "  scroll-behavior: auto !important;",
+      "}",
+    ].join("\n");
+    document.head.appendChild(style);
+
+    for (const carousel of Array.from(document.querySelectorAll(".owl-carousel"))) {
+      const stage = carousel.querySelector(".owl-stage");
+      const items = stage ? Array.from(stage.querySelectorAll(".owl-item")) : [];
+      const originals = items.filter((item) => !String(item.className || "").split(/\s+/).includes("cloned"));
+      const first = originals[0] || items[0];
+      if (!stage || !first) continue;
+      const firstRect = first.getBoundingClientRect();
+      const firstWidth = Number(firstRect.width || parseFloat(window.getComputedStyle(first).width || "") || 0);
+      const firstHeight = Number(firstRect.height || parseFloat(window.getComputedStyle(first).height || "") || 0);
+      stage.style.transform = "translate3d(0px, 0px, 0px)";
+      stage.style.left = "0px";
+      if (firstWidth > 0) stage.style.width = `${firstWidth}px`;
+      if (firstHeight > 0) stage.style.height = `${firstHeight}px`;
+      for (const item of items) {
+        const isFirst = item === first;
+        item.classList.toggle("active", isFirst);
+        item.classList.remove("center");
+        item.style.display = isFirst ? "block" : "none";
+        item.style.transform = "none";
+        if (firstWidth > 0) item.style.width = `${firstWidth}px`;
+        if (firstHeight > 0) item.style.height = `${firstHeight}px`;
+      }
+      const outer = carousel.querySelector(".owl-stage-outer");
+      if (outer) {
+        outer.style.transform = "none";
+        outer.style.overflow = "visible";
+        if (firstWidth > 0) outer.style.width = `${firstWidth}px`;
+        if (firstHeight > 0) outer.style.height = `${firstHeight}px`;
+      }
+      carousel.querySelectorAll(".owl-dot").forEach((dot, index) => dot.classList.toggle("active", index === 0));
+      carousel.querySelectorAll(".owl-nav, .owl-controls, .owl-dots").forEach((controls) => {
+        controls.style.display = "none";
+      });
+    }
+  };
 
   const findFixedTop = () => {
     const els = Array.from(document.querySelectorAll("*"));
@@ -133,6 +193,8 @@ function browserEvaluateFn(selector) {
     findFixedTop() ||
     document.body ||
     document.documentElement;
+
+  stabilizeDynamicUi();
 
   const abs = (rawUrl) => {
     const txt = String(rawUrl || "").trim();

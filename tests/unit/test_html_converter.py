@@ -34,6 +34,65 @@ def test_aria_runtime_html_parser_is_self_contained() -> None:
     assert mapped["children"][0]["properties"]["content"] == "Hello"
 
 
+def test_aria_runtime_mapper_preserves_gradient_container_and_pseudo_layer() -> None:
+    element = {
+        "type": "header",
+        "attributes": {"class": "header-area v2 angle-1"},
+        "computed_styles": {
+            "display": "block",
+            "position": "relative",
+            "width": "1440px",
+            "height": "1014px",
+            "padding-top": "250px",
+            "padding-bottom": "250px",
+            "background-image": "linear-gradient(to right, rgb(80, 64, 244) 0%, rgb(49, 180, 254) 100%)",
+        },
+        "rect": {"width": 1440, "height": 1014},
+        "pseudo": {
+            "after": {
+                "position": "absolute",
+                "left": "0px",
+                "bottom": "-1px",
+                "width": "1440px",
+                "height": "144px",
+                "background-image": 'url("data:image/svg+xml,%3Csvg%3E%3C/svg%3E")',
+                "opacity": "1",
+            }
+        },
+        "children": [
+            {
+                "type": "div",
+                "attributes": {"class": "container"},
+                "computed_styles": {
+                    "display": "block",
+                    "width": "1170px",
+                    "height": "514px",
+                    "margin-left": "135px",
+                    "margin-right": "135px",
+                },
+                "rect": {"width": 1170, "height": 514},
+                "children": [],
+            }
+        ],
+    }
+
+    mapped = HTMLToBubbleMapper().map_tree(element)
+
+    assert mapped is not None
+    props = mapped["properties"]
+    assert props["layout"] == "relative"
+    assert props["gradient_direction"] == "right"
+    assert props["gradient_start_color"] == "rgb(49, 180, 254)"
+    assert props["gradient_end_color"] == "rgb(80, 64, 244)"
+    container = mapped["children"][0]
+    assert container["properties"]["horiz_alignment"] == "center"
+    assert container["properties"]["max_width_css"] == "1170px"
+    pseudo = mapped["children"][-1]
+    assert pseudo["properties"]["__pseudo_background"] is True
+    assert pseudo["properties"]["nonant_alignment"] == "ac"
+    assert pseudo["properties"]["height"] == 144
+
+
 def test_aria_runtime_render_config_is_preserved_from_profile() -> None:
     render_config = _render_config_from_profile(
         {

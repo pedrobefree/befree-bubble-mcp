@@ -195,6 +195,9 @@ class HTMLToBubbleMapper:
                 inherited_parent_styles=parent_styles,
                 inherited_parent_relative_mode=next_parent_relative_mode,
             )
+            pseudo_child = self._pseudo_background_child(parsed_element, bubble_element)
+            if pseudo_child:
+                bubble_element["children"].append(pseudo_child)
             self._postprocess_group_children(bubble_element)
         else:
             bubble_element["children"] = []
@@ -475,6 +478,67 @@ class HTMLToBubbleMapper:
         self._tune_content_sized_column_wrappers(group_node, parent_width=parent_width)
         self._normalize_relative_overlay_testimonial_section(group_node)
         self._inherit_single_child_visual_shell(group_node)
+
+    def _pseudo_background_child(
+        self,
+        parsed_element: Dict[str, Any],
+        bubble_element: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        pseudo = parsed_element.get("pseudo", {}) or {}
+        if not isinstance(pseudo, dict):
+            return None
+        props = bubble_element.get("properties", {}) or {}
+        parent_width = self._to_int(props.get("width"), None) or self._to_int((parsed_element.get("rect", {}) or {}).get("width"), None)
+        parent_name = self._clean_text(props.get("name", "")) or "Group"
+
+        for pseudo_key in ("before", "after"):
+            pseudo_styles = pseudo.get(pseudo_key)
+            if not isinstance(pseudo_styles, dict) or not self._should_use_pseudo_background(pseudo_styles, []):
+                continue
+            raw_bg = pseudo_styles.get("background-image") or pseudo_styles.get("background")
+            bg_url = self._extract_background_image_url(raw_bg) or self._extract_url_from_style_dict(pseudo_styles)
+            if not bg_url:
+                continue
+            height = (
+                self._parse_dimension(pseudo_styles.get("height"))
+                or self._to_int((parsed_element.get("rect", {}) or {}).get("height"), None)
+                or 0
+            )
+            if height <= 0:
+                height = 120
+            top = self._parse_margin_value(pseudo_styles.get("top"))
+            bottom = self._parse_margin_value(pseudo_styles.get("bottom"))
+            left = self._parse_margin_value(pseudo_styles.get("left"))
+            right = self._parse_margin_value(pseudo_styles.get("right"))
+            nonant = "aa" if top is not None and bottom is None else "ac"
+            child_props: Dict[str, Any] = {
+                "name": f"{parent_name} pseudo {pseudo_key}",
+                "layout": "relative",
+                "width": int(parent_width) if parent_width is not None else None,
+                "height": int(height),
+                "fit_width": False,
+                "fit_height": False,
+                "fixed_height": True,
+                "background_style": "image",
+                "background_image": {"%x": "TextExpression", "%e": {"0": bg_url}},
+                "min_width_css": "100%",
+                "max_width_css": "100%",
+                "min_height_css": f"{int(height)}px",
+                "max_height_css": f"{int(height)}px",
+                "nonant_alignment": nonant,
+                "zindex": 1,
+                "__pseudo_background": True,
+            }
+            if top is not None:
+                child_props["margin_top"] = int(top)
+            if bottom is not None:
+                child_props["margin_bottom"] = int(bottom)
+            if left is not None:
+                child_props["margin_left"] = int(left)
+            if right is not None:
+                child_props["margin_right"] = int(right)
+            return {"bubble_type": "Group", "properties": child_props, "children": []}
+        return None
 
     def _tune_content_sized_column_wrappers(self, group_node: Dict[str, Any], parent_width: Optional[int] = None) -> None:
         if not isinstance(group_node, dict) or group_node.get("bubble_type") != "Group":
@@ -2380,6 +2444,8 @@ class HTMLToBubbleMapper:
             width = 1120
         if layout == "relative" and width is None:
             width = 1120 if depth <= 1 else 540
+        if pseudo_bg:
+            layout = "relative"
         if not self._should_keep_explicit_height(element, styles, depth):
             height = None
 
@@ -2462,6 +2528,8 @@ class HTMLToBubbleMapper:
             if visual.get("margin_left") or visual.get("margin_right"):
                 visual["margin_left"] = 0
                 visual["margin_right"] = 0
+            if width is not None and visual.get("max_width_css") is None:
+                visual["max_width_css"] = f"{int(width)}px"
 
         props: Dict[str, Any] = {
             "name": name,
@@ -2586,7 +2654,7 @@ class HTMLToBubbleMapper:
         raw_background = styles.get("background-image") or styles.get("background")
         native_gradient = self._extract_native_gradient_props(raw_background)
         inline_bg = self._extract_background_image_url(raw_background) if not native_gradient else None
-        if pseudo_bg and (
+        if pseudo_bg and not native_gradient and not inline_bg and (
             (pseudo_bg_source == "after" and isinstance(pseudo_after, dict) and self._should_use_pseudo_background(pseudo_after, classes))
             or (pseudo_bg_source == "before" and isinstance(pseudo_before, dict) and self._should_use_pseudo_background(pseudo_before, classes))
         ):
@@ -2709,6 +2777,8 @@ class HTMLToBubbleMapper:
 
         if container_center:
             props["horiz_alignment"] = "center"
+            if width is not None and props.get("max_width_css") is None:
+                props["max_width_css"] = f"{int(width)}px"
         if any(c in {"m-auto", "mx-auto"} for c in classes):
             props["horiz_alignment"] = "center"
             props["margin_left"] = 0
@@ -5182,8 +5252,11 @@ class HTMLToBubbleMapper:
             props: Dict[str, Any] = {
                 "background_style": "gradient",
                 "gradient_style": "linear",
-                "gradient_start_color": start_rgba,
-                "gradient_end_color": end_rgba,
+                # Bubble's native linear-gradient endpoints are direction-relative.
+                # For %b4="right", %bgf renders at the right edge; CSS stops are
+                # ordered from left/start to right/end, so swap for visual parity.
+                "gradient_start_color": end_rgba,
+                "gradient_end_color": start_rgba,
             }
             if len(stops) > 2:
                 mid_offset, mid_color, mid_opacity = stops[1]
