@@ -102,29 +102,45 @@ test("GET /profiles returns an empty list when settings.json is missing", async 
   });
 });
 
-test("POST /sync saves JSON payload without auth when no token is configured", async () => {
+test("POST /sync saves JSON payload and triggers execution without auth when no token is configured", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "figma-bridge-data-"));
   const payload = { fileKey: "abc123", nodes: [{ id: "1:2" }] };
+  const calls = [];
 
-  await withBridge({ dataDir, token: "" }, async (baseUrl) => {
-    const { response, body } = await jsonRequest(baseUrl, "/sync", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+  await withBridge(
+    {
+      dataDir,
+      token: "",
+      syncHandler: async (filePath, body) => {
+        calls.push({ filePath, body });
+        return { ok: true, executed: true };
+      },
+    },
+    async (baseUrl) => {
+      const { response, body } = await jsonRequest(baseUrl, "/sync", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
 
-    assert.equal(response.status, 200);
-    assert.equal(body.ok, true);
+      assert.equal(response.status, 200);
+      assert.equal(body.ok, true);
+      assert.equal(body.result.executed, true);
 
-    const files = await readdir(dataDir);
-    assert.equal(files.length, 1);
-    assert.deepEqual(JSON.parse(await readFile(path.join(dataDir, files[0]), "utf8")), payload);
-  });
+      const files = await readdir(dataDir);
+      assert.equal(files.length, 1);
+      assert.deepEqual(JSON.parse(await readFile(path.join(dataDir, files[0]), "utf8")), payload);
+      assert.equal(calls.length, 1);
+      assert.equal(path.basename(calls[0].filePath), files[0]);
+      assert.deepEqual(calls[0].body, payload);
+    },
+  );
 });
 
 test("POST /sync requires bearer auth when token is configured", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "figma-bridge-auth-"));
+  const syncHandler = async () => ({ ok: true });
 
-  await withBridge({ dataDir, token: "secret-token" }, async (baseUrl) => {
+  await withBridge({ dataDir, token: "secret-token", syncHandler }, async (baseUrl) => {
     const unauthorized = await jsonRequest(baseUrl, "/sync", {
       method: "POST",
       body: JSON.stringify({ ok: true }),
@@ -142,4 +158,28 @@ test("POST /sync requires bearer auth when token is configured", async () => {
     assert.equal(authorized.response.status, 200);
     assert.equal(authorized.body.ok, true);
   });
+});
+
+test("POST /sync returns an error when execution fails", async () => {
+  const dataDir = await mkdtemp(path.join(tmpdir(), "figma-bridge-fail-"));
+
+  await withBridge(
+    {
+      dataDir,
+      token: "",
+      syncHandler: async () => {
+        throw new Error("Bubble write failed");
+      },
+    },
+    async (baseUrl) => {
+      const { response, body } = await jsonRequest(baseUrl, "/sync", {
+        method: "POST",
+        body: JSON.stringify({ ok: true }),
+      });
+
+      assert.equal(response.status, 500);
+      assert.equal(body.ok, false);
+      assert.equal(body.message, "Bubble write failed");
+    },
+  );
 });

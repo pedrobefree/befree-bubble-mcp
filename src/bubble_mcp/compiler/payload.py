@@ -249,8 +249,9 @@ def resolve_parent_path(
     context: BubbleProjectContext | None = None,
 ) -> list[str]:
     context_key = resolve_context_key(str(args.get("context") or "index"), context)
+    root_key = "%ed" if str(args.get("context_type") or "").strip().lower() == "reusable" else "%p3"
     parent = str(args.get("parent") or "").strip()
-    path = ["%p3", context_key]
+    path = [root_key, context_key]
     if parent.lower() in ROOT_PARENT_NAMES or parent == context_key:
         return path
 

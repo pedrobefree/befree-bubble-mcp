@@ -30,6 +30,7 @@ browser = [
 
 [project.scripts]
 bubble-mcp = "bubble_mcp.cli.main:main"
+bubble-mcp-figma-bridge = "bubble_mcp.figma_bridge:main"
 bubble-mcp-server = "bubble_mcp.server.stdio:main"
 
 [tool.setuptools.package-dir]

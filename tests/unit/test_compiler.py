@@ -81,6 +81,35 @@ def test_compile_create_text_with_real_bubble_context_indices() -> None:
     assert payload["changes"][4]["type"] == "id_counter"
 
 
+def test_compile_create_text_inside_reusable_context() -> None:
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "create_text",
+                "args": {
+                    "context": "mcp_card",
+                    "context_key": "bReusableSlot",
+                    "context_type": "reusable",
+                    "parent": "root",
+                    "parent_id": "bReusableRoot",
+                    "existing_children": [],
+                    "content": "Reusable text",
+                    "name": "Reusable Text",
+                    "slot_key": "bTextSlot",
+                },
+            }
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
+    payload = compiled["steps"][0]["args"]["write_payload"]
+
+    assert payload["changes"][0]["body"] == "%ed.bReusableSlot.%el.bTextSlot"
+    assert payload["changes"][1]["path_array"] == ["%ed", "bReusableSlot", "%el", "bTextSlot"]
+    assert payload["changes"][3]["path_array"] == ["_index", "issues_sub", "bReusableRoot"]
+
+
 def test_execute_plan_can_compile_missing_payload_before_execution() -> None:
     class FakeClient:
         def write(self, payload, session, *, dry_run=False):  # type: ignore[no-untyped-def]

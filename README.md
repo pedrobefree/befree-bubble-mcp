@@ -26,7 +26,7 @@ bubble-mcp-server
 - Compiler for basic `create_text` and `create_group` plans into executable Bubble write payloads.
 - Browser-assisted session login through optional Playwright support.
 - Eval harness for deterministic routing.
-- Local Figma bridge skeleton. Figma-side integration code is intentionally outside this repository.
+- Local Figma bridge for the Befree Figma plugin. Figma-side integration code is intentionally outside this repository.
 
 ## Planned Capabilities
 
@@ -53,6 +53,18 @@ Use the installed stdio server in your MCP config:
 ```
 
 If the client does not inherit your shell path, point `command` to the absolute `bubble-mcp-server` path.
+
+## Figma Bridge
+
+Start the local bridge from the repository clone when using the Befree Figma plugin:
+
+```bash
+BUBBLE_MCP_CONFIG_DIR=/Users/me/.config/bubble-mcp npm run figma:bridge
+```
+
+The bridge listens on `http://localhost:3333`, exposes `/health`, `/profiles`,
+and `/sync`, saves incoming plugin payloads under `tmp/bridge_data`, and runs
+the local Bubble sync executor before returning success.
 
 ## Safety Defaults
 
