@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import re
 import time
+from contextlib import redirect_stdout
 from dataclasses import dataclass, replace
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -114,6 +116,17 @@ def detect_project_context(
         profile=profile,
         app_id=resolved_app_id,
     )
+    if force and session and bubble_file is None:
+        default_export = default_bubble_export_path(profile, resolved_app_id).expanduser().resolve()
+        bubble_candidates = [
+            candidate
+            for candidate in bubble_candidates
+            if not (
+                candidate.get("source") == "profile_app_json_path"
+                and isinstance(candidate.get("path"), Path)
+                and candidate["path"].expanduser().resolve() == default_export
+            )
+        ]
     for candidate in bubble_candidates:
         attempts.append(
             {
@@ -770,24 +783,28 @@ def _split_bubble_export(
     attempts: list[dict[str, Any]],
 ) -> Path | None:
     try:
-        split_app(
-            input_path=path,
-            out_dir=modules_dir.parent,
-            app_name=app_id,
-            force=True,
-            pretty=True,
-            write_index=True,
-        )
+        split_output = StringIO()
+        with redirect_stdout(split_output):
+            split_app(
+                input_path=path,
+                out_dir=modules_dir.parent,
+                app_name=app_id,
+                force=True,
+                pretty=True,
+                write_index=True,
+            )
     except (OSError, SystemExit, ValueError) as exc:
         attempts.append({"source": "bubble_modules_split", "ok": False, "reason": str(exc)})
         return None
 
+    output = split_output.getvalue().strip()
     attempts.append(
         {
             "source": "bubble_modules_split",
             "ok": True,
             "path": str(modules_dir),
             "parser": "bubble_mcp.vendor.bubble_modules.split_app",
+            **({"log": output} if output else {}),
         }
     )
     return modules_dir

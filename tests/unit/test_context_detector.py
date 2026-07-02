@@ -165,6 +165,65 @@ def test_detect_context_downloads_bubble_export_before_crawler(tmp_path, monkeyp
     assert any(node.id == "element:elDownloaded" for node in context.nodes)
 
 
+def test_detect_context_force_refreshes_default_profile_bubble_cache(
+    tmp_path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
+    cached = default_bubble_export_path("dev", "synthetic-app")
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    cached.write_text(
+        json.dumps(
+            {
+                "appname": "synthetic-app",
+                "pages": {
+                    "pgCached": {
+                        "%p": {"%nm": "index"},
+                        "%el": {"elCached": {"%x": "Text", "%p": {"%nm": "Cached"}}},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    save_settings(
+        with_profile(
+            BubbleMcpSettings(config_dir=config_dir, default_profile=None, profiles={}),
+            BubbleProfile(
+                name="dev",
+                app_id="synthetic-app",
+                appname="synthetic-app",
+                app_json_path="contexts/dev/synthetic-app.bubble",
+            ),
+        )
+    )
+    save_session("dev", session_from_payload({"appId": "synthetic-app", "headers": {"Cookie": "sid=secret"}}))
+    downloaded_payload = {
+        "appname": "synthetic-app",
+        "pages": {
+            "pgDownloaded": {
+                "%p": {"%nm": "index"},
+                "%el": {"elDownloaded": {"%x": "Text", "%p": {"%nm": "Downloaded"}}},
+            }
+        },
+    }
+
+    class Response:
+        status_code = 200
+        content = json.dumps(downloaded_payload).encode("utf-8")
+        encoding = "utf-8"
+
+    monkeypatch.setattr("bubble_mcp.context.detector.requests.get", lambda *args, **kwargs: Response())
+
+    result = detect_project_context(profile="dev", app_id="synthetic-app", app_version="test", force=True)
+    context = load_context(result.context_path)
+
+    assert result.source == "downloaded_bubble"
+    assert any(node.id == "element:elDownloaded" for node in context.nodes)
+    assert not any(node.id == "element:elCached" for node in context.nodes)
+
+
 def test_detect_context_uses_cached_compact_context(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
     first_source = tmp_path / "app.bubble"

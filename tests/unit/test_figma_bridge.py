@@ -65,7 +65,9 @@ def test_figma_bridge_dry_run_builds_reusable_payloads(tmp_path, monkeypatch) ->
     assert result["rendered_nodes"] == 2
     root_payload = result["results"][0]["payload"]
     assert root_payload["changes"][1]["path_array"][0] == "%ed"
-    assert root_payload["changes"][1]["body"]["%p"]["%nm"] == "mcp_pricing"
+    assert root_payload["changes"][1]["body"]["%x"] == "CustomDefinition"
+    assert root_payload["changes"][1]["body"]["%nm"] == "mcp_pricing"
+    assert root_payload["changes"][1]["body"]["%p"]["custom_element_platform"] == "web"
     text_payload = result["results"][1]["payload"]
     assert text_payload["changes"][0]["body"].startswith("%ed.")
     assert text_payload["changes"][1]["body"]["%x"] == "Text"

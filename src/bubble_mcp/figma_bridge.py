@@ -101,12 +101,16 @@ def _root_reusable_payload(
     height = max(_as_int(source_node.get("height"), 280), 1)
     layout = "row" if str(source_node.get("layout", {}).get("mode") or "").upper() == "HORIZONTAL" else "column"
     body = {
-        "%x": "ReusableElement",
+        "%x": "CustomDefinition",
+        "%nm": name,
         "%p": {
-            "%nm": name,
+            "new_responsive": True,
             "%et": element_type,
             "%w": width,
             "%h": height,
+            "responsive_version": 1,
+            "element_version": 5,
+            "custom_element_platform": "web",
             "default_width": width,
             "min_width_px": width,
             "min_height_px": height,
