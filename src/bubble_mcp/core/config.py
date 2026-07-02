@@ -22,6 +22,7 @@ class BubbleProfile:
     app_id: str
     appname: str
     editor_url: str | None = None
+    app_version: str | None = None
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,8 @@ def load_settings(config_dir: Path | None = None) -> BubbleMcpSettings:
             app_id=app_id,
             appname=appname,
             editor_url=str(raw_profile.get("editor_url") or "").strip() or None,
+            app_version=str(raw_profile.get("app_version") or raw_profile.get("appVersion") or "").strip()
+            or None,
         )
 
     default_profile = str(payload.get("default_profile") or "").strip() or None
@@ -111,6 +114,7 @@ def save_settings(settings: BubbleMcpSettings) -> None:
                 "app_id": profile.app_id,
                 "appname": profile.appname,
                 **({"editor_url": profile.editor_url} if profile.editor_url else {}),
+                **({"app_version": profile.app_version} if profile.app_version else {}),
             }
             for name, profile in sorted(settings.profiles.items())
         },

@@ -28,7 +28,7 @@ Browser-assisted capture:
 ```bash
 python -m pip install "befree-bubble-mcp[browser]"
 python -m playwright install chromium
-bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180
+bubble-mcp session login --profile my-app --app-id my-bubble-app --app-version test --wait-seconds 180
 bubble-mcp session list
 bubble-mcp session inspect --profile my-app
 ```

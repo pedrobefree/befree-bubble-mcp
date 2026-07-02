@@ -50,7 +50,8 @@ Arguments and options:
 bubble-mcp profile add my-app \
   --app-id my-bubble-app \
   --appname my-bubble-app \
-  --editor-url "https://bubble.io/page?id=my-bubble-app"
+  --editor-url "https://bubble.io/page?id=my-bubble-app" \
+  --app-version test
 ```
 
 The first profile added becomes `default_profile` in `settings.json`.

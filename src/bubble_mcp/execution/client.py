@@ -73,6 +73,8 @@ def normalize_write_payload(payload: dict[str, Any], session: BubbleSessionData)
         raise ValueError("Bubble write payload must include a changes array.")
     if "app_version" not in normalized:
         normalized["app_version"] = session.app_version or "test"
+    if "appVersion" not in normalized:
+        normalized["appVersion"] = normalized["app_version"]
     return normalized
 
 
@@ -85,16 +87,30 @@ def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, An
 
     headers: dict[str, str] = {
         "accept": "application/json, text/javascript, */*; q=0.01",
+        "accept-language": captured.get("accept-language") or "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+        "cache-control": captured.get("cache-control") or "no-cache",
         "content-type": "application/json",
-        "referer": session.url or f"https://bubble.io/page?name={payload.get('appname', '')}",
+        "origin": captured.get("origin") or "https://bubble.io",
+        "priority": captured.get("priority") or "u=1, i",
+        "referer": captured.get("referer") or "https://bubble.io/",
+        "sec-fetch-dest": captured.get("sec-fetch-dest") or "empty",
+        "sec-fetch-mode": captured.get("sec-fetch-mode") or "cors",
+        "sec-fetch-site": captured.get("sec-fetch-site") or "same-origin",
         "user-agent": captured.get("user-agent") or "befree-bubble-mcp",
         "x-bubble-appname": captured.get("x-bubble-appname") or appname,
+        **({"x-bubble-client-commit-timestamp": captured["x-bubble-client-commit-timestamp"]} if captured.get("x-bubble-client-commit-timestamp") else {}),
+        **({"x-bubble-client-version": captured["x-bubble-client-version"]} if captured.get("x-bubble-client-version") else {}),
         "x-bubble-fiber-id": captured.get("x-bubble-fiber-id") or bubble_fiber_id,
         "x-bubble-pl": captured.get("x-bubble-pl") or bubble_request_id,
         "x-requested-with": captured.get("x-requested-with") or "XMLHttpRequest",
         "x-bubble-platform": captured.get("x-bubble-platform") or "web",
         "x-bubble-breaking-revision": captured.get("x-bubble-breaking-revision") or "5",
+        "x-bubble-r": captured.get("x-bubble-r") or session.url or f"https://bubble.io/page?id={appname}",
+        "x-bubble-utm-data": captured.get("x-bubble-utm-data") or "{}",
     }
+    for key in ("sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform"):
+        if captured.get(key):
+            headers[key] = captured[key]
     for key in (
         "authorization",
         "x-csrf-token",

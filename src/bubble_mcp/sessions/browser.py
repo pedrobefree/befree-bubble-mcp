@@ -53,6 +53,7 @@ def capture_session_with_playwright(
     headless: bool = False,
     wait_seconds: int = 120,
     user_data_dir: Path | None = None,
+    app_version: str | None = None,
 ) -> BubbleSessionData:
     """Open a local browser and capture Bubble cookies.
 
@@ -86,19 +87,32 @@ def capture_session_with_playwright(
             context = browser.new_context()
         page = context.pages[0] if context.pages else context.new_page()
 
-        def remember_write_headers(request: Any) -> None:
+        def remember_bubble_headers(request: Any) -> None:
             try:
-                if "bubble.io/appeditor/write" not in str(request.url):
+                if "bubble.io/" not in str(request.url):
                     return
                 raw_headers = request.headers
             except Exception:
                 return
             for key, value in raw_headers.items():
                 lowered = str(key).lower()
-                if lowered.startswith("x-bubble-") or lowered in {"x-requested-with", "user-agent"}:
+                if lowered.startswith("x-bubble-") or lowered in {
+                    "accept-language",
+                    "cache-control",
+                    "origin",
+                    "priority",
+                    "sec-ch-ua",
+                    "sec-ch-ua-mobile",
+                    "sec-ch-ua-platform",
+                    "sec-fetch-dest",
+                    "sec-fetch-mode",
+                    "sec-fetch-site",
+                    "x-requested-with",
+                    "user-agent",
+                }:
                     captured_write_headers[lowered] = str(value)
 
-        context.on("request", remember_write_headers)
+        context.on("request", remember_bubble_headers)
         page.goto(target_url, wait_until="domcontentloaded")
 
         deadline = time.monotonic() + max(1, wait_seconds)
@@ -140,6 +154,7 @@ def capture_session_with_playwright(
                 "User-Agent": last_user_agent,
                 **captured_write_headers,
             },
+            "appVersion": app_version or "test",
             "source": "browser",
         }
     )

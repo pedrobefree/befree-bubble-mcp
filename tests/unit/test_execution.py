@@ -46,6 +46,8 @@ def test_editor_client_posts_write_payload_with_fake_transport() -> None:
     assert result["ok"] is True
     assert result["valid_shape"] is True
     assert calls[0][1]["changes"][0]["value"]["caption"] == "Hello"
+    assert calls[0][1]["app_version"] == "test"
+    assert calls[0][1]["appVersion"] == "test"
     assert calls[0][2]["cookie"] == "sid=secret"
 
 
@@ -53,11 +55,20 @@ def test_editor_client_uses_aria_editor_write_headers() -> None:
     headers = build_editor_write_headers(synthetic_session(), write_payload())
 
     assert headers["accept"] == "application/json, text/javascript, */*; q=0.01"
+    assert headers["accept-language"]
+    assert headers["cache-control"] == "no-cache"
     assert headers["content-type"] == "application/json"
+    assert headers["origin"] == "https://bubble.io"
+    assert headers["referer"] == "https://bubble.io/"
+    assert headers["sec-fetch-dest"] == "empty"
+    assert headers["sec-fetch-mode"] == "cors"
+    assert headers["sec-fetch-site"] == "same-origin"
     assert headers["x-bubble-appname"] == "synthetic-app"
     assert headers["x-requested-with"] == "XMLHttpRequest"
     assert headers["x-bubble-platform"] == "web"
     assert headers["x-bubble-breaking-revision"] == "5"
+    assert headers["x-bubble-r"] == "https://bubble.io/page?name=synthetic-app"
+    assert headers["x-bubble-utm-data"] == "{}"
     assert headers["cookie"] == "sid=secret"
     assert headers["x-bubble-fiber-id"]
     assert headers["x-bubble-pl"]

@@ -50,6 +50,7 @@ def command_profile_add(args: argparse.Namespace) -> int:
         app_id=args.app_id,
         appname=args.appname or args.app_id,
         editor_url=args.editor_url,
+        app_version=args.app_version or None,
     )
     save_settings(with_profile(settings, profile))
     emit_json({"ok": True, "profile": profile.name, "app_id": profile.app_id})
@@ -68,6 +69,7 @@ def command_profile_list(_args: argparse.Namespace) -> int:
                     "app_id": profile.app_id,
                     "appname": profile.appname,
                     "editor_url": profile.editor_url,
+                    "app_version": profile.app_version,
                 }
                 for profile in settings.profiles.values()
             ],
@@ -217,12 +219,16 @@ def command_compile_plan(args: argparse.Namespace) -> int:
 
 def command_session_login(args: argparse.Namespace) -> int:
     browser_profile_dir = get_config_dir() / "browser-profiles" / args.profile
+    settings = load_settings()
+    configured_profile = settings.profiles.get(args.profile)
+    app_version = args.app_version or (configured_profile.app_version if configured_profile else None)
     session = capture_session_with_playwright(
         app_id=args.app_id,
         editor_url=args.editor_url or None,
         headless=args.headless,
         wait_seconds=args.wait_seconds,
         user_data_dir=browser_profile_dir,
+        app_version=app_version or "test",
     )
     target = save_session(args.profile, session)
     emit_json({"ok": True, "profile": args.profile, "path": str(target), "session": session.to_dict(redact=True)})
@@ -245,6 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--app-id", required=True)
     add_parser.add_argument("--appname", default="")
     add_parser.add_argument("--editor-url", default=None)
+    add_parser.add_argument("--app-version", default="test")
     add_parser.set_defaults(func=command_profile_add)
 
     list_parser = profile_subparsers.add_parser("list", help="List configured profiles.")
@@ -321,6 +328,7 @@ def build_parser() -> argparse.ArgumentParser:
     session_login_parser.add_argument("--profile", required=True)
     session_login_parser.add_argument("--app-id", required=True)
     session_login_parser.add_argument("--editor-url", default="")
+    session_login_parser.add_argument("--app-version", default="")
     session_login_parser.add_argument(
         "--wait-seconds",
         type=int,
