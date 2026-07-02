@@ -247,6 +247,7 @@ def _sync_component_with_aria_runtime(
     execute: bool,
 ) -> dict[str, Any]:
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    sync_type = str(meta.get("sync_type") or meta.get("syncType") or "").strip().lower()
     component_name = _clean_name(
         meta.get("component_name") or meta.get("componentName") or payload.get("content", {}).get("name"),
         fallback="figma_component",
@@ -257,10 +258,11 @@ def _sync_component_with_aria_runtime(
     child_parent = str(meta.get("child_parent") or meta.get("parent") or "").strip() or None
     export_images = meta.get("export_images") is True or meta.get("exportImages") is True
 
-    detected = detect_project_context(profile=profile, app_id=app_id, app_version=app_version)
+    detected = detect_project_context(profile=profile, app_id=app_id, app_version=app_version, force=sync_type == "style")
     bubble_file = detected.context_path.with_name(f"{app_id}.bubble")
     if not bubble_file.exists():
         raise ValueError(f"Bubble export not found for Aria runtime: {bubble_file}")
+    pruned_style_cache = _prune_stale_style_cache_for_bubble_file(bubble_file) if sync_type == "style" else []
 
     session = load_session(profile)
     if execute and session is None:
@@ -297,7 +299,6 @@ def _sync_component_with_aria_runtime(
                 profile_name=profile,
             )
             bridge_file = str(_current_bridge_payload_path(payload))
-            sync_type = str(meta.get("sync_type") or meta.get("syncType") or "").strip().lower()
             if sync_type == "style":
                 style_element_type = str(
                     meta.get("style_type")
@@ -346,9 +347,48 @@ def _sync_component_with_aria_runtime(
         "component_name": component_name,
         "executed": execute,
         "write_count": len(captured_payloads),
+        "pruned_style_cache": pruned_style_cache,
         "results": [{"index": index, **item} for index, item in enumerate(captured_results, start=1)],
         "logs": "\n".join(part for part in (stdout.getvalue().strip(), stderr.getvalue().strip()) if part),
     }
+
+
+def _prune_stale_style_cache_for_bubble_file(bubble_file: Path) -> list[str]:
+    try:
+        app_data = json.loads(bubble_file.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    raw_styles = app_data.get("styles")
+    if not isinstance(raw_styles, dict):
+        raw_styles = {}
+
+    cache_file = bubble_file.parent / ".bubble_cli_cache.json"
+    if not cache_file.exists():
+        return []
+    try:
+        cache = json.loads(cache_file.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    cached_styles = cache.get("styles")
+    if not isinstance(cached_styles, dict):
+        return []
+
+    removed: list[str] = []
+    for style_name, style_data in list(cached_styles.items()):
+        style_id = ""
+        if isinstance(style_data, dict):
+            style_id = str(style_data.get("id") or "").strip()
+        if style_id and style_id not in raw_styles:
+            removed.append(str(style_name))
+            cached_styles.pop(style_name, None)
+
+    if not removed:
+        return []
+    try:
+        cache_file.write_text(json.dumps(cache, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    except Exception:
+        return []
+    return removed
 
 
 _BRIDGE_PAYLOAD_PATHS: dict[int, Path] = {}

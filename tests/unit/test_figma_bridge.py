@@ -1,7 +1,8 @@
 import json
+from types import SimpleNamespace
 
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
-from bubble_mcp.figma_bridge import sync_bridge_payload_file
+from bubble_mcp.figma_bridge import _prune_stale_style_cache_for_bubble_file, sync_bridge_payload_file
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
 
@@ -238,6 +239,10 @@ def test_figma_bridge_routes_style_sync_to_style_runtime(tmp_path, monkeypatch) 
         "bubble_mcp.figma_bridge._load_aria_runtime_modules",
         lambda: (FakeBubbleCliModule, FakeBubbleSdk),
     )
+    monkeypatch.setattr(
+        "bubble_mcp.figma_bridge.detect_project_context",
+        lambda **_kwargs: SimpleNamespace(context_path=tmp_path / "config" / "contexts" / "smoke" / "synthetic-app-context.json"),
+    )
     bridge_payload = {
         "action": "sync_component",
         "meta": {
@@ -275,3 +280,38 @@ def test_figma_bridge_routes_style_sync_to_style_runtime(tmp_path, monkeypatch) 
     assert style_call["state"] == "Hover"
     assert style_call["text_alignment"] == "center"
     assert style_call["default_style"] is True
+
+
+def test_figma_bridge_prunes_stale_style_cli_cache(tmp_path) -> None:
+    bubble_file = tmp_path / "app.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "styles": {
+                    "Button_existing_": {"%d": "Existing", "%x": "Button", "%p": {}},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cache_file = tmp_path / ".bubble_cli_cache.json"
+    cache_file.write_text(
+        json.dumps(
+            {
+                "styles": {
+                    "Existing": {"id": "Button_existing_", "type": "Button"},
+                    "Ghost": {"id": "Button_ghost_", "type": "Button"},
+                },
+                "colors": {},
+                "fonts": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    removed = _prune_stale_style_cache_for_bubble_file(bubble_file)
+
+    cache = json.loads(cache_file.read_text(encoding="utf-8"))
+    assert removed == ["Ghost"]
+    assert "Existing" in cache["styles"]
+    assert "Ghost" not in cache["styles"]
