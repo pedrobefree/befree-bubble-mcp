@@ -86,6 +86,7 @@ def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  
                     "execute": True,
                     "selector": "#home-area",
                     "translate_to_existing_styles": True,
+                    "refresh_context": True,
                 },
             },
         }
@@ -101,6 +102,7 @@ def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  
     assert calls[0]["execute"] is True
     assert calls[0]["selector"] == "#home-area"
     assert calls[0]["translate_to_existing_styles"] is True
+    assert calls[0]["refresh_context"] is True
 
 
 def test_tools_list_includes_mutating_write_tool() -> None:

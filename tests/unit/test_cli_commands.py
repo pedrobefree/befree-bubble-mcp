@@ -87,6 +87,7 @@ def test_cli_import_html_runtime_uses_aria_importer(monkeypatch, capsys) -> None
                 "--selector",
                 "section",
                 "--translate-to-existing-styles",
+                "--refresh-context",
             ]
         )
         == 0
@@ -99,6 +100,7 @@ def test_cli_import_html_runtime_uses_aria_importer(monkeypatch, capsys) -> None
     assert calls[0]["execute"] is True
     assert calls[0]["selector"] == "section"
     assert calls[0]["translate_to_existing_styles"] is True
+    assert calls[0]["refresh_context"] is True
 
 
 def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]

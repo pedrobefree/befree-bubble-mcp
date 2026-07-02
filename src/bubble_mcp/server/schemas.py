@@ -137,6 +137,7 @@ def list_tool_schemas() -> list[dict[str, Any]]:
                     "placement": {"type": "string"},
                     "strict_validate": {"type": "boolean"},
                     "validation_out_dir": {"type": "string"},
+                    "refresh_context": {"type": "boolean"},
                 },
                 "required": ["profile", "context", "parent"],
                 "anyOf": [

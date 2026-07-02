@@ -149,6 +149,7 @@ def command_import_html(args: argparse.Namespace) -> int:
             rendered_html=args.rendered_html,
             strict_validate=args.strict_validate,
             validation_out_dir=args.validation_out_dir or None,
+            refresh_context=args.refresh_context,
         )
         emit_json(result)
         return 0 if result.get("ok") else 1
@@ -377,6 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
     html_parser.set_defaults(rendered_html=None)
     html_parser.add_argument("--strict-validate", action="store_true")
     html_parser.add_argument("--validation-out-dir", default="")
+    html_parser.add_argument("--refresh-context", action="store_true")
     html_parser.add_argument("--compile", action="store_true")
     html_parser.add_argument("--app-id", default="")
     html_parser.add_argument("--app-version", default="test")

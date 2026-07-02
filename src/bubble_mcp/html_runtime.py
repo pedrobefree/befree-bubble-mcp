@@ -119,6 +119,7 @@ def create_from_html_runtime(
     rendered_html: bool | None = None,
     strict_validate: bool = False,
     validation_out_dir: str | None = None,
+    refresh_context: bool = False,
 ) -> dict[str, Any]:
     profile = str(profile or "").strip()
     if not profile:
@@ -153,7 +154,7 @@ def create_from_html_runtime(
         profile=profile,
         app_id=resolved_app_id,
         app_version=resolved_app_version,
-        force=execute,
+        force=refresh_context,
     )
     bubble_file = detected.context_path.with_name(f"{resolved_app_id}.bubble")
     if not bubble_file.exists():
@@ -260,6 +261,7 @@ def create_from_html_runtime(
         "context": context,
         "parent": parent,
         "executed": execute,
+        "refresh_context": refresh_context,
         "context_sources": {
             "bubble_file": str(bubble_file),
             "consolelog_json_path": resolved_consolelog_path,

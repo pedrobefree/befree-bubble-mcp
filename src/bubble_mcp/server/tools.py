@@ -233,6 +233,7 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             rendered_html=args.get("rendered_html") if isinstance(args.get("rendered_html"), bool) else None,
             strict_validate=bool(args.get("strict_validate")),
             validation_out_dir=str(args.get("validation_out_dir") or "") or None,
+            refresh_context=bool(args.get("refresh_context")),
         )
 
     write_payload = args.get("write_payload") or args.get("payload")
