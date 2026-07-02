@@ -4,6 +4,10 @@ from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 
 
+def first_change(payload: dict, intent_name: str) -> dict:  # type: ignore[type-arg]
+    return next(change for change in payload["changes"] if change.get("intent", {}).get("name") == intent_name)
+
+
 def test_initialize_returns_server_info() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
 
@@ -76,7 +80,7 @@ def test_import_html_tool_can_compile_to_write_payloads() -> None:
     assert response is not None
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["validation"]["ok"] is True
-    assert payload["plan"]["steps"][0]["args"]["write_payload"]["changes"][0]["body"]["%x"] == "Group"
+    assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Group"
 
 
 def test_tools_list_includes_mutating_write_tool() -> None:
@@ -116,7 +120,7 @@ def test_direct_catalog_tool_call_compiles_when_supported() -> None:
     assert response is not None
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["compiled"] is True
-    assert payload["plan"]["steps"][0]["args"]["write_payload"]["changes"][0]["body"]["%x"] == "Text"
+    assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Text"
 
 
 def test_compile_plan_tool_returns_write_payload() -> None:
@@ -145,4 +149,4 @@ def test_compile_plan_tool_returns_write_payload() -> None:
 
     assert response is not None
     payload = json.loads(response["result"]["content"][0]["text"])
-    assert payload["plan"]["steps"][0]["args"]["write_payload"]["changes"][0]["body"]["%x"] == "Text"
+    assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Text"

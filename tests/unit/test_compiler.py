@@ -3,6 +3,10 @@ from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.sessions.store import session_from_payload
 
 
+def first_change(payload: dict, intent_name: str) -> dict:  # type: ignore[type-arg]
+    return next(change for change in payload["changes"] if change.get("intent", {}).get("name") == intent_name)
+
+
 def test_compile_create_text_step_to_write_payload() -> None:
     plan = {
         "steps": [
@@ -18,10 +22,13 @@ def test_compile_create_text_step_to_write_payload() -> None:
     payload = compiled["steps"][0]["args"]["write_payload"]
 
     assert payload["appname"] == "synthetic-app"
-    assert payload["changes"][0]["intent"]["name"] == "CreateElement"
-    assert payload["changes"][0]["path_array"] == ["%p3", "index"]
-    assert payload["changes"][0]["body"]["%x"] == "Text"
-    assert payload["changes"][0]["body"]["%p"]["%3"] == "Hello"
+    assert payload["changes"][0]["intent"]["name"] == "Update index"
+    assert payload["changes"][1]["intent"]["name"] == "CreateElement"
+    assert payload["changes"][1]["path_array"][:2] == ["%p3", "index"]
+    assert payload["changes"][1]["path_array"][-2] == "%el"
+    assert payload["changes"][1]["body"]["%x"] == "Text"
+    assert payload["changes"][1]["body"]["%p"]["%3"] == "Hello"
+    assert payload["changes"][2]["path_array"][:2] == ["_index", "issues_list"]
 
 
 def test_compile_create_group_step_to_write_payload() -> None:
@@ -38,8 +45,40 @@ def test_compile_create_group_step_to_write_payload() -> None:
     compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
     payload = compiled["steps"][0]["args"]["write_payload"]
 
-    assert payload["changes"][0]["body"]["%x"] == "Group"
-    assert payload["changes"][0]["body"]["%p"]["container_layout"] == "row"
+    assert payload["changes"][1]["body"]["%x"] == "Group"
+    assert payload["changes"][1]["body"]["%p"]["container_layout"] == "row"
+
+
+def test_compile_create_text_with_real_bubble_context_indices() -> None:
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "create_text",
+                "args": {
+                    "context": "index",
+                    "context_key": "bTKhs",
+                    "root_id": "bTKhr",
+                    "existing_children": ["bTilt", "bTKiP"],
+                    "content": "Hello",
+                    "name": "Text A",
+                    "slot_key": "bcFhj0",
+                    "id_counter": 11263917,
+                },
+            }
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
+    payload = compiled["steps"][0]["args"]["write_payload"]
+
+    assert payload["changes"][0]["path_array"] == ["_index", "id_to_path", payload["changes"][1]["body"]["id"]]
+    assert payload["changes"][0]["body"] == "%p3.bTKhs.%el.bcFhj0"
+    assert payload["changes"][1]["intent"]["name"] == "CreateElement"
+    assert payload["changes"][1]["path_array"] == ["%p3", "bTKhs", "%el", "bcFhj0"]
+    assert payload["changes"][2]["path_array"] == ["_index", "issues_list", payload["changes"][1]["body"]["id"]]
+    assert payload["changes"][3]["path_array"] == ["_index", "issues_sub", "bTKhr"]
+    assert payload["changes"][4]["type"] == "id_counter"
 
 
 def test_execute_plan_can_compile_missing_payload_before_execution() -> None:
@@ -68,7 +107,7 @@ def test_execute_plan_can_compile_missing_payload_before_execution() -> None:
     )
 
     assert result["ok"] is True
-    assert result["results"][0]["result"]["payload"]["changes"][0]["body"]["%x"] == "Text"
+    assert first_change(result["results"][0]["result"]["payload"], "CreateElement")["body"]["%x"] == "Text"
 
 
 def test_compile_update_text_and_delete_element() -> None:
@@ -148,8 +187,9 @@ def test_compile_generic_visual_catalog_tools() -> None:
     update_payload = compiled["steps"][1]["args"]["write_payload"]
     delete_payload = compiled["steps"][2]["args"]["write_payload"]
 
-    assert create_payload["changes"][0]["body"]["%x"] == "Button"
-    assert create_payload["changes"][0]["body"]["%p"]["%3"] == "Continue"
+    create_change = first_change(create_payload, "CreateElement")
+    assert create_change["body"]["%x"] == "Button"
+    assert create_change["body"]["%p"]["%3"] == "Continue"
     assert update_payload["changes"][0]["intent"]["name"] == "SetData"
     assert update_payload["changes"][0]["body"]["placeholder"] == "Email"
     assert delete_payload["changes"][0]["intent"]["name"] == "Delete"

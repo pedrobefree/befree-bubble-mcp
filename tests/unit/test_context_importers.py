@@ -37,8 +37,12 @@ def test_compiler_uses_imported_context_paths() -> None:
 
     compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app", context=context)
     payload = compiled["steps"][0]["args"]["write_payload"]
+    create_change = next(
+        change for change in payload["changes"] if change.get("intent", {}).get("name") == "CreateElement"
+    )
 
-    assert payload["changes"][0]["path_array"] == ["%p3", "pgIndex", "%el", "elCard"]
+    assert create_change["path_array"][:4] == ["%p3", "pgIndex", "%el", "elCard"]
+    assert payload["changes"][0]["path_array"][:2] == ["_index", "id_to_path"]
 
 
 def test_import_bubble_like_export(tmp_path) -> None:  # type: ignore[no-untyped-def]

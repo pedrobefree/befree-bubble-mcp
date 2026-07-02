@@ -165,7 +165,16 @@ steps, pass `--compile` and `--app-id` to compile those steps into
 ```bash
 bubble-mcp execute-plan --profile my-app --file ./plan.json --execute
 bubble-mcp execute-plan --profile my-app --file ./plan.json --app-id my-bubble-app --compile --execute
+bubble-mcp execute-plan --profile my-app --file ./plan.json --app-id my-bubble-app --compile --context-file ./my-app-context.json --execute
 ```
+
+When compiling visual creation steps for a real editor write, pass
+`--context-file` or include Bubble internal ids in the step args. The compiler
+uses that context to emit the editor index updates Bubble expects:
+`_index.id_to_path`, `_index.issues_list`, and `_index.issues_sub`, followed by
+the `CreateElement` change at the resolved `%p3.<page-id>.%el.<slot-id>` path.
+Bubble can return HTTP 200 for a write that does not appear in the editor when
+these index paths target the wrong page or parent.
 
 ## `bubble-mcp compile-plan`
 
@@ -173,6 +182,7 @@ Compiles supported abstract plan steps into Bubble write payloads.
 
 ```bash
 bubble-mcp compile-plan --file ./plan.json --app-id my-bubble-app --output ./compiled-plan.json
+bubble-mcp compile-plan --file ./plan.json --app-id my-bubble-app --context-file ./my-app-context.json
 ```
 
 ## `bubble-mcp eval run`

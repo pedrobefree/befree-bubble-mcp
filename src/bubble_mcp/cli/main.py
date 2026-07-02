@@ -190,12 +190,14 @@ def command_execute_plan(args: argparse.Namespace) -> int:
     plan = json.loads(Path(args.file).read_text(encoding="utf-8"))
     if not isinstance(plan, dict):
         raise ValueError("Plan file must contain a JSON object.")
+    context = load_context(Path(args.context_file)) if args.context_file else None
     result = execute_plan(
         plan,
         profile=args.profile,
         execute=args.execute,
         app_id=args.app_id or None,
         app_version=args.app_version,
+        context=context,
         compile_missing=args.compile,
     )
     emit_json(result)
@@ -206,10 +208,12 @@ def command_compile_plan(args: argparse.Namespace) -> int:
     plan = json.loads(Path(args.file).read_text(encoding="utf-8"))
     if not isinstance(plan, dict):
         raise ValueError("Plan file must contain a JSON object.")
+    context = load_context(Path(args.context_file)) if args.context_file else None
     compiled = compile_plan_to_write_payloads(
         plan,
         app_id=args.app_id,
         app_version=args.app_version,
+        context=context,
     )
     if args.output:
         Path(args.output).write_text(json.dumps(compiled, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -367,6 +371,11 @@ def build_parser() -> argparse.ArgumentParser:
     execute_plan_parser.add_argument("--file", required=True)
     execute_plan_parser.add_argument("--app-id", default="")
     execute_plan_parser.add_argument("--app-version", default="test")
+    execute_plan_parser.add_argument(
+        "--context-file",
+        default="",
+        help="Optional imported Bubble context JSON used while compiling abstract steps.",
+    )
     execute_plan_parser.add_argument("--compile", action="store_true", help="Compile supported abstract steps before execution.")
     execute_plan_parser.add_argument(
         "--execute",
@@ -382,6 +391,11 @@ def build_parser() -> argparse.ArgumentParser:
     compile_plan_parser.add_argument("--file", required=True)
     compile_plan_parser.add_argument("--app-id", required=True)
     compile_plan_parser.add_argument("--app-version", default="test")
+    compile_plan_parser.add_argument(
+        "--context-file",
+        default="",
+        help="Optional imported Bubble context JSON used to resolve internal Bubble paths.",
+    )
     compile_plan_parser.add_argument("--output", default="")
     compile_plan_parser.set_defaults(func=command_compile_plan)
 

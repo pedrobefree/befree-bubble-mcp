@@ -126,12 +126,80 @@ def resolve_context_key(name: str, context: BubbleProjectContext | None = None) 
         for node in context.nodes:
             if node.type not in {"page", "reusable"}:
                 continue
-            if node.label == target or node.id == target or node.id.endswith(f":{target}"):
+            if (
+                node.label == target
+                or node.id == target
+                or node.id.endswith(f":{target}")
+                or str(node.metadata.get("bubble_id") or "") == target
+                or str(node.metadata.get("key") or "") == target
+            ):
                 meta_key = node.metadata.get("bubble_id") or node.metadata.get("key")
                 return str(meta_key or node.label or target)
     if ":" in target:
         return target.split(":", 1)[1]
     return target
+
+
+def resolve_context_root_id(name: str, context: BubbleProjectContext | None = None) -> str | None:
+    target = str(name or "index").strip()
+    if context is not None:
+        for node in context.nodes:
+            if node.type not in {"page", "reusable"}:
+                continue
+            if (
+                node.label == target
+                or node.id == target
+                or node.id.endswith(f":{target}")
+                or str(node.metadata.get("bubble_id") or "") == target
+                or str(node.metadata.get("key") or "") == target
+            ):
+                root_id = node.metadata.get("root_id") or node.metadata.get("root")
+                return str(root_id).strip() or None
+    return None
+
+
+def resolve_existing_children(args: dict[str, Any]) -> list[str]:
+    raw = args.get("existing_children") or args.get("parent_children") or []
+    if isinstance(raw, str):
+        stripped = raw.strip()
+        if not stripped:
+            return []
+        try:
+            import json
+
+            decoded = json.loads(stripped)
+            if isinstance(decoded, list):
+                return [str(item) for item in decoded if str(item).strip()]
+        except Exception:
+            return [part.strip() for part in stripped.split(",") if part.strip()]
+    if isinstance(raw, list):
+        return [str(item) for item in raw if str(item).strip()]
+    return []
+
+
+def resolve_parent_index_id(
+    args: dict[str, Any],
+    *,
+    context: BubbleProjectContext | None,
+    context_name: str,
+) -> str:
+    explicit_id = str(args.get("parent_id") or args.get("root_id") or "").strip()
+    if explicit_id:
+        return explicit_id
+
+    parent = str(args.get("parent") or "").strip()
+    if parent.lower() in ROOT_PARENT_NAMES:
+        return resolve_context_root_id(context_name, context) or ""
+
+    if parent and context is not None:
+        for node in context.nodes:
+            if node.type != "element":
+                continue
+            if node.label == parent or node.id == parent or node.id.endswith(f":{parent}"):
+                element_id = str(node.metadata.get("bubble_id") or node.metadata.get("key") or "").strip()
+                return element_id or node.id.rsplit(":", 1)[-1]
+
+    return parent if parent and parent.lower() not in ROOT_PARENT_NAMES else ""
 
 
 def resolve_parent_path(
@@ -175,6 +243,19 @@ def create_change(path_array: list[str], body: dict[str, Any], session_id: str) 
     }
 
 
+def update_index_change(path_array: list[str], body: Any, session_id: str) -> dict[str, Any]:
+    return {
+        "intent": {
+            "name": "Update index",
+        },
+        "path_array": path_array,
+        "body": body,
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": session_id,
+    }
+
+
 def set_data_change(path_array: list[str], body: Any, session_id: str) -> dict[str, Any]:
     return {
         "intent": {
@@ -188,6 +269,55 @@ def set_data_change(path_array: list[str], body: Any, session_id: str) -> dict[s
         "changelog_data": [],
         "session_id": session_id,
     }
+
+
+def create_visual_element_changes(
+    args: dict[str, Any],
+    body: dict[str, Any],
+    *,
+    context: BubbleProjectContext | None,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    context_name = str(args.get("context") or "index")
+    context_key = str(args.get("context_key") or args.get("page_id") or "").strip() or resolve_context_key(
+        context_name,
+        context,
+    )
+    parent_path = resolve_parent_path({**args, "context": context_key}, context=context)
+    object_id = str(body.get("id") or "").strip() or bubble_element_id()
+    body["id"] = object_id
+    slot_key = str(args.get("slot_key") or args.get("element_key") or "").strip() or bubble_element_id()
+    if parent_path[-2:] == ["%el", slot_key]:
+        create_path = parent_path
+    elif parent_path[-1] == slot_key:
+        create_path = parent_path
+    else:
+        create_path = [*parent_path, "%el", slot_key]
+    full_path = ".".join(create_path)
+
+    parent_id = resolve_parent_index_id(args, context=context, context_name=context_name)
+
+    changes = [
+        update_index_change(["_index", "id_to_path", object_id], full_path, session_id),
+        create_change(create_path, body, session_id),
+        update_index_change(["_index", "issues_list", object_id], "[]", session_id),
+    ]
+    if parent_id:
+        children = resolve_existing_children(args)
+        if object_id not in children:
+            children.append(object_id)
+        import json
+
+        changes.append(
+            update_index_change(
+                ["_index", "issues_sub", parent_id],
+                json.dumps(children, separators=(",", ":")),
+                session_id,
+            )
+        )
+    if args.get("id_counter") is not None:
+        changes.append({"type": "id_counter", "value": int(args["id_counter"])})
+    return changes
 
 
 def delete_change(path_array: list[str], session_id: str) -> dict[str, Any]:
@@ -559,13 +689,13 @@ def compile_step_to_payload(
     session_id = bubble_session_id()
     if tool_name == "create_text":
         body = compile_create_text_step(args, context=context)
-        changes = [create_change(resolve_parent_path(args, context=context), body, session_id)]
+        changes = create_visual_element_changes(args, body, context=context, session_id=session_id)
     elif tool_name == "create_group":
         body = compile_create_group_step(args, context=context)
-        changes = [create_change(resolve_parent_path(args, context=context), body, session_id)]
+        changes = create_visual_element_changes(args, body, context=context, session_id=session_id)
     elif tool_name in VISUAL_CREATE_TYPES:
         body = compile_create_visual_step(tool_name, args, context=context)
-        changes = [create_change(resolve_parent_path(args, context=context), body, session_id)]
+        changes = create_visual_element_changes(args, body, context=context, session_id=session_id)
     elif tool_name == "update_text":
         changes = compile_update_text_changes(args, context=context, session_id=session_id)
     elif tool_name == "update_group":
