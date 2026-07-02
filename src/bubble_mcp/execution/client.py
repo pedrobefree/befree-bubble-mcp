@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import random
+import time
 from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import error, request
@@ -77,14 +79,21 @@ def normalize_write_payload(payload: dict[str, Any], session: BubbleSessionData)
 def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, Any]) -> dict[str, str]:
     captured = {str(key).lower(): str(value) for key, value in session.headers.items()}
     cookie = str(session.cookies or captured.get("cookie") or "").strip()
+    bubble_request_id = f"{int(time.time() * 1000)}x{random.randint(10, 99)}"
+    bubble_fiber_id = f"{int(time.time() * 1000)}x{random.randint(100000000000000000, 999999999999999999)}"
+    appname = str(payload.get("appname") or session.app_id or "").strip()
 
     headers: dict[str, str] = {
-        "accept": "application/json, text/plain, */*",
+        "accept": "application/json, text/javascript, */*; q=0.01",
         "content-type": "application/json",
-        "origin": "https://bubble.io",
         "referer": session.url or f"https://bubble.io/page?name={payload.get('appname', '')}",
         "user-agent": captured.get("user-agent") or "befree-bubble-mcp",
+        "x-bubble-appname": captured.get("x-bubble-appname") or appname,
+        "x-bubble-fiber-id": captured.get("x-bubble-fiber-id") or bubble_fiber_id,
+        "x-bubble-pl": captured.get("x-bubble-pl") or bubble_request_id,
         "x-requested-with": captured.get("x-requested-with") or "XMLHttpRequest",
+        "x-bubble-platform": captured.get("x-bubble-platform") or "web",
+        "x-bubble-breaking-revision": captured.get("x-bubble-breaking-revision") or "5",
     }
     for key in (
         "authorization",
@@ -160,4 +169,3 @@ class BubbleEditorClient:
             "valid_shape": valid_shape,
             "request": safe_request,
         }
-

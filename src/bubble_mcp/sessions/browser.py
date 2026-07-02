@@ -19,6 +19,10 @@ def _cookie_header(cookies: list[dict[str, Any]]) -> str:
 
 def _bubble_cookie_header(context: Any) -> str:
     cookies: list[dict[str, Any]] = []
+    try:
+        cookies.extend(context.cookies())
+    except Exception:
+        pass
     for url in ("https://bubble.io", "https://login.bubble.io", "https://app.bubble.io"):
         try:
             cookies.extend(context.cookies(url))
@@ -68,6 +72,7 @@ def capture_session_with_playwright(
     target_url = editor_url or f"https://bubble.io/page?id={app_id}"
     last_cookie_string = ""
     last_user_agent = "befree-bubble-mcp"
+    captured_write_headers: dict[str, str] = {}
     with sync_playwright() as playwright:
         if user_data_dir is not None:
             user_data_dir.mkdir(parents=True, exist_ok=True)
@@ -80,6 +85,20 @@ def capture_session_with_playwright(
             browser = playwright.chromium.launch(headless=headless)
             context = browser.new_context()
         page = context.pages[0] if context.pages else context.new_page()
+
+        def remember_write_headers(request: Any) -> None:
+            try:
+                if "bubble.io/appeditor/write" not in str(request.url):
+                    return
+                raw_headers = request.headers
+            except Exception:
+                return
+            for key, value in raw_headers.items():
+                lowered = str(key).lower()
+                if lowered.startswith("x-bubble-") or lowered in {"x-requested-with", "user-agent"}:
+                    captured_write_headers[lowered] = str(value)
+
+        context.on("request", remember_write_headers)
         page.goto(target_url, wait_until="domcontentloaded")
 
         deadline = time.monotonic() + max(1, wait_seconds)
@@ -119,6 +138,7 @@ def capture_session_with_playwright(
             "headers": {
                 "Cookie": last_cookie_string,
                 "User-Agent": last_user_agent,
+                **captured_write_headers,
             },
             "source": "browser",
         }
