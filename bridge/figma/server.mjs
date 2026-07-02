@@ -12,8 +12,21 @@ function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, {
     "content-type": "application/json",
     "content-length": Buffer.byteLength(payload),
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "authorization,content-type",
   });
   res.end(payload);
+}
+
+function sendCorsPreflight(res) {
+  res.writeHead(204, {
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET,POST,OPTIONS",
+    "access-control-allow-headers": "authorization,content-type",
+    "access-control-max-age": "86400",
+  });
+  res.end();
 }
 
 function readRequestJson(req) {
@@ -95,6 +108,11 @@ export function createFigmaBridgeServer(options = {}) {
     const url = new URL(req.url ?? "/", "http://localhost");
 
     try {
+      if (req.method === "OPTIONS") {
+        sendCorsPreflight(res);
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/health") {
         sendJson(res, 200, { ok: true });
         return;

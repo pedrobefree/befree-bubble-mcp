@@ -40,7 +40,24 @@ test("GET /health returns ok", async () => {
     const { response, body } = await jsonRequest(baseUrl, "/health");
 
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get("access-control-allow-origin"), "*");
     assert.deepEqual(body, { ok: true });
+  });
+});
+
+test("OPTIONS preflight allows Figma UI fetches", async () => {
+  await withBridge({}, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/profiles`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://www.figma.com",
+        "access-control-request-method": "GET",
+      },
+    });
+
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get("access-control-allow-origin"), "*");
+    assert.match(response.headers.get("access-control-allow-methods") || "", /GET/);
   });
 });
 
