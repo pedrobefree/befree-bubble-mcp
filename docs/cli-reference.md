@@ -193,8 +193,11 @@ bubble-mcp compile-plan --file ./plan.json --app-id my-bubble-app --context-file
 ## `bubble-mcp context detect`
 
 Detects and materializes project context. It tries local `.bubble` or
-`console.log(app)` artifacts when provided, then falls back to the Bubble editor
-crawler using the captured session.
+`console.log(app)` artifacts when provided, then downloads Bubble's authenticated
+export endpoint (`/appeditor/export/{version}/{appId}.bubble`) before falling
+back to the editor crawler. Successful downloads are cached under
+`~/.config/bubble-mcp/contexts/{profile}/` and split into
+`bubble_modules/{appId}/` next to the compact context.
 
 ```bash
 bubble-mcp context detect --profile my-app --app-id my-bubble-app --force

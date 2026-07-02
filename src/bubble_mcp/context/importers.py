@@ -218,8 +218,18 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
         raise ValueError("Bubble export must be a JSON object.")
+    raw_app = payload.get("app")
+    app = raw_app if isinstance(raw_app, dict) else payload
     crawler_like = {
-        "appId": payload.get("appname") or payload.get("app_id") or payload.get("name") or "unknown",
+        "appId": app.get("appname")
+        or app.get("app_id")
+        or app.get("id")
+        or app.get("_id")
+        or app.get("name")
+        or payload.get("appname")
+        or payload.get("app_id")
+        or payload.get("_id")
+        or "unknown",
         "pages": [
             {
                 "id": key,
@@ -229,7 +239,7 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
                 "elements": _obj(_obj(value).get("%el") or _obj(value).get("elements")),
                 "workflows": _obj(_obj(value).get("%wf") or _obj(value).get("workflows")),
             }
-            for key, value in _obj(payload.get("pages")).items()
+            for key, value in _obj(app.get("pages")).items()
         ],
         "reusables": [
             {
@@ -242,11 +252,11 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
                 "workflows": _obj(_obj(value).get("%wf") or _obj(value).get("workflows")),
             }
             for key, value in _obj(
-                payload.get("element_definitions") or payload.get("reusables")
+                app.get("element_definitions") or app.get("reusables")
             ).items()
         ],
-        "dataTypes": _obj(payload.get("data_types") or payload.get("dataTypes")),
-        "optionSets": _obj(payload.get("option_sets") or payload.get("optionSets")),
+        "dataTypes": _obj(app.get("data_types") or app.get("dataTypes") or app.get("user_types")),
+        "optionSets": _obj(app.get("option_sets") or app.get("optionSets")),
     }
     return context_from_crawler_payload(crawler_like, path)
 

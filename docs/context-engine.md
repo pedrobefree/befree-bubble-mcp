@@ -41,7 +41,8 @@ detector follows the same source priority used by Aria's Bubble tooling:
 
 1. Use a provided `.bubble` export when available.
 2. Use a provided `console.log(app)` capture when available.
-3. Attempt best-effort `.bubble` export discovery.
+3. Download the authenticated `.bubble` export from
+   `https://bubble.io/appeditor/export/{version}/{appId}.bubble`.
 4. Fall back to the editor path crawler using the captured Bubble session.
 5. If Bubble's path API only returns sparse hashes, open the authenticated
    Playwright editor profile and capture the editor's own network-loaded indexes
@@ -54,10 +55,18 @@ bubble-mcp context detect \
   --force
 ```
 
-The detector writes a compact context file under the local Bubble MCP config
-directory and, when the crawler runs, also writes a `{appId}-crawler-index.json`
-artifact next to it. These files are local project data and should not be
-committed.
+The detector writes local project artifacts under the Bubble MCP config
+directory:
+
+- Raw export: `~/.config/bubble-mcp/contexts/{profile}/{appId}.bubble`.
+- Split export modules: `~/.config/bubble-mcp/contexts/{profile}/bubble_modules/{appId}/`.
+  This split is produced by Aria's `bubble_modules.py` parser, vendored in the
+  package as `bubble_mcp.vendor.bubble_modules`.
+- Compact context: `~/.config/bubble-mcp/contexts/{profile}/{appId}-context.json`.
+- Crawler fallback, only when needed:
+  `~/.config/bubble-mcp/contexts/{profile}/{appId}-crawler-index.json`.
+
+These files are local project data and should not be committed.
 
 You can also seed the detector with local artifacts:
 

@@ -1,7 +1,12 @@
 import json
 from pathlib import Path
 
-from bubble_mcp.context.detector import detect_project_context
+from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings, with_profile
+from bubble_mcp.context.detector import (
+    default_bubble_export_path,
+    default_bubble_modules_dir,
+    detect_project_context,
+)
 from bubble_mcp.context.source import load_context
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
@@ -34,6 +39,130 @@ def test_detect_context_imports_local_bubble_file(tmp_path, monkeypatch) -> None
     assert page.metadata["bubble_id"] == "pgIndex"
     assert page.metadata["root_id"] == "rootIndex"
     assert page.metadata["children"] == ["elTitle"]
+
+
+def test_detect_context_imports_wrapped_bubble_export(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    bubble_file = tmp_path / "wrapped.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "app": {
+                    "id": "synthetic-app",
+                    "pages": {
+                        "pgWrapped": {
+                            "id": "rootWrapped",
+                            "%p": {"%nm": "index"},
+                            "%el": {"elWrapped": {"%x": "Text", "%p": {"%nm": "Wrapped"}}},
+                        }
+                    },
+                    "user_types": {"typeUser": {"%p": {"%nm": "User"}}},
+                },
+                "deployment": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = detect_project_context(profile="dev", app_id="synthetic-app", bubble_file=bubble_file)
+    context = load_context(result.context_path)
+
+    assert result.source == "bubble_file"
+    assert any(node.id == "page:index" and node.metadata["bubble_id"] == "pgWrapped" for node in context.nodes)
+    assert any(node.id == "element:elWrapped" for node in context.nodes)
+    assert any(node.id == "datatype:typeUser" for node in context.nodes)
+
+
+def test_detect_context_uses_profile_bubble_file_before_crawler(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
+    bubble_file = tmp_path / "profile-app.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "appname": "synthetic-app",
+                "pages": {
+                    "pgProfile": {
+                        "id": "rootProfile",
+                        "%p": {"%nm": "index"},
+                        "%el": {"elFromBubble": {"%x": "Text", "%p": {"%nm": "From Bubble"}}},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    settings = BubbleMcpSettings(config_dir=config_dir, default_profile=None, profiles={})
+    save_settings(
+        with_profile(
+            settings,
+            BubbleProfile(
+                name="dev",
+                app_id="synthetic-app",
+                appname="synthetic-app",
+                app_json_path=str(bubble_file),
+            ),
+        )
+    )
+    save_session("dev", session_from_payload({"appId": "synthetic-app", "headers": {"Cookie": "sid=secret"}}))
+
+    result = detect_project_context(profile="dev", app_id="synthetic-app", force=True)
+
+    assert result.source == "profile_app_json_path"
+    context = load_context(result.context_path)
+    assert any(node.id == "element:elFromBubble" for node in context.nodes)
+
+
+def test_detect_context_downloads_bubble_export_before_crawler(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
+    save_session(
+        "dev",
+        session_from_payload(
+            {
+                "appId": "synthetic-app",
+                "headers": {"Cookie": "sid=secret", "content-length": "10", "host": "bubble.io"},
+            }
+        ),
+    )
+    payload = {
+        "appname": "synthetic-app",
+        "pages": {
+            "pgDownloaded": {
+                "id": "rootDownloaded",
+                "%p": {"%nm": "index"},
+                "%el": {"elDownloaded": {"%x": "Text", "%p": {"%nm": "Downloaded"}}},
+            }
+        },
+    }
+    calls = []
+
+    class Response:
+        status_code = 200
+        content = json.dumps(payload).encode("utf-8")
+        encoding = "utf-8"
+
+    def fake_get(url, *, headers, timeout):  # type: ignore[no-untyped-def]
+        calls.append({"url": url, "headers": headers, "timeout": timeout})
+        return Response()
+
+    def unexpected_crawl(**_kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("crawler must not run when .bubble export succeeds")
+
+    monkeypatch.setattr("bubble_mcp.context.detector.requests.get", fake_get)
+    monkeypatch.setattr("bubble_mcp.context.detector.crawl_project_index", unexpected_crawl)
+
+    result = detect_project_context(profile="dev", app_id="synthetic-app", app_version="test", force=True)
+    context = load_context(result.context_path)
+
+    assert result.source == "downloaded_bubble"
+    assert calls[0]["url"] == "https://bubble.io/appeditor/export/test/synthetic-app.bubble"
+    assert "content-length" not in calls[0]["headers"]
+    assert "host" not in calls[0]["headers"]
+    assert default_bubble_export_path("dev", "synthetic-app").exists()
+    assert (default_bubble_modules_dir("dev", "synthetic-app") / "root.json").exists()
+    assert (default_bubble_modules_dir("dev", "synthetic-app") / "pages" / "pgDownloaded.json").exists()
+    assert any(node.id == "element:elDownloaded" for node in context.nodes)
 
 
 def test_detect_context_uses_cached_compact_context(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

@@ -52,6 +52,8 @@ def command_profile_add(args: argparse.Namespace) -> int:
         appname=args.appname or args.app_id,
         editor_url=args.editor_url,
         app_version=args.app_version or None,
+        app_json_path=args.app_json_path or None,
+        consolelog_json_path=args.consolelog_json_path or None,
     )
     save_settings(with_profile(settings, profile))
     emit_json({"ok": True, "profile": profile.name, "app_id": profile.app_id})
@@ -71,6 +73,8 @@ def command_profile_list(_args: argparse.Namespace) -> int:
                     "appname": profile.appname,
                     "editor_url": profile.editor_url,
                     "app_version": profile.app_version,
+                    "app_json_path": profile.app_json_path,
+                    "consolelog_json_path": profile.consolelog_json_path,
                 }
                 for profile in settings.profiles.values()
             ],
@@ -273,6 +277,16 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument("--appname", default="")
     add_parser.add_argument("--editor-url", default=None)
     add_parser.add_argument("--app-version", default="test")
+    add_parser.add_argument(
+        "--app-json-path",
+        default="",
+        help="Path to a local .bubble export. Used before consolelog/crawler context fallbacks.",
+    )
+    add_parser.add_argument(
+        "--consolelog-json-path",
+        default="",
+        help="Path to a local console.log(app) JSON/text capture. Used after .bubble and before crawler.",
+    )
     add_parser.set_defaults(func=command_profile_add)
 
     list_parser = profile_subparsers.add_parser("list", help="List configured profiles.")

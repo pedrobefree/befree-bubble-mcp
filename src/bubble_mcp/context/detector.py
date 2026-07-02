@@ -5,15 +5,18 @@ from __future__ import annotations
 import json
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
+
+import requests
 
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.path_api import BubblePathApiClient, PathResult, decode_bubble_path
 from bubble_mcp.context.source import load_context, save_context
-from bubble_mcp.core.config import get_config_dir, load_settings
+from bubble_mcp.core.config import BubbleProfile, get_config_dir, load_settings, save_settings, with_profile
 from bubble_mcp.sessions.store import BubbleSessionData, load_session
+from bubble_mcp.vendor.bubble_modules import split_app
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,18 @@ def default_crawler_index_path(profile: str, app_id: str) -> Path:
     return context_cache_dir() / safe_profile / f"{safe_app}-crawler-index.json"
 
 
+def default_bubble_export_path(profile: str, app_id: str) -> Path:
+    safe_profile = _safe_name(profile or "default")
+    safe_app = _safe_name(app_id)
+    return context_cache_dir() / safe_profile / f"{safe_app}.bubble"
+
+
+def default_bubble_modules_dir(profile: str, app_id: str) -> Path:
+    safe_profile = _safe_name(profile or "default")
+    safe_app = _safe_name(app_id)
+    return context_cache_dir() / safe_profile / "bubble_modules" / safe_app
+
+
 def detect_project_context(
     *,
     profile: str,
@@ -92,54 +107,91 @@ def detect_project_context(
             attempts=[{"source": "cached_context", "ok": True, "path": str(context_path)}],
         )
 
-    if bubble_file:
-        attempts.append({"source": "bubble_file", "path": str(bubble_file), "ok": bubble_file.exists()})
-        if bubble_file.exists():
+    bubble_candidates = _candidate_bubble_files(
+        explicit=bubble_file,
+        configured=configured_profile.app_json_path if configured_profile else None,
+        settings_dir=settings.config_dir,
+        profile=profile,
+        app_id=resolved_app_id,
+    )
+    for candidate in bubble_candidates:
+        attempts.append(
+            {
+                "source": candidate["source"],
+                "path": str(candidate["path"]),
+                "ok": candidate["path"].exists(),
+            }
+        )
+        if candidate["path"].exists():
             return _persist_imported_context(
-                bubble_file,
+                candidate["path"],
                 kind="bubble",
                 app_id=resolved_app_id,
-                source="bubble_file",
+                source=str(candidate["source"]),
                 context_path=context_path,
                 attempts=attempts,
             )
 
-    if consolelog_file:
+    consolelog_candidates = _candidate_consolelog_files(
+        explicit=consolelog_file,
+        configured=configured_profile.consolelog_json_path if configured_profile else None,
+        settings_dir=settings.config_dir,
+        profile=profile,
+        app_id=resolved_app_id,
+    )
+    for candidate in consolelog_candidates:
         attempts.append(
-            {"source": "consolelog_file", "path": str(consolelog_file), "ok": consolelog_file.exists()}
+            {
+                "source": candidate["source"],
+                "path": str(candidate["path"]),
+                "ok": candidate["path"].exists(),
+            }
         )
-        if consolelog_file.exists():
-            console_payload = _read_consolelog_file(consolelog_file)
+        if candidate["path"].exists():
+            console_payload = _read_consolelog_file(candidate["path"])
             if console_payload is not None:
                 return _persist_payload_context(
                     console_payload,
                     app_id=resolved_app_id,
-                    source="consolelog_file",
+                    source=str(candidate["source"]),
                     context_path=context_path,
                     attempts=attempts,
                 )
             try:
                 return _persist_imported_context(
-                    consolelog_file,
+                    candidate["path"],
                     kind="bubble",
                     app_id=resolved_app_id,
-                    source="consolelog_file",
+                    source=str(candidate["source"]),
                     context_path=context_path,
                     attempts=attempts,
                 )
             except Exception as exc:
-                attempts.append({"source": "consolelog_file", "ok": False, "reason": str(exc)})
+                attempts.append({"source": candidate["source"], "ok": False, "reason": str(exc)})
 
     if session:
         downloaded = _try_download_bubble_export(
             session=session,
             app_id=resolved_app_id,
             app_version=app_version,
+            profile=profile,
             attempts=attempts,
         )
         if downloaded is not None:
-            return _persist_payload_context(
+            _split_bubble_export(
                 downloaded,
+                app_id=resolved_app_id,
+                modules_dir=default_bubble_modules_dir(profile, resolved_app_id),
+                attempts=attempts,
+            )
+            _save_profile_app_json_path(
+                profile=profile,
+                app_id=resolved_app_id,
+                app_json_path=downloaded,
+            )
+            return _persist_imported_context(
+                downloaded,
+                kind="bubble",
                 app_id=resolved_app_id,
                 source="downloaded_bubble",
                 context_path=context_path,
@@ -275,6 +327,89 @@ def crawl_project_index(
         "apiCallCount": 4 + len(page_name_to_id) * 3 + len(custom_name_to_id) * 3 + len(backend_ids),
         "durationMs": int((time.time() - start) * 1000),
     }
+
+
+def _resolve_artifact_path(raw_path: str | Path | None, settings_dir: Path) -> Path | None:
+    if raw_path is None:
+        return None
+    text = str(raw_path).strip()
+    if not text:
+        return None
+    path = Path(text).expanduser()
+    if path.is_absolute():
+        return path
+    settings_candidate = settings_dir / path
+    if settings_candidate.exists():
+        return settings_candidate
+    return Path.cwd() / path
+
+
+def _unique_existing_order(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for candidate in candidates:
+        path = candidate.get("path")
+        if not isinstance(path, Path):
+            continue
+        key = str(path.expanduser())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(candidate)
+    return out
+
+
+def _candidate_bubble_files(
+    *,
+    explicit: Path | None,
+    configured: str | None,
+    settings_dir: Path,
+    profile: str,
+    app_id: str,
+) -> list[dict[str, Any]]:
+    profile_dir = context_cache_dir() / _safe_name(profile)
+    resolved_explicit = _resolve_artifact_path(explicit, settings_dir)
+    resolved_configured = _resolve_artifact_path(configured, settings_dir)
+    candidates = [
+        *([{"source": "bubble_file", "path": resolved_explicit}] if resolved_explicit else []),
+        *(
+            [{"source": "profile_app_json_path", "path": resolved_configured}]
+            if resolved_configured
+            else []
+        ),
+        {"source": "local_bubble_candidate", "path": profile_dir / f"{_safe_name(app_id)}.bubble"},
+        {"source": "local_bubble_candidate", "path": profile_dir / "app.bubble"},
+        {"source": "local_bubble_candidate", "path": Path.cwd() / f"{_safe_name(app_id)}.bubble"},
+        {"source": "local_bubble_candidate", "path": Path.cwd() / "app.bubble"},
+        {"source": "local_bubble_candidate", "path": Path.cwd() / "src" / "app.bubble"},
+    ]
+    return _unique_existing_order(candidates)
+
+
+def _candidate_consolelog_files(
+    *,
+    explicit: Path | None,
+    configured: str | None,
+    settings_dir: Path,
+    profile: str,
+    app_id: str,
+) -> list[dict[str, Any]]:
+    profile_dir = context_cache_dir() / _safe_name(profile)
+    resolved_explicit = _resolve_artifact_path(explicit, settings_dir)
+    resolved_configured = _resolve_artifact_path(configured, settings_dir)
+    candidates = [
+        *([{"source": "consolelog_file", "path": resolved_explicit}] if resolved_explicit else []),
+        *(
+            [{"source": "profile_consolelog_json_path", "path": resolved_configured}]
+            if resolved_configured
+            else []
+        ),
+        {"source": "local_consolelog_candidate", "path": profile_dir / f"{_safe_name(app_id)}-consolelog-app.json"},
+        {"source": "local_consolelog_candidate", "path": profile_dir / "consolelog-app.json"},
+        {"source": "local_consolelog_candidate", "path": Path.cwd() / f"{_safe_name(app_id)}-consolelog-app.json"},
+        {"source": "local_consolelog_candidate", "path": Path.cwd() / "consolelog-app.json"},
+    ]
+    return _unique_existing_order(candidates)
 
 
 def _needs_editor_network_capture(index: dict[str, Any]) -> bool:
@@ -510,13 +645,152 @@ def _try_download_bubble_export(
     session: BubbleSessionData,
     app_id: str,
     app_version: str,
+    profile: str,
     attempts: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    # Bubble's export endpoint is not stable across plans/editor versions. Keep
-    # this as a best-effort stage before falling back to the path crawler.
-    _ = (session, app_id, app_version)
-    attempts.append({"source": "downloaded_bubble", "ok": False, "reason": "no stable public export endpoint"})
-    return None
+) -> Path | None:
+    version = app_version or session.app_version or "test"
+    export_url = f"https://bubble.io/appeditor/export/{version}/{app_id}.bubble"
+    headers = _export_headers(session)
+    target_path = default_bubble_export_path(profile, app_id)
+    try:
+        response = requests.get(export_url, headers=headers, timeout=60)
+    except requests.RequestException as exc:
+        attempts.append({"source": "downloaded_bubble", "ok": False, "url": export_url, "reason": str(exc)})
+        return None
+
+    if response.status_code != 200:
+        attempts.append(
+            {
+                "source": "downloaded_bubble",
+                "ok": False,
+                "url": export_url,
+                "status": response.status_code,
+                "reason": "export endpoint rejected the captured session",
+            }
+        )
+        return None
+
+    content = response.content
+    prefix = content[:256].lstrip().lower()
+    if prefix.startswith(b"<!doctype html") or prefix.startswith(b"<html"):
+        attempts.append(
+            {
+                "source": "downloaded_bubble",
+                "ok": False,
+                "url": export_url,
+                "status": response.status_code,
+                "reason": "export endpoint returned HTML; captured session is not editor-compatible",
+            }
+        )
+        return None
+
+    try:
+        decoded = content.decode(response.encoding or "utf-8")
+        parsed = json.loads(decoded)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        attempts.append(
+            {
+                "source": "downloaded_bubble",
+                "ok": False,
+                "url": export_url,
+                "status": response.status_code,
+                "reason": f"export response is not a JSON .bubble payload: {exc}",
+            }
+        )
+        return None
+    if not isinstance(parsed, dict):
+        attempts.append(
+            {
+                "source": "downloaded_bubble",
+                "ok": False,
+                "url": export_url,
+                "status": response.status_code,
+                "reason": "export response is not a JSON object",
+            }
+        )
+        return None
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    attempts.append(
+        {
+            "source": "downloaded_bubble",
+            "ok": True,
+            "url": export_url,
+            "path": str(target_path),
+            "bytes": len(content),
+        }
+    )
+    return target_path
+
+
+def _export_headers(session: BubbleSessionData) -> dict[str, str]:
+    blocked = {"content-length", "host", "connection"}
+    headers = {
+        str(key): str(value)
+        for key, value in session.headers.items()
+        if value is not None and str(key).lower() not in blocked
+    }
+    headers.setdefault("accept", "application/json, text/javascript, */*; q=0.01")
+    headers.setdefault("x-requested-with", "XMLHttpRequest")
+    headers.setdefault("referer", f"https://bubble.io/page?id={session.app_id}")
+    if session.cookies and not any(key.lower() == "cookie" for key in headers):
+        headers["cookie"] = session.cookies
+    return headers
+
+
+def _save_profile_app_json_path(*, profile: str, app_id: str, app_json_path: Path) -> None:
+    settings = load_settings()
+    existing = settings.profiles.get(profile)
+    relative_path = _relative_to_config_dir(app_json_path, settings.config_dir)
+    if existing:
+        updated_profile = replace(existing, app_json_path=relative_path)
+    else:
+        updated_profile = BubbleProfile(
+            name=profile,
+            app_id=app_id,
+            appname=app_id,
+            app_json_path=relative_path,
+        )
+    save_settings(with_profile(settings, updated_profile))
+
+
+def _relative_to_config_dir(path: Path, config_dir: Path) -> str:
+    try:
+        return str(path.relative_to(config_dir))
+    except ValueError:
+        return str(path)
+
+
+def _split_bubble_export(
+    path: Path,
+    *,
+    app_id: str,
+    modules_dir: Path,
+    attempts: list[dict[str, Any]],
+) -> Path | None:
+    try:
+        split_app(
+            input_path=path,
+            out_dir=modules_dir.parent,
+            app_name=app_id,
+            force=True,
+            pretty=True,
+            write_index=True,
+        )
+    except (OSError, SystemExit, ValueError) as exc:
+        attempts.append({"source": "bubble_modules_split", "ok": False, "reason": str(exc)})
+        return None
+
+    attempts.append(
+        {
+            "source": "bubble_modules_split",
+            "ok": True,
+            "path": str(modules_dir),
+            "parser": "bubble_mcp.vendor.bubble_modules.split_app",
+        }
+    )
+    return modules_dir
 
 
 def _try_extract_consolelog_app(

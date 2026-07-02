@@ -23,6 +23,8 @@ class BubbleProfile:
     appname: str
     editor_url: str | None = None
     app_version: str | None = None
+    app_json_path: str | None = None
+    consolelog_json_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -93,6 +95,8 @@ def load_settings(config_dir: Path | None = None) -> BubbleMcpSettings:
             editor_url=str(raw_profile.get("editor_url") or "").strip() or None,
             app_version=str(raw_profile.get("app_version") or raw_profile.get("appVersion") or "").strip()
             or None,
+            app_json_path=str(raw_profile.get("app_json_path") or "").strip() or None,
+            consolelog_json_path=str(raw_profile.get("consolelog_json_path") or "").strip() or None,
         )
 
     default_profile = str(payload.get("default_profile") or "").strip() or None
@@ -115,6 +119,12 @@ def save_settings(settings: BubbleMcpSettings) -> None:
                 "appname": profile.appname,
                 **({"editor_url": profile.editor_url} if profile.editor_url else {}),
                 **({"app_version": profile.app_version} if profile.app_version else {}),
+                **({"app_json_path": profile.app_json_path} if profile.app_json_path else {}),
+                **(
+                    {"consolelog_json_path": profile.consolelog_json_path}
+                    if profile.consolelog_json_path
+                    else {}
+                ),
             }
             for name, profile in sorted(settings.profiles.items())
         },
