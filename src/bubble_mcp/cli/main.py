@@ -25,6 +25,7 @@ from bubble_mcp.core.config import (
 from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
+from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
@@ -132,6 +133,26 @@ def command_validate_plan(args: argparse.Namespace) -> int:
 
 
 def command_import_html(args: argparse.Namespace) -> int:
+    if args.runtime:
+        result = create_from_html_runtime(
+            profile=args.profile,
+            context=args.context,
+            parent=args.parent,
+            html_file=args.file,
+            app_id=args.app_id or None,
+            app_version=args.app_version,
+            execute=args.execute,
+            selector=args.selector or None,
+            placement=args.placement or None,
+            translate_to_existing_styles=args.translate_to_existing_styles,
+            style_match_threshold=args.style_match_threshold,
+            rendered_html=args.rendered_html,
+            strict_validate=args.strict_validate,
+            validation_out_dir=args.validation_out_dir or None,
+        )
+        emit_json(result)
+        return 0 if result.get("ok") else 1
+
     html = Path(args.file).read_text(encoding="utf-8")
     plan = html_to_plan(html, context=args.context, parent=args.parent)
     payload = plan.to_dict()
@@ -344,6 +365,18 @@ def build_parser() -> argparse.ArgumentParser:
     html_parser.add_argument("--file", required=True)
     html_parser.add_argument("--context", default="index")
     html_parser.add_argument("--parent", default="index")
+    html_parser.add_argument("--runtime", action="store_true", help="Use Aria's advanced create-from-html runtime.")
+    html_parser.add_argument("--profile", default="")
+    html_parser.add_argument("--execute", action="store_true")
+    html_parser.add_argument("--selector", default="")
+    html_parser.add_argument("--placement", choices=["top", "bottom"], default="")
+    html_parser.add_argument("--translate-to-existing-styles", action="store_true")
+    html_parser.add_argument("--style-match-threshold", type=float, default=0.78)
+    html_parser.add_argument("--rendered-html", dest="rendered_html", action="store_true")
+    html_parser.add_argument("--no-rendered-html", dest="rendered_html", action="store_false")
+    html_parser.set_defaults(rendered_html=None)
+    html_parser.add_argument("--strict-validate", action="store_true")
+    html_parser.add_argument("--validation-out-dir", default="")
     html_parser.add_argument("--compile", action="store_true")
     html_parser.add_argument("--app-id", default="")
     html_parser.add_argument("--app-version", default="test")

@@ -60,6 +60,47 @@ def test_cli_import_html_can_compile_to_write_payloads(capsys) -> None:  # type:
     assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Group"
 
 
+def test_cli_import_html_runtime_uses_aria_importer(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_create_from_html_runtime(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "engine": "aria_runtime", "write_count": 1, "executed": kwargs["execute"]}
+
+    monkeypatch.setattr("bubble_mcp.cli.main.create_from_html_runtime", fake_create_from_html_runtime)
+
+    assert (
+        main(
+            [
+                "import",
+                "html",
+                "--file",
+                "tests/fixtures/html/login-card.html",
+                "--runtime",
+                "--profile",
+                "smoke",
+                "--context",
+                "index",
+                "--parent",
+                "root",
+                "--execute",
+                "--selector",
+                "section",
+                "--translate-to-existing-styles",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["engine"] == "aria_runtime"
+    assert calls[0]["profile"] == "smoke"
+    assert calls[0]["html_file"] == "tests/fixtures/html/login-card.html"
+    assert calls[0]["execute"] is True
+    assert calls[0]["selector"] == "section"
+    assert calls[0]["translate_to_existing_styles"] is True
+
+
 def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     session_path = tmp_path / "session.json"

@@ -41,6 +41,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "bubble_mcp.aria_runtime.figma_bridge" = ["*.json"]
+"bubble_mcp.aria_runtime" = ["scripts/*.mjs", "scripts/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

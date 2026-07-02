@@ -1,23 +1,10 @@
 from __future__ import annotations
 
-import importlib.util
 import re
-from pathlib import Path
 from typing import Any, Dict, Optional
 
 
-def _load_source_parser_class():
-    runtime_root = Path(__file__).resolve().parents[2]
-    source_parser_path = (runtime_root / "../bubble-editor/html_to_bubble/parser.py").resolve()
-    spec = importlib.util.spec_from_file_location("_bubble_editor_source_parser", source_parser_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Could not load source parser from {source_parser_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.HTMLParser
-
-
-_SourceHTMLParser = _load_source_parser_class()
+from .source_parser import HTMLParser as _SourceHTMLParser
 
 
 class HTMLParser(_SourceHTMLParser):

@@ -16,6 +16,7 @@ from bubble_mcp.core.config import load_settings
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
+from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
@@ -220,6 +221,27 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     the local compiler can be compiled/executed directly. Any family can execute
     when the caller provides an exact Bubble ``write_payload``.
     """
+
+    if name == "create_from_html":
+        html_file = str(args.get("html_file") or "").strip()
+        html = str(args.get("html") or "").strip()
+        return create_from_html_runtime(
+            profile=str(args.get("profile") or ""),
+            context=str(args.get("context") or ""),
+            parent=str(args.get("parent") or ""),
+            html_file=html_file or None,
+            html=html or None,
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+            execute=bool(args.get("execute")),
+            selector=str(args.get("selector") or "") or None,
+            placement=str(args.get("placement") or "") or None,
+            translate_to_existing_styles=bool(args.get("translate_to_existing_styles")),
+            style_match_threshold=float(args.get("style_match_threshold") or 0.78),
+            rendered_html=args.get("rendered_html") if isinstance(args.get("rendered_html"), bool) else None,
+            strict_validate=bool(args.get("strict_validate")),
+            validation_out_dir=str(args.get("validation_out_dir") or "") or None,
+        )
 
     write_payload = args.get("write_payload") or args.get("payload")
     profile = str(args.get("profile") or "").strip()

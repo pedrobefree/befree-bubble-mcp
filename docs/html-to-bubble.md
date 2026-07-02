@@ -1,11 +1,41 @@
 # HTML To Bubble
 
-The HTML converter turns simple HTML component input into Bubble plans.
+The package exposes two HTML-to-Bubble paths:
+
+- `bubble-mcp import html` without `--runtime`: conservative compatibility converter that returns a validated plan.
+- `bubble-mcp import html --runtime`: Aria's advanced `create-from-html` runtime, with selector support, style translation, rendered DOM support, and direct Bubble writes when `--execute` is set.
 
 Convert HTML into a validated Bubble plan:
 
 ```bash
 bubble-mcp import html --file component.html --context index --parent index
+```
+
+Run the advanced Aria importer in preview mode:
+
+```bash
+bubble-mcp import html \
+  --file component.html \
+  --runtime \
+  --profile smoke \
+  --app-id my-bubble-app \
+  --context index \
+  --parent root \
+  --selector '.pricing-card' \
+  --translate-to-existing-styles
+```
+
+Execute the advanced import against Bubble:
+
+```bash
+bubble-mcp import html \
+  --file component.html \
+  --runtime \
+  --profile smoke \
+  --app-id my-bubble-app \
+  --context index \
+  --parent root \
+  --execute
 ```
 
 Compile the generated plan directly into Bubble `/appeditor/write` payloads:
@@ -14,7 +44,7 @@ Compile the generated plan directly into Bubble `/appeditor/write` payloads:
 bubble-mcp import html --file component.html --context index --parent index --compile --app-id my-bubble-app
 ```
 
-MCP clients can call the same flow through `bubble_import_html`:
+MCP clients can call the conservative plan flow through `bubble_import_html`:
 
 ```json
 {
@@ -26,10 +56,26 @@ MCP clients can call the same flow through `bubble_import_html`:
 }
 ```
 
+MCP clients can call the advanced Aria runtime through the ported catalog tool `create_from_html`:
+
+```json
+{
+  "profile": "smoke",
+  "app_id": "my-bubble-app",
+  "context": "index",
+  "parent": "root",
+  "html": "<section><h1>Welcome</h1></section>",
+  "execute": false,
+  "selector": "section",
+  "translate_to_existing_styles": true
+}
+```
+
 Implemented stages:
 
 ```text
-HTML -> Bubble plan -> semantic validation -> optional write_payload compilation -> execute-plan
+Conservative: HTML -> Bubble plan -> semantic validation -> optional write_payload compilation -> execute-plan
+Advanced: HTML/file/URL -> Aria parser -> mapper -> BubbleCLI create-from-html -> optional /appeditor/write
 ```
 
 Supported conservative mapping:

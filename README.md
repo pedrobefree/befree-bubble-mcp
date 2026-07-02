@@ -20,7 +20,7 @@ bubble-mcp-server
 - Local profile management.
 - Compact context loading, search, and import from `.bubble`/consolelog or crawler-index JSON.
 - Deterministic planner and semantic validator.
-- Basic HTML-to-Bubble converter.
+- HTML-to-Bubble import: conservative plan converter plus Aria's advanced `create-from-html` runtime.
 - Local session import/listing for Bubble editor credentials.
 - Authenticated `/appeditor/write` execution through CLI and MCP.
 - Compiler for basic `create_text` and `create_group` plans into executable Bubble write payloads.

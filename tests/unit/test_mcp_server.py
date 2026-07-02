@@ -83,6 +83,48 @@ def test_import_html_tool_can_compile_to_write_payloads() -> None:
     assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Group"
 
 
+def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_create_from_html_runtime(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "engine": "aria_runtime", "write_count": 1, "executed": kwargs["execute"]}
+
+    monkeypatch.setattr("bubble_mcp.server.tools.create_from_html_runtime", fake_create_from_html_runtime)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 10,
+            "method": "tools/call",
+            "params": {
+                "name": "create_from_html",
+                "arguments": {
+                    "profile": "smoke",
+                    "app_id": "synthetic-app",
+                    "context": "index",
+                    "parent": "root",
+                    "html": "<section><h1>Welcome</h1></section>",
+                    "execute": True,
+                    "selector": "section",
+                    "translate_to_existing_styles": True,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["engine"] == "aria_runtime"
+    assert calls[0]["profile"] == "smoke"
+    assert calls[0]["context"] == "index"
+    assert calls[0]["parent"] == "root"
+    assert calls[0]["html"] == "<section><h1>Welcome</h1></section>"
+    assert calls[0]["execute"] is True
+    assert calls[0]["selector"] == "section"
+    assert calls[0]["translate_to_existing_styles"] is True
+
+
 def test_tools_list_includes_mutating_write_tool() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 5, "method": "tools/list"})
 

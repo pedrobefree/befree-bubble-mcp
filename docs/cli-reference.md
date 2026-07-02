@@ -101,7 +101,7 @@ plans whose steps include `args.write_payload`.
 
 ## `bubble-mcp import html`
 
-Converts a simple HTML file into a validated Bubble plan.
+Converts an HTML file into Bubble output. By default this uses the conservative plan converter.
 
 ```bash
 bubble-mcp import html --file component.html --context index --parent index
@@ -113,6 +113,22 @@ Add `--compile --app-id` to convert supported generated steps into
 ```bash
 bubble-mcp import html --file component.html --context index --parent index --compile --app-id my-bubble-app
 ```
+
+Use `--runtime` for Aria's advanced `create-from-html` importer:
+
+```bash
+bubble-mcp import html \
+  --file component.html \
+  --runtime \
+  --profile smoke \
+  --app-id my-bubble-app \
+  --context index \
+  --parent root \
+  --selector '.pricing-card' \
+  --translate-to-existing-styles
+```
+
+Add `--execute` to apply the generated writes to Bubble.
 
 ## `bubble-mcp session import`
 
