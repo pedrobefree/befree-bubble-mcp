@@ -61,29 +61,6 @@ def test_plan_tool_returns_valid_plan() -> None:
     assert payload["plan"]["steps"][0]["tool_name"] == "create_text"
 
 
-def test_import_html_tool_can_compile_to_write_payloads() -> None:
-    response = handle_request(
-        {
-            "jsonrpc": "2.0",
-            "id": 9,
-            "method": "tools/call",
-            "params": {
-                "name": "bubble_import_html",
-                "arguments": {
-                    "html": "<section><h1>Welcome</h1></section>",
-                    "compile": True,
-                    "app_id": "synthetic-app",
-                },
-            },
-        }
-    )
-
-    assert response is not None
-    payload = json.loads(response["result"]["content"][0]["text"])
-    assert payload["validation"]["ok"] is True
-    assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Group"
-
-
 def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     calls = []
 
@@ -105,9 +82,9 @@ def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  
                     "app_id": "synthetic-app",
                     "context": "index",
                     "parent": "root",
-                    "html": "<section><h1>Welcome</h1></section>",
+                    "url": "https://example.com/page.html",
                     "execute": True,
-                    "selector": "section",
+                    "selector": "#home-area",
                     "translate_to_existing_styles": True,
                 },
             },
@@ -120,9 +97,9 @@ def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  
     assert calls[0]["profile"] == "smoke"
     assert calls[0]["context"] == "index"
     assert calls[0]["parent"] == "root"
-    assert calls[0]["html"] == "<section><h1>Welcome</h1></section>"
+    assert calls[0]["html_file"] == "https://example.com/page.html"
     assert calls[0]["execute"] is True
-    assert calls[0]["selector"] == "section"
+    assert calls[0]["selector"] == "#home-area"
     assert calls[0]["translate_to_existing_styles"] is True
 
 
@@ -132,6 +109,19 @@ def test_tools_list_includes_mutating_write_tool() -> None:
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert "bubble_editor_write" in names
+
+
+def test_tools_list_exposes_only_advanced_html_importer() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 12, "method": "tools/list"})
+
+    assert response is not None
+    tools = response["result"]["tools"]
+    names = {tool["name"] for tool in tools}
+    assert "create_from_html" in names
+    assert "bubble_import_html" not in names
+    assert "bubble_import_html_dry_run" not in names
+    create_schema = next(tool for tool in tools if tool["name"] == "create_from_html")
+    assert "rendered DOM" in create_schema["description"]
 
 
 def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

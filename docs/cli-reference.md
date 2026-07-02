@@ -264,7 +264,7 @@ Implemented tools:
 - `bubble_context_summary`
 - `bubble_context_find`
 - `bubble_plan`
-- `bubble_import_html`
+- `create_from_html`
 - `bubble_compile_plan`
 - `bubble_eval_run`
 - `bubble_session_list`

@@ -7,7 +7,6 @@ from pathlib import Path
 
 from bubble_mcp import __version__
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
-from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import detect_project_context
 from bubble_mcp.context.mutation_overlay import record_mutation_overlay
@@ -106,23 +105,6 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             context=str(args.get("context") or "index"),
             parent=str(args.get("parent") or "index"),
         ).to_dict()
-        return {"ok": True, "plan": plan, "validation": validate_plan(plan)}
-    if name in {"bubble_import_html", "bubble_import_html_dry_run"}:
-        args = arguments or {}
-        plan = html_to_plan(
-            str(args.get("html") or ""),
-            context=str(args.get("context") or "index"),
-            parent=str(args.get("parent") or "index"),
-        ).to_dict()
-        if bool(args.get("compile")):
-            app_id = str(args.get("app_id") or "").strip()
-            if not app_id:
-                raise ValueError("bubble_import_html compilation requires app_id.")
-            plan = compile_plan_to_write_payloads(
-                plan,
-                app_id=app_id,
-                app_version=str(args.get("app_version") or "test"),
-            )
         return {"ok": True, "plan": plan, "validation": validate_plan(plan)}
     if name == "bubble_eval_run":
         args = arguments or {}
@@ -233,7 +215,7 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     """
 
     if name == "create_from_html":
-        html_file = str(args.get("html_file") or "").strip()
+        html_file = str(args.get("url") or args.get("html_file") or args.get("file") or "").strip()
         html = str(args.get("html") or "").strip()
         return create_from_html_runtime(
             profile=str(args.get("profile") or ""),

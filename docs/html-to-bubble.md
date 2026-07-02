@@ -50,19 +50,7 @@ Compile the generated plan directly into Bubble `/appeditor/write` payloads:
 bubble-mcp import html --file component.html --context index --parent index --compile --app-id my-bubble-app
 ```
 
-MCP clients can call the conservative plan flow through `bubble_import_html`:
-
-```json
-{
-  "html": "<section><h1>Welcome</h1></section>",
-  "context": "index",
-  "parent": "index",
-  "compile": true,
-  "app_id": "my-bubble-app"
-}
-```
-
-MCP clients can call the advanced Aria runtime through the ported catalog tool `create_from_html`:
+MCP clients should call the advanced Aria runtime through `create_from_html`:
 
 ```json
 {
@@ -70,9 +58,10 @@ MCP clients can call the advanced Aria runtime through the ported catalog tool `
   "app_id": "my-bubble-app",
   "context": "index",
   "parent": "root",
-  "html": "<section><h1>Welcome</h1></section>",
+  "url": "https://example.com/page.html",
   "execute": false,
-  "selector": "section",
+  "selector": "#home-area",
+  "rendered_html": true,
   "translate_to_existing_styles": true
 }
 ```
