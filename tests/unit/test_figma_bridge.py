@@ -5,8 +5,33 @@ from bubble_mcp.figma_bridge import sync_bridge_payload_file
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
 
-def test_figma_bridge_dry_run_builds_reusable_payloads(tmp_path, monkeypatch) -> None:
+def test_figma_bridge_dry_run_uses_aria_runtime(tmp_path, monkeypatch) -> None:
     config_dir = tmp_path / "config"
+    bubble_file = config_dir / "contexts" / "smoke" / "synthetic-app.bubble"
+    bubble_file.parent.mkdir(parents=True, exist_ok=True)
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "pages": {
+                    "index": {
+                        "id": "index",
+                        "name": "index",
+                        "type": "Page",
+                        "properties": {
+                            "element_type": "Page",
+                            "default_width": 1200,
+                            "height": 800,
+                        },
+                        "elements": {},
+                    }
+                },
+                "element_definitions": {},
+                "styles": {},
+                "_index": {"id_to_path": {"index": "pages.index"}},
+            }
+        ),
+        encoding="utf-8",
+    )
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
     save_settings(
         BubbleMcpSettings(
@@ -18,6 +43,7 @@ def test_figma_bridge_dry_run_builds_reusable_payloads(tmp_path, monkeypatch) ->
                     app_id="synthetic-app",
                     appname="synthetic-app",
                     app_version="test",
+                    app_json_path=str(bubble_file),
                 )
             },
         )
@@ -60,14 +86,9 @@ def test_figma_bridge_dry_run_builds_reusable_payloads(tmp_path, monkeypatch) ->
     result = sync_bridge_payload_file(payload_path)
 
     assert result["ok"] is True
+    assert result["engine"] == "aria_runtime"
     assert result["executed"] is False
     assert result["import_mode"] == "reusable"
-    assert result["rendered_nodes"] == 2
-    root_payload = result["results"][0]["payload"]
-    assert root_payload["changes"][1]["path_array"][0] == "%ed"
-    assert root_payload["changes"][1]["body"]["%x"] == "CustomDefinition"
-    assert root_payload["changes"][1]["body"]["%nm"] == "mcp_pricing"
-    assert root_payload["changes"][1]["body"]["%p"]["custom_element_platform"] == "web"
-    text_payload = result["results"][1]["payload"]
-    assert text_payload["changes"][0]["body"].startswith("%ed.")
-    assert text_payload["changes"][1]["body"]["%x"] == "Text"
+    assert result["component_name"] == "mcp_pricing"
+    assert "Syncing component: mcp_pricing" in result["logs"]
+    assert "Creating Reusable 'mcp_pricing'" in result["logs"]

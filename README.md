@@ -64,7 +64,8 @@ BUBBLE_MCP_CONFIG_DIR=/Users/me/.config/bubble-mcp npm run figma:bridge
 
 The bridge listens on `http://localhost:3333`, exposes `/health`, `/profiles`,
 and `/sync`, saves incoming plugin payloads under `tmp/bridge_data`, and runs
-the local Bubble sync executor before returning success.
+the Aria-derived Figma-to-Bubble runtime through the local Bubble session before
+returning success.
 
 ## Safety Defaults
 

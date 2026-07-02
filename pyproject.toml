@@ -39,6 +39,9 @@ bubble-mcp-server = "bubble_mcp.server.stdio:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"bubble_mcp.aria_runtime.figma_bridge" = ["*.json"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]

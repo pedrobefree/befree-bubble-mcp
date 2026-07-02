@@ -1,0 +1,40 @@
+{
+    "naming": {
+        "separator": " ",
+        "case": "title",
+        "remove_numeric_prefix": false
+    },
+    "default_color_mapping": {
+        "brand.600": "Primary",
+        "base.black": "Text",
+        "error.600": "Destructive",
+        "success.600": "Success",
+        "warning.600": "Alert",
+        "base.white": [
+            "Primary Contrast",
+            "Surface",
+            "Background"
+        ]
+    },
+    "color_mapping": {
+        "color.base.white": "Pure White",
+        "color.base.black": "Pure Black"
+    },
+    "font_mapping": {},
+    "filters": {
+        "include_color_paths": [
+            "color.*"
+        ],
+        "exclude_color_paths": [
+            "color.avatar user square.*"
+        ],
+        "include_typography_paths": [
+            "font.*",
+            "typography.*"
+        ],
+        "include_button_paths": [
+            "button.*",
+            "components.button.*"
+        ]
+    }
+}

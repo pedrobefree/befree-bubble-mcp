@@ -26,11 +26,13 @@ BUBBLE_MCP_CONFIG_DIR=/Users/me/.config/bubble-mcp npm run figma:bridge
 ```
 
 `POST /sync` saves the incoming plugin payload under `tmp/bridge_data` and then
-executes the local Bubble sync routine. The endpoint returns success only after
-the routine completes. If Bubble rejects a write or the session/profile cannot
-be resolved, the bridge returns an error to the plugin instead of reporting a
-false positive.
+executes the Aria-derived Figma-to-Bubble runtime against the local Bubble MCP
+session. The endpoint returns success only after the Bubble writes complete. If
+Bubble rejects a write or the session/profile cannot be resolved, the bridge
+returns an error to the plugin instead of reporting a false positive.
 
-For component payloads, the bridge currently supports reusable imports by
-creating a Bubble reusable definition under `%ed` and then importing renderable
-Figma child nodes into that reusable context.
+For component payloads, the bridge uses the exported `.bubble` context and the
+ported Aria component sync logic to create or update Bubble reusable definitions,
+styles, groups, text, buttons, layout, spacing, shadows, and responsive metadata.
+The transport is local: editor writes go through the stored Bubble session, not
+through the legacy Aria webhook.

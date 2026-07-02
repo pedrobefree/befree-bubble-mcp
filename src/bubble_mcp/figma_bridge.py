@@ -8,7 +8,11 @@ the writes complete.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
+import sys
+from contextlib import redirect_stderr, redirect_stdout
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
@@ -209,6 +213,131 @@ def _execute_payloads(
     return [{"index": index, **result} for index, result in enumerate(results, start=1)]
 
 
+class _FakeInquirer:
+    class List:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+    class Text:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
+            pass
+
+    @staticmethod
+    def prompt(_questions: Any) -> None:
+        return None
+
+
+def _load_aria_runtime_modules() -> tuple[Any, Any]:
+    runtime_dir = Path(__file__).resolve().parent / "aria_runtime"
+    runtime_path = str(runtime_dir)
+    if runtime_path not in sys.path:
+        sys.path.insert(0, runtime_path)
+    bubble_cli = importlib.import_module("bubble_cli")
+    bubble_sdk = importlib.import_module("bubble_sdk")
+    bubble_cli.inquirer = _FakeInquirer()
+    return bubble_cli, bubble_sdk
+
+
+def _sync_component_with_aria_runtime(
+    payload: dict[str, Any],
+    *,
+    profile: str,
+    app_id: str,
+    app_version: str,
+    execute: bool,
+) -> dict[str, Any]:
+    meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    component_name = _clean_name(
+        meta.get("component_name") or meta.get("componentName") or payload.get("content", {}).get("name"),
+        fallback="figma_component",
+    )
+    element_type = str(meta.get("element_type") or meta.get("component_type") or "Group")
+    import_mode = str(meta.get("import_mode") or meta.get("importMode") or "reusable").lower()
+    child_context = str(meta.get("child_context") or meta.get("context") or "").strip() or None
+    child_parent = str(meta.get("child_parent") or meta.get("parent") or "").strip() or None
+    export_images = meta.get("export_images") is True or meta.get("exportImages") is True
+
+    detected = detect_project_context(profile=profile, app_id=app_id, app_version=app_version)
+    bubble_file = detected.context_path.with_name(f"{app_id}.bubble")
+    if not bubble_file.exists():
+        raise ValueError(f"Bubble export not found for Aria runtime: {bubble_file}")
+
+    session = load_session(profile)
+    if execute and session is None:
+        raise ValueError(f"No Bubble session stored for profile '{profile}'.")
+
+    bubble_cli, bubble_sdk = _load_aria_runtime_modules()
+    captured_payloads: list[dict[str, Any]] = []
+    captured_results: list[dict[str, Any]] = []
+
+    original_send = bubble_sdk.PayloadBuilder.send_to_webhook
+
+    def send_to_local_bubble(builder: Any, _url: str = "") -> Any:
+        write_payload = builder.build()
+        captured_payloads.append(write_payload)
+        if not execute:
+            captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
+            return {"ok": True, "dry_run": True}
+        assert session is not None
+        result = BubbleEditorClient().write(write_payload, session, dry_run=False)
+        captured_results.append({"ok": bool(result.get("ok")), "executed": True, "result": result})
+        if not result.get("ok"):
+            raise RuntimeError(str(result.get("error") or result.get("reason") or "Bubble write failed"))
+        return result
+
+    stdout = StringIO()
+    stderr = StringIO()
+    try:
+        bubble_sdk.PayloadBuilder.send_to_webhook = send_to_local_bubble
+        with redirect_stdout(stdout), redirect_stderr(stderr):
+            cli = bubble_cli.BubbleCLI(
+                app_json_path=str(bubble_file),
+                appname=app_id,
+                webhook_url="local://bubble-mcp",
+                profile_name=profile,
+            )
+            success = cli.sync_component(
+                bridge_file=str(_current_bridge_payload_path(payload)),
+                element_type=element_type,
+                name_override=component_name,
+                dry_run=not execute,
+                import_mode=import_mode,
+                context=child_context,
+                parent=child_parent,
+                export_images=export_images,
+            )
+    finally:
+        bubble_sdk.PayloadBuilder.send_to_webhook = original_send
+
+    if not success:
+        raise RuntimeError("Aria Figma sync runtime failed.")
+
+    return {
+        "ok": all(bool(item.get("ok")) for item in captured_results),
+        "engine": "aria_runtime",
+        "profile": profile,
+        "app_id": app_id,
+        "app_version": app_version,
+        "action": payload.get("action") or "sync_component",
+        "import_mode": import_mode,
+        "component_name": component_name,
+        "executed": execute,
+        "write_count": len(captured_payloads),
+        "results": [{"index": index, **item} for index, item in enumerate(captured_results, start=1)],
+        "logs": "\n".join(part for part in (stdout.getvalue().strip(), stderr.getvalue().strip()) if part),
+    }
+
+
+_BRIDGE_PAYLOAD_PATHS: dict[int, Path] = {}
+
+
+def _current_bridge_payload_path(payload: dict[str, Any]) -> Path:
+    path = _BRIDGE_PAYLOAD_PATHS.get(id(payload))
+    if path is None:
+        raise ValueError("Bridge payload path is required for Aria runtime sync.")
+    return path
+
+
 def sync_component_payload(payload: dict[str, Any]) -> dict[str, Any]:
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
     content = payload.get("content") if isinstance(payload.get("content"), dict) else {}
@@ -237,6 +366,18 @@ def sync_component_payload(payload: dict[str, Any]) -> dict[str, Any]:
         or "test"
     )
     execute = meta.get("dry_run") is not True
+    try:
+        return _sync_component_with_aria_runtime(
+            payload,
+            profile=profile,
+            app_id=app_id,
+            app_version=app_version,
+            execute=execute,
+        )
+    except Exception:
+        if str(meta.get("allow_simple_fallback") or "").lower() not in {"1", "true", "yes"}:
+            raise
+
     component_name = _clean_name(
         meta.get("component_name") or meta.get("componentName") or content.get("name"),
         fallback="figma_component",
@@ -312,7 +453,11 @@ def sync_bridge_payload_file(path: Path) -> dict[str, Any]:
     action = str(payload.get("action") or "sync_component")
     if action not in {"sync_component", "component", "unknown"}:
         raise ValueError(f"Unsupported Figma bridge action: {action}")
-    return sync_component_payload(payload)
+    _BRIDGE_PAYLOAD_PATHS[id(payload)] = path
+    try:
+        return sync_component_payload(payload)
+    finally:
+        _BRIDGE_PAYLOAD_PATHS.pop(id(payload), None)
 
 
 def main(argv: list[str] | None = None) -> int:
