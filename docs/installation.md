@@ -16,22 +16,34 @@ current CLI and MCP server are installed from Python.
 - An MCP client that can launch stdio servers, such as Codex, Claude Desktop, or
   another compatible client.
 
-## Local editable install
+## Local smoke install
 
-Use this when developing from a checkout or testing the package before
-publishing:
+Use this when testing the package the same way an end user will run it:
 
 ```bash
 python3.11 -m venv .venv
 . .venv/bin/activate
-pip install -e .
+python -m pip install ".[browser]"
+python -m playwright install chromium
+bubble-mcp --help
+```
+
+## Local editable install
+
+Use this when developing from a checkout or testing the package before
+publishing while editing source files:
+
+```bash
+python3.11 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e .
 bubble-mcp --help
 ```
 
 Install development dependencies when running tests or static checks:
 
 ```bash
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 ```
 
 ## Optional isolated install with pipx

@@ -6,12 +6,23 @@ Install the package or activate the virtual environment where it is installed:
 
 ```bash
 . .venv/bin/activate
-pip install -e .
+python -m pip install -e .
 bubble-mcp --help
 ```
 
 For `pipx`, install from the local checkout with `pipx install .` or from the
 published package with `pipx install befree-bubble-mcp`.
+
+## `No module named playwright` after installing browser extras
+
+Your shell may be using a global or Conda `pip` instead of the virtual
+environment's `pip`. Install through the active Python interpreter:
+
+```bash
+. .venv/bin/activate
+python -m pip install -e ".[browser]"
+python -m playwright install chromium
+```
 
 ## MCP client cannot find `bubble-mcp-server`
 

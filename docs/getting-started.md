@@ -15,14 +15,18 @@ From a local checkout of this repository:
 ```bash
 python3.11 -m venv .venv
 . .venv/bin/activate
-pip install -e .
+python -m pip install ".[browser]"
+python -m playwright install chromium
 ```
 
 If you want test and development dependencies too:
 
 ```bash
-pip install -e ".[dev]"
+python -m pip install ".[dev,browser]"
 ```
+
+Use `python -m pip install -e ".[dev,browser]"` only when you are actively
+editing the source checkout and want imports to point at local files.
 
 Confirm the console scripts are available:
 

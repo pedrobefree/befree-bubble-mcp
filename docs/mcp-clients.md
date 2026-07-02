@@ -10,7 +10,8 @@ Install the Python package and create at least one local Bubble profile:
 ```bash
 python3.11 -m venv .venv
 . .venv/bin/activate
-pip install -e .
+python -m pip install ".[browser]"
+python -m playwright install chromium
 bubble-mcp init
 bubble-mcp profile add my-app --app-id my-bubble-app
 bubble-mcp profile list
