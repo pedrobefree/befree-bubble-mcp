@@ -23,6 +23,22 @@ Import:
 bubble-mcp session import --profile my-app --file ./bubble-session.json
 ```
 
+Browser-assisted capture:
+
+```bash
+python -m pip install "befree-bubble-mcp[browser]"
+python -m playwright install chromium
+bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180
+bubble-mcp session list
+```
+
+`session login` uses a persistent local Chromium profile under the Bubble MCP
+config directory, opens the Bubble editor, and polls Bubble cookies while the
+window is open. `--wait-seconds` is the maximum capture window. After logging
+in, leave the editor open for a few seconds before closing the browser so the
+latest cookies can be captured. If you close the window early, the command saves
+the most recent cookies captured during that run.
+
 Provider roadmap:
 
 - `manual`: import a local session.

@@ -124,12 +124,18 @@ bubble-mcp session import --profile my-app --file ./bubble-session.json
 ## `bubble-mcp session login`
 
 Opens a local Chromium browser through Playwright and captures Bubble cookies.
+The browser profile is persisted under the local Bubble MCP config directory so
+subsequent login attempts can reuse the same Bubble browser session.
 
 ```bash
 python -m pip install "befree-bubble-mcp[browser]"
 python -m playwright install chromium
 bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 120
 ```
+
+`--wait-seconds` is the maximum time the command keeps polling cookies. After
+logging in, leave the Bubble editor open for a few seconds before closing the
+browser window.
 
 ## `bubble-mcp session list`
 

@@ -189,11 +189,13 @@ def command_compile_plan(args: argparse.Namespace) -> int:
 
 
 def command_session_login(args: argparse.Namespace) -> int:
+    browser_profile_dir = get_config_dir() / "browser-profiles" / args.profile
     session = capture_session_with_playwright(
         app_id=args.app_id,
         editor_url=args.editor_url or None,
         headless=args.headless,
         wait_seconds=args.wait_seconds,
+        user_data_dir=browser_profile_dir,
     )
     target = save_session(args.profile, session)
     emit_json({"ok": True, "profile": args.profile, "path": str(target), "session": session.to_dict(redact=True)})
@@ -292,7 +294,12 @@ def build_parser() -> argparse.ArgumentParser:
     session_login_parser.add_argument("--profile", required=True)
     session_login_parser.add_argument("--app-id", required=True)
     session_login_parser.add_argument("--editor-url", default="")
-    session_login_parser.add_argument("--wait-seconds", type=int, default=120)
+    session_login_parser.add_argument(
+        "--wait-seconds",
+        type=int,
+        default=120,
+        help="Maximum time to keep the browser open while polling and saving the latest Bubble cookies.",
+    )
     session_login_parser.add_argument("--headless", action="store_true")
     session_login_parser.set_defaults(func=command_session_login)
 
