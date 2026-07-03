@@ -139,6 +139,25 @@ def estimate_tokens(payload: Any) -> int:
     return max(1, len(json.dumps(payload, separators=(",", ":"), sort_keys=True)) // 4)
 
 
+def _plan_parser(plan: dict[str, Any], matched: bool) -> str:
+    routing = plan.get("routing")
+    if isinstance(routing, dict):
+        parser = str(routing.get("parser") or "").strip()
+        if parser:
+            return parser
+    metadata = plan.get("metadata")
+    if isinstance(metadata, dict):
+        metadata_routing = metadata.get("routing")
+        if isinstance(metadata_routing, dict):
+            parser = str(metadata_routing.get("parser") or "").strip()
+            if parser:
+                return parser
+    parser = str(plan.get("parser") or "").strip()
+    if parser:
+        return parser
+    return "regex" if matched else "none"
+
+
 def run_eval(
     dataset_path: Path,
     *,
@@ -209,7 +228,7 @@ def run_eval(
                 "has_write_payload": has_write_payload,
                 "validation_ok": validation_ok,
                 "tool_name": current_first_step.get("tool_name") if isinstance(current_first_step, dict) else None,
-                "parser": "deterministic" if matched else "none",
+                "parser": _plan_parser(plan, matched),
                 "fallback_reason": fallback_reasons[0] if fallback_reasons else None,
                 "fallback_reasons": fallback_reasons,
                 "warnings": warnings,

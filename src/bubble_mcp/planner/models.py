@@ -21,9 +21,10 @@ class BubblePlan:
     risk: str
     requires_approval: bool
     warnings: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "message": self.message,
             "risk": self.risk,
             "requires_approval": self.requires_approval,
@@ -38,3 +39,10 @@ class BubblePlan:
                 for step in self.steps
             ],
         }
+        if self.metadata:
+            payload["metadata"] = self.metadata
+            routing = self.metadata.get("routing")
+            if isinstance(routing, dict):
+                payload["parser"] = routing.get("parser")
+                payload["routing"] = routing
+        return payload

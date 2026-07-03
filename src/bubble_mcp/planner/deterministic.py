@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 
+from bubble_mcp.planner.example_matcher import match_example
 from bubble_mcp.planner.models import BubblePlan, PlanStep
 
 
@@ -30,6 +31,29 @@ def plan_message(message: str, context: str = "index", parent: str = "index") ->
             requires_approval=True,
             warnings=["Destructive requests are recognized but not planned by the bootstrap planner."],
         )
+    example_match = match_example(message, context=context, parent=parent)
+    if example_match is not None:
+        return BubblePlan(
+            message=message,
+            risk=example_match.entry.risk,
+            requires_approval=False,
+            warnings=warnings,
+            metadata={
+                "routing": {
+                    "parser": "example_match",
+                    "corpus_entry": example_match.entry.id,
+                    "score": example_match.score,
+                    "utterance": example_match.utterance,
+                }
+            },
+            steps=[
+                PlanStep(
+                    id="step_1",
+                    tool_name=example_match.tool_name,
+                    args=example_match.args,
+                )
+            ],
+        )
     if re.search(r"\b(text|texto)\b", normalized):
         content = _extract_quoted_or_after_saying(message)
         return BubblePlan(
@@ -37,6 +61,7 @@ def plan_message(message: str, context: str = "index", parent: str = "index") ->
             risk="routine_visual_mutation",
             requires_approval=False,
             warnings=warnings,
+            metadata={"routing": {"parser": "regex", "rule": "create_text"}},
             steps=[
                 PlanStep(
                     id="step_1",
@@ -55,6 +80,7 @@ def plan_message(message: str, context: str = "index", parent: str = "index") ->
             risk="routine_visual_mutation",
             requires_approval=False,
             warnings=warnings,
+            metadata={"routing": {"parser": "regex", "rule": "create_group"}},
             steps=[
                 PlanStep(
                     id="step_1",
@@ -72,5 +98,6 @@ def plan_message(message: str, context: str = "index", parent: str = "index") ->
         steps=[],
         risk="unknown",
         requires_approval=False,
+        metadata={"routing": {"parser": "none"}},
         warnings=["No deterministic Bubble plan matched this request."],
     )

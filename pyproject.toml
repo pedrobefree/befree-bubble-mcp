@@ -40,6 +40,7 @@ bubble-mcp-server = "bubble_mcp.server.stdio:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"bubble_mcp.planner" = ["*.json"]
 "bubble_mcp.aria_runtime.figma_bridge" = ["*.json"]
 "bubble_mcp.aria_runtime" = ["package.json", "scripts/*.mjs", "scripts/*.py"]
 

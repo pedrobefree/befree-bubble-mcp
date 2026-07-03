@@ -1,0 +1,124 @@
+[
+  {
+    "id": "visual.create_text",
+    "tool_name": "create_text",
+    "risk": "routine_visual_mutation",
+    "utterances": [
+      "create a text element saying hello on the index page",
+      "add text with content hello to a Bubble page",
+      "crie um texto dizendo hello na pagina index",
+      "adicionar texto no Bubble"
+    ],
+    "default_args": {
+      "context": "index",
+      "parent": "root",
+      "content": "New text"
+    }
+  },
+  {
+    "id": "visual.create_group",
+    "tool_name": "create_group",
+    "risk": "routine_visual_mutation",
+    "utterances": [
+      "create a group container on a page",
+      "add a card group to the Bubble editor",
+      "crie um grupo container na pagina",
+      "adicionar uma section ou card"
+    ],
+    "default_args": {
+      "context": "index",
+      "parent": "root",
+      "name": "Generated group"
+    }
+  },
+  {
+    "id": "visual.create_button",
+    "tool_name": "create_button",
+    "risk": "routine_visual_mutation",
+    "utterances": [
+      "create a button labeled get started",
+      "add a Bubble button with label submit",
+      "crie um botao com o texto continuar",
+      "adicionar button CTA"
+    ],
+    "default_args": {
+      "context": "index",
+      "parent": "root",
+      "label": "Button"
+    }
+  },
+  {
+    "id": "visual.create_image",
+    "tool_name": "create_image",
+    "risk": "routine_visual_mutation",
+    "utterances": [
+      "create an image element from a URL",
+      "add an image to the Bubble page",
+      "crie uma imagem no editor",
+      "adicionar elemento de imagem"
+    ],
+    "default_args": {
+      "context": "index",
+      "parent": "root",
+      "name": "Generated image"
+    }
+  },
+  {
+    "id": "import.create_from_html",
+    "tool_name": "create_from_html",
+    "risk": "routine_visual_mutation",
+    "utterances": [
+      "convert the component with selector #home-area from a URL and add it to a Bubble page",
+      "import an HTML section from a page selector into Bubble",
+      "converta o componente com seletor #hero da URL e adicione na pagina",
+      "usar o importador HTML renderizado para criar elementos Bubble"
+    ],
+    "default_args": {
+      "context": "index",
+      "parent": "root",
+      "rendered_html": true,
+      "refresh_context": true
+    }
+  },
+  {
+    "id": "context.detect",
+    "tool_name": "bubble_context_detect",
+    "risk": "read_only_context_refresh",
+    "utterances": [
+      "refresh the Bubble project context for a profile",
+      "detect project context from .bubble or crawler",
+      "atualize o contexto do projeto Bubble",
+      "baixe e processe o arquivo .bubble"
+    ],
+    "default_args": {
+      "app_version": "test",
+      "force": true
+    }
+  },
+  {
+    "id": "context.find",
+    "tool_name": "bubble_context_find",
+    "risk": "read_only_query",
+    "utterances": [
+      "search the Bubble context for a page or element",
+      "find an element in the compact context",
+      "procure uma pagina no contexto Bubble",
+      "buscar elemento estilo ou workflow"
+    ],
+    "default_args": {
+      "limit": 10
+    }
+  },
+  {
+    "id": "eval.run",
+    "tool_name": "bubble_eval_run",
+    "risk": "read_only_eval",
+    "utterances": [
+      "run the planning eval dataset",
+      "rerun failed eval cases from the previous report",
+      "rode os evals do MCP",
+      "validar o harness com casos focados"
+    ],
+    "default_args": {}
+  }
+]

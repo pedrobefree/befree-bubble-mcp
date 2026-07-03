@@ -13,7 +13,7 @@ def test_run_eval_reports_all_cases_passing() -> None:
     assert report["summary"]["matched"] == 2
     assert report["summary"]["missing_ok"] == 2
     assert report["summary"]["warnings_ok"] == 2
-    assert report["summary"]["parser_summary"] == {"deterministic": 2}
+    assert report["summary"]["parser_summary"] == {"example_match": 2}
     assert report["summary"]["fallback_summary"] == {"none": 2}
 
 
@@ -50,7 +50,7 @@ def test_run_eval_reports_failure_reasons_for_agent_harness_debugging() -> None:
     assert report["summary"]["cases"] == 2
     assert report["summary"]["passed"] == 0
     assert report["summary"]["matched"] == 1
-    assert report["summary"]["parser_summary"] == {"deterministic": 1, "none": 1}
+    assert report["summary"]["parser_summary"] == {"example_match": 1, "none": 1}
     assert report["summary"]["fallback_summary"]["tool_mismatch"] == 1
     assert report["summary"]["fallback_summary"]["args_mismatch"] == 1
     assert report["summary"]["fallback_summary"]["no_plan_steps"] == 1
