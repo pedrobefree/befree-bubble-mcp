@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from bubble_mcp.cli.main import main
+from bubble_mcp.sessions.store import session_from_payload
 
 
 FIXTURE = Path("tests/fixtures/context/synthetic-app-context.json")
@@ -163,6 +164,60 @@ def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # 
     assert inspected["session"]["headers"]["Cookie"] == "[REDACTED]"
     assert inspected["computed_write_headers"]["cookie"] == "[REDACTED]"
     assert "x-bubble-appname" in inspected["computed_write_header_keys"]
+
+
+def test_cli_session_login_reports_progress_on_stderr(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    def fake_capture_session_with_playwright(**kwargs):  # type: ignore[no-untyped-def]
+        kwargs["progress"]("Session cookies detected. You can close the browser now.")
+        return session_from_payload(
+            {
+                "appId": kwargs["app_id"],
+                "url": "https://bubble.io/page?id=synthetic-app",
+                "headers": {"Cookie": "sid=secret", "User-Agent": "test"},
+                "appVersion": "test",
+                "source": "browser",
+            }
+        )
+
+    monkeypatch.setattr("bubble_mcp.cli.main.capture_session_with_playwright", fake_capture_session_with_playwright)
+
+    assert main(["profile", "add", "dev", "--app-id", "synthetic-app"]) == 0
+    capsys.readouterr()
+    assert main(["session", "login", "--profile", "dev", "--app-id", "synthetic-app"]) == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert payload["ok"] is True
+    assert "[bubble-mcp session] Session cookies detected." in captured.err
+    assert "[bubble-mcp session] Session saved for profile 'dev'" in captured.err
+
+
+def test_cli_session_login_quiet_suppresses_progress(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    def fake_capture_session_with_playwright(**kwargs):  # type: ignore[no-untyped-def]
+        assert kwargs["progress"] is None
+        return session_from_payload(
+            {
+                "appId": kwargs["app_id"],
+                "url": "https://bubble.io/page?id=synthetic-app",
+                "headers": {"Cookie": "sid=secret", "User-Agent": "test"},
+                "appVersion": "test",
+                "source": "browser",
+            }
+        )
+
+    monkeypatch.setattr("bubble_mcp.cli.main.capture_session_with_playwright", fake_capture_session_with_playwright)
+
+    assert main(["profile", "add", "dev", "--app-id", "synthetic-app"]) == 0
+    capsys.readouterr()
+    assert main(["session", "login", "--profile", "dev", "--app-id", "synthetic-app", "--quiet"]) == 0
+    captured = capsys.readouterr()
+
+    assert json.loads(captured.out)["ok"] is True
+    assert captured.err == ""
 
 
 def test_cli_branch_create_passes_sub_branch_source(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]

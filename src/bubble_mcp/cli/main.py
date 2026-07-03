@@ -333,6 +333,10 @@ def command_session_login(args: argparse.Namespace) -> int:
     settings = load_settings()
     configured_profile = settings.profiles.get(args.profile)
     app_version = args.app_version or (configured_profile.app_version if configured_profile else None)
+
+    def emit_progress(message: str) -> None:
+        print(f"[bubble-mcp session] {message}", file=sys.stderr, flush=True)
+
     session = capture_session_with_playwright(
         app_id=args.app_id,
         editor_url=args.editor_url or None,
@@ -340,8 +344,11 @@ def command_session_login(args: argparse.Namespace) -> int:
         wait_seconds=args.wait_seconds,
         user_data_dir=browser_profile_dir,
         app_version=app_version or "test",
+        progress=None if args.quiet else emit_progress,
     )
     target = save_session(args.profile, session)
+    if not args.quiet:
+        emit_progress(f"Session saved for profile '{args.profile}' at {target}.")
     emit_json({"ok": True, "profile": args.profile, "path": str(target), "session": session.to_dict(redact=True)})
     return 0
 
@@ -587,6 +594,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum time to keep the browser open while polling and saving the latest Bubble cookies.",
     )
     session_login_parser.add_argument("--headless", action="store_true")
+    session_login_parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress human-readable capture progress on stderr.",
+    )
     session_login_parser.set_defaults(func=command_session_login)
 
     session_list_parser = session_subparsers.add_parser("list", help="List imported session metadata.")

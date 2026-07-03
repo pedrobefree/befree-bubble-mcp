@@ -165,6 +165,11 @@ browser window. If the process is interrupted after Bubble cookies were
 observed, the newest usable session is still saved; if it is interrupted before
 login completes, rerun the command.
 
+During capture, the command prints human-readable progress to stderr. When it
+prints `Session cookies detected. You can close the browser now`, the session
+has enough data to be saved. The final JSON result is still printed to stdout.
+Use `--quiet` to suppress progress messages in scripts.
+
 ## `bubble-mcp session list`
 
 Lists imported session metadata without printing secrets.

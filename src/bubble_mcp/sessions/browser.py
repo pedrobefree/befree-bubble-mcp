@@ -8,6 +8,8 @@ from typing import Any, Callable
 
 from bubble_mcp.sessions.store import BubbleSessionData, session_from_payload
 
+ProgressCallback = Callable[[str], None]
+
 
 def _cookie_header(cookies: list[dict[str, Any]]) -> str:
     return "; ".join(
@@ -54,6 +56,7 @@ def _poll_browser_session(
     last_user_agent: str = "befree-bubble-mcp",
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
+    progress: ProgressCallback | None = None,
 ) -> tuple[str, str, bool]:
     """Poll a Playwright context and keep the newest usable Bubble session state.
 
@@ -63,12 +66,20 @@ def _poll_browser_session(
     """
 
     interrupted = False
+    reported_cookies = bool(last_cookie_string)
     deadline = monotonic() + max(1, wait_seconds)
     while monotonic() < deadline:
         try:
             cookie_string = _bubble_cookie_header(context)
             if cookie_string:
                 last_cookie_string = cookie_string
+                if not reported_cookies:
+                    reported_cookies = True
+                    if progress is not None:
+                        progress(
+                            "Session cookies detected. You can close the browser now; "
+                            "the CLI will save the newest captured session."
+                        )
             last_user_agent = _first_open_page_user_agent(context, last_user_agent)
             sleep(1)
         except KeyboardInterrupt:
@@ -87,6 +98,7 @@ def capture_session_with_playwright(
     wait_seconds: int = 120,
     user_data_dir: Path | None = None,
     app_version: str | None = None,
+    progress: ProgressCallback | None = None,
 ) -> BubbleSessionData:
     """Open a local browser and capture Bubble cookies.
 
@@ -107,6 +119,10 @@ def capture_session_with_playwright(
     last_cookie_string = ""
     last_user_agent = "befree-bubble-mcp"
     captured_write_headers: dict[str, str] = {}
+    reported_write_headers = False
+    if progress is not None:
+        progress(f"Opening Bubble editor login browser for app '{app_id}'.")
+        progress(f"Waiting up to {max(1, wait_seconds)} seconds for session cookies.")
     with sync_playwright() as playwright:
         if user_data_dir is not None:
             user_data_dir.mkdir(parents=True, exist_ok=True)
@@ -121,6 +137,7 @@ def capture_session_with_playwright(
         page = context.pages[0] if context.pages else context.new_page()
 
         def remember_bubble_headers(request: Any) -> None:
+            nonlocal reported_write_headers
             try:
                 if "bubble.io/" not in str(request.url):
                     return
@@ -144,15 +161,22 @@ def capture_session_with_playwright(
                     "user-agent",
                 }:
                     captured_write_headers[lowered] = str(value)
+            if captured_write_headers and not reported_write_headers:
+                reported_write_headers = True
+                if progress is not None:
+                    progress("Bubble editor request headers detected.")
 
         context.on("request", remember_bubble_headers)
         page.goto(target_url, wait_until="domcontentloaded")
+        if progress is not None:
+            progress("Browser opened. Log in to Bubble and keep the editor tab open until capture is confirmed.")
 
         last_cookie_string, last_user_agent, interrupted = _poll_browser_session(
             context,
             wait_seconds=wait_seconds,
             last_cookie_string=last_cookie_string,
             last_user_agent=last_user_agent,
+            progress=progress,
         )
 
         try:
@@ -178,6 +202,10 @@ def capture_session_with_playwright(
 
     if not last_cookie_string:
         raise RuntimeError("No bubble.io cookies were captured. Log in before the wait timeout expires.")
+
+    if progress is not None:
+        header_count = len(captured_write_headers)
+        progress(f"Session capture complete: cookies saved, {header_count} Bubble header(s) captured.")
 
     return session_from_payload(
         {

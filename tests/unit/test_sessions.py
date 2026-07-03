@@ -52,13 +52,18 @@ def test_browser_session_poll_keeps_cookies_when_interrupted() -> None:
     def interrupted_sleep(_seconds: float) -> None:
         raise KeyboardInterrupt
 
+    progress_events: list[str] = []
     cookie_string, user_agent, interrupted = _poll_browser_session(
         FakeContext(),
         wait_seconds=180,
         sleep=interrupted_sleep,
         monotonic=lambda: 0,
+        progress=progress_events.append,
     )
 
     assert cookie_string == "sid=captured"
     assert user_agent == "FakeBrowser/1.0"
     assert interrupted is True
+    assert progress_events == [
+        "Session cookies detected. You can close the browser now; the CLI will save the newest captured session."
+    ]

@@ -40,6 +40,16 @@ in, leave the editor open for a few seconds before closing the browser so the
 latest cookies can be captured. If you close the window early, the command saves
 the most recent cookies captured during that run.
 
+The login command writes progress to stderr. Wait for:
+
+```text
+[bubble-mcp session] Session cookies detected. You can close the browser now; the CLI will save the newest captured session.
+```
+
+After this message appears, it is safe to close the browser. The command will
+save the session and print the final redacted JSON result to stdout. Pass
+`--quiet` to disable progress output in automated scripts.
+
 Use `session inspect` to verify, without printing secrets, which session header
 keys were stored and which Bubble write headers will be computed for
 `/appeditor/write`.
