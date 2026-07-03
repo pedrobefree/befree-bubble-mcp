@@ -294,7 +294,8 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_runtime_smoke": (
         "Run an operational runtime smoke suite. Use coverage for local catalog coverage, safe-read for read-only "
         "profile/session/context checks, preview-write to compile representative Bubble mutations with execute=false, "
-        "and execute-write with execute=true only when the user explicitly wants real temporary Bubble writes."
+        "and execute-write with execute=true only when the user explicitly wants real temporary Bubble writes. Add "
+        "verify_context=true to refresh the Bubble context and confirm the temporary objects materialized."
     ),
     "bubble_context_summary": (
         "Summarize a compact Bubble project context file: pages, reusable elements, styles, data types, and indexed "

@@ -208,6 +208,16 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Optional short identifier used to name temporary smoke pages/elements. Leave empty to auto-generate a unique id.",
         examples=["manual_20260703"],
     ),
+    "verify_context": _prop(
+        "boolean",
+        "For execute-write smoke only: refresh Bubble context after writes and verify the temporary page/elements materialized with required defaults.",
+        default=False,
+    ),
+    "verification_output": _prop(
+        "string",
+        "Optional local context JSON output path used by verify_context.",
+        examples=["./runtime-smoke-context.json"],
+    ),
     "url": _prop(
         "string",
         "Source URL for an HTML page/component import.",
@@ -461,6 +471,8 @@ def profile_session_context_tools() -> list[ToolSchema]:
                 "execute",
                 "cleanup",
                 "run_id",
+                "verify_context",
+                "verification_output",
             ],
         ),
         tool_schema(

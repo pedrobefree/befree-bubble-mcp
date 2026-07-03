@@ -815,11 +815,11 @@ def apply_catalog_argument_properties(properties: dict[str, Any], args: dict[str
         ("aspect_ratio_height", "aspect_ratio_height"),
         ("table_direction", "table_direction"),
     ):
-        if args.get(source_key) is not None and wire_key not in properties:
+        if args.get(source_key) is not None:
             properties[wire_key] = args[source_key]
-    if args.get("cell_min_height") is not None and "cell_min_height_css" not in properties:
+    if args.get("cell_min_height") is not None:
         properties["cell_min_height_css"] = css_px(args["cell_min_height"])
-    if args.get("cell_min_width") is not None and "cell_min_width_css" not in properties:
+    if args.get("cell_min_width") is not None:
         properties["cell_min_width_css"] = css_px(args["cell_min_width"])
     if element_type in {"Group", "FloatingGroup", "GroupFocus", "RepeatingGroup", "Table", "Popup"}:
         layout = str(args.get("layout") or "").strip().lower().replace("-", "_").replace(" ", "_")

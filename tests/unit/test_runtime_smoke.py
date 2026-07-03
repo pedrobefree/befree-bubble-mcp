@@ -1,3 +1,5 @@
+import json
+
 from bubble_mcp.runtime_smoke import build_runtime_smoke_cases, run_runtime_smoke
 
 
@@ -84,3 +86,107 @@ def test_execute_write_runs_call_sequence() -> None:
     ]
     assert calls[-4][1]["context"] == "mcp_smoke_sequence"
     assert all(args.get("execute") is True for _tool, args in calls[-5:])
+
+
+def test_execute_write_can_verify_refreshed_context(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    context_file = tmp_path / "context.json"
+    context_file.write_text(
+        json.dumps(
+            {
+                "app_id": "synthetic-app",
+                "source": "test",
+                "nodes": [
+                    {
+                        "id": "page:mcp_smoke_verify",
+                        "label": "mcp_smoke_verify",
+                        "type": "page",
+                        "metadata": {"children": ["gp1", "tx1", "bt1", "in1"]},
+                    },
+                    {
+                        "id": "element:gp1",
+                        "label": "gp1",
+                        "type": "element",
+                        "metadata": {
+                            "bubble_id": "gp1",
+                            "context": "page:mcp_smoke_verify",
+                            "element_type": "Group",
+                            "properties": {"container_layout": "column", "fit_height": True},
+                        },
+                    },
+                    {
+                        "id": "element:tx1",
+                        "label": "tx1",
+                        "type": "element",
+                        "metadata": {
+                            "bubble_id": "tx1",
+                            "context": "page:mcp_smoke_verify",
+                            "element_type": "Text",
+                            "properties": {"fit_height": True, "text": {"entries": {"0": "Runtime smoke verify"}}},
+                        },
+                    },
+                    {
+                        "id": "element:bt1",
+                        "label": "bt1",
+                        "type": "element",
+                        "metadata": {
+                            "bubble_id": "bt1",
+                            "context": "page:mcp_smoke_verify",
+                            "element_type": "Button",
+                            "properties": {
+                                "fit_width": True,
+                                "fit_height": True,
+                                "text": {"entries": {"0": "Runtime smoke"}},
+                            },
+                        },
+                    },
+                    {
+                        "id": "element:in1",
+                        "label": "in1",
+                        "type": "element",
+                        "metadata": {
+                            "bubble_id": "in1",
+                            "context": "page:mcp_smoke_verify",
+                            "element_type": "Input",
+                            "properties": {
+                                "fixed_height": True,
+                                "placeholder": {"entries": {"0": "Runtime smoke"}},
+                            },
+                        },
+                    },
+                ],
+                "edges": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_tool(tool: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((tool, args))
+        if tool == "bubble_context_detect":
+            return {"ok": True, "context_path": str(context_file)}
+        return {"ok": True, "executed": args.get("execute"), "write_count": 1}
+
+    report = run_runtime_smoke(
+        fake_tool,
+        suite="execute-write",
+        profile="cliente2",
+        execute=True,
+        run_id="verify",
+        verify_context=True,
+        verification_output=str(tmp_path / "detected-context.json"),
+    )
+
+    assert report["ok"] is True
+    assert report["summary"]["passed"] == 15
+    assert calls[-1] == (
+        "bubble_context_detect",
+        {
+            "profile": "cliente2",
+            "app_version": "test",
+            "force": True,
+            "output": str(tmp_path / "detected-context.json"),
+        },
+    )
+    assert report["results"][-1]["suite"] == "post-write-verify"
+    assert report["results"][-1]["status"] == "passed"

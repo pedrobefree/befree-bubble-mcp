@@ -349,6 +349,7 @@ bubble-mcp smoke runtime --suite coverage
 bubble-mcp smoke runtime --suite safe-read --profile my-app
 bubble-mcp smoke runtime --suite preview-write --profile my-app --context index --parent root
 bubble-mcp smoke runtime --suite execute-write --profile my-app --execute
+bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --verify-context
 ```
 
 Suites:
@@ -359,6 +360,9 @@ Suites:
   `execute=false`; this does not post changes to Bubble.
 - `execute-write`: authenticated real-write smoke that creates a temporary
   page and representative elements. This suite requires `--execute`.
+  Add `--verify-context` to refresh the `.bubble` context after the writes and
+  assert that the temporary page, group, text, button, and input materialized
+  with required defaults.
 
 Optional report file:
 

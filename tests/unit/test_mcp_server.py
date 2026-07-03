@@ -115,6 +115,8 @@ def test_runtime_smoke_schema_exposes_execute_write_controls() -> None:
     assert "execute" in properties
     assert "cleanup" in properties
     assert "run_id" in properties
+    assert "verify_context" in properties
+    assert "verification_output" in properties
 
 
 def test_plan_tool_returns_valid_plan() -> None:

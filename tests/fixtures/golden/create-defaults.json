@@ -1,0 +1,159 @@
+{
+  "create_alert": {
+    "at_to_top": true,
+    "content": "Alert content",
+    "fit_height": true
+  },
+  "create_button": {
+    "fit_height": true,
+    "fit_width": true
+  },
+  "create_checkbox": {
+    "fit_height": true,
+    "fit_width": true,
+    "label": "Checkbox label",
+    "min_height": 0,
+    "min_width": 0
+  },
+  "create_datepicker": {
+    "fixed_height": true,
+    "height": 44,
+    "max_width": 240,
+    "min_width": 0
+  },
+  "create_dropdown": {
+    "fixed_height": true,
+    "height": 44,
+    "max_width": 240,
+    "min_width": 0
+  },
+  "create_file_uploader": {
+    "fixed_height": true,
+    "height": 64,
+    "max_width": 240,
+    "min_width": 0
+  },
+  "create_floating_group": {
+    "fit_height": true,
+    "float_h_relative": "left",
+    "float_v_relative": "top",
+    "float_zindex": "front",
+    "min_height": 64,
+    "min_width": 0
+  },
+  "create_group": {
+    "fit_height": true,
+    "layout": "column",
+    "min_height": 40,
+    "min_width": 40
+  },
+  "create_group_focus": {
+    "fit_height": true,
+    "max_width": 320,
+    "min_height": 64,
+    "min_width": 0
+  },
+  "create_html": {
+    "content": "<html>...</html>",
+    "fit_height": true,
+    "fixed_width": true,
+    "min_height": 120,
+    "width": 240
+  },
+  "create_icon": {
+    "fixed_height": true,
+    "fixed_width": true,
+    "height": 20,
+    "width": 20
+  },
+  "create_image": {
+    "fixed_width": true,
+    "min_height": 64,
+    "width": 120
+  },
+  "create_input": {
+    "fixed_height": true,
+    "height": 44,
+    "max_width": 240,
+    "min_width": 0
+  },
+  "create_link": {
+    "label": "Link label"
+  },
+  "create_map": {
+    "fixed_height": true,
+    "fixed_width": true,
+    "height": 240,
+    "width": 360
+  },
+  "create_multiline_input": {
+    "fit_height": true,
+    "max_width": 240,
+    "min_height": 64,
+    "min_width": 0
+  },
+  "create_picture_uploader": {
+    "fixed_height": true,
+    "height": 64,
+    "max_width": 240,
+    "min_width": 0
+  },
+  "create_popup": {
+    "fit_height": true,
+    "fit_width": true,
+    "min_height": 320,
+    "min_width": 320
+  },
+  "create_radio": {
+    "fit_height": true,
+    "fit_width": true,
+    "min_height": 0,
+    "min_width": 0
+  },
+  "create_repeating_group": {
+    "cell_min_height": 32,
+    "cell_min_width": 32,
+    "data_type": "text",
+    "fit_height": true,
+    "min_height": 120,
+    "min_width": 120,
+    "stable_pagination": true
+  },
+  "create_searchbox": {
+    "fixed_height": true,
+    "height": 44,
+    "max_width": 240,
+    "min_width": 0,
+    "placeholder": "Search..."
+  },
+  "create_shape": {
+    "fixed_height": true,
+    "fixed_width": true,
+    "height": 120,
+    "width": 120
+  },
+  "create_slider": {
+    "fixed_height": true,
+    "height": 32,
+    "max_width": 240,
+    "min_width": 0
+  },
+  "create_table": {
+    "fit_height": true,
+    "min_height": 120,
+    "min_width": 120,
+    "stable_pagination": true,
+    "table_direction": "vertical"
+  },
+  "create_text": {
+    "fit_height": true
+  },
+  "create_video": {
+    "aspect_ratio_height": 9,
+    "aspect_ratio_width": 16,
+    "fixed_width": true,
+    "use_aspect_ratio": true,
+    "video_id": "id",
+    "width": 360
+  }
+}

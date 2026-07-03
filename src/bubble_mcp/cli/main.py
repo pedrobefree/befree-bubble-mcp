@@ -460,6 +460,8 @@ def command_smoke_runtime(args: argparse.Namespace) -> int:
         execute=args.execute,
         cleanup=args.cleanup,
         run_id=args.run_id or "",
+        verify_context=args.verify_context,
+        verification_output=args.verification_output or "",
     )
     if args.report:
         report_path = Path(args.report)
@@ -745,6 +747,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-id",
         default="",
         help="Optional suffix for temporary smoke objects. Defaults to a timestamp plus random suffix.",
+    )
+    runtime_smoke_parser.add_argument(
+        "--verify-context",
+        action="store_true",
+        help="After execute-write, refresh Bubble context and verify the temporary objects exist with expected defaults.",
+    )
+    runtime_smoke_parser.add_argument(
+        "--verification-output",
+        default="",
+        help="Optional context JSON path written by --verify-context.",
     )
     runtime_smoke_parser.set_defaults(func=command_smoke_runtime)
 

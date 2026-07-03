@@ -80,6 +80,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             execute=bool(args.get("execute")),
             cleanup=bool(args.get("cleanup")),
             run_id=str(args.get("run_id") or ""),
+            verify_context=bool(args.get("verify_context")),
+            verification_output=str(args.get("verification_output") or ""),
         )
     if name == "bubble_profile_list":
         settings = load_settings()

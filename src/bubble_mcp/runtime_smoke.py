@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 import re
 from typing import Any
 from uuid import uuid4
 
 from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.runtime_smoke_validation import validate_execute_write_context
 
 
 ToolCaller = Callable[[str, dict[str, Any]], dict[str, Any]]
@@ -251,6 +253,8 @@ def run_runtime_smoke(
     execute: bool = False,
     cleanup: bool = False,
     run_id: str = "",
+    verify_context: bool = False,
+    verification_output: str = "",
 ) -> dict[str, Any]:
     """Run an operational smoke suite by calling MCP tool handlers."""
 
@@ -268,6 +272,7 @@ def run_runtime_smoke(
             "app_version": app_version,
             "execute": False,
             "cleanup": cleanup,
+            "verify_context": verify_context,
             "run_id": effective_run_id,
             "error": "execute-write requires execute=true.",
             "summary": {"cases": 0, "passed": 0, "failed": 1, "skipped": 0},
@@ -333,6 +338,20 @@ def run_runtime_smoke(
         if stop_on_failure and results[-1]["status"] == "failed":
             break
 
+    if verify_context:
+        verification = _run_execute_write_verification(
+            tool_caller,
+            suite=suite,
+            profile=profile,
+            app_id=app_id,
+            app_version=app_version,
+            cleanup=cleanup,
+            run_id=effective_run_id,
+            prior_failed=any(item["status"] == "failed" for item in results),
+            verification_output=verification_output,
+        )
+        results.append(verification)
+
     summary = {
         "cases": len(results),
         "passed": sum(1 for item in results if item["status"] == "passed"),
@@ -349,7 +368,100 @@ def run_runtime_smoke(
         "app_version": app_version,
         "execute": bool(execute and suite == "execute-write"),
         "cleanup": bool(cleanup and suite == "execute-write"),
+        "verify_context": verify_context,
         "run_id": effective_run_id,
         "summary": summary,
         "results": results,
     }
+
+
+def _run_execute_write_verification(
+    tool_caller: ToolCaller,
+    *,
+    suite: str,
+    profile: str,
+    app_id: str,
+    app_version: str,
+    cleanup: bool,
+    run_id: str,
+    prior_failed: bool,
+    verification_output: str,
+) -> dict[str, Any]:
+    if suite != "execute-write":
+        return {
+            "index": 0,
+            "tool": "bubble_context_detect",
+            "suite": "post-write-verify",
+            "status": "skipped",
+            "ok": True,
+            "reason": "execute_write_required",
+            "description": "Post-write context verification applies only to execute-write.",
+        }
+    if cleanup:
+        return {
+            "index": 0,
+            "tool": "bubble_context_detect",
+            "suite": "post-write-verify",
+            "status": "skipped",
+            "ok": True,
+            "reason": "cleanup_enabled",
+            "description": "Post-write context verification skipped because cleanup deletes the temporary page.",
+        }
+    if prior_failed:
+        return {
+            "index": 0,
+            "tool": "bubble_context_detect",
+            "suite": "post-write-verify",
+            "status": "skipped",
+            "ok": True,
+            "reason": "prior_failure",
+            "description": "Post-write context verification skipped because a prior smoke case failed.",
+        }
+    try:
+        args: dict[str, Any] = {
+            "profile": profile,
+            "app_version": app_version,
+            "force": True,
+        }
+        if app_id:
+            args["app_id"] = app_id
+        if verification_output:
+            args["output"] = verification_output
+        detection = tool_caller("bubble_context_detect", args)
+        context_path = str(detection.get("context_path") or "").strip()
+        if not detection.get("ok") or not context_path:
+            return {
+                "index": 0,
+                "tool": "bubble_context_detect",
+                "suite": "post-write-verify",
+                "status": "failed",
+                "ok": False,
+                "description": "Refresh Bubble context and verify temporary smoke objects.",
+                "result": _compact_result(detection, include_details=True),
+                "error": "context detection did not return a usable context_path.",
+            }
+        validation = validate_execute_write_context(Path(context_path), run_id=run_id)
+        return {
+            "index": 0,
+            "tool": "bubble_context_detect",
+            "suite": "post-write-verify",
+            "status": "passed" if validation.get("ok") else "failed",
+            "ok": bool(validation.get("ok")),
+            "description": "Refresh Bubble context and verify temporary smoke objects.",
+            "result": redact_sensitive(
+                {
+                    "detection": _compact_result(detection, include_details=False),
+                    "validation": validation,
+                }
+            ),
+        }
+    except Exception as exc:  # noqa: BLE001 - smoke verification must report failures.
+        return {
+            "index": 0,
+            "tool": "bubble_context_detect",
+            "suite": "post-write-verify",
+            "status": "failed",
+            "ok": False,
+            "description": "Refresh Bubble context and verify temporary smoke objects.",
+            "error": str(exc),
+        }

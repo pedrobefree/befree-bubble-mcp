@@ -231,6 +231,10 @@ suite. It creates a temporary page and representative elements only when
 bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --report ./runtime-smoke.json
 ```
 
+Add `--verify-context` when you want the smoke to refresh the Bubble context
+after the write and fail if the temporary page/elements are not present with
+the expected defaults.
+
 ## Codex MCP Setup
 
 Use the installed stdio server in your MCP config:
