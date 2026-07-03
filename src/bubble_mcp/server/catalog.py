@@ -220,7 +220,17 @@ def legacy_tool_schema(name: str) -> dict[str, Any]:
         ),
         "inputSchema": {
             "type": "object",
-            "properties": {},
+            "properties": {
+                "profile": {"type": "string"},
+                "dry_run": {"type": "boolean"},
+                "settings_path": {"type": "string"},
+                "context": {"type": "string"},
+                "parent": {"type": "string"},
+                "execute": {"type": "boolean"},
+                "confirm": {"type": "boolean"},
+                "write_payload": {"type": "object"},
+                "payload": {"type": "object"},
+            },
             "additionalProperties": True,
         },
     }

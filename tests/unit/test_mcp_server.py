@@ -126,6 +126,40 @@ def test_tools_list_exposes_only_advanced_html_importer() -> None:
     assert "rendered DOM" in create_schema["description"]
 
 
+def test_tools_list_exposes_agent_usable_catalog_metadata() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 13, "method": "tools/list"})
+
+    assert response is not None
+    tools = response["result"]["tools"]
+    assert tools
+    for tool in tools:
+        assert len(tool.get("description", "")) >= 80
+        assert set(tool.get("annotations", {})) == {
+            "readOnlyHint",
+            "destructiveHint",
+            "idempotentHint",
+            "openWorldHint",
+        }
+        properties = tool.get("inputSchema", {}).get("properties", {})
+        for property_schema in properties.values():
+            assert property_schema.get("description")
+
+
+def test_legacy_catalog_tools_expose_common_agent_arguments() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 14, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    schema = tools["create_group"]["inputSchema"]
+    assert schema["additionalProperties"] is True
+    for field in ["profile", "dry_run", "settings_path", "context", "parent", "execute", "confirm"]:
+        assert field in schema["properties"]
+        assert schema["properties"][field]["description"]
+    assert "Create a Bubble group visual element" in tools["create_group"]["description"]
+    assert tools["delete_group"]["annotations"]["destructiveHint"] is True
+    assert tools["list_styles"]["annotations"]["readOnlyHint"] is True
+
+
 def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     save_session(

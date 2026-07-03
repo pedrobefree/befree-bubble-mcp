@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from bubble_mcp.server.agent_catalog import enhance_tool_schema
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES, legacy_tool_schema
 
 
@@ -240,4 +241,4 @@ def list_tool_schemas() -> list[dict[str, Any]]:
         for name in ARIA_BUBBLE_TOOL_NAMES
         if name not in native_names
     ]
-    return [*native_tools, *legacy_tools]
+    return [enhance_tool_schema(tool) for tool in [*native_tools, *legacy_tools]]
