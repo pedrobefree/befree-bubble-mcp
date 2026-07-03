@@ -146,6 +146,70 @@ def test_tools_list_exposes_agent_usable_catalog_metadata() -> None:
             assert property_schema.get("description")
 
 
+def test_native_family_schemas_expose_agent_selection_constraints() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 19, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+
+    context_detect = tools["bubble_context_detect"]["inputSchema"]
+    assert context_detect["properties"]["app_version"]["default"] == "test"
+    assert context_detect["properties"]["force"]["default"] is False
+    assert ".bubble export" in context_detect["properties"]["bubble_file"]["description"]
+
+    html_import = tools["create_from_html"]["inputSchema"]
+    assert html_import["required"] == ["profile", "context", "parent"]
+    assert html_import["anyOf"] == [
+        {"required": ["url"]},
+        {"required": ["html_file"]},
+        {"required": ["file"]},
+        {"required": ["html"]},
+    ]
+    assert html_import["properties"]["url"]["format"] == "uri"
+    assert html_import["properties"]["rendered_html"]["default"] is True
+    assert html_import["properties"]["style_match_threshold"]["minimum"] == 0
+    assert html_import["properties"]["style_match_threshold"]["maximum"] == 1
+
+    session_import = tools["bubble_session_import"]["inputSchema"]
+    assert session_import["properties"]["session"]["properties"]["headers"]["type"] == "object"
+    assert session_import["properties"]["session"]["properties"]["url"]["format"] == "uri"
+
+    changelog = tools["bubble_changelog_fetch"]["inputSchema"]
+    assert changelog["properties"]["start_index"]["minimum"] == 0
+    assert changelog["properties"]["num_fetch"]["minimum"] == 1
+    assert changelog["properties"]["num_fetch"]["maximum"] == 200
+    assert "Element" in changelog["properties"]["change_type"]["examples"]
+
+
+def test_native_mutating_schemas_make_execution_and_confirmation_explicit() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 20, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+
+    for name in [
+        "create_from_html",
+        "bubble_editor_write",
+        "bubble_execute_plan",
+        "bubble_branch_create",
+        "bubble_branch_delete",
+    ]:
+        execute_schema = tools[name]["inputSchema"]["properties"]["execute"]
+        assert execute_schema["type"] == "boolean"
+        assert execute_schema["default"] is False
+        assert "apply the change in Bubble" in execute_schema["description"]
+
+    branch_create = tools["bubble_branch_create"]["inputSchema"]
+    assert "sub-branch" in branch_create["properties"]["from_app_version"]["description"]
+    assert branch_create["properties"]["version_control_api_version"]["default"] == 7
+
+    branch_delete = tools["bubble_branch_delete"]["inputSchema"]
+    assert branch_delete["properties"]["soft_delete"]["default"] is True
+    assert branch_delete["properties"]["confirm"]["default"] is False
+    assert "destructive" in branch_delete["properties"]["confirm"]["description"]
+    assert tools["bubble_branch_delete"]["annotations"]["destructiveHint"] is True
+
+
 def test_legacy_catalog_tools_expose_common_agent_arguments() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 14, "method": "tools/list"})
 

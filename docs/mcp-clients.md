@@ -95,3 +95,6 @@ standalone execution, pass `app_id` for compiler-supported families or
 
 Mutating calls require a stored local session. Calls without `execute=true`
 return a preview instead of posting to Bubble.
+
+For schema maintenance and adding new tool families, see
+[`tool-schema-development.md`](tool-schema-development.md).
