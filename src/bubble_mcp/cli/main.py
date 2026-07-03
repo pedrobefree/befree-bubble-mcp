@@ -38,6 +38,8 @@ from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.runtime_smoke import run_runtime_smoke
+from bubble_mcp.server.tools import call_tool
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
@@ -441,6 +443,29 @@ def command_changelog_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_smoke_runtime(args: argparse.Namespace) -> int:
+    result = run_runtime_smoke(
+        call_tool,
+        profile=args.profile or "",
+        context=args.context,
+        parent=args.parent,
+        app_id=args.app_id or "",
+        app_version=args.app_version,
+        suite=args.suite,
+        limit=args.limit,
+        html_url=args.html_url or "",
+        selector=args.selector or "",
+        include_details=args.include_details,
+        stop_on_failure=args.stop_on_failure,
+    )
+    if args.report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bubble-mcp")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -679,6 +704,31 @@ def build_parser() -> argparse.ArgumentParser:
     changelog_fetch_parser.add_argument("--change-path", default="")
     changelog_fetch_parser.add_argument("--user-id", action="append", default=[])
     changelog_fetch_parser.set_defaults(func=command_changelog_fetch)
+
+    smoke_parser = subparsers.add_parser("smoke", help="Run safe runtime smoke checks.")
+    smoke_subparsers = smoke_parser.add_subparsers(dest="smoke_command", required=True)
+    runtime_smoke_parser = smoke_subparsers.add_parser(
+        "runtime",
+        help="Run MCP runtime smoke checks without destructive writes.",
+    )
+    runtime_smoke_parser.add_argument(
+        "--suite",
+        choices=["coverage", "safe-read", "preview-write"],
+        default="coverage",
+        help="Smoke suite to run. preview-write compiles representative mutations with execute=false.",
+    )
+    runtime_smoke_parser.add_argument("--profile", default="")
+    runtime_smoke_parser.add_argument("--context", default="index")
+    runtime_smoke_parser.add_argument("--parent", default="root")
+    runtime_smoke_parser.add_argument("--app-id", default="")
+    runtime_smoke_parser.add_argument("--app-version", default="test")
+    runtime_smoke_parser.add_argument("--limit", type=int, default=0)
+    runtime_smoke_parser.add_argument("--html-url", default="")
+    runtime_smoke_parser.add_argument("--selector", default="")
+    runtime_smoke_parser.add_argument("--report", default="")
+    runtime_smoke_parser.add_argument("--include-details", action="store_true")
+    runtime_smoke_parser.add_argument("--stop-on-failure", action="store_true")
+    runtime_smoke_parser.set_defaults(func=command_smoke_runtime)
 
     execute_plan_parser = subparsers.add_parser(
         "execute-plan",

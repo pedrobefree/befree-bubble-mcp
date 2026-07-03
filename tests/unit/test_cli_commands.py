@@ -136,6 +136,26 @@ def test_cli_import_html_runtime_accepts_url(monkeypatch, capsys) -> None:  # ty
     assert calls[0]["html_file"] == "https://example.test/page.html"
 
 
+def test_cli_smoke_runtime_runs_coverage_suite(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["smoke", "runtime", "--suite", "coverage"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["summary"]["failed"] == 0
+    assert payload["results"][0]["tool"] == "bubble_tool_coverage"
+
+
+def test_cli_smoke_runtime_writes_report(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    report = tmp_path / "runtime-smoke.json"
+
+    assert main(["smoke", "runtime", "--suite", "coverage", "--report", str(report)]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    saved = json.loads(report.read_text(encoding="utf-8"))
+    assert saved["ok"] is True
+    assert saved["summary"] == payload["summary"]
+
+
 def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     session_path = tmp_path / "session.json"

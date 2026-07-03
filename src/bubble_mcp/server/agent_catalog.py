@@ -291,6 +291,10 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "standalone native code, direct Aria-runtime methods, Aria-runtime aliases, custom runtime adapters, compiler "
         "fallback, or are uncovered. Read-only."
     ),
+    "bubble_runtime_smoke": (
+        "Run a safe operational runtime smoke suite. Use coverage for local catalog coverage, safe-read for read-only "
+        "profile/session/context checks, and preview-write to compile representative Bubble mutations with execute=false."
+    ),
     "bubble_context_summary": (
         "Summarize a compact Bubble project context file: pages, reusable elements, styles, data types, and indexed "
         "elements. Use before planning changes against a local context artifact. Read-only."
@@ -853,6 +857,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_profile_list",
         "bubble_health_check",
         "bubble_tool_coverage",
+        "bubble_runtime_smoke",
         "bubble_context_summary",
         "bubble_context_find",
         "bubble_eval_run",

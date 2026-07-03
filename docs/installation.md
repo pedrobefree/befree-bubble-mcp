@@ -108,6 +108,12 @@ Confirm it was saved:
 bubble-mcp profile list
 ```
 
+Run a local-only coverage smoke after installation:
+
+```bash
+bubble-mcp smoke runtime --suite coverage
+```
+
 ## Capture a Bubble editor session
 
 Create or reuse a profile, then open a browser-assisted login flow:

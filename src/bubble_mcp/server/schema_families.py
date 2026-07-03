@@ -339,6 +339,28 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Required true for destructive operations when execute=true.",
         default=False,
     ),
+    "suite": _prop(
+        "string",
+        "Runtime smoke suite to run. coverage checks catalog coverage only; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false.",
+        enum=["coverage", "safe-read", "preview-write"],
+        default="coverage",
+    ),
+    "include_details": _prop(
+        "boolean",
+        "Include redacted raw tool results in smoke output. Leave false for compact agent-friendly summaries.",
+        default=False,
+    ),
+    "stop_on_failure": _prop(
+        "boolean",
+        "Stop the smoke suite after the first failed case.",
+        default=False,
+    ),
+    "html_url": _prop(
+        "string",
+        "Optional HTML URL used by the preview-write smoke suite to include create_from_html.",
+        fmt="uri",
+        examples=["https://example.com/component.html"],
+    ),
 }
 
 
@@ -410,6 +432,23 @@ def profile_session_context_tools() -> list[ToolSchema]:
         _empty_tool(
             "bubble_tool_coverage",
             "Report runtime coverage for every exposed Bubble MCP tool, including native, Aria-runtime, alias, custom, compiler fallback, and uncovered categories. Read-only.",
+        ),
+        tool_schema(
+            "bubble_runtime_smoke",
+            "Run a safe operational smoke suite for the MCP runtime. coverage is local-only, safe-read performs read-only calls, and preview-write compiles representative Bubble mutations with execute=false.",
+            [
+                "suite",
+                "profile",
+                "context",
+                "parent",
+                "app_id",
+                "app_version",
+                "limit",
+                "html_url",
+                "selector",
+                "include_details",
+                "stop_on_failure",
+            ],
         ),
         tool_schema(
             "bubble_context_summary",

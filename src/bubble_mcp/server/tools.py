@@ -31,6 +31,7 @@ from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.runtime_coverage import catalog_coverage_report
+from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
@@ -61,6 +62,22 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         }
     if name == "bubble_tool_coverage":
         return catalog_coverage_report()
+    if name == "bubble_runtime_smoke":
+        args = arguments or {}
+        return run_runtime_smoke(
+            call_tool,
+            profile=str(args.get("profile") or ""),
+            context=str(args.get("context") or "index"),
+            parent=str(args.get("parent") or "root"),
+            app_id=str(args.get("app_id") or ""),
+            app_version=str(args.get("app_version") or "test"),
+            suite=str(args.get("suite") or "coverage"),
+            limit=int(args.get("limit") or 0),
+            html_url=str(args.get("html_url") or args.get("url") or ""),
+            selector=str(args.get("selector") or ""),
+            include_details=bool(args.get("include_details")),
+            stop_on_failure=bool(args.get("stop_on_failure")),
+        )
     if name == "bubble_profile_list":
         settings = load_settings()
         return {

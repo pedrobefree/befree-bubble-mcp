@@ -339,6 +339,30 @@ bubble-mcp validate-plan --file /path/to/plan.json --execute
 Pass `--execute` to require executable write payloads and destructive-operation
 confirmation checks.
 
+## `bubble-mcp smoke runtime`
+
+Runs safe runtime smoke suites through the same tool handlers used by MCP
+clients.
+
+```bash
+bubble-mcp smoke runtime --suite coverage
+bubble-mcp smoke runtime --suite safe-read --profile my-app
+bubble-mcp smoke runtime --suite preview-write --profile my-app --context index --parent root
+```
+
+Suites:
+
+- `coverage`: local-only catalog coverage check.
+- `safe-read`: read-only profile/session/project checks.
+- `preview-write`: representative create/import mutations compiled with
+  `execute=false`; this does not post changes to Bubble.
+
+Optional report file:
+
+```bash
+bubble-mcp smoke runtime --suite preview-write --profile my-app --report ./runtime-smoke.json
+```
+
 ## `bubble-mcp-server`
 
 Starts the stdio MCP server.
@@ -361,6 +385,7 @@ Implemented tools:
 
 - `bubble_health_check`
 - `bubble_tool_coverage`
+- `bubble_runtime_smoke`
 - `bubble_profile_list`
 - `bubble_context_summary`
 - `bubble_context_find`

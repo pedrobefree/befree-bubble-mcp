@@ -34,6 +34,8 @@ python scripts/install_local.py --repair --extras browser,dev
   runtime command exists.
 - Built-in MCP tool coverage report showing native, direct runtime, runtime
   alias, custom adapter, compiler fallback, and uncovered categories.
+- Safe runtime smoke suites for local catalog coverage, read-only profile
+  checks, and representative `execute=false` mutation previews.
 - Local profile management.
 - Compact context loading, search, import, freshness reporting, and local mutation overlay merge from `.bubble`/consolelog/crawler artifacts plus successful local MCP writes.
 - Deterministic planner with packaged routing corpus, semantic validator, structural execution validation, and operation snapshots for agent harnesses.
@@ -216,6 +218,10 @@ write to `/appeditor/write`.
 
 Use `bubble_tool_coverage` from an MCP client to verify current catalog
 coverage. The Aria catalog is expected to report `uncovered_count: 0`.
+
+Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
+The `preview-write` suite compiles representative mutations with
+`execute=false`; it does not post changes to Bubble.
 
 ## Codex MCP Setup
 

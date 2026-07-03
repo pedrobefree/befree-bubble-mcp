@@ -71,6 +71,23 @@ def test_tool_coverage_tool_is_exposed() -> None:
     assert payload["aria_catalog"]["uncovered_count"] == 0
 
 
+def test_runtime_smoke_tool_runs_coverage_suite() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 22,
+            "method": "tools/call",
+            "params": {"name": "bubble_runtime_smoke", "arguments": {"suite": "coverage"}},
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["summary"]["failed"] == 0
+    assert payload["results"][0]["tool"] == "bubble_tool_coverage"
+
+
 def test_plan_tool_returns_valid_plan() -> None:
     response = handle_request(
         {
