@@ -177,7 +177,15 @@ def command_import_html(args: argparse.Namespace) -> int:
 
 
 def command_eval_run(args: argparse.Namespace) -> int:
-    report = run_eval(Path(args.dataset), app_id=args.app_id or None, compile_plans=args.compile)
+    report = run_eval(
+        Path(args.dataset),
+        app_id=args.app_id or None,
+        compile_plans=args.compile,
+        case_filter=args.filter or None,
+        failed_from=Path(args.failed_from) if args.failed_from else None,
+        offset=args.offset,
+        limit=args.limit if args.limit > 0 else None,
+    )
     if args.report:
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -491,6 +499,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--report", default="")
     run_parser.add_argument("--compile", action="store_true")
     run_parser.add_argument("--app-id", default="")
+    run_parser.add_argument("--filter", default="", help="Comma-separated case ids to run.")
+    run_parser.add_argument("--failed-from", default="", help="Run only failure ids from a prior JSON report.")
+    run_parser.add_argument("--offset", type=int, default=0, help="Skip this many cases after filtering.")
+    run_parser.add_argument("--limit", type=int, default=0, help="Run at most this many cases after filtering.")
     run_parser.set_defaults(func=command_eval_run)
 
     session_parser = subparsers.add_parser("session", help="Manage local Bubble editor sessions.")

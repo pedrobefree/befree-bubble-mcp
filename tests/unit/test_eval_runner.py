@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from bubble_mcp.harness.eval_runner import run_eval
@@ -59,3 +60,45 @@ def test_run_eval_reports_failure_reasons_for_agent_harness_debugging() -> None:
     assert failures["wrong_tool"]["fallback_reasons"] == ["tool_mismatch", "args_mismatch"]
     assert failures["unmatched"]["parser"] == "none"
     assert failures["unmatched"]["warnings"] == ["No deterministic Bubble plan matched this request."]
+
+
+def test_run_eval_can_filter_cases_by_id() -> None:
+    report = run_eval(
+        Path("tests/fixtures/evals/aria-style-routing.json"),
+        case_filter="aria_style_create_group",
+    )
+
+    assert report["summary"]["dataset_cases"] == 2
+    assert report["summary"]["cases"] == 1
+    assert report["results"][0]["id"] == "aria_style_create_group"
+    assert report["summary"]["filters"]["case_filter"] == "aria_style_create_group"
+
+
+def test_run_eval_can_page_cases_after_filtering() -> None:
+    report = run_eval(
+        Path("tests/fixtures/evals/aria-style-routing.json"),
+        offset=1,
+        limit=1,
+    )
+
+    assert report["summary"]["dataset_cases"] == 2
+    assert report["summary"]["cases"] == 1
+    assert report["results"][0]["id"] == "aria_style_create_group"
+    assert report["summary"]["filters"]["offset"] == 1
+    assert report["summary"]["filters"]["limit"] == 1
+
+
+def test_run_eval_can_rerun_failed_cases_from_prior_report(tmp_path: Path) -> None:
+    prior_report = tmp_path / "prior-report.json"
+    prior_report.write_text(
+        json.dumps({"failures": [{"id": "unmatched"}]}),
+        encoding="utf-8",
+    )
+
+    report = run_eval(Path("tests/fixtures/evals/failure-routing.json"), failed_from=prior_report)
+
+    assert report["summary"]["dataset_cases"] == 2
+    assert report["summary"]["cases"] == 1
+    assert report["results"][0]["id"] == "unmatched"
+    assert report["summary"]["fallback_summary"] == {"no_plan_steps": 1}
+    assert report["summary"]["filters"]["failed_from"] == str(prior_report)

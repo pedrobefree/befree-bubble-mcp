@@ -115,12 +115,19 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return {"ok": True, "plan": plan, "validation": validate_plan(plan)}
     if name == "bubble_eval_run":
         args = arguments or {}
+        offset_value = str(args.get("offset") or "").strip()
+        limit_value = str(args.get("limit") or "").strip()
+        failed_from_value = str(args.get("failed_from") or "").strip()
         return {
             "ok": True,
             "report": run_eval(
                 Path(str(args.get("dataset") or "")),
                 app_id=str(args.get("app_id") or "") or None,
                 compile_plans=bool(args.get("compile")),
+                case_filter=args.get("filter") or args.get("case_filter") or None,
+                failed_from=Path(failed_from_value) if failed_from_value else None,
+                offset=int(offset_value) if offset_value else 0,
+                limit=int(limit_value) if limit_value else None,
             ),
         }
     if name == "bubble_compile_plan":

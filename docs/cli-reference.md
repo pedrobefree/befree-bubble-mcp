@@ -284,10 +284,13 @@ Runs a deterministic planning dataset. Use `--compile --app-id` to require
 compiler coverage and include write-payload/token metrics in the report. The
 report includes matched/tool/args/missing/validation/warning metrics plus
 `parser_summary` and `fallback_summary` for agent-routing diagnostics.
+Use `--filter`, `--failed-from`, `--offset`, and `--limit` for cheap focused
+reruns instead of reprocessing a large dataset.
 
 ```bash
 bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json
 bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --compile --app-id my-bubble-app --report reports/basic-compiled.json
+bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --failed-from reports/basic-compiled.json
 ```
 
 ## `bubble-mcp validate-plan`

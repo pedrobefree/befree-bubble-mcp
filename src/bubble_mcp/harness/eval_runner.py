@@ -19,6 +19,49 @@ def load_dataset(path: Path) -> list[dict[str, Any]]:
     return [item for item in payload if isinstance(item, dict)]
 
 
+def load_failed_ids(path: Path) -> set[str]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    failures = payload.get("failures") if isinstance(payload, dict) else None
+    if not isinstance(failures, list):
+        return set()
+    ids: set[str] = set()
+    for failure in failures:
+        if not isinstance(failure, dict):
+            continue
+        failure_id = str(failure.get("id") or "").strip()
+        if failure_id:
+            ids.add(failure_id)
+    return ids
+
+
+def filter_cases(
+    cases: list[dict[str, Any]],
+    *,
+    case_filter: Iterable[str] | str | None = None,
+    failed_from: Path | None = None,
+    offset: int = 0,
+    limit: int | None = None,
+) -> list[dict[str, Any]]:
+    filtered = cases
+    if failed_from is not None:
+        failed_ids = load_failed_ids(failed_from)
+        filtered = [case for case in filtered if str(case.get("id") or "").strip() in failed_ids]
+    elif case_filter:
+        if isinstance(case_filter, str):
+            requested = {item.strip() for item in case_filter.split(",") if item.strip()}
+        else:
+            requested = {str(item).strip() for item in case_filter if str(item).strip()}
+        if requested:
+            filtered = [case for case in filtered if str(case.get("id") or "").strip() in requested]
+
+    start = max(0, int(offset or 0))
+    if start:
+        filtered = filtered[start:]
+    if limit is not None and int(limit) > 0:
+        filtered = filtered[: int(limit)]
+    return filtered
+
+
 def _args_match(actual: dict[str, Any], expected: dict[str, Any]) -> bool:
     return all(actual.get(key) == value for key, value in expected.items())
 
@@ -96,8 +139,18 @@ def estimate_tokens(payload: Any) -> int:
     return max(1, len(json.dumps(payload, separators=(",", ":"), sort_keys=True)) // 4)
 
 
-def run_eval(dataset_path: Path, *, app_id: str | None = None, compile_plans: bool = False) -> dict[str, Any]:
-    cases = load_dataset(dataset_path)
+def run_eval(
+    dataset_path: Path,
+    *,
+    app_id: str | None = None,
+    compile_plans: bool = False,
+    case_filter: Iterable[str] | str | None = None,
+    failed_from: Path | None = None,
+    offset: int = 0,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    all_cases = load_dataset(dataset_path)
+    cases = filter_cases(all_cases, case_filter=case_filter, failed_from=failed_from, offset=offset, limit=limit)
     results: list[dict[str, Any]] = []
     for case in cases:
         message = str(case.get("message") or "")
@@ -187,6 +240,7 @@ def run_eval(dataset_path: Path, *, app_id: str | None = None, compile_plans: bo
     return {
         "summary": {
             "cases": len(results),
+            "dataset_cases": len(all_cases),
             "passed": sum(1 for result in results if result["passed"]),
             "matched": sum(1 for result in results if result["matched"]),
             "tool_ok": sum(1 for result in results if result["tool_ok"]),
@@ -198,6 +252,14 @@ def run_eval(dataset_path: Path, *, app_id: str | None = None, compile_plans: bo
             "estimated_tokens": sum(int(result["estimated_tokens"]) for result in results),
             "parser_summary": parser_summary,
             "fallback_summary": fallback_summary,
+            "filters": {
+                "case_filter": sorted({str(item).strip() for item in case_filter if str(item).strip()})
+                if case_filter and not isinstance(case_filter, str)
+                else str(case_filter or ""),
+                "failed_from": str(failed_from) if failed_from else "",
+                "offset": max(0, int(offset or 0)),
+                "limit": int(limit) if limit is not None else None,
+            },
         },
         "results": results,
         "failures": [result for result in results if not result["passed"]],

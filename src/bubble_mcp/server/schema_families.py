@@ -89,10 +89,24 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "limit": _prop(
         "integer",
-        "Maximum number of search results to return.",
-        default=10,
+        "Maximum number of search results or eval cases to return.",
         minimum=1,
-        maximum=100,
+    ),
+    "filter": _prop(
+        "string",
+        "Comma-separated eval case ids to run.",
+        examples=["create_text_hello,create_button_primary"],
+    ),
+    "failed_from": _prop(
+        "string",
+        "Path to a prior eval JSON report; only failed case ids are rerun.",
+        examples=["reports/basic-compiled.json"],
+    ),
+    "offset": _prop(
+        "integer",
+        "Number of eval cases to skip after filtering.",
+        default=0,
+        minimum=0,
     ),
     "kind": _prop(
         "string",
@@ -451,8 +465,8 @@ def planning_execution_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_eval_run",
-            "Run a deterministic planning eval dataset.",
-            ["dataset", "compile", "app_id"],
+            "Run a deterministic planning eval dataset with optional filters for cheap focused reruns.",
+            ["dataset", "compile", "app_id", "filter", "failed_from", "offset", "limit"],
             required=["dataset"],
         ),
         tool_schema(

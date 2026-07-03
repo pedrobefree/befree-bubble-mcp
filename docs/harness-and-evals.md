@@ -46,6 +46,14 @@ Run a dataset:
 bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --report reports/basic.json
 ```
 
+Run a cheap focused subset:
+
+```bash
+bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --filter create_text_hello
+bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --offset 20 --limit 10
+bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --failed-from reports/basic.json
+```
+
 Run the same dataset and require compiler coverage:
 
 ```bash
@@ -57,7 +65,8 @@ bubble-mcp eval run \
 ```
 
 The MCP tool `bubble_eval_run` accepts the same `dataset`, `compile`, and
-`app_id` fields. A compiled report includes `summary.compile_ok`,
+`app_id` fields, plus `filter`, `failed_from`, `offset`, and `limit` for focused
+reruns. A compiled report includes `summary.compile_ok`,
 `summary.estimated_tokens`, and per-case `has_write_payload` evidence.
 The summary also includes `parser_summary` and `fallback_summary` for quick
 regression triage.
