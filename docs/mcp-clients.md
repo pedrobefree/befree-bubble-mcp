@@ -82,7 +82,7 @@ standalone execution, pass `app_id` for compiler-supported families or
 - `bubble_plan_dry_run`: compatibility alias for `bubble_plan`.
 - `create_from_html`: Aria's advanced HTML importer. Pass `profile`, `app_id`, `context`, `parent`, and `url`, `html_file`, or `html`; set `selector` for targeted imports and `execute=true` to write to Bubble.
 - `bubble_compile_plan`: compiles supported abstract plan steps into Bubble write payloads.
-- `bubble_eval_run`: runs a deterministic planning eval dataset. Pass `compile=true` and `app_id` to include compiler coverage and token estimates.
+- `bubble_eval_run`: runs a deterministic planning eval dataset. Pass `compile=true` and `app_id` to include compiler coverage, token estimates, parser summary, and fallback reasons.
 - `bubble_session_list`: lists locally imported Bubble editor sessions.
 - `bubble_session_import`: imports session headers/cookies into local storage.
 - `bubble_editor_write`: posts an exact Bubble `/appeditor/write` payload. Set `execute=true` to mutate Bubble.

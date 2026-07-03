@@ -9,11 +9,36 @@ Implemented metrics:
 - matched cases
 - correct tool
 - correct args
+- missing required argument status
 - validation result
+- expected warning coverage
 - compilation result
 - presence of `args.write_payload`
+- parser summary
+- fallback/failure reason summary
 - step count
 - deterministic estimated token count
+
+Dataset cases accept either standalone snake_case keys or Aria-style camelCase
+keys:
+
+```json
+{
+  "id": "create_text_hello",
+  "message": "Create a text saying \"Hello\"",
+  "expected_tool": "create_text",
+  "expected_args": {
+    "context": "index",
+    "content": "Hello"
+  },
+  "expected_warnings_includes": []
+}
+```
+
+The same case can also use `expectedTool`, `expectedArgs`, and
+`expectedWarningsIncludes`. Reports include per-case `parser`,
+`fallback_reason`, `fallback_reasons`, `warnings`, and `validation_errors`
+fields so agent-routing failures can be diagnosed without opening logs.
 
 Run a dataset:
 
@@ -34,3 +59,5 @@ bubble-mcp eval run \
 The MCP tool `bubble_eval_run` accepts the same `dataset`, `compile`, and
 `app_id` fields. A compiled report includes `summary.compile_ok`,
 `summary.estimated_tokens`, and per-case `has_write_payload` evidence.
+The summary also includes `parser_summary` and `fallback_summary` for quick
+regression triage.

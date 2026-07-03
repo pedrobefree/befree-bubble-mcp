@@ -1,0 +1,20 @@
+[
+  {
+    "id": "aria_style_create_text",
+    "message": "Create a text saying \"Hello\"",
+    "expectedTool": "create_text",
+    "expectedArgs": {
+      "context": "index",
+      "content": "Hello"
+    }
+  },
+  {
+    "id": "aria_style_create_group",
+    "message": "Create a card group",
+    "expectedTool": "create_group",
+    "expectedArgs": {
+      "context": "index",
+      "name": "Generated group"
+    }
+  }
+]

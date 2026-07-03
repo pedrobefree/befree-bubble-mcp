@@ -1,0 +1,22 @@
+[
+  {
+    "id": "wrong_tool",
+    "message": "Create a text saying \"Hello\"",
+    "expectedTool": "create_group",
+    "expectedArgs": {
+      "context": "index",
+      "name": "Generated group"
+    }
+  },
+  {
+    "id": "unmatched",
+    "message": "Summarize the project in natural language",
+    "expectedTool": "create_text",
+    "expectedArgs": {
+      "context": "index"
+    },
+    "expectedWarningsIncludes": [
+      "No deterministic Bubble plan matched this request."
+    ]
+  }
+]
