@@ -161,7 +161,9 @@ bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 
 
 `--wait-seconds` is the maximum time the command keeps polling cookies. After
 logging in, leave the Bubble editor open for a few seconds before closing the
-browser window.
+browser window. If the process is interrupted after Bubble cookies were
+observed, the newest usable session is still saved; if it is interrupted before
+login completes, rerun the command.
 
 ## `bubble-mcp session list`
 

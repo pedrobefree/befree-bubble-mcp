@@ -38,14 +38,22 @@ module exactly as an end user will run it.
 ```bash
 python3.11 -m venv .venv
 . .venv/bin/activate
-python -m pip install -e .
+python scripts/install_local.py --extras browser
 bubble-mcp --help
 ```
 
 Install development dependencies when running tests or static checks:
 
 ```bash
-python -m pip install -e ".[dev]"
+python scripts/install_local.py --extras browser,dev
+```
+
+If a previous editable install was interrupted or `bubble-mcp` cannot import
+`bubble_mcp`, repair the virtual environment from the checkout without relying
+on the broken console script:
+
+```bash
+python scripts/install_local.py --repair --extras browser,dev
 ```
 
 ## Optional isolated install with pipx
@@ -94,6 +102,19 @@ Confirm it was saved:
 ```bash
 bubble-mcp profile list
 ```
+
+## Capture a Bubble editor session
+
+Create or reuse a profile, then open a browser-assisted login flow:
+
+```bash
+bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180
+```
+
+Log in to Bubble in the opened browser and wait until the CLI prints the saved
+session JSON. If the command is interrupted after cookies were captured, the CLI
+will still save the newest usable session. If it is interrupted before login
+completes, rerun the command.
 
 ## Start the MCP server
 

@@ -40,6 +40,7 @@ SKIP_DIRS = {
     ".ruff_cache",
     "build",
     "node_modules",
+    "tmp",
 }
 
 TEXT_SUFFIXES = {

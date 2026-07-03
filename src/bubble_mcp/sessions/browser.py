@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from bubble_mcp.sessions.store import BubbleSessionData, session_from_payload
 
@@ -44,6 +44,39 @@ def _first_open_page_user_agent(context: Any, fallback: str) -> str:
         except Exception:
             continue
     return fallback
+
+
+def _poll_browser_session(
+    context: Any,
+    *,
+    wait_seconds: int,
+    last_cookie_string: str = "",
+    last_user_agent: str = "befree-bubble-mcp",
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> tuple[str, str, bool]:
+    """Poll a Playwright context and keep the newest usable Bubble session state.
+
+    The login flow is intentionally user-driven. Closing the browser window or
+    interrupting the command after login should not discard a valid session that
+    was already observed during the wait loop.
+    """
+
+    interrupted = False
+    deadline = monotonic() + max(1, wait_seconds)
+    while monotonic() < deadline:
+        try:
+            cookie_string = _bubble_cookie_header(context)
+            if cookie_string:
+                last_cookie_string = cookie_string
+            last_user_agent = _first_open_page_user_agent(context, last_user_agent)
+            sleep(1)
+        except KeyboardInterrupt:
+            interrupted = True
+            break
+        except Exception:
+            break
+    return last_cookie_string, last_user_agent, interrupted
 
 
 def capture_session_with_playwright(
@@ -115,16 +148,12 @@ def capture_session_with_playwright(
         context.on("request", remember_bubble_headers)
         page.goto(target_url, wait_until="domcontentloaded")
 
-        deadline = time.monotonic() + max(1, wait_seconds)
-        while time.monotonic() < deadline:
-            try:
-                cookie_string = _bubble_cookie_header(context)
-                if cookie_string:
-                    last_cookie_string = cookie_string
-                last_user_agent = _first_open_page_user_agent(context, last_user_agent)
-            except Exception:
-                break
-            time.sleep(1)
+        last_cookie_string, last_user_agent, interrupted = _poll_browser_session(
+            context,
+            wait_seconds=wait_seconds,
+            last_cookie_string=last_cookie_string,
+            last_user_agent=last_user_agent,
+        )
 
         try:
             cookie_string = _bubble_cookie_header(context)
@@ -141,6 +170,11 @@ def capture_session_with_playwright(
                 browser.close()
             except Exception:
                 pass
+        if interrupted and not last_cookie_string:
+            raise RuntimeError(
+                "Session capture was interrupted before bubble.io cookies were captured. "
+                "Run login again and wait until the CLI prints the saved session JSON."
+            )
 
     if not last_cookie_string:
         raise RuntimeError("No bubble.io cookies were captured. Log in before the wait timeout expires.")

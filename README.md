@@ -12,6 +12,21 @@ bubble-mcp profile list
 bubble-mcp-server
 ```
 
+For local checkout development:
+
+```bash
+python3.11 -m venv .venv
+. .venv/bin/activate
+python scripts/install_local.py --extras browser,dev
+```
+
+If an editable install is interrupted and the console script can no longer
+import `bubble_mcp`, run:
+
+```bash
+python scripts/install_local.py --repair --extras browser,dev
+```
+
 ## Current Capabilities
 
 - Bubble-focused CLI.
