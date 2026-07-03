@@ -56,6 +56,11 @@ on the broken console script:
 python scripts/install_local.py --repair --extras browser,dev
 ```
 
+On macOS, the repair command also clears hidden filesystem flags on the virtual
+environment, refreshes local console entrypoints, signs native extension modules
+with an ad-hoc local signature, and validates the Playwright browser dependency
+when the `browser` extra is installed.
+
 ## Optional isolated install with pipx
 
 When the package is available to your Python package index, `pipx` can install

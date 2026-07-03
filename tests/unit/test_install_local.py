@@ -1,6 +1,16 @@
 from pathlib import Path
 
-from scripts.install_local import _stale_install_paths, _write_console_bootstrap, _write_local_editable_pth
+import sys
+
+import pytest
+
+from scripts import install_local
+from scripts.install_local import (
+    _repair_native_extension_policy,
+    _stale_install_paths,
+    _write_console_bootstrap,
+    _write_local_editable_pth,
+)
 
 
 def test_stale_install_paths_detects_interrupted_editable_metadata(tmp_path: Path) -> None:
@@ -51,3 +61,31 @@ def test_write_console_bootstrap_injects_source_before_import(tmp_path: Path) ->
     assert f"sys.path.insert(0, {str(source_dir)!r})" in text
     assert "from bubble_mcp.cli.main import main" in text
     assert script_path.stat().st_mode & 0o111
+
+
+def test_repair_native_extension_policy_targets_only_native_files(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    native = tmp_path / "pkg" / "native.so"
+    dylib = tmp_path / "pkg" / "native.dylib"
+    pure_python = tmp_path / "pkg" / "module.py"
+    native.parent.mkdir()
+    native.write_bytes(b"native")
+    dylib.write_bytes(b"native")
+    pure_python.write_text("pass\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(
+        install_local.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    _repair_native_extension_policy(tmp_path)
+
+    flattened = [" ".join(command) for command in calls]
+    assert any(str(native) in command and "codesign" in command for command in flattened)
+    assert any(str(dylib) in command and "codesign" in command for command in flattened)
+    assert all(str(pure_python) not in command for command in flattened)

@@ -114,6 +114,16 @@ def _repair_venv_visibility(venv: Path) -> None:
         subprocess.run(["chflags", "-h", "nohidden", str(path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def _repair_native_extension_policy(site_packages: Path) -> None:
+    if sys.platform != "darwin" or not site_packages.exists():
+        return
+    for path in site_packages.rglob("*"):
+        if not path.is_file() or path.suffix not in {".so", ".dylib"}:
+            continue
+        subprocess.run(["xattr", "-d", "com.apple.quarantine", str(path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(["codesign", "--force", "--sign", "-", str(path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
 def _write_local_editable_pth(site_packages: Path, source_dir: Path) -> Path:
     path = site_packages / LOCAL_PTH_NAME
     path.write_text(f"{source_dir}\n", encoding="utf-8")
@@ -194,6 +204,7 @@ def install_local(*, root: Path, venv: Path, extras: str, repair: bool) -> int:
 
     _repair_venv_visibility(venv)
     _repair_pth_visibility(site_packages)
+    _repair_native_extension_policy(site_packages)
     source_dir = root / "src"
     _write_local_editable_pth(site_packages, source_dir)
     _write_console_bootstraps(venv, python, source_dir)
@@ -216,6 +227,15 @@ def install_local(*, root: Path, venv: Path, extras: str, repair: bool) -> int:
             print(help_output.stdout_text)
             return help_output.returncode or 1
         print("bubble-mcp console script is runnable.")
+    if "browser" in {extra.strip() for extra in extras.split(",")}:
+        browser_check = _capture_result(
+            [str(python), "-c", "from playwright.sync_api import sync_playwright; print(sync_playwright)"],
+            cwd=root,
+        )
+        if browser_check.returncode != 0:
+            print(browser_check.stdout_text)
+            return browser_check.returncode
+        print("Playwright browser dependency is importable.")
     return 0
 
 
