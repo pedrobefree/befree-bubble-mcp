@@ -116,7 +116,7 @@ def list_tool_schemas() -> list[dict[str, Any]]:
         },
         {
             "name": "create_from_html",
-            "description": "Aria advanced HTML-to-Bubble importer. Use this for converting a URL or selector into Bubble. It hydrates the page with a browser, extracts rendered DOM/computed styles, maps the result to Bubble elements, and can execute through the stored profile session.",
+            "description": "Use this whenever a user asks to convert, import, copy, or add an HTML component/section from a URL, selector, or HTML snippet into Bubble. This is Aria's advanced HTML-to-Bubble importer: it hydrates the page with a browser, extracts rendered DOM/computed styles, maps the result to Bubble elements, and can execute through the stored profile session. Prefer this over any conservative/raw HTML converter for URL + selector requests.",
             "inputSchema": {
                 "type": "object",
                 "properties": {

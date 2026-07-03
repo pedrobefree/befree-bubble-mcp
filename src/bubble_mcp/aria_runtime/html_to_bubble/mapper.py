@@ -3789,6 +3789,15 @@ class HTMLToBubbleMapper:
             and parent_width > width + 4
         ):
             max_width_css = f"{int(width)}px"
+        css_max_width = self._clean_text(styles.get("max-width", "")).lower()
+        if (
+            max_width_css is None
+            and width is not None
+            and width > 0
+            and css_max_width
+            and css_max_width not in {"none", "auto", "initial", "unset"}
+        ):
+            max_width_css = f"{int(width)}px"
         image_props = {
             "bubble_type": "Image",
             "properties": {

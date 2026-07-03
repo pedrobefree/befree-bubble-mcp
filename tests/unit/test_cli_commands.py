@@ -119,7 +119,6 @@ def test_cli_import_html_runtime_accepts_url(monkeypatch, capsys) -> None:  # ty
                 "html",
                 "--url",
                 "https://example.test/page.html",
-                "--runtime",
                 "--profile",
                 "smoke",
                 "--context",

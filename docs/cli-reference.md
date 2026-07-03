@@ -101,7 +101,7 @@ plans whose steps include `args.write_payload`.
 
 ## `bubble-mcp import html`
 
-Converts an HTML file or hydrated URL into Bubble output. By default this uses the conservative plan converter for local files.
+Converts an HTML file or hydrated URL into Bubble output. Local files use the conservative plan converter by default; `--url` automatically uses the advanced rendered runtime.
 
 ```bash
 bubble-mcp import html --file component.html --context index --parent index
@@ -119,7 +119,6 @@ Use `--runtime` for Aria's advanced `create-from-html` importer:
 ```bash
 bubble-mcp import html \
   --url https://example.com/page.html \
-  --runtime \
   --profile smoke \
   --app-id my-bubble-app \
   --context index \

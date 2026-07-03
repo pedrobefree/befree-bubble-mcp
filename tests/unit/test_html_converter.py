@@ -93,6 +93,31 @@ def test_aria_runtime_mapper_preserves_gradient_container_and_pseudo_layer() -> 
     assert pseudo["properties"]["height"] == 144
 
 
+def test_aria_runtime_mapper_caps_rendered_image_width_from_css_max_width() -> None:
+    element = {
+        "type": "img",
+        "attributes": {"src": "https://example.test/watch.png"},
+        "computed_styles": {
+            "display": "block",
+            "width": "458px",
+            "height": "504px",
+            "max-width": "100%",
+        },
+        "rect": {"width": 458, "height": 504},
+        "intrinsic": {"width": 916, "height": 1008},
+        "_parent_rect": {"width": 458, "height": 514},
+        "_parent_styles": {"width": "458px"},
+    }
+
+    mapped = HTMLToBubbleMapper().map_tree(element)
+
+    assert mapped is not None
+    assert mapped["bubble_type"] == "Image"
+    props = mapped["properties"]
+    assert props["width"] == 458
+    assert props["max_width_css"] == "458px"
+
+
 def test_aria_runtime_render_config_is_preserved_from_profile() -> None:
     render_config = _render_config_from_profile(
         {

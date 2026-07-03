@@ -134,7 +134,8 @@ def command_validate_plan(args: argparse.Namespace) -> int:
 
 def command_import_html(args: argparse.Namespace) -> int:
     html_source = str(getattr(args, "url", "") or args.file or "").strip()
-    if args.runtime:
+    use_runtime = bool(args.runtime or getattr(args, "url", ""))
+    if use_runtime:
         result = create_from_html_runtime(
             profile=args.profile,
             context=args.context,
