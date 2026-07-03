@@ -7,8 +7,6 @@ This project is being extracted from Befree/Aria as a standalone open source pla
 ```bash
 pipx install befree-bubble-mcp
 bubble-mcp init
-bubble-mcp profile add my-app --app-id my-bubble-app
-bubble-mcp profile list
 bubble-mcp-server
 ```
 
@@ -48,6 +46,151 @@ python scripts/install_local.py --repair --extras browser,dev
 - Broader public eval corpus across Bubble editor families.
 - Contributor-friendly tool-family extension scaffolding.
 - More visual parity validators for HTML and design bridge conversions.
+
+## Required Setup For Each Bubble Project
+
+Before an MCP client can safely mutate a Bubble app, every Bubble project needs
+a local profile, a captured editor session, and a detected project context. Run
+these steps once per Bubble app and repeat `session login` or `context detect`
+whenever the Bubble session expires or the app structure changes.
+
+### 1. Initialize Local Settings
+
+```bash
+bubble-mcp init
+```
+
+This creates the local config directory, by default:
+
+```text
+~/.config/bubble-mcp
+```
+
+Use `BUBBLE_MCP_CONFIG_DIR` when you need a different config location.
+
+### 2. Add A Project Profile
+
+Choose a short profile name that your MCP client and prompts will use to refer
+to the Bubble project.
+
+```bash
+bubble-mcp profile add my-app --app-id my-bubble-app
+```
+
+Optional metadata:
+
+```bash
+bubble-mcp profile add my-app \
+  --app-id my-bubble-app \
+  --appname my-bubble-app \
+  --editor-url "https://bubble.io/page?id=my-bubble-app" \
+  --app-version test
+```
+
+Confirm the profile exists:
+
+```bash
+bubble-mcp profile list
+```
+
+### 3. Capture A Bubble Editor Session
+
+Install the browser extra if it is not already installed:
+
+```bash
+python -m pip install "befree-bubble-mcp[browser]"
+python -m playwright install chromium
+```
+
+For a local checkout, prefer:
+
+```bash
+python scripts/install_local.py --repair --extras browser,dev
+python -m playwright install chromium
+```
+
+Then capture the session:
+
+```bash
+bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180
+```
+
+The command opens a local Chromium window. Log in to Bubble and keep the editor
+tab open until the terminal prints:
+
+```text
+[bubble-mcp session] Session cookies detected. You can close the browser now; the CLI will save the newest captured session.
+```
+
+After this message appears, it is safe to close the browser. The final command
+output is a redacted JSON object. For automated scripts, pass `--quiet` to hide
+progress messages while keeping the JSON output:
+
+```bash
+bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180 --quiet
+```
+
+Manage captured sessions:
+
+```bash
+bubble-mcp session list
+bubble-mcp session inspect --profile my-app
+```
+
+`session inspect` never prints raw cookies. Use it to confirm that cookies are
+present and Bubble write headers can be computed.
+
+### 4. Detect Project Context
+
+This step is required before asking an agent to create, update, import, or
+inspect app structure through the MCP. It downloads/processes the Bubble project
+context and stores it locally for the selected profile.
+
+```bash
+bubble-mcp context detect --profile my-app --app-id my-bubble-app --force
+```
+
+To save the compact context in a known path for inspection:
+
+```bash
+bubble-mcp context detect \
+  --profile my-app \
+  --app-id my-bubble-app \
+  --force \
+  --output ./my-bubble-app.context.json
+
+bubble-mcp context summary --file ./my-bubble-app.context.json
+```
+
+If your app uses a non-default Bubble version, include it:
+
+```bash
+bubble-mcp context detect \
+  --profile my-app \
+  --app-id my-bubble-app \
+  --app-version test \
+  --force
+```
+
+Refresh context after creating pages/elements outside this MCP, after importing
+from another tool, or when an agent cannot resolve a page, reusable element,
+style, workflow, data type, or path.
+
+### 5. Use The Profile From Your MCP Client
+
+After `profile add`, `session login`, and `context detect` complete, refer to
+the profile name in your MCP client prompts:
+
+```text
+Using befree-bubble-mcp with profile my-app, create a page called mcp-01.
+```
+
+For direct CLI checks:
+
+```bash
+bubble-mcp plan "create a text saying Hello on index" --context index
+bubble-mcp session inspect --profile my-app
+```
 
 ## Codex MCP Setup
 
