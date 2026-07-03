@@ -6,6 +6,7 @@ from typing import Any
 from pathlib import Path
 
 from bubble_mcp import __version__
+from bubble_mcp.aria_dispatch import dispatch_aria_runtime_tool
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import detect_project_context
@@ -53,6 +54,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                 "dry_run": "optional",
                 "figma_bridge": True,
                 "figma_plugin": False,
+                "aria_runtime_dispatch": True,
                 "aria_tool_catalog_count": len(ARIA_BUBBLE_TOOL_NAMES),
             },
         }
@@ -392,6 +394,10 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
                 response=result.get("response"),
             )
         return result
+
+    runtime_result = dispatch_aria_runtime_tool(name, args)
+    if runtime_result is not None:
+        return runtime_result
 
     app_id = str(args.get("app_id") or args.get("appname") or "").strip()
     plan = {"steps": [{"id": "step_1", "tool_name": name, "args": dict(args)}]}

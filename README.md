@@ -29,7 +29,9 @@ python scripts/install_local.py --repair --extras browser,dev
 
 - Bubble-focused CLI.
 - MCP server for agent clients.
-- Full Aria Bubble MCP tool catalog exposed over MCP.
+- Full Aria Bubble MCP tool catalog exposed over MCP, with catalog calls
+  dispatched through the packaged Aria-compatible runtime whenever the matching
+  runtime command exists.
 - Local profile management.
 - Compact context loading, search, import, freshness reporting, and local mutation overlay merge from `.bubble`/consolelog/crawler artifacts plus successful local MCP writes.
 - Deterministic planner with packaged routing corpus, semantic validator, structural execution validation, and operation snapshots for agent harnesses.
@@ -191,6 +193,24 @@ For direct CLI checks:
 bubble-mcp plan "create a text saying Hello on index" --context index
 bubble-mcp session inspect --profile my-app
 ```
+
+## Agent Runtime Behavior
+
+MCP clients should call the exposed MCP tools directly. They do not need to
+discover shell commands, inspect the repository, or reconstruct Bubble payloads
+manually for normal Bubble editor work.
+
+When a catalog tool is called with a `profile`, the server resolves the stored
+profile, session, context, and local mutation overlay, then tries to execute the
+matching packaged Aria-compatible runtime method. This keeps element creation,
+updates, style sync, workflow, data, branch, changelog, Figma bridge, and HTML
+import behavior aligned with the mature Bubble payload conventions used by
+Aria.
+
+Calls with `execute=false` or without `execute` still compile through the same
+runtime path when possible, but the Bubble write is intercepted and returned as
+a preview. Calls with `execute=true` use the captured local Bubble session and
+write to `/appeditor/write`.
 
 ## Codex MCP Setup
 

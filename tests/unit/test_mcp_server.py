@@ -40,6 +40,7 @@ def test_health_tool_returns_text_content() -> None:
     payload = json.loads(text)
     assert payload["ok"] is True
     assert payload["capabilities"]["mutations"] is True
+    assert payload["capabilities"]["aria_runtime_dispatch"] is True
 
 
 def test_plan_tool_returns_valid_plan() -> None:
@@ -105,6 +106,98 @@ def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  
     assert calls[0]["selector"] == "#home-area"
     assert calls[0]["translate_to_existing_styles"] is True
     assert calls[0]["refresh_context"] is True
+
+
+def test_legacy_catalog_tool_dispatches_to_aria_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    class FakePayloadBuilder:
+        send_to_webhook = None
+        to_json = None
+
+        def __init__(self, appname="synthetic-app"):  # type: ignore[no-untyped-def]
+            self.appname = appname
+
+        def build(self):  # type: ignore[no-untyped-def]
+            return {
+                "v": 1,
+                "appname": self.appname,
+                "changes": [
+                    {
+                        "intent": {"name": "CreateElement"},
+                        "path_array": ["%p3", "bPage"],
+                        "body": {"%x": "Page", "%p": {"%nm": "mcp-03"}, "id": "bPage"},
+                    }
+                ],
+            }
+
+        def _to_json_impl(self):  # type: ignore[no-untyped-def]
+            return json.dumps(self.build())
+
+    class FakeBubbleSdk:
+        PayloadBuilder = FakePayloadBuilder
+
+    class FakeBubbleCliModule:
+        inquirer = None
+
+        class BubbleCLI:
+            def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
+                calls.append(("init", kwargs))
+                self.appname = kwargs["appname"]
+
+            def create_page(self, name, dry_run=False, **kwargs):  # type: ignore[no-untyped-def]
+                calls.append(("create_page", {"name": name, "dry_run": dry_run, **kwargs}))
+                payload_builder = FakePayloadBuilder(appname=self.appname)
+                if dry_run:
+                    return payload_builder.to_json()
+                return payload_builder.send_to_webhook("local://bubble-mcp")
+
+    FakePayloadBuilder.to_json = FakePayloadBuilder._to_json_impl
+
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._load_aria_runtime_modules",
+        lambda: (FakeBubbleCliModule, FakeBubbleSdk),
+    )
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._resolve_runtime_environment",
+        lambda args: __import__("bubble_mcp.aria_dispatch").aria_dispatch.AriaRuntimeEnvironment(
+            profile=args["profile"],
+            app_id=args["app_id"],
+            app_version="test",
+            app_json_path="/tmp/app.bubble",
+            consolelog_json_path=None,
+            crawler_index_path=None,
+            mutation_overlay_path=None,
+        ),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "create_page",
+                "arguments": {
+                    "profile": "smoke",
+                    "app_id": "synthetic-app",
+                    "name": "mcp-03",
+                    "execute": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["engine"] == "aria_runtime"
+    assert payload["compiled"] is True
+    assert payload["executed"] is False
+    assert payload["write_count"] == 1
+    assert payload["results"][0]["payload"]["changes"][0]["body"]["%x"] == "Page"
+    assert calls[0][0] == "init"
+    assert calls[1] == ("create_page", {"name": "mcp-03", "dry_run": True})
 
 
 def test_tools_list_includes_mutating_write_tool() -> None:

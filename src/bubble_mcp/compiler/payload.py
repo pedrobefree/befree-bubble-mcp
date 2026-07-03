@@ -646,6 +646,12 @@ def css_px(value: Any) -> str:
     return f"{text}px"
 
 
+def text_expression(value: Any) -> Any:
+    if isinstance(value, dict):
+        return value
+    return {"%x": "TextExpression", "%e": {"0": str(value)}}
+
+
 def normalize_element_name(tool_name: str, args: dict[str, Any], element_type: str) -> str:
     raw_name = str(args.get("name") or args.get("element_name") or "").strip()
     if not raw_name:
@@ -871,10 +877,13 @@ def compile_create_text_step(
 def collect_visual_properties(args: dict[str, Any], *, element_type: str) -> dict[str, Any]:
     name = str(args.get("name") or args.get("element_name") or f"Generated {element_type}").strip()
     properties: dict[str, Any] = {"%nm": name}
+    content_key = "%ht" if element_type == "HTML" else "%3"
+    label_key = "%lab" if element_type == "Checkbox" else "%3"
     mapping = {
-        "content": "%3",
+        "content": content_key,
+        "html": "%ht",
         "text": "%3",
-        "label": "%3",
+        "label": label_key,
         "placeholder": "placeholder",
         "initial_content": "initial_content",
         "font_size": "%fs",
@@ -906,7 +915,10 @@ def collect_visual_properties(args: dict[str, Any], *, element_type: str) -> dic
     }
     for source_key, wire_key in mapping.items():
         if args.get(source_key) is not None:
-            properties[wire_key] = args[source_key]
+            value = args[source_key]
+            if wire_key in {"%3", "%lab", "%ht"}:
+                value = text_expression(value)
+            properties[wire_key] = value
     apply_dimension_properties(properties, args)
     if element_type in {"Group", "FloatingGroup", "GroupFocus", "RepeatingGroup", "Table", "Popup"}:
         layout = str(args.get("layout") or "column").strip().lower().replace("-", "_").replace(" ", "_")
@@ -966,6 +978,13 @@ def compile_create_group_step(
     return body
 
 
+def update_element_type_for_tool(tool_name: str) -> str:
+    suffix = tool_name.removeprefix("update_")
+    if suffix.endswith("_element"):
+        suffix = suffix.removesuffix("_element")
+    return VISUAL_CREATE_TYPES.get(f"create_{suffix}", "Element")
+
+
 def compile_update_text_changes(
     args: dict[str, Any],
     *,
@@ -976,7 +995,7 @@ def compile_update_text_changes(
     if not content:
         raise ValueError("update_text requires content/new_text.")
     path = [*resolve_element_path(args, context=context), "%p", "%3"]
-    return [set_data_change(path, content, session_id)]
+    return [set_data_change(path, text_expression(content), session_id)]
 
 
 def compile_update_group_changes(
@@ -1009,16 +1028,19 @@ def compile_update_group_changes(
 
 
 def compile_update_visual_changes(
+    tool_name: str,
     args: dict[str, Any],
     *,
     context: BubbleProjectContext | None,
     session_id: str,
 ) -> list[dict[str, Any]]:
     path = [*resolve_element_path(args, context=context), "%p"]
-    properties = collect_visual_properties(args, element_type="Element")
+    element_type = update_element_type_for_tool(tool_name)
+    properties = collect_visual_properties(args, element_type=element_type)
     properties = {key: value for key, value in properties.items() if key != "%nm" or args.get("name") is not None}
     if args.get("content") is not None or args.get("new_text") is not None:
-        properties["%3"] = args.get("content") if args.get("content") is not None else args.get("new_text")
+        content_key = "%ht" if element_type == "HTML" else "%3"
+        properties[content_key] = text_expression(args.get("content") if args.get("content") is not None else args.get("new_text"))
     if not properties:
         raise ValueError("update tool requires at least one supported property.")
     return [set_data_change(path, properties, session_id)]
@@ -1190,7 +1212,7 @@ def compile_step_to_payload(
     elif tool_name == "update_group":
         changes = compile_update_group_changes(args, context=context, session_id=session_id)
     elif tool_name in VISUAL_UPDATE_TOOLS:
-        changes = compile_update_visual_changes(args, context=context, session_id=session_id)
+        changes = compile_update_visual_changes(tool_name, args, context=context, session_id=session_id)
     elif tool_name in VISUAL_DELETE_TOOLS:
         changes = compile_delete_element_changes(args, context=context, session_id=session_id)
     elif tool_name in {"create_data_type", "create_data_field"}:

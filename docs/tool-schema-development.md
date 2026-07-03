@@ -9,6 +9,9 @@ safe defaults, and when an operation mutates Bubble.
 - Native standalone tools are built in `src/bubble_mcp/server/schema_families.py`.
 - Legacy Aria-compatible tools are enriched in `src/bubble_mcp/server/agent_catalog.py`.
 - `src/bubble_mcp/server/schemas.py` combines native and legacy schemas, then applies descriptions and annotations.
+- `src/bubble_mcp/aria_dispatch.py` routes compatible catalog calls to the
+  packaged Aria runtime so tool behavior stays aligned with mature Bubble
+  payload builders.
 
 ## Schema Family Rules
 
@@ -50,8 +53,29 @@ When adding or refining a family, update tests in
 Schemas should reduce discovery loops:
 
 - descriptions must say when to use the tool by user intent, not only what API it wraps;
+- descriptions should make profile-based execution clear when a tool can use
+  stored context/session state;
 - read-only tools must set `readOnlyHint`;
 - mutating tools must expose `execute` and default it to `false`;
 - destructive tools must expose `confirm` and set `destructiveHint`;
 - context-producing tools should explain freshness and artifact priority;
 - eval tools should support focused reruns (`filter`, `failed_from`, `offset`, `limit`) so agents avoid rerunning the full suite.
+
+## Runtime Compatibility Rules
+
+When a catalog capability already exists in the packaged Aria runtime, prefer
+dispatching to that runtime over rebuilding payload logic in the standalone
+compiler. The standalone compiler should remain the deterministic fallback for
+small abstract plans, exact `write_payload` execution, and tool families that do
+not yet have a runtime method.
+
+Every runtime-routed mutation must preserve the same safety contract:
+
+- `execute=false` compiles through the runtime and returns the captured Bubble
+  write payload without posting it;
+- `execute=true` posts through the local Bubble session;
+- successful writes are recorded into the local mutation overlay so subsequent
+  context resolution can see changes before the next `.bubble` download;
+- returned data must identify `engine`, `profile`, `app_id`, `app_version`,
+  `executed`, and `write_count` so agents can reason from the response without
+  re-inspecting the repository.

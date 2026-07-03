@@ -69,9 +69,17 @@ listed below.
 ## Available tools
 
 The server exposes the complete 196-tool Aria Bubble MCP catalog, plus native
-standalone helper tools. Catalog tools accept their original arguments. For
-standalone execution, pass `app_id` for compiler-supported families or
-`write_payload` for exact Bubble editor writes.
+standalone helper tools. Catalog tools accept their original arguments. Agents
+should call these tools directly instead of discovering equivalent CLI commands.
+
+For profile-based Bubble work, pass `profile` and the tool-specific arguments.
+The server resolves the stored Bubble session and context, then routes catalog
+tools through the packaged Aria-compatible runtime when a matching runtime
+method exists. Without `execute=true`, mutating tools return a compiled preview.
+With `execute=true`, they write using the local captured session.
+
+For lower-level standalone execution, pass `app_id` for compiler-supported
+families or `write_payload` for exact Bubble editor writes.
 
 - `bubble_health_check`: reports local server capabilities.
 - `bubble_profile_list`: lists configured local Bubble profiles.
@@ -95,6 +103,20 @@ standalone execution, pass `app_id` for compiler-supported families or
 
 Mutating calls require a stored local session. Calls without `execute=true`
 return a preview instead of posting to Bubble.
+
+## Agent Selection Rules
+
+- If the user names a profile and asks for Bubble app work, call the MCP tool
+  that matches the requested capability.
+- Do not ask the user to memorize internal tool names; infer the right tool
+  from the intent, then pass the visible app/page/element names as arguments.
+- Do not shell out to inspect CLI help unless a required capability is missing
+  from `tools/list`.
+- Prefer profile-based calls over manual `app_id` payload construction because
+  profile calls can use the stored `.bubble` context, mutation overlay, session,
+  and Aria-compatible runtime.
+- Use `execute=false` for previews and `execute=true` only when the user asked
+  to apply the change.
 
 For schema maintenance and adding new tool families, see
 [`tool-schema-development.md`](tool-schema-development.md).

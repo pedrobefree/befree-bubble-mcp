@@ -185,7 +185,35 @@ def test_compile_update_text_and_delete_element() -> None:
 
     assert compiled["steps"][0]["args"]["write_payload"]["changes"][0]["intent"]["name"] == "SetData"
     assert compiled["steps"][0]["args"]["write_payload"]["changes"][0]["path_array"][-2:] == ["%p", "%3"]
+    assert text_expression_value(compiled["steps"][0]["args"]["write_payload"]["changes"][0]["body"]) == "Updated"
     assert compiled["steps"][1]["args"]["write_payload"]["changes"][0]["intent"]["name"] == "Delete"
+
+
+def test_compile_update_visual_uses_aria_property_shapes() -> None:
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "update_checkbox",
+                "args": {"context": "index", "element_name": "terms", "label": "Accept terms"},
+            },
+            {
+                "id": "s2",
+                "tool_name": "update_html",
+                "args": {"context": "index", "element_name": "embed", "content": "<div>ok</div>"},
+            },
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
+    checkbox_body = compiled["steps"][0]["args"]["write_payload"]["changes"][0]["body"]
+    html_body = compiled["steps"][1]["args"]["write_payload"]["changes"][0]["body"]
+
+    assert "%lab" in checkbox_body
+    assert text_expression_value(checkbox_body["%lab"]) == "Accept terms"
+    assert "%3" not in checkbox_body
+    assert "%ht" in html_body
+    assert text_expression_value(html_body["%ht"]) == "<div>ok</div>"
 
 
 def test_compile_schema_option_theme_and_workflow_tools() -> None:
