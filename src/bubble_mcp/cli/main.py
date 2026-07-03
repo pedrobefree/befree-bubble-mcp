@@ -11,6 +11,7 @@ from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import detect_project_context
+from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.redaction import redact_sensitive
@@ -95,7 +96,7 @@ def command_profile_list(_args: argparse.Namespace) -> int:
 
 def command_context_summary(args: argparse.Namespace) -> int:
     context = load_context(Path(args.file))
-    emit_json({"ok": True, "summary": context.summary()})
+    emit_json({"ok": True, "summary": context.summary(), "freshness": context_freshness(context, path=Path(args.file))})
     return 0
 
 
@@ -276,7 +277,11 @@ def command_execute_plan(args: argparse.Namespace) -> int:
     plan = json.loads(Path(args.file).read_text(encoding="utf-8"))
     if not isinstance(plan, dict):
         raise ValueError("Plan file must contain a JSON object.")
-    context = load_context(Path(args.context_file)) if args.context_file else None
+    context = (
+        load_context_with_overlay(Path(args.context_file), profile=args.profile, app_id=args.app_id or None)
+        if args.context_file
+        else None
+    )
     result = execute_plan(
         plan,
         profile=args.profile,
@@ -295,7 +300,11 @@ def command_compile_plan(args: argparse.Namespace) -> int:
     plan = json.loads(Path(args.file).read_text(encoding="utf-8"))
     if not isinstance(plan, dict):
         raise ValueError("Plan file must contain a JSON object.")
-    context = load_context(Path(args.context_file)) if args.context_file else None
+    context = (
+        load_context_with_overlay(Path(args.context_file), app_id=args.app_id or None)
+        if args.context_file
+        else None
+    )
     compiled = compile_plan_to_write_payloads(
         plan,
         app_id=args.app_id,

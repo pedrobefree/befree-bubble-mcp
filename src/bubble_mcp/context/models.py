@@ -27,6 +27,7 @@ class BubbleProjectContext:
     source: str
     nodes: list[BubbleContextNode]
     edges: list[BubbleContextEdge]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def summary(self) -> dict[str, Any]:
         counts: dict[str, int] = {}
@@ -38,4 +39,5 @@ class BubbleProjectContext:
             "counts": counts,
             "nodes": len(self.nodes),
             "edges": len(self.edges),
+            "metadata": self.metadata,
         }

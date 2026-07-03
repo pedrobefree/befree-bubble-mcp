@@ -10,6 +10,7 @@ from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import detect_project_context
 from bubble_mcp.context.mutation_overlay import record_mutation_overlay
+from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import load_settings
@@ -70,8 +71,9 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             ],
         }
     if name == "bubble_context_summary":
-        context = load_context(Path(str((arguments or {}).get("file") or "")))
-        return {"ok": True, "summary": context.summary()}
+        path = Path(str((arguments or {}).get("file") or ""))
+        context = load_context(path)
+        return {"ok": True, "summary": context.summary(), "freshness": context_freshness(context, path=path)}
     if name == "bubble_context_find":
         args = arguments or {}
         context = load_context(Path(str(args.get("file") or "")))
@@ -157,7 +159,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         compile_context = None
         context_file = str(args.get("context_file") or "").strip()
         if context_file:
-            compile_context = load_context(Path(context_file))
+            compile_context = load_context_with_overlay(
+                Path(context_file),
+                profile=str(args.get("profile") or "") or None,
+                app_id=app_id,
+            )
         return {
             "ok": True,
             "plan": compile_plan_to_write_payloads(
@@ -228,7 +234,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         execution_context = None
         context_file = str(args.get("context_file") or "").strip()
         if context_file:
-            execution_context = load_context(Path(context_file))
+            execution_context = load_context_with_overlay(
+                Path(context_file),
+                profile=profile,
+                app_id=str(args.get("app_id") or "") or None,
+            )
         return execute_plan(
             execution_plan,
             profile=profile,
@@ -381,7 +391,11 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         context = None
         context_file = str(args.get("context_file") or "").strip()
         if context_file:
-            context = load_context(Path(context_file))
+            context = load_context_with_overlay(
+                Path(context_file),
+                profile=profile or None,
+                app_id=app_id or None,
+            )
         compiled_plan = compile_plan_to_write_payloads(
             plan,
             app_id=app_id,

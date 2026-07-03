@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -47,6 +48,7 @@ def load_context(path: Path) -> BubbleProjectContext:
         source=str(payload.get("source") or path.name),
         nodes=nodes,
         edges=edges,
+        metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
     )
 
 
@@ -57,6 +59,10 @@ def save_context(context: BubbleProjectContext, path: Path) -> None:
     payload = {
         "app_id": context.app_id,
         "source": context.source,
+        "metadata": {
+            **context.metadata,
+            "saved_at": datetime.now(timezone.utc).isoformat(),
+        },
         "nodes": [
             {
                 "id": node.id,

@@ -6,9 +6,9 @@ from typing import Any
 
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.detector import detect_project_context
+from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.models import BubbleProjectContext
 from bubble_mcp.context.mutation_overlay import record_mutation_overlay
-from bubble_mcp.context.source import load_context
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.execution.executor_types import extract_write_payload
 from bubble_mcp.execution.state import operation_snapshot
@@ -43,7 +43,11 @@ def execute_plan(
                 app_id=target_app_id,
                 app_version=app_version,
             )
-            context = load_context(detected.context_path)
+            context = load_context_with_overlay(
+                detected.context_path,
+                profile=profile,
+                app_id=target_app_id,
+            )
             context_source = detected.source
         plan = compile_plan_to_write_payloads(
             plan,
@@ -55,6 +59,7 @@ def execute_plan(
             plan.setdefault("metadata", {})
             if isinstance(plan["metadata"], dict):
                 plan["metadata"]["context_source"] = context_source
+                plan["metadata"]["context_freshness"] = context_freshness(context)
 
     steps = plan.get("steps")
     if not isinstance(steps, list):
@@ -147,6 +152,11 @@ def execute_plan(
         if isinstance(plan.get("metadata"), dict) and plan["metadata"].get("context_source")
         else None
     )
+    context_freshness_meta = (
+        plan.get("metadata", {}).get("context_freshness")
+        if isinstance(plan.get("metadata"), dict) and plan["metadata"].get("context_freshness")
+        else None
+    )
     result = {
         "ok": all(bool(result.get("ok")) for result in results),
         "executed": execute,
@@ -166,4 +176,6 @@ def execute_plan(
     }
     if context_source:
         result["context_source"] = context_source
+    if context_freshness_meta:
+        result["context_freshness"] = context_freshness_meta
     return result
