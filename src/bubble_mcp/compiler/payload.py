@@ -45,6 +45,113 @@ VISUAL_CREATE_TYPES = {
     "create_table": "Table",
     "create_reusable_instance": "ReusableElement",
 }
+CREATE_NAME_PREFIXES = {
+    "create_button": "bt_",
+    "create_text": "tx_",
+    "create_icon": "ic_",
+    "create_link": "li_",
+    "create_image": "im_",
+    "create_shape": "sh_",
+    "create_alert": "al_",
+    "create_video": "vd_",
+    "create_html": "html_",
+    "create_map": "map_",
+    "create_group": "gp_",
+    "create_repeating_group": "rg_",
+    "create_popup": "pp_",
+    "create_floating_group": "fg_",
+    "create_group_focus": "gf_",
+    "create_table": "tb_",
+    "create_input": "in_",
+    "create_multiline_input": "mli_",
+    "create_checkbox": "cb_",
+    "create_dropdown": "dd_",
+    "create_searchbox": "sb_",
+    "create_radio": "rb_",
+    "create_slider": "sl_",
+    "create_datepicker": "dtp_",
+    "create_picture_uploader": "pu_",
+    "create_file_uploader": "fu_",
+}
+CREATE_DEFAULT_ARGS: dict[str, dict[str, Any]] = {
+    "create_button": {"fit_width": True, "fit_height": True},
+    "create_text": {"fit_height": True},
+    "create_icon": {"width": 20, "height": 20, "fixed_width": True, "fixed_height": True},
+    "create_link": {"label": "Link label"},
+    "create_image": {"width": 120, "fixed_width": True, "min_height": 64},
+    "create_shape": {"width": 120, "height": 120, "fixed_width": True, "fixed_height": True},
+    "create_alert": {"content": "Alert content", "at_to_top": True, "fit_height": True},
+    "create_video": {
+        "video_id": "id",
+        "use_aspect_ratio": True,
+        "aspect_ratio_width": 16,
+        "aspect_ratio_height": 9,
+        "width": 360,
+        "fixed_width": True,
+    },
+    "create_html": {"content": "<html>...</html>", "fit_height": True, "min_height": 120, "width": 240, "fixed_width": True},
+    "create_map": {"width": 360, "fixed_width": True, "height": 240, "fixed_height": True},
+    "create_group": {"layout": "column", "min_height": 40, "fit_height": True, "min_width": 40},
+    "create_repeating_group": {
+        "data_type": "text",
+        "cell_min_height": 32,
+        "cell_min_width": 32,
+        "stable_pagination": True,
+        "min_width": 120,
+        "min_height": 120,
+        "fit_height": True,
+    },
+    "create_popup": {"min_width": 320, "fit_width": True, "min_height": 320, "fit_height": True},
+    "create_floating_group": {
+        "float_v_relative": "top",
+        "float_h_relative": "left",
+        "float_zindex": "front",
+        "min_width": 0,
+        "min_height": 64,
+        "fit_height": True,
+    },
+    "create_group_focus": {"min_width": 0, "min_height": 64, "fit_height": True, "max_width": 320},
+    "create_table": {
+        "table_direction": "vertical",
+        "stable_pagination": True,
+        "min_height": 120,
+        "min_width": 120,
+        "fit_height": True,
+    },
+    "create_input": {"height": 44, "fixed_height": True, "min_width": 0, "max_width": 240},
+    "create_multiline_input": {"min_height": 64, "fit_height": True, "min_width": 0, "max_width": 240},
+    "create_checkbox": {"label": "Checkbox label", "min_height": 0, "min_width": 0, "fit_width": True, "fit_height": True},
+    "create_dropdown": {"height": 44, "fixed_height": True, "min_width": 0, "max_width": 240},
+    "create_searchbox": {"placeholder": "Search...", "height": 44, "fixed_height": True, "min_width": 0, "max_width": 240},
+    "create_radio": {"min_height": 0, "min_width": 0, "fit_width": True, "fit_height": True},
+    "create_slider": {"height": 32, "fixed_height": True, "min_width": 0, "max_width": 240},
+    "create_datepicker": {"height": 44, "fixed_height": True, "min_width": 0, "max_width": 240},
+    "create_picture_uploader": {"min_width": 0, "max_width": 240, "height": 64, "fixed_height": True},
+    "create_file_uploader": {"min_width": 0, "max_width": 240, "height": 64, "fixed_height": True},
+}
+POST_CREATE_PROPERTY_KEYS = {
+    "width",
+    "height",
+    "fit_width",
+    "fit_height",
+    "single_width",
+    "single_height",
+    "min_width_css",
+    "max_width_css",
+    "min_height_css",
+    "max_height_css",
+    "cell_min_height",
+    "cell_min_width",
+    "stable_pagination",
+    "at_to_top",
+    "float_v_relative",
+    "float_h_relative",
+    "float_zindex",
+    "use_aspect_ratio",
+    "aspect_ratio_width",
+    "aspect_ratio_height",
+    "table_direction",
+}
 VISUAL_UPDATE_TOOLS = {
     "update_text",
     "update_text_element",
@@ -342,8 +449,12 @@ def create_visual_element_changes(
     changes = [
         update_index_change(["_index", "id_to_path", object_id], full_path, session_id),
         create_change(create_path, body, session_id),
-        update_index_change(["_index", "issues_list", object_id], "[]", session_id),
     ]
+    props = body.get("%p") if isinstance(body.get("%p"), dict) else {}
+    for key in sorted(POST_CREATE_PROPERTY_KEYS):
+        if key in props:
+            changes.append(set_data_change([*create_path, "%p", key], props[key], session_id))
+    changes.append(update_index_change(["_index", "issues_list", object_id], "[]", session_id))
     if parent_id:
         children = resolve_existing_children(args) or resolve_context_children(
             parent_id,
@@ -388,6 +499,66 @@ def slug_key(value: str, prefix: str = "") -> str:
     return f"{prefix}{normalized}" if prefix and not normalized.startswith(prefix) else normalized
 
 
+def css_px(value: Any) -> str:
+    text = str(value).strip()
+    if not text:
+        return "0px"
+    if text.endswith(("px", "%", "rem", "em", "vh", "vw")):
+        return text
+    return f"{text}px"
+
+
+def normalize_element_name(tool_name: str, args: dict[str, Any], element_type: str) -> str:
+    raw_name = str(args.get("name") or args.get("element_name") or "").strip()
+    if not raw_name:
+        raw_name = str(
+            args.get("label")
+            or args.get("content")
+            or args.get("placeholder")
+            or args.get("video_id")
+            or element_type
+        ).strip()
+    normalized = slug_key(raw_name or element_type)
+    prefix = CREATE_NAME_PREFIXES.get(tool_name, "")
+    return normalized if not prefix or normalized.startswith(prefix) else f"{prefix}{normalized}"
+
+
+def apply_create_defaults(tool_name: str, args: dict[str, Any], *, element_type: str) -> dict[str, Any]:
+    merged = dict(CREATE_DEFAULT_ARGS.get(tool_name, {}))
+    merged.update(args)
+    merged["name"] = normalize_element_name(tool_name, merged, element_type)
+    return merged
+
+
+def apply_dimension_properties(properties: dict[str, Any], args: dict[str, Any]) -> None:
+    if args.get("width") is not None:
+        properties["width"] = int(args["width"])
+    if args.get("height") is not None:
+        properties["height"] = int(args["height"])
+    if args.get("min_width") is not None:
+        properties["min_width_css"] = css_px(args["min_width"])
+    if args.get("max_width") is not None:
+        properties["max_width_css"] = css_px(args["max_width"])
+    if args.get("min_height") is not None:
+        properties["min_height_css"] = css_px(args["min_height"])
+    if args.get("max_height") is not None:
+        properties["max_height_css"] = css_px(args["max_height"])
+    if args.get("fit_width") is not None:
+        properties["fit_width"] = bool(args["fit_width"])
+    if args.get("fit_height") is not None:
+        properties["fit_height"] = bool(args["fit_height"])
+    if args.get("fixed_width") is True:
+        properties["single_width"] = True
+        properties["fit_width"] = False
+    elif args.get("single_width") is not None:
+        properties["single_width"] = bool(args["single_width"])
+    if args.get("fixed_height") is True:
+        properties["single_height"] = True
+        properties["fit_height"] = False
+    elif args.get("single_height") is not None:
+        properties["single_height"] = bool(args["single_height"])
+
+
 def resolve_element_path(
     args: dict[str, Any],
     *,
@@ -417,16 +588,18 @@ def compile_create_text_step(
     *,
     context: BubbleProjectContext | None,
 ) -> dict[str, Any]:
+    args = apply_create_defaults("create_text", args, element_type="Text")
     content = str(args.get("content") or "").strip()
     if not content:
         raise ValueError("create_text requires content.")
-    name = str(args.get("name") or "").strip() or f"Text {content[:24]}".strip()
+    name = str(args.get("name") or "").strip()
     element_id = bubble_element_id()
     properties: dict[str, Any] = {
         "%nm": name,
         "%3": content,
         "%fs": int(args.get("font_size") or 16),
     }
+    apply_dimension_properties(properties, args)
     if args.get("font_color"):
         properties["%fc"] = args["font_color"]
     if args.get("font_alignment"):
@@ -456,14 +629,28 @@ def collect_visual_properties(args: dict[str, Any], *, element_type: str) -> dic
         "url": "url",
         "image_url": "image_url",
         "icon": "%9i",
+        "video_id": "video_id",
         "data_source": "%ds",
+        "data_type": "%gt",
         "type_of_content": "%gt",
         "style": "%s1",
         "tooltip": "tooltip",
+        "at_to_top": "at_to_top",
+        "cell_min_height": "cell_min_height",
+        "cell_min_width": "cell_min_width",
+        "stable_pagination": "stable_pagination",
+        "float_v_relative": "float_v_relative",
+        "float_h_relative": "float_h_relative",
+        "float_zindex": "float_zindex",
+        "use_aspect_ratio": "use_aspect_ratio",
+        "aspect_ratio_width": "aspect_ratio_width",
+        "aspect_ratio_height": "aspect_ratio_height",
+        "table_direction": "table_direction",
     }
     for source_key, wire_key in mapping.items():
         if args.get(source_key) is not None:
             properties[wire_key] = args[source_key]
+    apply_dimension_properties(properties, args)
     if element_type in {"Group", "FloatingGroup", "GroupFocus", "RepeatingGroup", "Table", "Popup"}:
         layout = str(args.get("layout") or "column").strip().lower().replace("-", "_").replace(" ", "_")
         if layout == "align_to_parent":
@@ -487,6 +674,7 @@ def compile_create_visual_step(
     context: BubbleProjectContext | None,
 ) -> dict[str, Any]:
     element_type = VISUAL_CREATE_TYPES[tool_name]
+    args = apply_create_defaults(tool_name, args, element_type=element_type)
     properties = collect_visual_properties(args, element_type=element_type)
     return {"%x": element_type, "%p": properties, "id": bubble_element_id()}
 
@@ -496,6 +684,7 @@ def compile_create_group_step(
     *,
     context: BubbleProjectContext | None,
 ) -> dict[str, Any]:
+    args = apply_create_defaults("create_group", args, element_type="Group")
     name = str(args.get("name") or "").strip()
     if not name:
         raise ValueError("create_group requires name.")
@@ -508,6 +697,7 @@ def compile_create_group_step(
         "%nm": name,
         "container_layout": wire_layout,
     }
+    apply_dimension_properties(properties, args)
     for source_key, wire_key in (
         ("row_gap", "row_gap"),
         ("column_gap", "column_gap"),
