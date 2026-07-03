@@ -49,6 +49,204 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "strict_validate": "Fail the import when semantic validation finds unsupported or unsafe output.",
     "validation_out_dir": "Optional directory for debug artifacts generated during import validation.",
     "refresh_context": "Refresh Bubble context before resolving targets and compiling the mutation.",
+    "name": "Display name or Bubble entity name to create, update, clone, or resolve.",
+    "title": "Human-readable title for a page, branch, action, test, or entity.",
+    "source": "Source page, reusable, workflow, action, element, asset, or existing entity to copy/clone.",
+    "layout": "Bubble responsive layout mode, such as column, row, align-to-parent, or fixed.",
+    "default_builder_width": "Default Bubble builder canvas width for a page.",
+    "row_gap": "Vertical spacing between children in Bubble responsive layout.",
+    "column_gap": "Horizontal spacing between children in Bubble responsive layout.",
+    "horiz_alignment": "Horizontal alignment for children or content.",
+    "vert_alignment": "Vertical alignment for children or content.",
+    "container_alignment": "Container alignment behavior used by Bubble responsive layout.",
+    "padding": "Uniform padding value applied to all sides.",
+    "padding_top": "Top padding value.",
+    "padding_bottom": "Bottom padding value.",
+    "padding_left": "Left padding value.",
+    "padding_right": "Right padding value.",
+    "margin_top": "Top margin value.",
+    "margin_bottom": "Bottom margin value.",
+    "margin_left": "Left margin value.",
+    "margin_right": "Right margin value.",
+    "min_width": "Minimum responsive width value.",
+    "max_width": "Maximum responsive width value.",
+    "fixed_width": "Set whether width is fixed instead of responsive.",
+    "fit_width": "Set whether width fits content.",
+    "min_height": "Minimum responsive height value.",
+    "max_height": "Maximum responsive height value.",
+    "fixed_height": "Set whether height is fixed instead of responsive.",
+    "fit_height": "Set whether height fits content.",
+    "style": "Bubble reusable style name or id to apply.",
+    "element_type": "Bubble element type, such as Group, Text, Button, Input, Popup, or Map.",
+    "type": "Bubble type, entity type, element type, or workflow parameter type depending on the tool.",
+    "content": "Text content to display in a Bubble Text element.",
+    "label": "Visible label for a Bubble control, button, uploader, checkbox, or test item.",
+    "placeholder": "Placeholder text shown in an input-like Bubble element.",
+    "choices": "Static choices for dropdowns, radios, or option values.",
+    "dynamic_type": "Bubble data type used for dynamic option sources.",
+    "option_caption_field": "Field used as the visible caption for dynamic dropdown options.",
+    "checked": "Initial checked state for checkbox-like controls.",
+    "required": "Whether the Bubble input/control is required.",
+    "selected": "Initial selected value.",
+    "min": "Minimum numeric value.",
+    "max": "Maximum numeric value.",
+    "val": "Initial numeric value.",
+    "step": "Numeric increment step.",
+    "show_time": "Show time selection in date/time inputs.",
+    "group_name": "Radio button group name.",
+    "source_appname": "Source Bubble app id for cross-app copy operations.",
+    "source_context": "Source Bubble page/reusable/context for copy operations.",
+    "element_name": "Existing Bubble element name to update, delete, bind, or inspect.",
+    "search_text": "Text to search for when updating a Text element.",
+    "new_text": "Replacement text for a Text element.",
+    "new_name": "Replacement name for an existing Bubble entity or element.",
+    "new_placeholder": "Replacement placeholder text.",
+    "new_style": "Replacement Bubble style name or id.",
+    "from_style": "Source Bubble style to replace.",
+    "to_style": "Target Bubble style to apply.",
+    "new_source": "Replacement image, video, icon, or asset source.",
+    "new_icon": "Replacement Bubble icon identifier.",
+    "property": "Bubble layout/property name to update.",
+    "value": "Value to assign to a Bubble property.",
+    "content_format": "Bubble input content format, such as text, email, integer, decimal, or date.",
+    "icon": "Bubble icon identifier or icon source.",
+    "url": "URL used by the tool, such as a source page, video URL, link target, or HTML source.",
+    "video_id": "Video provider id for Bubble Video elements.",
+    "origin": "Video origin/provider, such as YouTube or Vimeo.",
+    "autoplay": "Whether the video should autoplay.",
+    "color": "Color value, token name, or Bubble color reference.",
+    "bg_style": "Background style, such as color, image, gradient, or none.",
+    "bg_color": "Background color value or Bubble color token.",
+    "bg_image": "Background image URL or asset reference.",
+    "gradient_color1": "First gradient color.",
+    "gradient_color2": "Second gradient color.",
+    "gradient_mid": "Gradient midpoint value.",
+    "gradient_angle": "Gradient angle in degrees.",
+    "border_color": "Border color value or Bubble color token.",
+    "border_width": "Border width value.",
+    "border_style": "Border style value.",
+    "border_radius": "Border radius value.",
+    "shadow": "Bubble shadow or CSS-like shadow value.",
+    "rotation_angle": "Rotation angle in degrees.",
+    "opacity": "Element opacity value.",
+    "data_class": "Bubble data type/class for a group or repeating group.",
+    "data_type": "Bubble data type name or id.",
+    "data_source": "Bubble data source expression or reference.",
+    "query_json": "Raw Bubble query JSON expression.",
+    "query_result_type": "Expected Bubble query result type.",
+    "query_source_type": "Bubble query source type.",
+    "query_result_from_field": "Field used to derive query result values.",
+    "query_constraints_json": "Raw Bubble query constraints JSON.",
+    "query_sort_field": "Field used for query sorting.",
+    "query_sort_desc": "Set true to sort query results descending.",
+    "query_ignore_empty_constraints": "Ignore empty query constraints when building the Bubble query.",
+    "data_source_json": "Raw Bubble data source JSON expression.",
+    "source_type": "Alias for query source type in data-source builder tools.",
+    "result_type": "Alias for query result type in data-source builder tools.",
+    "result_from_field": "Alias for query result-from-field in data-source builder tools.",
+    "constraints_json": "Alias for query constraints JSON in data-source builder tools.",
+    "sort_field": "Alias for query sort field.",
+    "sort_desc": "Alias for query descending sort.",
+    "ignore_empty_constraints": "Alias for ignoring empty query constraints.",
+    "rows": "Number of visible repeating group rows.",
+    "default": "Set the created style as the default style for its element type.",
+    "map_type": "Bubble map type/style category.",
+    "map_style": "Built-in Bubble map style identifier.",
+    "custom_style": "Custom JSON/style payload for a Bubble style.",
+    "condition": "Bubble style or workflow condition expression.",
+    "order": "Desired style condition/state order, as CSV or natural phrase.",
+    "event_type": "Bubble workflow event type, such as PageLoaded, CustomEvent, APIEvent, or ConditionTrue.",
+    "event_ref": "Existing Bubble workflow event reference, id, key, alias, or name.",
+    "event_ref_kind": "How to interpret event_ref, such as id, key, alias, name, or auto.",
+    "element_ref": "Existing Bubble element reference, id, alias, or name.",
+    "element_ref_kind": "How to interpret element_ref, such as id, alias, name, text, or auto.",
+    "ref_kind": "How to interpret a reference argument.",
+    "action_type": "Bubble workflow action type to create or replace.",
+    "action_ref": "Existing workflow action reference, id, key, index, or alias.",
+    "action_ref_kind": "How to interpret action_ref.",
+    "event": "Workflow event name or shorthand used by older CLI commands.",
+    "param": "Generic action parameter value.",
+    "fields": "Action field assignments as JSON or friendly DSL such as key=value; another=true.",
+    "thing": "Bubble Thing expression, direct reference, element reference, or search shortcut.",
+    "to_email": "Email recipient address for email-related actions.",
+    "to": "Email recipient alias for to_email.",
+    "subject": "Email/message subject.",
+    "body": "Email/message body.",
+    "pause_ms": "Pause duration in milliseconds.",
+    "hide_status_bar": "Whether to hide Bubble status bar UI for navigation actions.",
+    "open_in_new_tab": "Whether navigation opens in a new browser tab.",
+    "same_tab": "Whether navigation stays in the same browser tab.",
+    "keep_current_page_params": "Whether navigation preserves current page URL parameters.",
+    "add_parameters": "Whether to add URL parameters to the navigation action.",
+    "url_parameters_json": "Raw Bubble URL parameters JSON.",
+    "data_to_send_json": "Raw Bubble data-to-send JSON for navigation actions.",
+    "page_ref": "Target page reference, id, name, key, or alias.",
+    "action_index": "Numeric workflow action index.",
+    "action_id": "Workflow action id.",
+    "bind_name": "Alias name to store for a resolved reference.",
+    "custom_event_name": "Custom event display/name value.",
+    "run_when": "Run-when condition expression.",
+    "only_when_json": "Raw Bubble only-when condition JSON.",
+    "interval_seconds": "Interval in seconds for DoInterval events.",
+    "event_key": "Explicit workflow event map key.",
+    "event_id": "Explicit workflow event id.",
+    "id_counter": "Optional Bubble id counter override used by advanced payload generation.",
+    "alias_name": "Local alias name to map to a Bubble reference.",
+    "property_path": "Bubble object path to set or verify.",
+    "value_type": "How to encode the supplied value, such as string, number, boolean, json, or expression.",
+    "current_event_type": "Current event type used to disambiguate an event update.",
+    "element": "Element name/ref used by event mutation helpers.",
+    "parameters_json": "Raw custom event parameters JSON.",
+    "param_name": "Custom event parameter name.",
+    "btype_id": "Bubble type id for workflow parameter or return type.",
+    "is_list": "Whether the Bubble type is a list.",
+    "optional": "Whether the Bubble workflow parameter or return type is optional.",
+    "param_id": "Explicit custom event parameter id.",
+    "return_types_json": "Raw custom event return types JSON.",
+    "return_name": "Custom event return type name.",
+    "return_id": "Explicit custom event return type id.",
+    "state_name": "Custom state name.",
+    "state_type": "Bubble custom state type.",
+    "default_value": "Default scalar custom-state value.",
+    "default_value_json": "Default custom-state value as raw JSON.",
+    "element_id": "Exact Bubble element id.",
+    "capture_file": "Captured traffic or reference-map artifact path.",
+    "clear": "Clear existing cached values before rebuilding.",
+    "json": "Return machine-readable JSON output when supported.",
+    "scope": "Inspection scope, such as elements, workflows, styles, schema, or all.",
+    "include_elements": "Include element details in inspection output.",
+    "include_workflows": "Include workflow details in inspection output.",
+    "include_styles": "Include style details in inspection output.",
+    "parent_ref": "Parent element reference to resolve.",
+    "parent_match_index": "Match index when parent resolution returns multiple candidates.",
+    "match_index": "Match index when reference resolution returns multiple candidates.",
+    "style_ref": "Style name/id/ref to resolve.",
+    "style_element_type": "Element type scope for style resolution.",
+    "data_type_ref": "Bubble data type reference to resolve.",
+    "data_type_ref_kind": "How to interpret data_type_ref.",
+    "option_set_ref": "Bubble option set reference to resolve.",
+    "option_set_ref_kind": "How to interpret option_set_ref.",
+    "option_value_ref": "Bubble option value reference to resolve.",
+    "path": "Workspace path, Bubble object path, or target owner path depending on the tool.",
+    "entity": "Entity kind to inspect or verify.",
+    "expected": "Expected value for verification.",
+    "skip_clear_cache": "Skip cache clearing during profile refresh.",
+    "skip_split": "Skip splitting the downloaded .bubble export during profile refresh.",
+    "skip_sync_events": "Skip workflow/event cache sync during profile refresh.",
+    "skip_scan_types": "Skip Bubble type/schema scanning during profile refresh.",
+    "skip_sync_element_refs": "Skip element reference cache sync during profile refresh.",
+    "mode": "Cache sync preset mode.",
+    "type_of_content": "Bubble type of content for a page or reusable container.",
+    "url_backup_field": "Bubble field used for URL backup behavior.",
+    "meta_title": "SEO meta title.",
+    "meta_description": "SEO meta description.",
+    "html_header": "Custom HTML header content.",
+    "float_v_relative": "Floating group vertical reference behavior.",
+    "float_h_relative": "Floating group horizontal reference behavior.",
+    "float_zindex": "Floating group z-index.",
+    "parallax": "Floating/parallax behavior setting.",
+    "limit_image_size_before_upload": "Whether Bubble should limit image size before upload.",
+    "prefer_last": "When multiple matches exist, prefer the last matching element.",
 }
 
 
@@ -152,6 +350,181 @@ LEGACY_CATEGORY_DESCRIPTIONS: tuple[tuple[str, str], ...] = (
 )
 
 
+DIMENSION_FIELDS = (
+    "min_width",
+    "max_width",
+    "fixed_width",
+    "fit_width",
+    "min_height",
+    "max_height",
+    "fixed_height",
+    "fit_height",
+)
+SPACING_FIELDS = (
+    "row_gap",
+    "column_gap",
+    "horiz_alignment",
+    "vert_alignment",
+    "container_alignment",
+    "padding",
+    "padding_top",
+    "padding_bottom",
+    "padding_left",
+    "padding_right",
+    "margin_top",
+    "margin_bottom",
+    "margin_left",
+    "margin_right",
+)
+BACKGROUND_FIELDS = (
+    "bg_style",
+    "bg_color",
+    "bg_image",
+    "gradient_color1",
+    "gradient_color2",
+    "gradient_mid",
+    "gradient_angle",
+)
+BORDER_SHADOW_FIELDS = ("border_color", "border_width", "border_style", "border_radius", "shadow")
+VISUAL_STYLE_FIELDS = ("style", *DIMENSION_FIELDS, *SPACING_FIELDS, *BACKGROUND_FIELDS, *BORDER_SHADOW_FIELDS, "rotation_angle", "opacity")
+QUERY_FIELDS = (
+    "query_json",
+    "query_result_type",
+    "query_source_type",
+    "query_result_from_field",
+    "query_constraints_json",
+    "query_sort_field",
+    "query_sort_desc",
+    "query_ignore_empty_constraints",
+)
+
+
+EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "refresh_profile_cache": (("profile",), ("dry_run", "settings_path", "skip_clear_cache", "skip_split", "skip_sync_events", "skip_scan_types", "skip_sync_element_refs", "capture_file")),
+    "sync_cache": (("profile",), ("dry_run", "settings_path", "mode", "skip_clear_cache", "skip_split", "skip_sync_events", "skip_scan_types", "skip_sync_element_refs", "capture_file")),
+    "sync_event_cache": (("profile",), ("dry_run", "settings_path", "context", "clear", "json")),
+    "inspect_context": (("profile",), ("dry_run", "settings_path", "context", "scope", "include_elements", "include_workflows", "include_styles", "limit", "json")),
+    "resolve_refs": (("profile",), ("dry_run", "settings_path", "context", "parent_ref", "parent_match_index", "element_ref", "element_ref_kind", "match_index", "event_ref", "event_ref_kind", "style_ref", "style_element_type", "data_type_ref", "data_type_ref_kind", "option_set_ref", "option_set_ref_kind", "option_value_ref", "json")),
+    "verify_write": (("profile",), ("dry_run", "settings_path", "path", "context", "entity", "ref", "property_path", "ref_kind", "element_ref_kind", "match_index", "expected", "value_type", "json")),
+    "sync_element_ref_cache": (("profile", "capture_file"), ("dry_run", "settings_path", "json")),
+    "scan_types": (("profile",), ("dry_run", "settings_path", "json")),
+    "list_data_types": (("profile",), ("dry_run", "settings_path", "include_cache", "json")),
+    "create_page": (("profile", "name"), ("dry_run", "settings_path", "title", "layout", "default_builder_width", "min_width", "min_height", "row_gap", "column_gap", "container_alignment", "style", "keep_overrides", "type_of_content", "url_backup_field", "meta_title", "meta_description", "html_header", *BACKGROUND_FIELDS)),
+    "delete_page": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
+    "clone_page": (("profile", "source", "name"), ("dry_run", "settings_path", "title")),
+    "create_reusable": (("profile", "name"), ("dry_run", "settings_path", "type", "element_type", "layout", *VISUAL_STYLE_FIELDS, "float_v_relative", "float_h_relative", "float_zindex", "parallax", "data_class", "data_source", "properties")),
+    "update_reusable_type": (("profile", "name", "type"), ("dry_run", "settings_path")),
+    "clone_reusable": (("profile", "source", "name"), ("dry_run", "settings_path")),
+    "delete_reusable": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
+    "create_custom_state": (("profile", "state_name"), ("dry_run", "settings_path", "element_id", "context", "element_name", "state_type", "default_value", "default_value_json")),
+    "create_repeating_group": (("profile", "context", "parent", "name", "data_type"), ("dry_run", "layout", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS)),
+    "update_repeating_group": (("profile", "context", "element_name"), ("dry_run", "settings_path", "layout", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS)),
+    "build_source_query_json": (("profile", "query_source_type"), ("dry_run", "context", "query_result_type", "query_result_from_field", "query_constraints_json", "query_sort_field", "query_sort_desc", "query_ignore_empty_constraints")),
+    "build_data_source_json": (("profile",), ("dry_run", "context", "data_source", "query_json", "data_source_json", "query_source_type", "source_type", "query_result_type", "result_type", "query_result_from_field", "result_from_field", "query_constraints_json", "constraints_json", "query_sort_field", "sort_field", "query_sort_desc", "sort_desc", "query_ignore_empty_constraints", "ignore_empty_constraints")),
+    "update_text": (("profile", "context", "search_text", "new_text"), ("dry_run", "settings_path")),
+    "update_name": (("profile", "context", "element_name", "new_name"), ("dry_run", "settings_path")),
+    "update_placeholder": (("profile", "context", "element_name", "new_placeholder"), ("dry_run", "settings_path")),
+    "update_style": (("profile", "context", "element_name", "new_style"), ("dry_run", "settings_path", "keep_overrides")),
+    "update_style_all": (("profile", "context", "from_style", "to_style"), ("dry_run", "settings_path", "element_type", "keep_overrides")),
+    "update_image": (("profile", "context", "element_name", "new_source"), ("dry_run", "settings_path", "prefer_last")),
+    "update_icon": (("profile", "context", "element_name", "new_icon"), ("dry_run", "settings_path", "prefer_last")),
+    "update_layout": (("profile", "context", "element_name", "property", "value"), ("dry_run", "settings_path")),
+    "create_style": (("profile", "name", "element_type"), ("dry_run", "settings_path", "default", "map_type", "map_style", "custom_style", *VISUAL_STYLE_FIELDS)),
+    "edit_style": (("profile", "name", "element_type"), ("dry_run", "settings_path", "map_type", "map_style", "custom_style", *VISUAL_STYLE_FIELDS)),
+    "add_style_condition": (("profile", "name", "condition"), ("dry_run", "settings_path", *VISUAL_STYLE_FIELDS)),
+    "reorder_style_states": (("profile", "name", "order"), ("dry_run", "settings_path")),
+    "create_workflow": (("profile", "context", "element_name"), ("dry_run", "settings_path", "event")),
+    "create_event": (("profile", "context", "event_type"), ("dry_run", "settings_path", "element_ref", "element_ref_kind", "match_index", "bind_name", "custom_event_name", "run_when", "only_when_json", "interval_seconds", "event_key", "event_id", "id_counter")),
+    "create_empty_event": (("profile", "context"), ("dry_run", "settings_path", "event_key", "event_id", "id_counter")),
+    "delete_event": (("profile", "context", "event_ref"), ("dry_run", "settings_path", "ref_kind", "confirm")),
+    "set_event_type": (("profile", "context", "event_type"), ("dry_run", "settings_path", "event_ref", "ref_kind", "current_event_type", "element", "element_ref_kind", "match_index")),
+    "set_event_element": (("profile", "context", "event_ref", "element_ref"), ("dry_run", "settings_path", "event_ref_kind", "element_ref_kind", "match_index", "bind_name")),
+    "map_element_ref": (("profile", "context", "alias_name", "element_ref"), ("dry_run", "settings_path", "ref_kind", "match_index")),
+    "map_workflow_ref": (("profile", "context", "alias_name", "event_ref"), ("dry_run", "settings_path", "ref_kind", "match_index")),
+    "set_event_property": (("profile", "context", "event_ref", "property_path"), ("dry_run", "settings_path", "value", "ref_kind", "value_type", *QUERY_FIELDS)),
+    "add_event_go_to_page": (("profile", "context", "event_ref", "page_ref"), ("dry_run", "settings_path", "ref_kind", "action_index", "action_id", "open_in_new_tab", "same_tab", "keep_current_page_params", "add_parameters", "url_parameters_json", "data_to_send_json", "id_counter")),
+    "set_event_interval": (("profile", "context", "event_ref", "interval_seconds"), ("dry_run", "settings_path", "ref_kind")),
+    "set_condition_run_when": (("profile", "context", "event_ref", "run_when"), ("dry_run", "settings_path", "ref_kind")),
+    "set_condition_only_when": (("profile", "context", "event_ref", "only_when_json"), ("dry_run", "settings_path", "ref_kind")),
+    "set_custom_event_name": (("profile", "context", "event_ref", "name"), ("dry_run", "settings_path", "ref_kind")),
+    "set_custom_event_parameters": (("profile", "context", "event_ref", "parameters_json"), ("dry_run", "settings_path", "ref_kind", "id_counter")),
+    "add_custom_event_parameter": (("profile", "context", "event_ref", "param_name", "btype_id"), ("dry_run", "settings_path", "is_list", "optional", "param_id", "ref_kind", "id_counter")),
+    "set_custom_event_return_types": (("profile", "context", "event_ref", "return_types_json"), ("dry_run", "settings_path", "ref_kind", "id_counter")),
+    "add_custom_event_return_type": (("profile", "context", "event_ref", "return_name", "btype_id"), ("dry_run", "settings_path", "is_list", "optional", "return_id", "ref_kind", "id_counter")),
+    "add_action": (("profile", "context", "action_type"), ("dry_run", "settings_path", "element_name", "event_ref", "event", "event_type", "ref_kind", "param", "data_type", "fields", "thing", *QUERY_FIELDS, "to_email", "to", "subject", "body", "message", "title", "pause_ms", "hide_status_bar", "open_in_new_tab")),
+    "replace_action": (("profile", "context", "element_name", "action_type", "param"), ("dry_run", "settings_path", "event")),
+    "delete_action": (("profile", "context", "action_ref"), ("dry_run", "settings_path", "element_name", "event", "event_ref", "event_type", "ref_kind", "action_ref_kind", "confirm")),
+    "cleanup_empty_actions": (("profile", "context"), ("dry_run", "settings_path", "element_name", "event", "event_ref", "event_type", "ref_kind")),
+}
+
+
+FIELD_TYPES: dict[str, dict[str, Any]] = {
+    "dry_run": {"type": "boolean"},
+    "execute": {"type": "boolean"},
+    "confirm": {"type": "boolean"},
+    "force": {"type": "boolean"},
+    "compile": {"type": "boolean"},
+    "clear": {"type": "boolean"},
+    "json": {"type": "boolean"},
+    "include_elements": {"type": "boolean"},
+    "include_workflows": {"type": "boolean"},
+    "include_styles": {"type": "boolean"},
+    "checked": {"type": "boolean"},
+    "required": {"type": "boolean"},
+    "fixed_width": {"type": "boolean"},
+    "fit_width": {"type": "boolean"},
+    "fixed_height": {"type": "boolean"},
+    "fit_height": {"type": "boolean"},
+    "keep_overrides": {"type": "boolean"},
+    "default": {"type": "boolean"},
+    "query_sort_desc": {"type": "boolean"},
+    "query_ignore_empty_constraints": {"type": "boolean"},
+    "sort_desc": {"type": "boolean"},
+    "ignore_empty_constraints": {"type": "boolean"},
+    "show_time": {"type": "boolean"},
+    "autoplay": {"type": "boolean"},
+    "open_in_new_tab": {"type": "boolean"},
+    "same_tab": {"type": "boolean"},
+    "keep_current_page_params": {"type": "boolean"},
+    "add_parameters": {"type": "boolean"},
+    "is_list": {"type": "boolean"},
+    "optional": {"type": "boolean"},
+    "hide_status_bar": {"type": "boolean"},
+    "limit_image_size_before_upload": {"type": "boolean"},
+    "prefer_last": {"type": "boolean"},
+    "include_cache": {"type": "boolean"},
+    "rows": {"type": "integer"},
+    "limit": {"type": "integer"},
+    "match_index": {"type": "integer"},
+    "parent_match_index": {"type": "integer"},
+    "action_index": {"type": "integer"},
+    "pause_ms": {"type": "integer"},
+    "interval_seconds": {"type": "number"},
+    "min": {"type": "number"},
+    "max": {"type": "number"},
+    "val": {"type": "number"},
+    "step": {"type": "number"},
+    "gradient_mid": {"type": "number"},
+    "gradient_angle": {"type": "number"},
+    "rotation_angle": {"type": "number"},
+    "opacity": {"type": "number"},
+    "payload": {"type": "object"},
+    "write_payload": {"type": "object"},
+    "properties": {"type": "object"},
+    "query_json": {"type": "object"},
+    "data_source_json": {"type": "object"},
+    "query_constraints_json": {"type": "array", "items": {"type": "object"}},
+    "constraints_json": {"type": "array", "items": {"type": "object"}},
+    "only_when_json": {"type": "object"},
+    "url_parameters_json": {"type": "object"},
+    "data_to_send_json": {"type": "object"},
+    "parameters_json": {"type": "array", "items": {"type": "object"}},
+    "return_types_json": {"type": "array", "items": {"type": "object"}},
+    "fields": {"type": ["string", "object"]},
+    "choices": {"type": ["string", "array"], "items": {"type": "string"}},
+}
+
+
 def enhance_tool_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of an MCP tool schema optimized for agent selection."""
 
@@ -159,8 +532,148 @@ def enhance_tool_schema(schema: dict[str, Any]) -> dict[str, Any]:
     name = str(tool.get("name") or "")
     tool["description"] = NATIVE_TOOL_DESCRIPTIONS.get(name) or legacy_description(name)
     tool["annotations"] = tool_annotations(name)
+    input_schema = tool.setdefault("inputSchema", {"type": "object"})
+    if isinstance(input_schema, dict):
+        input_schema.setdefault("$schema", "http://json-schema.org/draft-07/schema#")
+    apply_legacy_specific_schema(tool)
     describe_input_properties(tool)
     return tool
+
+
+def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
+    name = str(tool.get("name") or "")
+    fields = _legacy_fields_for_name(name)
+    if fields is None:
+        return
+    required, optional = fields
+    input_schema = tool.setdefault("inputSchema", {"type": "object"})
+    properties: dict[str, Any] = {}
+    input_schema["properties"] = properties
+    input_schema["required"] = list(dict.fromkeys(required))
+    bridge_fields: tuple[str, ...] = ()
+    if _is_mutating(name):
+        bridge_fields = ("app_id", "app_version", "context_file", "execute", "write_payload", "payload")
+    if tool_annotations(name)["destructiveHint"]:
+        bridge_fields = (*bridge_fields, "confirm")
+    for field in dict.fromkeys((*required, *optional, *bridge_fields)):
+        properties.setdefault(field, _property_schema(field))
+
+
+def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    if name in EXACT_TOOL_FIELDS:
+        return EXACT_TOOL_FIELDS[name]
+    visual_fields = _visual_fields_for_name(name)
+    if visual_fields is not None:
+        return visual_fields
+    if name.startswith(("delete_", "clear_", "regenerate_")):
+        return (("profile",), ("dry_run", "settings_path", "name", "confirm"))
+    if name.startswith(("list_", "inspect_", "scan_", "resolve_", "verify_")):
+        return (("profile",), ("dry_run", "settings_path", "context", "query", "limit", "json"))
+    if name.startswith(("create_data_type", "rename_data_type", "delete_data_type", "create_data_field", "rename_data_field", "set_data_type_api_exposure")):
+        return _data_schema_fields(name)
+    if name.startswith(("create_option_", "rename_option_", "delete_option_", "list_option_", "set_option_", "reorder_option_")):
+        return _option_schema_fields(name)
+    if name.startswith(("create_color", "update_color", "delete_color", "delete_colors", "clear_custom_colors", "reorder_colors")):
+        return _color_schema_fields(name)
+    if name.startswith(("create_font", "update_font", "delete_font")) or name == "list_fonts":
+        return (("profile",), ("dry_run", "settings_path", "name", "value", "confirm", "json"))
+    if name.startswith(("set_app_setting", "set_project_setting", "list_project_settings")):
+        return (("profile",), ("dry_run", "settings_path", "name", "value", "json"))
+    if name.startswith(("create_api_token", "rename_api_token", "regenerate_api_token", "delete_api_token")):
+        return (("profile",), ("dry_run", "settings_path", "name", "token_id", "private_key", "confirm"))
+    if "app_text" in name or "text_match" in name:
+        return _app_text_fields(name)
+    if name.startswith(("sync_figma_", "sync_component", "upload_asset")):
+        return (("profile",), ("dry_run", "settings_path", "context", "parent", "name", "file", "payload", "execute", "json"))
+    if name in {"batch", "natural"}:
+        return (("profile",), ("dry_run", "settings_path", "message", "commands", "execute", "json"))
+    return None
+
+
+def _property_schema(field: str) -> dict[str, Any]:
+    schema = deepcopy(FIELD_TYPES.get(field, {"type": "string"}))
+    schema.setdefault("description", COMMON_PROPERTY_DESCRIPTIONS.get(field, f"Argument '{field}' for this Bubble MCP tool."))
+    return schema
+
+
+def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    create_fields: dict[str, tuple[str, ...]] = {
+        "group": ("name", "layout", *VISUAL_STYLE_FIELDS, "data_class", "data_source", *QUERY_FIELDS),
+        "floating_group": ("name", "layout", *VISUAL_STYLE_FIELDS, "float_v_relative", "float_h_relative", "float_zindex", "parallax"),
+        "group_focus": ("name", "layout", *VISUAL_STYLE_FIELDS),
+        "table": ("name", "data_type", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS),
+        "popup": ("name", "layout", *VISUAL_STYLE_FIELDS, "data_class", "data_source"),
+        "text": ("content", "name", "style", *VISUAL_STYLE_FIELDS),
+        "button": ("label", "name", "style", "icon", *VISUAL_STYLE_FIELDS),
+        "input": ("name", "placeholder", "content_format", "style", *VISUAL_STYLE_FIELDS),
+        "multiline_input": ("name", "placeholder", "style", *VISUAL_STYLE_FIELDS),
+        "dropdown": ("name", "placeholder", "choices", "dynamic_type", "option_caption_field", "style", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS),
+        "searchbox": ("name", "placeholder", "data_type", "style", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS),
+        "checkbox": ("name", "label", "checked", "required", "style", *VISUAL_STYLE_FIELDS),
+        "datepicker": ("name", "placeholder", "show_time", "style", *VISUAL_STYLE_FIELDS),
+        "radio": ("name", "label", "group_name", "choices", "selected", "style", *VISUAL_STYLE_FIELDS),
+        "slider": ("name", "min", "max", "val", "step", "style", *VISUAL_STYLE_FIELDS),
+        "file_uploader": ("name", "label", "style", *VISUAL_STYLE_FIELDS),
+        "picture_uploader": ("name", "label", "style", "limit_image_size_before_upload", *VISUAL_STYLE_FIELDS),
+        "shape": ("name", "style", "color", *VISUAL_STYLE_FIELDS),
+        "video": ("name", "url", "video_id", "origin", "autoplay", "style", *VISUAL_STYLE_FIELDS),
+        "image": ("name", "source", "style", *VISUAL_STYLE_FIELDS),
+        "icon": ("name", "icon", "style", "color", *VISUAL_STYLE_FIELDS),
+        "html": ("name", "html", "style", *VISUAL_STYLE_FIELDS),
+        "link": ("name", "label", "url", "style", *VISUAL_STYLE_FIELDS),
+        "alert": ("name", "content", "style", *VISUAL_STYLE_FIELDS),
+        "map": ("name", "data_source", "style", *VISUAL_STYLE_FIELDS),
+        "reusable_instance": ("name", "source", "source_context", *VISUAL_STYLE_FIELDS),
+    }
+    for element, fields in create_fields.items():
+        if name == f"create_{element}":
+            return (("profile", "context", "parent", *fields[:1]), ("dry_run", "settings_path", *fields[1:]))
+        if name == f"update_{element}" or name == f"update_{element}_element":
+            return (("profile", "context", "element_name"), ("dry_run", "settings_path", *fields, "prefer_last"))
+        if name == f"delete_{element}":
+            return (("profile", "context", "element_name"), ("dry_run", "settings_path", "prefer_last", "confirm"))
+    return None
+
+
+def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if name == "create_data_type":
+        return (("profile", "name"), ("dry_run", "settings_path", "fields", "exposed_api", "confirm"))
+    if name == "rename_data_type":
+        return (("profile", "data_type_ref", "new_name"), ("dry_run", "settings_path", "data_type_ref_kind"))
+    if name == "delete_data_type":
+        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "data_type_ref_kind", "confirm"))
+    if name == "create_data_field":
+        return (("profile", "data_type_ref", "name", "type"), ("dry_run", "settings_path", "is_list", "optional"))
+    if name == "rename_data_field":
+        return (("profile", "data_type_ref", "name", "new_name"), ("dry_run", "settings_path"))
+    return (("profile", "data_type_ref"), ("dry_run", "settings_path", "value", "confirm"))
+
+
+def _option_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if name in {"create_option_set", "rename_option_set", "delete_option_set"}:
+        required = ("profile", "name") if name == "create_option_set" else ("profile", "option_set_ref")
+        return (required, ("dry_run", "settings_path", "new_name", "confirm", "values", "attributes"))
+    if name in {"create_option_attribute", "create_option_value", "rename_option_value", "delete_option_value", "set_option_value_attribute"}:
+        return (("profile", "option_set_ref", "name"), ("dry_run", "settings_path", "type", "value", "new_name", "option_value_ref", "confirm"))
+    return (("profile", "option_set_ref"), ("dry_run", "settings_path", "order", "json"))
+
+
+def _color_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if name == "list_colors":
+        return (("profile",), ("dry_run", "settings_path", "json"))
+    if name in {"delete_colors", "clear_custom_colors", "reorder_colors"}:
+        return (("profile",), ("dry_run", "settings_path", "names", "pattern", "order", "confirm"))
+    return (("profile", "name"), ("dry_run", "settings_path", "color", "value", "confirm"))
+
+
+def _app_text_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    if name in {"list_app_texts", "list_text_matches"}:
+        return (("profile",), ("dry_run", "settings_path", "query", "context", "limit", "json"))
+    if name == "set_app_text_translation":
+        return (("profile", "name", "language", "value"), ("dry_run", "settings_path"))
+    if name.startswith("convert_"):
+        return (("profile", "context"), ("dry_run", "settings_path", "element_name", "path", "search_text", "name", "language"))
+    return (("profile", "name"), ("dry_run", "settings_path", "value", "language", "context"))
 
 
 def legacy_description(name: str) -> str:

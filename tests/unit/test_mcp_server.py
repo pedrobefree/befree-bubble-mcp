@@ -134,6 +134,7 @@ def test_tools_list_exposes_agent_usable_catalog_metadata() -> None:
     assert tools
     for tool in tools:
         assert len(tool.get("description", "")) >= 80
+        assert tool.get("inputSchema", {}).get("$schema") == "http://json-schema.org/draft-07/schema#"
         assert set(tool.get("annotations", {})) == {
             "readOnlyHint",
             "destructiveHint",
@@ -152,12 +153,46 @@ def test_legacy_catalog_tools_expose_common_agent_arguments() -> None:
     tools = {tool["name"]: tool for tool in response["result"]["tools"]}
     schema = tools["create_group"]["inputSchema"]
     assert schema["additionalProperties"] is True
-    for field in ["profile", "dry_run", "settings_path", "context", "parent", "execute", "confirm"]:
+    for field in ["profile", "dry_run", "settings_path", "context", "parent", "execute", "app_id", "context_file"]:
         assert field in schema["properties"]
         assert schema["properties"][field]["description"]
+    assert "name" in schema["properties"]
+    assert "layout" in schema["properties"]
+    assert "row_gap" in schema["properties"]
     assert "Create a Bubble group visual element" in tools["create_group"]["description"]
     assert tools["delete_group"]["annotations"]["destructiveHint"] is True
     assert tools["list_styles"]["annotations"]["readOnlyHint"] is True
+
+
+def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 15, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+
+    create_page = tools["create_page"]["inputSchema"]
+    assert create_page["required"] == ["profile", "name"]
+    for field in ["layout", "meta_title", "gradient_angle", "app_id", "execute"]:
+        assert field in create_page["properties"]
+
+    create_style = tools["create_style"]["inputSchema"]
+    assert create_style["required"] == ["profile", "name", "element_type"]
+    for field in ["map_type", "custom_style", "border_radius"]:
+        assert field in create_style["properties"]
+
+    create_event = tools["create_event"]["inputSchema"]
+    assert create_event["required"] == ["profile", "context", "event_type"]
+    for field in ["only_when_json", "interval_seconds", "element_ref", "event_key"]:
+        assert field in create_event["properties"]
+
+    add_action = tools["add_action"]["inputSchema"]
+    assert add_action["required"] == ["profile", "context", "action_type"]
+    for field in ["fields", "thing", "to_email", "query_json"]:
+        assert field in add_action["properties"]
+
+    list_styles = tools["list_styles"]["inputSchema"]
+    assert "execute" not in list_styles["properties"]
+    assert "payload" not in list_styles["properties"]
 
 
 def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
