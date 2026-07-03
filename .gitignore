@@ -14,6 +14,7 @@ build/
 tmp/
 logs/
 captures/
+.local/
 profiles.d/
 settings.json
 *.sqlite
