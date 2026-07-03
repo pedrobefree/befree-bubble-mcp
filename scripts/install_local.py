@@ -13,11 +13,18 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
 PACKAGE_NAME = "befree-bubble-mcp"
 DIST_NAME = "befree_bubble_mcp"
+LOCAL_PTH_NAME = "befree_bubble_mcp_local.pth"
+CONSOLE_SCRIPTS = {
+    "bubble-mcp": "bubble_mcp.cli.main:main",
+    "bubble-mcp-server": "bubble_mcp.server.stdio:main",
+    "bubble-mcp-figma-bridge": "bubble_mcp.figma_bridge:main",
+}
 
 
 def _venv_python(venv: Path) -> Path:
@@ -26,11 +33,27 @@ def _venv_python(venv: Path) -> Path:
     return venv / "bin" / "python"
 
 
+def _venv_script(venv: Path, name: str) -> Path:
+    if os.name == "nt":
+        return venv / "Scripts" / f"{name}.exe"
+    return venv / "bin" / name
+
+
 def _run(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, text=True, check=False)
 
 
 def _capture(command: list[str], *, cwd: Path) -> str:
+    return _capture_result(command, cwd=cwd).stdout_text
+
+
+class CapturedProcess:
+    def __init__(self, returncode: int, stdout_text: str) -> None:
+        self.returncode = returncode
+        self.stdout_text = stdout_text
+
+
+def _capture_result(command: list[str], *, cwd: Path) -> CapturedProcess:
     result = subprocess.run(
         command,
         cwd=cwd,
@@ -39,7 +62,7 @@ def _capture(command: list[str], *, cwd: Path) -> str:
         stderr=subprocess.PIPE,
         check=False,
     )
-    return (result.stdout + result.stderr).strip()
+    return CapturedProcess(result.returncode, (result.stdout + result.stderr).strip())
 
 
 def _site_packages(python: Path, cwd: Path) -> Path:
@@ -56,6 +79,7 @@ def _stale_install_paths(site_packages: Path) -> list[Path]:
         f"__editable__.{DIST_NAME}-*.pth",
         f"__editable__.{DIST_NAME}-*",
         f"{DIST_NAME}-*.dist-info",
+        LOCAL_PTH_NAME,
         "bubble_mcp *",
     ]
     for pattern in patterns:
@@ -70,6 +94,76 @@ def _remove_path(path: Path) -> None:
         path.unlink()
 
 
+def _clear_macos_hidden_flag(path: Path) -> None:
+    if sys.platform != "darwin" or not path.exists():
+        return
+    subprocess.run(["chflags", "nohidden", str(path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _repair_pth_visibility(site_packages: Path) -> None:
+    for path in site_packages.glob("*.pth"):
+        _clear_macos_hidden_flag(path)
+
+
+def _repair_venv_visibility(venv: Path) -> None:
+    if sys.platform != "darwin" or not venv.exists():
+        return
+    subprocess.run(["chflags", "-R", "nohidden", str(venv)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    bindir = venv / ("Scripts" if os.name == "nt" else "bin")
+    for path in bindir.glob("python*"):
+        subprocess.run(["chflags", "-h", "nohidden", str(path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def _write_local_editable_pth(site_packages: Path, source_dir: Path) -> Path:
+    path = site_packages / LOCAL_PTH_NAME
+    path.write_text(f"{source_dir}\n", encoding="utf-8")
+    _clear_macos_hidden_flag(path)
+    return path
+
+
+def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, target: str) -> None:
+    module_name, function_name = target.split(":", 1)
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    if script_path.exists() or script_path.is_symlink():
+        script_path.unlink()
+    if os.name == "nt":
+        body = "\n".join(
+            [
+                f"#!{python}",
+                "import sys",
+                f"sys.path.insert(0, {str(source_dir)!r})",
+                f"from {module_name} import {function_name}",
+                "if __name__ == '__main__':",
+                "    sys.argv[0] = sys.argv[0].removesuffix('.exe')",
+                f"    raise SystemExit({function_name}())",
+                "",
+            ]
+        )
+    else:
+        code = (
+            "import sys; "
+            f"sys.path.insert(0, {str(source_dir)!r}); "
+            f"from {module_name} import {function_name}; "
+            f"sys.argv[0] = {script_path.name!r}; "
+            f"raise SystemExit({function_name}())"
+        )
+        body = "\n".join(
+            [
+                "#!/bin/sh",
+                f"exec {str(python)!r} -c {code!r} \"$@\"",
+                "",
+            ]
+        )
+    script_path.write_text(body, encoding="utf-8")
+    script_path.chmod(0o755)
+    _clear_macos_hidden_flag(script_path)
+
+
+def _write_console_bootstraps(venv: Path, python: Path, source_dir: Path) -> None:
+    for script_name, target in CONSOLE_SCRIPTS.items():
+        _write_console_bootstrap(_venv_script(venv, script_name), python, source_dir, target)
+
+
 def _ensure_venv(venv: Path) -> Path:
     python = _venv_python(venv)
     if not python.exists():
@@ -79,10 +173,11 @@ def _ensure_venv(venv: Path) -> Path:
 
 def install_local(*, root: Path, venv: Path, extras: str, repair: bool) -> int:
     python = _ensure_venv(venv)
+    _repair_venv_visibility(venv)
     site_packages = _site_packages(python, root)
 
     if repair:
-        print(f"Repairing editable install metadata in {site_packages}")
+        print(f"Repairing editable install metadata in {site_packages}", flush=True)
         _capture([str(python), "-m", "pip", "uninstall", "-y", PACKAGE_NAME, "bubble-mcp"], cwd=root)
         for path in _stale_install_paths(site_packages):
             _remove_path(path)
@@ -97,10 +192,31 @@ def install_local(*, root: Path, venv: Path, extras: str, repair: bool) -> int:
     if install_result.returncode != 0:
         return install_result.returncode
 
-    import_result = _run([str(python), "-c", "import bubble_mcp; print(bubble_mcp.__file__)"], cwd=root)
-    if import_result.returncode == 0:
-        print("Bubble MCP local install is importable.")
-    return import_result.returncode
+    _repair_venv_visibility(venv)
+    _repair_pth_visibility(site_packages)
+    source_dir = root / "src"
+    _write_local_editable_pth(site_packages, source_dir)
+    _write_console_bootstraps(venv, python, source_dir)
+    _repair_venv_visibility(venv)
+
+    with tempfile.TemporaryDirectory(prefix="bubble-mcp-install-check-") as temp_dir:
+        import_check = _capture_result(
+            [str(python), "-c", "import bubble_mcp; print(bubble_mcp.__file__)"],
+            cwd=Path(temp_dir),
+        )
+    if import_check.returncode != 0:
+        print(import_check.stdout_text)
+        return import_check.returncode
+    print("Bubble MCP local install is importable.")
+
+    console_script = _venv_script(venv, "bubble-mcp")
+    if console_script.exists():
+        help_output = _capture_result([str(console_script), "--help"], cwd=root)
+        if help_output.returncode != 0 or "Manage Bubble app profiles." not in help_output.stdout_text:
+            print(help_output.stdout_text)
+            return help_output.returncode or 1
+        print("bubble-mcp console script is runnable.")
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
