@@ -37,6 +37,7 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "context_file": "Optional compact Bubble context JSON file to resolve pages, elements, and existing project structure.",
     "file": "Local file path to read as input.",
     "output": "Optional local output path for generated context or artifacts.",
+    "input": "Local input artifact path.",
     "force": "Refresh or rebuild cached data even when a previous artifact exists.",
     "payload": "Exact Bubble editor write payload to preview or send with the stored session.",
     "write_payload": "Exact Bubble editor write payload produced by a previous validated planning or compiler step.",

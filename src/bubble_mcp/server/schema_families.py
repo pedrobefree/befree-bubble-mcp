@@ -82,6 +82,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Optional local output path for generated context or diagnostic artifacts.",
         examples=["/tmp/bubble-context.json"],
     ),
+    "input": _prop(
+        "string",
+        "Local input artifact path.",
+        examples=["/tmp/captured-editor-writes.json"],
+    ),
     "query": _prop(
         "string",
         "Search query for pages, reusable elements, styles, data types, element names, ids, or visible labels.",
@@ -468,6 +473,12 @@ def planning_execution_tools() -> list[ToolSchema]:
             "Run a deterministic planning eval dataset with optional filters for cheap focused reruns.",
             ["dataset", "compile", "app_id", "filter", "failed_from", "offset", "limit"],
             required=["dataset"],
+        ),
+        tool_schema(
+            "bubble_eval_export_expert",
+            "Export redacted captured Bubble editor write artifacts into eval cases with family classification and tool hints. This is read-only and does not contact Bubble.",
+            ["input", "output", "limit"],
+            required=["input", "output"],
         ),
         tool_schema(
             "bubble_compile_plan",

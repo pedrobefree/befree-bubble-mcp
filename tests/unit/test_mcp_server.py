@@ -182,6 +182,11 @@ def test_native_family_schemas_expose_agent_selection_constraints() -> None:
     assert changelog["properties"]["num_fetch"]["maximum"] == 200
     assert "Element" in changelog["properties"]["change_type"]["examples"]
 
+    expert_export = tools["bubble_eval_export_expert"]["inputSchema"]
+    assert expert_export["required"] == ["input", "output"]
+    assert expert_export["properties"]["input"]["description"]
+    assert expert_export["properties"]["output"]["description"]
+
 
 def test_native_mutating_schemas_make_execution_and_confirmation_explicit() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 20, "method": "tools/list"})

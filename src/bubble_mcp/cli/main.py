@@ -34,6 +34,7 @@ from bubble_mcp.execution.editor_api import (
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
+from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
@@ -218,6 +219,16 @@ def command_eval_run(args: argparse.Namespace) -> int:
         report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     emit_json({"ok": True, "report": report})
     return 0
+
+
+def command_eval_export_expert(args: argparse.Namespace) -> int:
+    result = export_expert_eval_cases(
+        Path(args.input),
+        Path(args.output),
+        limit=args.limit,
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
 
 
 def command_session_import(args: argparse.Namespace) -> int:
@@ -539,6 +550,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--offset", type=int, default=0, help="Skip this many cases after filtering.")
     run_parser.add_argument("--limit", type=int, default=0, help="Run at most this many cases after filtering.")
     run_parser.set_defaults(func=command_eval_run)
+
+    export_expert_parser = eval_subparsers.add_parser(
+        "export-expert",
+        help="Export redacted captured Bubble editor writes into eval cases.",
+    )
+    export_expert_parser.add_argument("--input", required=True)
+    export_expert_parser.add_argument("--output", required=True)
+    export_expert_parser.add_argument("--limit", type=int, default=250)
+    export_expert_parser.set_defaults(func=command_eval_export_expert)
 
     session_parser = subparsers.add_parser("session", help="Manage local Bubble editor sessions.")
     session_subparsers = session_parser.add_subparsers(dest="session_command", required=True)

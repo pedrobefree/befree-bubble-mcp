@@ -25,6 +25,7 @@ from bubble_mcp.execution.editor_api import (
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
+from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
@@ -148,6 +149,13 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                 limit=int(limit_value) if limit_value else None,
             ),
         }
+    if name == "bubble_eval_export_expert":
+        args = arguments or {}
+        return export_expert_eval_cases(
+            Path(str(args.get("input") or "")),
+            Path(str(args.get("output") or "")),
+            limit=int(args.get("limit") or 250),
+        )
     if name == "bubble_compile_plan":
         args = arguments or {}
         compile_plan = args.get("plan")
