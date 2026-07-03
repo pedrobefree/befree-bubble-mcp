@@ -43,12 +43,14 @@ def load_context(path: Path) -> BubbleProjectContext:
         for item in _as_list(payload.get("edges"))
         if isinstance(item, dict) and item.get("source") and item.get("target")
     ]
+    metadata = payload.get("metadata")
+    resolved_metadata: dict[str, Any] = metadata if isinstance(metadata, dict) else {}
     return BubbleProjectContext(
         app_id=str(payload.get("app_id") or "unknown"),
         source=str(payload.get("source") or path.name),
         nodes=nodes,
         edges=edges,
-        metadata=payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {},
+        metadata=resolved_metadata,
     )
 
 

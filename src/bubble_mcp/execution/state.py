@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from bubble_mcp.core.redaction import redact_sensitive
 
@@ -48,19 +48,20 @@ def operation_snapshot(
                 {
                     "id": str(step.get("id") or f"step_{index + 1}"),
                     "tool_name": str(step.get("tool_name") or ""),
-                    "has_write_payload": isinstance(args.get("write_payload") or args.get("payload"), dict),
+                    "has_write_payload": isinstance(args.get("write_payload") or args.get("payload"), dict)
+                    if isinstance(args, dict)
+                    else False,
                     "depends_on": step.get("depends_on") or step.get("dependsOn") or [],
                 }
             )
-    return redact_sensitive(
-        {
-            "phase": phase,
-            "profile": profile,
-            "execute": execute,
-            "context_source": context_source,
-            "step_count": len(step_summaries),
-            "steps": step_summaries,
-            "validation": validation,
-            "next_user_action": next_user_action(validation, execute=execute, has_session=has_session),
-        }
-    )
+    snapshot = {
+        "phase": phase,
+        "profile": profile,
+        "execute": execute,
+        "context_source": context_source,
+        "step_count": len(step_summaries),
+        "steps": step_summaries,
+        "validation": validation,
+        "next_user_action": next_user_action(validation, execute=execute, has_session=has_session),
+    }
+    return cast(dict[str, Any], redact_sensitive(snapshot))

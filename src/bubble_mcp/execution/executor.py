@@ -59,7 +59,8 @@ def execute_plan(
             plan.setdefault("metadata", {})
             if isinstance(plan["metadata"], dict):
                 plan["metadata"]["context_source"] = context_source
-                plan["metadata"]["context_freshness"] = context_freshness(context)
+                if context is not None:
+                    plan["metadata"]["context_freshness"] = context_freshness(context)
 
     steps = plan.get("steps")
     if not isinstance(steps, list):

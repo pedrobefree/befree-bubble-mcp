@@ -18,7 +18,7 @@ bubble-mcp-server
 - MCP server for agent clients.
 - Full Aria Bubble MCP tool catalog exposed over MCP.
 - Local profile management.
-- Compact context loading, search, import, freshness reporting, and mutation-overlay merge from `.bubble`/consolelog/crawler artifacts plus successful local MCP writes.
+- Compact context loading, search, import, freshness reporting, and local mutation overlay merge from `.bubble`/consolelog/crawler artifacts plus successful local MCP writes.
 - Deterministic planner with packaged routing corpus, semantic validator, structural execution validation, and operation snapshots for agent harnesses.
 - HTML-to-Bubble import: conservative plan converter plus Aria's advanced `create-from-html` runtime.
 - Local session import/listing for Bubble editor credentials.

@@ -9,7 +9,7 @@ def sample_capture() -> dict:
         "id": "cap-text",
         "message": "Create a text saying Hello",
         "request": {
-            "headers": {"cookie": "sid=secret", "authorization": "Bearer abcdefghijklmnop"},
+            "headers": {"cookie": "sid=secret", "authorization": "synthetic-token"},
             "payload": {
                 "appname": "synthetic-app",
                 "app_version": "test",
@@ -49,4 +49,4 @@ def test_export_expert_eval_cases_redacts_sensitive_capture(tmp_path: Path) -> N
     assert cases[0]["expectedTool"] == "create_text"
     assert cases[0]["classification"]["families"] == ["visual_element"]
     assert "sid=secret" not in rendered
-    assert "Bearer abcdefghijklmnop" not in rendered
+    assert "synthetic-token" not in rendered
