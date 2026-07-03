@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
+import re
 from typing import Any
+from uuid import uuid4
 
 from bubble_mcp.core.redaction import redact_sensitive
 
 
 ToolCaller = Callable[[str, dict[str, Any]], dict[str, Any]]
+RUNTIME_SMOKE_SUITES = {"coverage", "safe-read", "preview-write", "execute-write"}
 
 
 @dataclass(frozen=True)
@@ -25,6 +29,17 @@ def _preview_name(prefix: str) -> str:
     return f"{prefix}_mcp_runtime_preview"
 
 
+def _default_run_id() -> str:
+    return f"{datetime.now(UTC).strftime('%Y%m%d%H%M%S')}_{uuid4().hex[:6]}"
+
+
+def _safe_run_id(run_id: str = "") -> str:
+    value = run_id.strip() or _default_run_id()
+    value = re.sub(r"[^A-Za-z0-9_]+", "_", value)
+    value = re.sub(r"_+", "_", value).strip("_")
+    return value[:40] or _default_run_id()
+
+
 def build_runtime_smoke_cases(
     *,
     profile: str = "",
@@ -35,9 +50,13 @@ def build_runtime_smoke_cases(
     suite: str = "coverage",
     html_url: str = "",
     selector: str = "",
+    execute: bool = False,
+    cleanup: bool = False,
+    run_id: str = "",
 ) -> list[SmokeCase]:
     """Build deterministic smoke cases for the requested suite."""
 
+    effective_run_id = _safe_run_id(run_id)
     cases: list[SmokeCase] = [
         SmokeCase("bubble_tool_coverage", {}, "coverage", "Verify catalog execution coverage is complete."),
     ]
@@ -71,12 +90,18 @@ def build_runtime_smoke_cases(
         return cases
 
     if profile:
+        is_execute_write = suite == "execute-write"
+        mutation_suite = "execute-write" if is_execute_write else "preview-write"
+        mutation_execute = bool(execute and is_execute_write)
+        page_name = f"mcp_smoke_{effective_run_id}" if is_execute_write else _preview_name("page")
+        target_context = page_name if is_execute_write else context
+        target_parent = "root" if is_execute_write else parent
         base = {
             "profile": profile,
-            "context": context,
-            "parent": parent,
+            "context": target_context,
+            "parent": target_parent,
             "app_version": app_version,
-            "execute": False,
+            "execute": mutation_execute,
         }
         if app_id:
             base["app_id"] = app_id
@@ -86,41 +111,71 @@ def build_runtime_smoke_cases(
                     "create_page",
                     {
                         "profile": profile,
-                        "name": _preview_name("page"),
+                        "name": page_name,
                         "app_version": app_version,
-                        "execute": False,
+                        "execute": mutation_execute,
                         **({"app_id": app_id} if app_id else {}),
                     },
-                    "preview-write",
-                    "Preview page creation through the Aria runtime.",
+                    mutation_suite,
+                    "Execute page creation through the Aria runtime."
+                    if is_execute_write
+                    else "Preview page creation through the Aria runtime.",
                     True,
                 ),
                 SmokeCase(
                     "create_group",
-                    {**base, "name": _preview_name("gp"), "layout": "column", "min_height": "40px", "fit_height": True},
-                    "preview-write",
-                    "Preview group creation through the Aria runtime.",
+                    {
+                        **base,
+                        "name": f"gp_mcp_smoke_{effective_run_id}" if is_execute_write else _preview_name("gp"),
+                        "layout": "column",
+                        "min_height": "40px",
+                        "fit_height": True,
+                    },
+                    mutation_suite,
+                    "Execute group creation through the Aria runtime."
+                    if is_execute_write
+                    else "Preview group creation through the Aria runtime.",
                     True,
                 ),
                 SmokeCase(
                     "create_text",
-                    {**base, "name": _preview_name("tx"), "content": "Runtime smoke preview", "fit_height": True},
-                    "preview-write",
-                    "Preview text creation with default fit-height behavior.",
+                    {
+                        **base,
+                        "name": f"tx_mcp_smoke_{effective_run_id}" if is_execute_write else _preview_name("tx"),
+                        "content": f"Runtime smoke {effective_run_id}" if is_execute_write else "Runtime smoke preview",
+                        "fit_height": True,
+                    },
+                    mutation_suite,
+                    "Execute text creation with default fit-height behavior."
+                    if is_execute_write
+                    else "Preview text creation with default fit-height behavior.",
                     True,
                 ),
                 SmokeCase(
                     "create_button",
-                    {**base, "name": _preview_name("bt"), "label": "Runtime smoke", "fit_width": True, "fit_height": True},
-                    "preview-write",
-                    "Preview button creation with responsive sizing defaults.",
+                    {
+                        **base,
+                        "name": f"bt_mcp_smoke_{effective_run_id}" if is_execute_write else _preview_name("bt"),
+                        "label": "Runtime smoke",
+                        "fit_width": True,
+                        "fit_height": True,
+                    },
+                    mutation_suite,
+                    "Execute button creation with responsive sizing defaults."
+                    if is_execute_write
+                    else "Preview button creation with responsive sizing defaults.",
                     True,
                 ),
                 SmokeCase(
                     "create_input",
-                    {**base, "name": _preview_name("in"), "placeholder": "Runtime smoke", "fixed_height": True},
-                    "preview-write",
-                    "Preview input creation.",
+                    {
+                        **base,
+                        "name": f"in_mcp_smoke_{effective_run_id}" if is_execute_write else _preview_name("in"),
+                        "placeholder": "Runtime smoke",
+                        "fixed_height": True,
+                    },
+                    mutation_suite,
+                    "Execute input creation." if is_execute_write else "Preview input creation.",
                     True,
                 ),
             ]
@@ -136,8 +191,27 @@ def build_runtime_smoke_cases(
                         "rendered_html": True,
                         "refresh_context": False,
                     },
-                    "preview-write",
-                    "Preview advanced HTML import through the packaged runtime.",
+                    mutation_suite,
+                    "Execute advanced HTML import through the packaged runtime."
+                    if is_execute_write
+                    else "Preview advanced HTML import through the packaged runtime.",
+                    True,
+                )
+            )
+        if is_execute_write and cleanup:
+            cases.append(
+                SmokeCase(
+                    "delete_page",
+                    {
+                        "profile": profile,
+                        "name": page_name,
+                        "app_version": app_version,
+                        "execute": True,
+                        "confirm": True,
+                        **({"app_id": app_id} if app_id else {}),
+                    },
+                    "execute-write",
+                    "Clean up the temporary runtime smoke page.",
                     True,
                 )
             )
@@ -174,11 +248,31 @@ def run_runtime_smoke(
     selector: str = "",
     include_details: bool = False,
     stop_on_failure: bool = False,
+    execute: bool = False,
+    cleanup: bool = False,
+    run_id: str = "",
 ) -> dict[str, Any]:
     """Run an operational smoke suite by calling MCP tool handlers."""
 
-    if suite not in {"coverage", "safe-read", "preview-write"}:
-        raise ValueError("suite must be one of: coverage, safe-read, preview-write.")
+    if suite not in RUNTIME_SMOKE_SUITES:
+        raise ValueError("suite must be one of: coverage, safe-read, preview-write, execute-write.")
+    effective_run_id = _safe_run_id(run_id)
+    if suite == "execute-write" and not execute:
+        return {
+            "ok": False,
+            "suite": suite,
+            "profile": profile or None,
+            "context": context,
+            "parent": parent,
+            "app_id": app_id or None,
+            "app_version": app_version,
+            "execute": False,
+            "cleanup": cleanup,
+            "run_id": effective_run_id,
+            "error": "execute-write requires execute=true.",
+            "summary": {"cases": 0, "passed": 0, "failed": 1, "skipped": 0},
+            "results": [],
+        }
     cases = build_runtime_smoke_cases(
         profile=profile,
         context=context,
@@ -188,6 +282,9 @@ def run_runtime_smoke(
         suite=suite,
         html_url=html_url,
         selector=selector,
+        execute=execute,
+        cleanup=cleanup,
+        run_id=effective_run_id,
     )
     if limit > 0:
         cases = cases[:limit]
@@ -250,6 +347,9 @@ def run_runtime_smoke(
         "parent": parent,
         "app_id": app_id or None,
         "app_version": app_version,
+        "execute": bool(execute and suite == "execute-write"),
+        "cleanup": bool(cleanup and suite == "execute-write"),
+        "run_id": effective_run_id,
         "summary": summary,
         "results": results,
     }

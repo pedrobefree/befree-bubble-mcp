@@ -77,6 +77,9 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             selector=str(args.get("selector") or ""),
             include_details=bool(args.get("include_details")),
             stop_on_failure=bool(args.get("stop_on_failure")),
+            execute=bool(args.get("execute")),
+            cleanup=bool(args.get("cleanup")),
+            run_id=str(args.get("run_id") or ""),
         )
     if name == "bubble_profile_list":
         settings = load_settings()

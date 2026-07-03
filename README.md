@@ -223,6 +223,14 @@ Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
 The `preview-write` suite compiles representative mutations with
 `execute=false`; it does not post changes to Bubble.
 
+For an authenticated real-write smoke test, use the explicit `execute-write`
+suite. It creates a temporary page and representative elements only when
+`--execute` is present:
+
+```bash
+bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --report ./runtime-smoke.json
+```
+
 ## Codex MCP Setup
 
 Use the installed stdio server in your MCP config:

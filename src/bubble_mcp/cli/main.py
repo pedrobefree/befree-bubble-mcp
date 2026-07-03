@@ -457,6 +457,9 @@ def command_smoke_runtime(args: argparse.Namespace) -> int:
         selector=args.selector or "",
         include_details=args.include_details,
         stop_on_failure=args.stop_on_failure,
+        execute=args.execute,
+        cleanup=args.cleanup,
+        run_id=args.run_id or "",
     )
     if args.report:
         report_path = Path(args.report)
@@ -709,13 +712,13 @@ def build_parser() -> argparse.ArgumentParser:
     smoke_subparsers = smoke_parser.add_subparsers(dest="smoke_command", required=True)
     runtime_smoke_parser = smoke_subparsers.add_parser(
         "runtime",
-        help="Run MCP runtime smoke checks without destructive writes.",
+        help="Run MCP runtime smoke checks. Real writes require --suite execute-write --execute.",
     )
     runtime_smoke_parser.add_argument(
         "--suite",
-        choices=["coverage", "safe-read", "preview-write"],
+        choices=["coverage", "safe-read", "preview-write", "execute-write"],
         default="coverage",
-        help="Smoke suite to run. preview-write compiles representative mutations with execute=false.",
+        help="Smoke suite to run. execute-write performs real temporary writes only when --execute is also set.",
     )
     runtime_smoke_parser.add_argument("--profile", default="")
     runtime_smoke_parser.add_argument("--context", default="index")
@@ -728,6 +731,21 @@ def build_parser() -> argparse.ArgumentParser:
     runtime_smoke_parser.add_argument("--report", default="")
     runtime_smoke_parser.add_argument("--include-details", action="store_true")
     runtime_smoke_parser.add_argument("--stop-on-failure", action="store_true")
+    runtime_smoke_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Required for --suite execute-write. Ignored by read-only and preview suites.",
+    )
+    runtime_smoke_parser.add_argument(
+        "--cleanup",
+        action="store_true",
+        help="When used with execute-write, delete the temporary smoke page at the end.",
+    )
+    runtime_smoke_parser.add_argument(
+        "--run-id",
+        default="",
+        help="Optional suffix for temporary smoke objects. Defaults to a timestamp plus random suffix.",
+    )
     runtime_smoke_parser.set_defaults(func=command_smoke_runtime)
 
     execute_plan_parser = subparsers.add_parser(

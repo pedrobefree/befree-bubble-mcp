@@ -88,6 +88,35 @@ def test_runtime_smoke_tool_runs_coverage_suite() -> None:
     assert payload["results"][0]["tool"] == "bubble_tool_coverage"
 
 
+def test_runtime_smoke_tool_requires_execute_for_execute_write() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 23,
+            "method": "tools/call",
+            "params": {"name": "bubble_runtime_smoke", "arguments": {"suite": "execute-write", "profile": "cliente2"}},
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is False
+    assert payload["error"] == "execute-write requires execute=true."
+
+
+def test_runtime_smoke_schema_exposes_execute_write_controls() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 24, "method": "tools/list"})
+
+    assert response is not None
+    tools = response["result"]["tools"]
+    smoke = next(tool for tool in tools if tool["name"] == "bubble_runtime_smoke")
+    properties = smoke["inputSchema"]["properties"]
+    assert "execute-write" in properties["suite"]["enum"]
+    assert "execute" in properties
+    assert "cleanup" in properties
+    assert "run_id" in properties
+
+
 def test_plan_tool_returns_valid_plan() -> None:
     response = handle_request(
         {

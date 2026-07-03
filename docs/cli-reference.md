@@ -348,6 +348,7 @@ clients.
 bubble-mcp smoke runtime --suite coverage
 bubble-mcp smoke runtime --suite safe-read --profile my-app
 bubble-mcp smoke runtime --suite preview-write --profile my-app --context index --parent root
+bubble-mcp smoke runtime --suite execute-write --profile my-app --execute
 ```
 
 Suites:
@@ -356,11 +357,19 @@ Suites:
 - `safe-read`: read-only profile/session/project checks.
 - `preview-write`: representative create/import mutations compiled with
   `execute=false`; this does not post changes to Bubble.
+- `execute-write`: authenticated real-write smoke that creates a temporary
+  page and representative elements. This suite requires `--execute`.
 
 Optional report file:
 
 ```bash
 bubble-mcp smoke runtime --suite preview-write --profile my-app --report ./runtime-smoke.json
+```
+
+Optional real-write cleanup:
+
+```bash
+bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --cleanup
 ```
 
 ## `bubble-mcp-server`

@@ -198,6 +198,16 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Set true only when the user asked to apply the change in Bubble. Leave false to preview the authenticated request.",
         default=False,
     ),
+    "cleanup": _prop(
+        "boolean",
+        "For execute-write smoke only: delete the temporary smoke page after the suite finishes.",
+        default=False,
+    ),
+    "run_id": _prop(
+        "string",
+        "Optional short identifier used to name temporary smoke pages/elements. Leave empty to auto-generate a unique id.",
+        examples=["manual_20260703"],
+    ),
     "url": _prop(
         "string",
         "Source URL for an HTML page/component import.",
@@ -341,8 +351,8 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "suite": _prop(
         "string",
-        "Runtime smoke suite to run. coverage checks catalog coverage only; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false.",
-        enum=["coverage", "safe-read", "preview-write"],
+        "Runtime smoke suite to run. coverage checks catalog coverage only; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false; execute-write creates temporary Bubble objects and requires execute=true.",
+        enum=["coverage", "safe-read", "preview-write", "execute-write"],
         default="coverage",
     ),
     "include_details": _prop(
@@ -435,7 +445,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_runtime_smoke",
-            "Run a safe operational smoke suite for the MCP runtime. coverage is local-only, safe-read performs read-only calls, and preview-write compiles representative Bubble mutations with execute=false.",
+            "Run an operational smoke suite for the MCP runtime. coverage is local-only, safe-read performs read-only calls, preview-write compiles representative Bubble mutations with execute=false, and execute-write creates temporary Bubble objects only when execute=true.",
             [
                 "suite",
                 "profile",
@@ -448,6 +458,9 @@ def profile_session_context_tools() -> list[ToolSchema]:
                 "selector",
                 "include_details",
                 "stop_on_failure",
+                "execute",
+                "cleanup",
+                "run_id",
             ],
         ),
         tool_schema(

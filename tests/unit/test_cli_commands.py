@@ -156,6 +156,14 @@ def test_cli_smoke_runtime_writes_report(tmp_path, capsys) -> None:  # type: ign
     assert saved["summary"] == payload["summary"]
 
 
+def test_cli_smoke_runtime_execute_write_requires_execute(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["smoke", "runtime", "--suite", "execute-write", "--profile", "cliente2"]) == 1
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["error"] == "execute-write requires execute=true."
+
+
 def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     session_path = tmp_path / "session.json"

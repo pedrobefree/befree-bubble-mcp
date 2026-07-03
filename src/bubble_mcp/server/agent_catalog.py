@@ -292,8 +292,9 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "fallback, or are uncovered. Read-only."
     ),
     "bubble_runtime_smoke": (
-        "Run a safe operational runtime smoke suite. Use coverage for local catalog coverage, safe-read for read-only "
-        "profile/session/context checks, and preview-write to compile representative Bubble mutations with execute=false."
+        "Run an operational runtime smoke suite. Use coverage for local catalog coverage, safe-read for read-only "
+        "profile/session/context checks, preview-write to compile representative Bubble mutations with execute=false, "
+        "and execute-write with execute=true only when the user explicitly wants real temporary Bubble writes."
     ),
     "bubble_context_summary": (
         "Summarize a compact Bubble project context file: pages, reusable elements, styles, data types, and indexed "
