@@ -12,6 +12,7 @@ import string
 import time
 from typing import Any
 
+from bubble_mcp.aria_runtime.bubble_sdk import ElementBuilder
 from bubble_mcp.context.models import BubbleProjectContext
 
 
@@ -21,17 +22,17 @@ VISUAL_CREATE_TYPES = {
     "create_group": "Group",
     "create_button": "Button",
     "create_input": "Input",
-    "create_multiline_input": "MultilineInput",
+    "create_multiline_input": "MultiLineInput",
     "create_dropdown": "Dropdown",
-    "create_searchbox": "SearchBox",
+    "create_searchbox": "AutocompleteDropdown",
     "create_checkbox": "Checkbox",
     "create_datepicker": "DateInput",
     "create_radio": "RadioButtons",
     "create_slider": "SliderInput",
-    "create_file_uploader": "FileUploader",
-    "create_picture_uploader": "PictureUploader",
+    "create_file_uploader": "FileInput",
+    "create_picture_uploader": "PictureInput",
     "create_shape": "Shape",
-    "create_video": "Video",
+    "create_video": "VideoPlayer",
     "create_image": "Image",
     "create_icon": "Icon",
     "create_html": "HTML",
@@ -44,6 +45,30 @@ VISUAL_CREATE_TYPES = {
     "create_repeating_group": "RepeatingGroup",
     "create_table": "Table",
     "create_reusable_instance": "ReusableElement",
+}
+ARIA_BUILDER_METHODS = {
+    "create_text": "text",
+    "create_group": "group",
+    "create_button": "button",
+    "create_input": "input",
+    "create_dropdown": "dropdown",
+    "create_checkbox": "checkbox",
+    "create_datepicker": "date_picker",
+    "create_radio": "radio_button",
+    "create_slider": "slider",
+    "create_file_uploader": "file_uploader",
+    "create_picture_uploader": "picture_uploader",
+    "create_shape": "shape",
+    "create_video": "video_player",
+    "create_image": "image",
+    "create_icon": "icon",
+    "create_html": "html",
+    "create_link": "link",
+    "create_alert": "alert",
+    "create_map": "google_map",
+    "create_popup": "popup",
+    "create_floating_group": "floating_group",
+    "create_repeating_group": "repeating_group",
 }
 CREATE_NAME_PREFIXES = {
     "create_button": "bt_",
@@ -130,16 +155,33 @@ CREATE_DEFAULT_ARGS: dict[str, dict[str, Any]] = {
     "create_file_uploader": {"min_width": 0, "max_width": 240, "height": 64, "fixed_height": True},
 }
 POST_CREATE_PROPERTY_KEYS = {
+    "%3",
+    "%w",
+    "%h",
+    "%t",
+    "%l",
+    "%z",
+    "%fs",
+    "%fc",
+    "%fa",
+    "%9i",
     "width",
     "height",
     "fit_width",
     "fit_height",
+    "fixed_width",
+    "fixed_height",
     "single_width",
     "single_height",
     "min_width_css",
     "max_width_css",
     "min_height_css",
     "max_height_css",
+    "container_layout",
+    "use_gap",
+    "row_gap",
+    "column_gap",
+    "button_type",
     "cell_min_height",
     "cell_min_width",
     "stable_pagination",
@@ -151,7 +193,101 @@ POST_CREATE_PROPERTY_KEYS = {
     "aspect_ratio_width",
     "aspect_ratio_height",
     "table_direction",
+    "font_size",
+    "font_color",
+    "font_family",
+    "font_weight",
+    "font_alignment",
+    "line_height",
+    "letter_spacing",
+    "horiz_alignment",
+    "vert_alignment",
+    "container_horiz_alignment",
+    "container_vert_alignment",
+    "nonant_alignment",
+    "align_to_parent_pos",
+    "padding_top",
+    "padding_right",
+    "padding_bottom",
+    "padding_left",
+    "margin_top",
+    "margin_right",
+    "margin_bottom",
+    "margin_left",
+    "border_width",
+    "border_color",
+    "border_radius",
+    "%br",
+    "%bgc",
+    "%bas",
 }
+POST_CREATE_PROPERTY_ORDER = (
+    "button_type",
+    "%9i",
+    "%3",
+    "%fs",
+    "font_size",
+    "font_family",
+    "font_weight",
+    "%fc",
+    "font_color",
+    "%fa",
+    "font_alignment",
+    "line_height",
+    "letter_spacing",
+    "%w",
+    "%h",
+    "%t",
+    "%l",
+    "%z",
+    "width",
+    "height",
+    "fit_width",
+    "fit_height",
+    "fixed_width",
+    "fixed_height",
+    "single_width",
+    "single_height",
+    "min_width_css",
+    "max_width_css",
+    "min_height_css",
+    "max_height_css",
+    "container_layout",
+    "use_gap",
+    "row_gap",
+    "column_gap",
+    "horiz_alignment",
+    "vert_alignment",
+    "container_horiz_alignment",
+    "container_vert_alignment",
+    "nonant_alignment",
+    "align_to_parent_pos",
+    "padding_top",
+    "padding_right",
+    "padding_bottom",
+    "padding_left",
+    "margin_top",
+    "margin_right",
+    "margin_bottom",
+    "margin_left",
+    "border_width",
+    "border_color",
+    "border_radius",
+    "%br",
+    "%bgc",
+    "%bas",
+    "cell_min_height",
+    "cell_min_width",
+    "stable_pagination",
+    "at_to_top",
+    "float_v_relative",
+    "float_h_relative",
+    "float_zindex",
+    "use_aspect_ratio",
+    "aspect_ratio_width",
+    "aspect_ratio_height",
+    "table_direction",
+)
 VISUAL_UPDATE_TOOLS = {
     "update_text",
     "update_text_element",
@@ -451,7 +587,9 @@ def create_visual_element_changes(
         create_change(create_path, body, session_id),
     ]
     props = body.get("%p") if isinstance(body.get("%p"), dict) else {}
-    for key in sorted(POST_CREATE_PROPERTY_KEYS):
+    ordered_keys = [key for key in POST_CREATE_PROPERTY_ORDER if key in props]
+    ordered_keys.extend(sorted(key for key in POST_CREATE_PROPERTY_KEYS if key in props and key not in ordered_keys))
+    for key in ordered_keys:
         if key in props:
             changes.append(set_data_change([*create_path, "%p", key], props[key], session_id))
     changes.append(update_index_change(["_index", "issues_list", object_id], "[]", session_id))
@@ -532,9 +670,9 @@ def apply_create_defaults(tool_name: str, args: dict[str, Any], *, element_type:
 
 def apply_dimension_properties(properties: dict[str, Any], args: dict[str, Any]) -> None:
     if args.get("width") is not None:
-        properties["width"] = int(args["width"])
+        properties["%w"] = int(args["width"])
     if args.get("height") is not None:
-        properties["height"] = int(args["height"])
+        properties["%h"] = int(args["height"])
     if args.get("min_width") is not None:
         properties["min_width_css"] = css_px(args["min_width"])
     if args.get("max_width") is not None:
@@ -548,15 +686,146 @@ def apply_dimension_properties(properties: dict[str, Any], args: dict[str, Any])
     if args.get("fit_height") is not None:
         properties["fit_height"] = bool(args["fit_height"])
     if args.get("fixed_width") is True:
+        properties["fixed_width"] = True
         properties["single_width"] = True
         properties["fit_width"] = False
+        if "min_width_css" not in properties:
+            fixed_width = args.get("width") if args.get("width") is not None else args.get("max_width")
+            if fixed_width is not None:
+                properties["min_width_css"] = css_px(fixed_width)
     elif args.get("single_width") is not None:
         properties["single_width"] = bool(args["single_width"])
     if args.get("fixed_height") is True:
+        properties["fixed_height"] = True
         properties["single_height"] = True
         properties["fit_height"] = False
+        if "min_height_css" not in properties:
+            fixed_height = args.get("height") if args.get("height") is not None else args.get("max_height")
+            if fixed_height is not None:
+                properties["min_height_css"] = css_px(fixed_height)
     elif args.get("single_height") is not None:
         properties["single_height"] = bool(args["single_height"])
+
+
+def _aria_builder_args(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+    """Translate catalog args to the Aria ElementBuilder method surface."""
+    kwargs = dict(args)
+    kwargs.pop("context", None)
+    kwargs.pop("context_key", None)
+    kwargs.pop("context_type", None)
+    kwargs.pop("parent", None)
+    kwargs.pop("parent_id", None)
+    kwargs.pop("root_id", None)
+    kwargs.pop("existing_children", None)
+    kwargs.pop("slot_key", None)
+    kwargs.pop("element_key", None)
+    kwargs.pop("id_counter", None)
+
+    name = str(kwargs.get("name") or "").strip()
+    if name:
+        kwargs["name"] = name
+
+    if tool_name == "create_text":
+        kwargs["content"] = str(kwargs.get("content") or kwargs.get("text") or "")
+        if "style" in kwargs and "style_id" not in kwargs:
+            kwargs["style_id"] = kwargs.pop("style")
+    elif tool_name == "create_button":
+        kwargs["label"] = str(kwargs.get("label") or kwargs.get("content") or kwargs.get("text") or kwargs.get("name") or "Button")
+        if kwargs.get("icon") and not kwargs.get("button_type"):
+            kwargs["button_type"] = "label_icon"
+    elif tool_name in {"create_link", "create_checkbox"}:
+        kwargs["label"] = str(kwargs.get("label") or kwargs.get("content") or kwargs.get("name") or "Label")
+    elif tool_name == "create_alert":
+        kwargs["content"] = str(kwargs.get("content") or kwargs.get("label") or "Alert content")
+    elif tool_name == "create_html":
+        kwargs["content"] = str(kwargs.get("content") or "<html>...</html>")
+    elif tool_name == "create_image":
+        kwargs["source_url"] = str(
+            kwargs.get("source_url")
+            or kwargs.get("image_url")
+            or kwargs.get("url")
+            or kwargs.get("src")
+            or ""
+        )
+    elif tool_name == "create_icon":
+        kwargs["icon_name"] = str(kwargs.get("icon_name") or kwargs.get("icon") or "feather check-circle")
+        kwargs["color"] = str(kwargs.get("color") or kwargs.get("font_color") or "#000000")
+    elif tool_name == "create_repeating_group":
+        if "type_of_content" in kwargs and "data_type" not in kwargs:
+            kwargs["data_type"] = kwargs["type_of_content"]
+    elif tool_name == "create_video":
+        kwargs["video_id"] = str(kwargs.get("video_id") or "id")
+
+    if "bg_color" in kwargs and "background_color" not in kwargs:
+        kwargs["background_color"] = kwargs["bg_color"]
+    if "font_color" in kwargs and "text_color" not in kwargs:
+        kwargs["text_color"] = kwargs["font_color"]
+    return kwargs
+
+
+def _normalize_aria_body(body: dict[str, Any], *, element_type: str, name: str) -> dict[str, Any]:
+    props = body.get("%p")
+    if not isinstance(props, dict):
+        props = {}
+        body["%p"] = props
+    body.setdefault("%x", element_type)
+    body.setdefault("type", element_type)
+    if name:
+        body.setdefault("%dn", name)
+        props.setdefault("%nm", name)
+    props.pop("__explicit_dims", None)
+    return body
+
+
+def apply_catalog_argument_properties(properties: dict[str, Any], args: dict[str, Any], *, element_type: str) -> None:
+    """Persist MCP catalog defaults that the Aria builder may not encode directly."""
+    apply_dimension_properties(properties, args)
+    for source_key, wire_key in (
+        ("placeholder", "placeholder"),
+        ("initial_content", "initial_content"),
+        ("font_size", "%fs"),
+        ("font_color", "%fc"),
+        ("font_alignment", "%fa"),
+        ("bg_color", "%bgc"),
+        ("background_style", "%bas"),
+        ("border_radius", "%br"),
+        ("url", "url"),
+        ("image_url", "image_url"),
+        ("icon", "%9i"),
+        ("video_id", "video_id"),
+        ("data_source", "%ds"),
+        ("data_type", "%gt"),
+        ("type_of_content", "%gt"),
+        ("tooltip", "tooltip"),
+        ("at_to_top", "at_to_top"),
+        ("cell_min_height", "cell_min_height"),
+        ("cell_min_width", "cell_min_width"),
+        ("stable_pagination", "stable_pagination"),
+        ("float_v_relative", "float_v_relative"),
+        ("float_h_relative", "float_h_relative"),
+        ("float_zindex", "float_zindex"),
+        ("use_aspect_ratio", "use_aspect_ratio"),
+        ("aspect_ratio_width", "aspect_ratio_width"),
+        ("aspect_ratio_height", "aspect_ratio_height"),
+        ("table_direction", "table_direction"),
+    ):
+        if args.get(source_key) is not None and wire_key not in properties:
+            properties[wire_key] = args[source_key]
+    if args.get("cell_min_height") is not None and "cell_min_height_css" not in properties:
+        properties["cell_min_height_css"] = css_px(args["cell_min_height"])
+    if args.get("cell_min_width") is not None and "cell_min_width_css" not in properties:
+        properties["cell_min_width_css"] = css_px(args["cell_min_width"])
+    if element_type in {"Group", "FloatingGroup", "GroupFocus", "RepeatingGroup", "Table", "Popup"}:
+        layout = str(args.get("layout") or "").strip().lower().replace("-", "_").replace(" ", "_")
+        if layout:
+            if layout == "align_to_parent":
+                layout = "relative"
+            properties["container_layout"] = layout
+        if args.get("row_gap") is not None or args.get("column_gap") is not None:
+            properties.setdefault("use_gap", True)
+        for source_key, wire_key in (("row_gap", "row_gap"), ("column_gap", "column_gap")):
+            if args.get(source_key) is not None:
+                properties[wire_key] = args[source_key]
 
 
 def resolve_element_path(
@@ -593,22 +862,10 @@ def compile_create_text_step(
     if not content:
         raise ValueError("create_text requires content.")
     name = str(args.get("name") or "").strip()
-    element_id = bubble_element_id()
-    properties: dict[str, Any] = {
-        "%nm": name,
-        "%3": content,
-        "%fs": int(args.get("font_size") or 16),
-    }
-    apply_dimension_properties(properties, args)
-    if args.get("font_color"):
-        properties["%fc"] = args["font_color"]
-    if args.get("font_alignment"):
-        properties["%fa"] = args["font_alignment"]
-    return {
-        "%x": "Text",
-        "%p": properties,
-        "id": element_id,
-    }
+    body = ElementBuilder().text(**_aria_builder_args("create_text", args))
+    body = _normalize_aria_body(body, element_type="Text", name=name)
+    apply_catalog_argument_properties(body["%p"], args, element_type="Text")
+    return body
 
 
 def collect_visual_properties(args: dict[str, Any], *, element_type: str) -> dict[str, Any]:
@@ -675,8 +932,23 @@ def compile_create_visual_step(
 ) -> dict[str, Any]:
     element_type = VISUAL_CREATE_TYPES[tool_name]
     args = apply_create_defaults(tool_name, args, element_type=element_type)
+    builder_method = ARIA_BUILDER_METHODS.get(tool_name)
+    if builder_method:
+        method = getattr(ElementBuilder(), builder_method)
+        body = method(**_aria_builder_args(tool_name, args))
+        body = _normalize_aria_body(body, element_type=element_type, name=str(args.get("name") or ""))
+        props = body.get("%p")
+        if isinstance(props, dict):
+            apply_catalog_argument_properties(props, args, element_type=element_type)
+        return body
     properties = collect_visual_properties(args, element_type=element_type)
-    return {"%x": element_type, "%p": properties, "id": bubble_element_id()}
+    return {
+        "%x": element_type,
+        "type": element_type,
+        "%dn": str(args.get("name") or ""),
+        "%p": properties,
+        "id": bubble_element_id(),
+    }
 
 
 def compile_create_group_step(
@@ -688,30 +960,10 @@ def compile_create_group_step(
     name = str(args.get("name") or "").strip()
     if not name:
         raise ValueError("create_group requires name.")
-    element_id = bubble_element_id()
-    layout = str(args.get("layout") or "column").strip().lower().replace("-", "_").replace(" ", "_")
-    if layout == "align_parent":
-        layout = "align_to_parent"
-    wire_layout = "relative" if layout == "align_to_parent" else layout
-    properties: dict[str, Any] = {
-        "%nm": name,
-        "container_layout": wire_layout,
-    }
-    apply_dimension_properties(properties, args)
-    for source_key, wire_key in (
-        ("row_gap", "row_gap"),
-        ("column_gap", "column_gap"),
-        ("background_style", "%bas"),
-        ("bg_color", "%bgc"),
-        ("border_radius", "%br"),
-    ):
-        if args.get(source_key) is not None:
-            properties[wire_key] = args[source_key]
-    return {
-        "%x": "Group",
-        "%p": properties,
-        "id": element_id,
-    }
+    body = ElementBuilder().group(**_aria_builder_args("create_group", args))
+    body = _normalize_aria_body(body, element_type="Group", name=name)
+    apply_catalog_argument_properties(body["%p"], args, element_type="Group")
+    return body
 
 
 def compile_update_text_changes(

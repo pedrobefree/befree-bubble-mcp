@@ -19,6 +19,14 @@ def set_data_value(payload: dict, property_name: str):  # type: ignore[no-untype
     )
 
 
+def text_expression_value(value):  # type: ignore[no-untyped-def]
+    if isinstance(value, dict):
+        entries = value.get("%e") or value.get("entries") or {}
+        if isinstance(entries, dict):
+            return "".join(str(entries[key]) for key in sorted(entries, key=lambda item: int(item) if str(item).isdigit() else 9999))
+    return value
+
+
 def test_compile_create_text_step_to_write_payload() -> None:
     plan = {
         "steps": [
@@ -39,7 +47,7 @@ def test_compile_create_text_step_to_write_payload() -> None:
     assert payload["changes"][1]["path_array"][:2] == ["%p3", "index"]
     assert payload["changes"][1]["path_array"][-2] == "%el"
     assert payload["changes"][1]["body"]["%x"] == "Text"
-    assert payload["changes"][1]["body"]["%p"]["%3"] == "Hello"
+    assert text_expression_value(payload["changes"][1]["body"]["%p"]["%3"]) == "Hello"
     assert payload["changes"][1]["body"]["%p"]["fit_height"] is True
     assert set_data_value(payload, "fit_height") is True
     assert any(change["path_array"][:2] == ["_index", "issues_list"] for change in payload["changes"])
@@ -236,7 +244,7 @@ def test_compile_generic_visual_catalog_tools() -> None:
 
     create_change = first_change(create_payload, "CreateElement")
     assert create_change["body"]["%x"] == "Button"
-    assert create_change["body"]["%p"]["%3"] == "Continue"
+    assert text_expression_value(create_change["body"]["%p"]["%3"]) == "Continue"
     assert create_change["body"]["%p"]["%nm"] == "bt_cta"
     assert set_data_value(create_payload, "fit_height") is True
     assert set_data_value(create_payload, "fit_width") is True
@@ -249,19 +257,19 @@ def test_create_visual_defaults_and_name_prefixes() -> None:
     cases = [
         ("create_button", {"label": "Continue"}, "bt_continue", {"fit_width": True, "fit_height": True}),
         ("create_text", {"content": "Hello"}, "tx_hello", {"fit_height": True}),
-        ("create_icon", {}, "ic_icon", {"width": 20, "height": 20, "single_width": True, "single_height": True}),
+        ("create_icon", {}, "ic_icon", {"%w": 20, "%h": 20, "fixed_width": True, "fixed_height": True, "single_width": True, "single_height": True}),
         ("create_link", {}, "li_link_label", {"%3": "Link label"}),
-        ("create_image", {}, "im_image", {"width": 120, "single_width": True, "min_height_css": "64px"}),
-        ("create_shape", {}, "sh_shape", {"width": 120, "height": 120, "single_width": True, "single_height": True}),
+        ("create_image", {}, "im_image", {"%w": 120, "fixed_width": True, "single_width": True, "min_height_css": "64px"}),
+        ("create_shape", {}, "sh_shape", {"%w": 120, "%h": 120, "fixed_width": True, "fixed_height": True, "single_width": True, "single_height": True}),
         ("create_alert", {}, "al_alert_content", {"%3": "Alert content", "at_to_top": True, "fit_height": True}),
         (
             "create_video",
             {},
             "vd_id",
-            {"video_id": "id", "use_aspect_ratio": True, "aspect_ratio_width": 16, "aspect_ratio_height": 9, "width": 360, "single_width": True},
+            {"video_id": "id", "use_aspect_ratio": True, "aspect_ratio_width": 16, "aspect_ratio_height": 9, "%w": 360, "fixed_width": True, "single_width": True},
         ),
-        ("create_html", {}, "html_html", {"%3": "<html>...</html>", "fit_height": True, "min_height_css": "120px", "width": 240, "single_width": True}),
-        ("create_map", {}, "map_map", {"width": 360, "height": 240, "single_width": True, "single_height": True}),
+        ("create_html", {}, "html_html", {"%ht": "<html>...</html>", "fit_height": True, "min_height_css": "120px", "%w": 240, "fixed_width": True, "single_width": True}),
+        ("create_map", {}, "map_map", {"%w": 360, "%h": 240, "fixed_width": True, "fixed_height": True, "single_width": True, "single_height": True}),
         ("create_group", {}, "gp_group", {"container_layout": "column", "min_height_css": "40px", "fit_height": True, "min_width_css": "40px"}),
         (
             "create_repeating_group",
@@ -278,16 +286,16 @@ def test_create_visual_defaults_and_name_prefixes() -> None:
         ),
         ("create_group_focus", {}, "gf_groupfocus", {"min_width_css": "0px", "min_height_css": "64px", "fit_height": True, "max_width_css": "320px"}),
         ("create_table", {}, "tb_table", {"table_direction": "vertical", "stable_pagination": True, "min_height_css": "120px", "min_width_css": "120px", "fit_height": True}),
-        ("create_input", {}, "in_input", {"height": 44, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
+        ("create_input", {}, "in_input", {"%h": 44, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
         ("create_multiline_input", {}, "mli_multilineinput", {"min_height_css": "64px", "fit_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
-        ("create_checkbox", {}, "cb_checkbox_label", {"%3": "Checkbox label", "min_height_css": "0px", "min_width_css": "0px", "fit_width": True, "fit_height": True}),
-        ("create_dropdown", {}, "dd_dropdown", {"height": 44, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
-        ("create_searchbox", {}, "sb_search", {"placeholder": "Search...", "height": 44, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
+        ("create_checkbox", {}, "cb_checkbox_label", {"%lab": "Checkbox label", "min_height_css": "0px", "min_width_css": "0px", "fit_width": True, "fit_height": True}),
+        ("create_dropdown", {}, "dd_dropdown", {"%h": 44, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
+        ("create_searchbox", {}, "sb_search", {"placeholder": "Search...", "%h": 44, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
         ("create_radio", {}, "rb_radiobuttons", {"min_height_css": "0px", "min_width_css": "0px", "fit_width": True, "fit_height": True}),
-        ("create_slider", {}, "sl_sliderinput", {"height": 32, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
-        ("create_datepicker", {}, "dtp_dateinput", {"height": 44, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
-        ("create_picture_uploader", {}, "pu_pictureuploader", {"min_width_css": "0px", "max_width_css": "240px", "height": 64, "single_height": True}),
-        ("create_file_uploader", {}, "fu_fileuploader", {"min_width_css": "0px", "max_width_css": "240px", "height": 64, "single_height": True}),
+        ("create_slider", {}, "sl_sliderinput", {"%h": 32, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
+        ("create_datepicker", {}, "dtp_dateinput", {"%h": 44, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
+        ("create_picture_uploader", {}, "pu_pictureinput", {"min_width_css": "0px", "max_width_css": "240px", "%h": 64, "fixed_height": True, "single_height": True}),
+        ("create_file_uploader", {}, "fu_fileinput", {"min_width_css": "0px", "max_width_css": "240px", "%h": 64, "fixed_height": True, "single_height": True}),
     ]
     for tool_name, args, expected_name, expected_props in cases:
         plan = {"steps": [{"id": tool_name, "tool_name": tool_name, "args": {"context": "index", **args}}]}
@@ -295,4 +303,4 @@ def test_create_visual_defaults_and_name_prefixes() -> None:
         props = created_body(payload)["%p"]
         assert props["%nm"] == expected_name
         for key, expected_value in expected_props.items():
-            assert props[key] == expected_value, tool_name
+            assert text_expression_value(props[key]) == expected_value, tool_name
