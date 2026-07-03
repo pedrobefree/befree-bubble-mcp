@@ -31,6 +31,8 @@ from bubble_mcp.execution.editor_api import (
     list_bubble_branches,
 )
 from bubble_mcp.execution.executor import execute_plan
+from bubble_mcp.execution.state import next_user_action, operation_snapshot
+from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
@@ -129,13 +131,36 @@ def command_context_detect(args: argparse.Namespace) -> int:
 def command_plan(args: argparse.Namespace) -> int:
     plan = plan_message(args.message, context=args.context, parent=args.parent)
     payload = plan.to_dict()
-    emit_json({"ok": True, "plan": payload, "validation": validate_plan(payload)})
+    structural_validation = validate_structure(payload)
+    emit_json(
+        {
+            "ok": True,
+            "plan": payload,
+            "validation": validate_plan(payload),
+            "structural_validation": structural_validation,
+            "next_user_action": next_user_action(structural_validation),
+            "operation_snapshot": operation_snapshot(
+                plan=payload,
+                validation=structural_validation,
+                execute=False,
+                phase="planned",
+            ),
+        }
+    )
     return 0
 
 
 def command_validate_plan(args: argparse.Namespace) -> int:
     payload = json.loads(Path(args.file).read_text(encoding="utf-8"))
-    emit_json({"ok": True, "validation": validate_plan(payload)})
+    structural_validation = validate_structure(payload, execute=args.execute)
+    emit_json(
+        {
+            "ok": True,
+            "validation": validate_plan(payload),
+            "structural_validation": structural_validation,
+            "next_user_action": next_user_action(structural_validation, execute=args.execute),
+        }
+    )
     return 0
 
 
@@ -465,6 +490,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subparsers.add_parser("validate-plan", help="Validate a plan JSON file.")
     validate_parser.add_argument("--file", required=True)
+    validate_parser.add_argument("--execute", action="store_true")
     validate_parser.set_defaults(func=command_validate_plan)
 
     import_parser = subparsers.add_parser("import", help="Import external design artifacts.")

@@ -22,7 +22,13 @@ def write_payload():
     return {
         "appname": "synthetic-app",
         "app_version": "test",
-        "changes": [{"path": ["page", "index"], "value": {"caption": "Hello"}}],
+        "changes": [
+            {
+                "intent": {"name": "CreateElement"},
+                "path_array": ["%p3", "index", "%el", "bText"],
+                "body": {"%x": "Text", "%p": {"%nm": "Title", "%3": "Hello"}},
+            }
+        ],
     }
 
 
@@ -45,7 +51,7 @@ def test_editor_client_posts_write_payload_with_fake_transport() -> None:
 
     assert result["ok"] is True
     assert result["valid_shape"] is True
-    assert calls[0][1]["changes"][0]["value"]["caption"] == "Hello"
+    assert calls[0][1]["changes"][0]["body"]["%p"]["%3"] == "Hello"
     assert calls[0][1]["app_version"] == "test"
     assert calls[0][1]["appVersion"] == "test"
     assert calls[0][2]["cookie"] == "sid=secret"
@@ -112,6 +118,8 @@ def test_execute_plan_runs_write_payload_steps_with_fake_client() -> None:
 
     assert result["ok"] is True
     assert result["results"][0]["executed"] is True
+    assert result["structural_validation"]["status"] == "executable"
+    assert result["operation_snapshot"]["next_user_action"] == "inspect_editor_result"
 
 
 def test_execute_plan_requires_write_payload_when_executing() -> None:
@@ -123,4 +131,27 @@ def test_execute_plan_requires_write_payload_when_executing() -> None:
     )
 
     assert result["ok"] is False
-    assert result["results"][0]["reason"] == "step_has_no_write_payload"
+    assert result["structural_validation"]["status"] == "blocked"
+    assert result["operation_snapshot"]["next_user_action"] == "compile_plan_before_execution"
+    assert "no write_payload" in result["structural_validation"]["errors"][0]
+
+
+def test_execute_plan_blocks_destructive_steps_without_confirmation() -> None:
+    result = execute_plan(
+        {
+            "steps": [
+                {
+                    "id": "s1",
+                    "tool_name": "delete_element",
+                    "args": {"write_payload": write_payload()},
+                }
+            ]
+        },
+        profile="dev",
+        execute=True,
+        session=synthetic_session(),
+    )
+
+    assert result["ok"] is False
+    assert result["structural_validation"]["status"] == "blocked"
+    assert result["operation_snapshot"]["next_user_action"] == "request_user_confirmation"

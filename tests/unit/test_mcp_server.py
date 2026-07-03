@@ -59,6 +59,8 @@ def test_plan_tool_returns_valid_plan() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["validation"]["ok"] is True
     assert payload["plan"]["steps"][0]["tool_name"] == "create_text"
+    assert payload["structural_validation"]["status"] == "previewable"
+    assert payload["next_user_action"] == "review_preview_or_execute"
 
 
 def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]

@@ -10,14 +10,10 @@ from bubble_mcp.context.models import BubbleProjectContext
 from bubble_mcp.context.mutation_overlay import record_mutation_overlay
 from bubble_mcp.context.source import load_context
 from bubble_mcp.execution.client import BubbleEditorClient
+from bubble_mcp.execution.executor_types import extract_write_payload
+from bubble_mcp.execution.state import operation_snapshot
+from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.sessions.store import BubbleSessionData, load_session
-
-
-def extract_write_payload(step: dict[str, Any]) -> dict[str, Any] | None:
-    raw_args = step.get("args")
-    args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
-    candidate = args.get("write_payload") or args.get("payload") or step.get("write_payload")
-    return candidate if isinstance(candidate, dict) else None
 
 
 def execute_plan(
@@ -67,6 +63,28 @@ def execute_plan(
     resolved_session = session or load_session(profile)
     if execute and resolved_session is None:
         raise ValueError(f"No Bubble session stored for profile '{profile}'.")
+
+    structural_validation = validate_structure(plan, execute=execute)
+    if execute and not structural_validation["ok"]:
+        return {
+            "ok": False,
+            "executed": False,
+            "profile": profile,
+            "step_count": len(steps),
+            "results": [],
+            "structural_validation": structural_validation,
+            "operation_snapshot": operation_snapshot(
+                plan=plan,
+                validation=structural_validation,
+                profile=profile,
+                execute=execute,
+                phase="blocked",
+                context_source=plan.get("metadata", {}).get("context_source")
+                if isinstance(plan.get("metadata"), dict)
+                else None,
+                has_session=resolved_session is not None,
+            ),
+        }
 
     editor_client = client or BubbleEditorClient()
     results: list[dict[str, Any]] = []
@@ -124,15 +142,28 @@ def execute_plan(
         if not write_result.get("ok"):
             break
 
-    return {
+    context_source = (
+        plan.get("metadata", {}).get("context_source")
+        if isinstance(plan.get("metadata"), dict) and plan["metadata"].get("context_source")
+        else None
+    )
+    result = {
         "ok": all(bool(result.get("ok")) for result in results),
         "executed": execute,
         "profile": profile,
         "step_count": len(steps),
         "results": results,
-        **(
-            {"context_source": plan.get("metadata", {}).get("context_source")}
-            if isinstance(plan.get("metadata"), dict) and plan["metadata"].get("context_source")
-            else {}
+        "structural_validation": structural_validation,
+        "operation_snapshot": operation_snapshot(
+            plan=plan,
+            validation=structural_validation,
+            profile=profile,
+            execute=execute,
+            phase="executed" if execute else "previewed",
+            context_source=str(context_source) if context_source else None,
+            has_session=resolved_session is not None,
         ),
     }
+    if context_source:
+        result["context_source"] = context_source
+    return result

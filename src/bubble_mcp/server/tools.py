@@ -22,6 +22,8 @@ from bubble_mcp.execution.editor_api import (
     list_bubble_branches,
 )
 from bubble_mcp.execution.executor import execute_plan
+from bubble_mcp.execution.state import next_user_action, operation_snapshot
+from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
@@ -112,7 +114,21 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             context=str(args.get("context") or "index"),
             parent=str(args.get("parent") or "index"),
         ).to_dict()
-        return {"ok": True, "plan": plan, "validation": validate_plan(plan)}
+        validation = validate_plan(plan)
+        structural_validation = validate_structure(plan, execute=False)
+        return {
+            "ok": True,
+            "plan": plan,
+            "validation": validation,
+            "structural_validation": structural_validation,
+            "next_user_action": next_user_action(structural_validation),
+            "operation_snapshot": operation_snapshot(
+                plan=plan,
+                validation=structural_validation,
+                execute=False,
+                phase="planned",
+            ),
+        }
     if name == "bubble_eval_run":
         args = arguments or {}
         offset_value = str(args.get("offset") or "").strip()
