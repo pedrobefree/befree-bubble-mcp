@@ -360,6 +360,7 @@ Implemented MCP methods:
 Implemented tools:
 
 - `bubble_health_check`
+- `bubble_tool_coverage`
 - `bubble_profile_list`
 - `bubble_context_summary`
 - `bubble_context_find`

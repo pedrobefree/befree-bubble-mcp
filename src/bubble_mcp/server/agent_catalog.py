@@ -286,6 +286,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Report server version and capability flags for profiles, session capture, context, planning, mutations, "
         "HTML import, evals, and Figma bridge support. Read-only."
     ),
+    "bubble_tool_coverage": (
+        "Report execution coverage for every exposed MCP tool. Use this to audit whether tools are handled by "
+        "standalone native code, direct Aria-runtime methods, Aria-runtime aliases, custom runtime adapters, compiler "
+        "fallback, or are uncovered. Read-only."
+    ),
     "bubble_context_summary": (
         "Summarize a compact Bubble project context file: pages, reusable elements, styles, data types, and indexed "
         "elements. Use before planning changes against a local context artifact. Read-only."
@@ -847,6 +852,7 @@ def _is_read_only(name: str) -> bool:
     return name.startswith(("list_", "inspect_", "scan_", "resolve_", "verify_", "build_")) or name in {
         "bubble_profile_list",
         "bubble_health_check",
+        "bubble_tool_coverage",
         "bubble_context_summary",
         "bubble_context_find",
         "bubble_eval_run",

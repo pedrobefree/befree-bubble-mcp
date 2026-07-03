@@ -30,7 +30,7 @@ For each tool family:
 
 ## Current Native Families
 
-- `profile_session_context_tools`: profiles, session import/list, context summary/search/import/detect.
+- `profile_session_context_tools`: profiles, session import/list, tool coverage, context summary/search/import/detect.
 - `planning_execution_tools`: plan, eval, compile, direct editor write, execute plan.
 - `bubble_eval_export_expert`: local redacted expert-capture export for eval growth.
 - `html_import_tools`: advanced HTML-to-Bubble runtime import.
@@ -47,6 +47,7 @@ When adding or refining a family, update tests in
 - source-selection fields use `anyOf` when there are alternative input sources;
 - numeric fields include realistic min/max bounds;
 - `tools/list` still exposes the full catalog.
+- `bubble_tool_coverage` reports zero uncovered tools for the Aria catalog.
 
 ## Agent Efficiency Rules
 
@@ -79,3 +80,8 @@ Every runtime-routed mutation must preserve the same safety contract:
 - returned data must identify `engine`, `profile`, `app_id`, `app_version`,
   `executed`, and `write_count` so agents can reason from the response without
   re-inspecting the repository.
+
+When a catalog name differs from the packaged runtime method name, add an
+explicit alias in `src/bubble_mcp/aria_dispatch.py` and keep
+`bubble_tool_coverage` green. Do not rely on agents discovering CLI subcommand
+spellings at runtime.

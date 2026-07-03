@@ -1,5 +1,6 @@
 import json
 
+from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.store import BubbleSessionData, save_session
@@ -41,6 +42,33 @@ def test_health_tool_returns_text_content() -> None:
     assert payload["ok"] is True
     assert payload["capabilities"]["mutations"] is True
     assert payload["capabilities"]["aria_runtime_dispatch"] is True
+
+
+def test_tool_coverage_reports_no_uncovered_aria_catalog_tools() -> None:
+    report = catalog_coverage_report()
+
+    assert report["ok"] is True
+    assert report["aria_catalog"]["count"] == len(ARIA_BUBBLE_TOOL_NAMES)
+    assert report["aria_catalog"]["uncovered_count"] == 0
+    assert report["aria_catalog"]["uncovered"] == []
+    assert report["by_coverage"]["runtime_direct"] >= 180
+    assert report["by_coverage"]["runtime_alias"] >= 10
+
+
+def test_tool_coverage_tool_is_exposed() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "tools/call",
+            "params": {"name": "bubble_tool_coverage", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["aria_catalog"]["uncovered_count"] == 0
 
 
 def test_plan_tool_returns_valid_plan() -> None:

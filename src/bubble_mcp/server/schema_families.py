@@ -407,6 +407,10 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "bubble_health_check",
             "Return local Bubble MCP server health and capability metadata.",
         ),
+        _empty_tool(
+            "bubble_tool_coverage",
+            "Report runtime coverage for every exposed Bubble MCP tool, including native, Aria-runtime, alias, custom, compiler fallback, and uncovered categories. Read-only.",
+        ),
         tool_schema(
             "bubble_context_summary",
             "Summarize a compact Bubble context JSON file.",

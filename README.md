@@ -32,6 +32,8 @@ python scripts/install_local.py --repair --extras browser,dev
 - Full Aria Bubble MCP tool catalog exposed over MCP, with catalog calls
   dispatched through the packaged Aria-compatible runtime whenever the matching
   runtime command exists.
+- Built-in MCP tool coverage report showing native, direct runtime, runtime
+  alias, custom adapter, compiler fallback, and uncovered categories.
 - Local profile management.
 - Compact context loading, search, import, freshness reporting, and local mutation overlay merge from `.bubble`/consolelog/crawler artifacts plus successful local MCP writes.
 - Deterministic planner with packaged routing corpus, semantic validator, structural execution validation, and operation snapshots for agent harnesses.
@@ -211,6 +213,9 @@ Calls with `execute=false` or without `execute` still compile through the same
 runtime path when possible, but the Bubble write is intercepted and returned as
 a preview. Calls with `execute=true` use the captured local Bubble session and
 write to `/appeditor/write`.
+
+Use `bubble_tool_coverage` from an MCP client to verify current catalog
+coverage. The Aria catalog is expected to report `uncovered_count: 0`.
 
 ## Codex MCP Setup
 

@@ -30,6 +30,7 @@ from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
@@ -58,6 +59,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                 "aria_tool_catalog_count": len(ARIA_BUBBLE_TOOL_NAMES),
             },
         }
+    if name == "bubble_tool_coverage":
+        return catalog_coverage_report()
     if name == "bubble_profile_list":
         settings = load_settings()
         return {

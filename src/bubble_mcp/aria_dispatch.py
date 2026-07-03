@@ -43,10 +43,33 @@ ARG_ALIASES = {
     "parent_name": ("parent",),
     "filter_text": ("query",),
     "html_file": ("file",),
+    "file_path": ("file", "input"),
+    "as_json": ("json",),
     "search_text": ("element_name", "name", "text"),
     "new_text": ("content", "new_content", "text"),
     "name": ("element_name",),
+    "property_name": ("property",),
+    "condition_json": ("only_when_json", "condition"),
+    "query": ("message", "commands"),
 }
+
+RUNTIME_TOOL_ALIASES = {
+    "sync_cache": "refresh_profile_cache",
+    "list_events": "list_workflow_events",
+    "scan_types": "list_data_types",
+    "update_layout": "update_layout_property",
+    "edit_style": "update_style_definition",
+    "map_element_ref": "map_element_ref_alias",
+    "map_workflow_ref": "map_workflow_ref_alias",
+    "add_event_go_to_page": "add_event_go_to_page_action",
+    "set_condition_run_when": "set_condition_event_run_when",
+    "set_condition_only_when": "set_condition_event_only_when",
+    "batch": "process_batch",
+    "natural": "process_natural_language",
+    "regenerate_api_token": "regenerate_api_token_private_key",
+}
+
+CUSTOM_RUNTIME_TOOLS = {"list_element_ref_maps"}
 
 MUTATING_PREFIXES = (
     "add_",
@@ -204,9 +227,47 @@ def _method_kwargs(method: Any, args: dict[str, Any], *, execute: bool) -> dict[
                 continue
             kwargs.setdefault(key, value)
 
+    if method.__name__ == "add_event_go_to_page_action" and args.get("same_tab") is True:
+        kwargs["open_in_new_tab"] = False
+
     if "dry_run" in signature.parameters:
         kwargs["dry_run"] = not execute
     return kwargs
+
+
+def _list_element_ref_maps(cli: Any, args: dict[str, Any]) -> dict[str, Any]:
+    context_name = str(args.get("context") or "").strip()
+    rows: list[dict[str, Any]] = []
+    cache = cli._schema_element_refs_cache()
+    if context_name:
+        context_id, context_type = cli._find_context(context_name)
+        if not context_id:
+            return {"ok": False, "error": f"Context '{context_name}' not found.", "rows": []}
+        context_keys = [cli._cache_element_ref_context_key(context_id, context_type)]
+    else:
+        context_keys = sorted(cache)
+
+    for context_key in context_keys:
+        bucket = cache.get(context_key)
+        if not isinstance(bucket, dict):
+            continue
+        for alias_key, payload in sorted(bucket.items()):
+            if not isinstance(payload, dict):
+                continue
+            row = dict(payload)
+            row.setdefault("alias_key", alias_key)
+            row.setdefault("context_key", context_key)
+            rows.append(row)
+    limit = args.get("limit")
+    if isinstance(limit, int) and limit > 0:
+        rows = rows[:limit]
+    return {"ok": True, "rows": rows, "count": len(rows)}
+
+
+def _call_custom_runtime_tool(name: str, cli: Any, args: dict[str, Any]) -> dict[str, Any] | None:
+    if name == "list_element_ref_maps":
+        return _list_element_ref_maps(cli, args)
+    return None
 
 
 def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
@@ -217,11 +278,17 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         return None
 
     bubble_cli, bubble_sdk = _load_aria_runtime_modules()
-    if not hasattr(bubble_cli.BubbleCLI, name):
+    method_name = RUNTIME_TOOL_ALIASES.get(name, name)
+    has_runtime_method = hasattr(bubble_cli.BubbleCLI, method_name)
+    if not has_runtime_method and name not in CUSTOM_RUNTIME_TOOLS:
         return None
-    method_ref = getattr(bubble_cli.BubbleCLI, name)
-    signature = inspect.signature(method_ref)
-    if not bool(args.get("execute")) and name.startswith(MUTATING_PREFIXES) and "dry_run" not in signature.parameters:
+    signature = inspect.signature(getattr(bubble_cli.BubbleCLI, method_name)) if has_runtime_method else None
+    if (
+        signature is not None
+        and not bool(args.get("execute"))
+        and name.startswith(MUTATING_PREFIXES)
+        and "dry_run" not in signature.parameters
+    ):
         return None
 
     execute = bool(args.get("execute")) and not bool(args.get("dry_run"))
@@ -285,8 +352,12 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
                 webhook_url="local://bubble-mcp",
                 profile_name=env.profile,
             )
-            method = getattr(cli, name)
-            return_value = method(**_method_kwargs(method, args, execute=execute))
+            custom_return = _call_custom_runtime_tool(name, cli, args)
+            if custom_return is not None:
+                return_value = custom_return
+            else:
+                method = getattr(cli, method_name)
+                return_value = method(**_method_kwargs(method, args, execute=execute))
     finally:
         bubble_sdk.PayloadBuilder.send_to_webhook = original_send
         bubble_sdk.PayloadBuilder.to_json = original_to_json
