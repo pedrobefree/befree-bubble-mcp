@@ -17,6 +17,19 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "settings_path": "Optional settings.json path for non-default profile configuration.",
     "app_id": "Bubble app id/appname. Optional when the selected profile already defines the target app.",
     "app_version": "Bubble editor version to target. Use test/version-test unless the user explicitly asks for live.",
+    "from_app_version": "Source Bubble branch/version to branch from. Defaults to the profile or session app version, usually test.",
+    "start_index": "Zero-based pagination offset for Bubble editor changelog entries.",
+    "num_fetch": "Number of changelog entries to fetch. The implementation caps this to avoid oversized responses.",
+    "filters": "Raw Bubble changelog filters object. Use when advanced filters already match Bubble's editor payload shape.",
+    "start_timestamp": "Start timestamp in milliseconds for changelog filtering.",
+    "end_timestamp": "End timestamp in milliseconds for changelog filtering.",
+    "change_type": "Bubble changelog category/type filter, such as Element, Workflow, Data, Style, or Page.",
+    "root": "Bubble root id for deeper changelog filtering. This is usually a page or reusable element id.",
+    "change_identifier": "Bubble changelog change identifier filter for a specific element, workflow, data type, or resource.",
+    "change_path": "Bubble changelog path filter. Pass the exact string or string array observed in Bubble change paths.",
+    "user_id": "Bubble collaborator user id or ids used to filter changelog entries.",
+    "soft_delete": "When deleting a branch, keep Bubble's soft-delete behavior enabled unless explicitly instructed otherwise.",
+    "version_control_api_version": "Bubble version-control API version for branch operations. Defaults to the current observed value.",
     "context": "Target Bubble page, reusable element, or container context by visible name or known id.",
     "parent": "Parent Bubble element/container where new children should be added. Use root for page-level insertion.",
     "execute": "Set true only when the user asked to apply the change in Bubble. Leave false for preview/planning.",
@@ -38,7 +51,7 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "skip_id_to_path": "Skip generating id-to-path lookup data in the compact context.",
     "dataset": "Evaluation dataset path.",
     "session": "Captured Bubble editor session object containing headers/cookies. Secrets are stored locally.",
-    "url": "Source URL to load, hydrate, inspect, and convert into Bubble elements.",
+    "url": "URL used by the tool, such as source page, link target, video URL, or HTML import source.",
     "html_file": "Local HTML file or URL to convert into Bubble elements.",
     "html": "Raw HTML snippet to convert into Bubble elements.",
     "selector": "CSS selector for the exact source component or section to convert.",
@@ -110,7 +123,6 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "value": "Value to assign to a Bubble property.",
     "content_format": "Bubble input content format, such as text, email, integer, decimal, or date.",
     "icon": "Bubble icon identifier or icon source.",
-    "url": "URL used by the tool, such as a source page, video URL, link target, or HTML source.",
     "video_id": "Video provider id for Bubble Video elements.",
     "origin": "Video origin/provider, such as YouTube or Vimeo.",
     "autoplay": "Whether the video should autoplay.",
@@ -306,6 +318,27 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_execute_plan": (
         "Preview or execute a structured Bubble MCP plan. Can compile missing write payloads, resolve context, and use "
         "the stored profile session for authenticated execution."
+    ),
+    "bubble_branch_list": (
+        "List Bubble editor branches and versions for a profile using the authenticated editor session. Use when the "
+        "user asks which branches exist, needs branch ids, or wants to choose a target version before an operation."
+    ),
+    "bubble_branch_contributors": (
+        "List collaborators who have contributed to a Bubble branch/version. Use for changelog filtering, audit "
+        "questions, or when the user asks who edited the current branch. Read-only."
+    ),
+    "bubble_changelog_fetch": (
+        "Fetch Bubble editor changelog entries for a profile and branch/version. Supports pagination plus filters for "
+        "date range, collaborator user ids, category/type, root page/reusable, change identifier, and change path."
+    ),
+    "bubble_branch_create": (
+        "Create a Bubble development branch or sub-branch from an existing version using the stored editor session. "
+        "Use when the user asks to create a branch or child branch; pass from_app_version for the source/parent "
+        "branch; execute=false previews the request, execute=true performs it."
+    ),
+    "bubble_branch_delete": (
+        "Soft-delete a Bubble branch/version using the stored editor session. Use only when the user asks to remove a "
+        "branch; execute=true also requires confirm=true because this is destructive."
     ),
 }
 
@@ -687,7 +720,7 @@ def legacy_description(name: str) -> str:
 
 def tool_annotations(name: str) -> dict[str, bool]:
     read_only = _is_read_only(name)
-    destructive = name.startswith(("delete_", "clear_", "regenerate_"))
+    destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}
     return {
         "readOnlyHint": read_only,
         "destructiveHint": destructive,
@@ -698,6 +731,11 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "create_from_html",
             "bubble_editor_write",
             "bubble_execute_plan",
+            "bubble_branch_list",
+            "bubble_branch_contributors",
+            "bubble_changelog_fetch",
+            "bubble_branch_create",
+            "bubble_branch_delete",
             "upload_asset",
         },
     }
@@ -796,6 +834,9 @@ def _is_read_only(name: str) -> bool:
         "bubble_plan",
         "bubble_plan_dry_run",
         "bubble_compile_plan",
+        "bubble_branch_list",
+        "bubble_branch_contributors",
+        "bubble_changelog_fetch",
         "refresh_profile_cache",
         "sync_cache",
         "sync_event_cache",

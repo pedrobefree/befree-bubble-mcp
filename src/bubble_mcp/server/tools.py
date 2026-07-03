@@ -14,6 +14,13 @@ from bubble_mcp.context.queries import search_context
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import load_settings
 from bubble_mcp.execution.client import BubbleEditorClient
+from bubble_mcp.execution.editor_api import (
+    create_bubble_branch,
+    delete_bubble_branch,
+    fetch_changelog_entries,
+    list_branch_contributors,
+    list_bubble_branches,
+)
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
@@ -170,16 +177,23 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         if write_session is None:
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
         execute = bool(args.get("execute"))
-        result = BubbleEditorClient().write(write_payload, write_session, dry_run=not execute)
-        if execute and result.get("ok"):
+        write_result: dict[str, Any] = BubbleEditorClient().write(
+            write_payload,
+            write_session,
+            dry_run=not execute,
+        )
+        if execute and write_result.get("ok"):
             record_mutation_overlay(
                 profile=profile,
-                app_id=str(result.get("request", {}).get("payload", {}).get("appname") or write_session.app_id),
-                payload=result.get("request", {}).get("payload") or write_payload,
+                app_id=str(
+                    write_result.get("request", {}).get("payload", {}).get("appname")
+                    or write_session.app_id
+                ),
+                payload=write_result.get("request", {}).get("payload") or write_payload,
                 source="bubble_editor_write",
-                response=result.get("response"),
+                response=write_result.get("response"),
             )
-        return result
+        return write_result
     if name == "bubble_execute_plan":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()
@@ -201,9 +215,77 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             compile_missing=bool(args.get("compile")),
             context=execution_context,
         )
+    if name == "bubble_branch_list":
+        args = arguments or {}
+        return list_bubble_branches(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+        )
+    if name == "bubble_branch_contributors":
+        args = arguments or {}
+        return list_branch_contributors(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "") or None,
+        )
+    if name == "bubble_changelog_fetch":
+        args = arguments or {}
+        return fetch_changelog_entries(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "") or None,
+            start_index=int(args.get("start_index") or 0),
+            num_fetch=int(args.get("num_fetch") or 50),
+            filters=_changelog_filters_from_args(args),
+        )
+    if name == "bubble_branch_create":
+        args = arguments or {}
+        return create_bubble_branch(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            name=str(args.get("name") or ""),
+            from_app_version=str(args.get("from_app_version") or "") or None,
+            description=str(args.get("description") or ""),
+            execute=bool(args.get("execute")),
+            version_control_api_version=int(args.get("version_control_api_version") or 7),
+        )
+    if name == "bubble_branch_delete":
+        args = arguments or {}
+        return delete_bubble_branch(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or ""),
+            soft_delete=bool(args.get("soft_delete", True)),
+            execute=bool(args.get("execute")),
+            confirm=bool(args.get("confirm")),
+        )
     if name in ARIA_BUBBLE_TOOL_NAMES:
         return call_legacy_catalog_tool(name, arguments or {})
     raise ValueError(f"Unknown Bubble MCP tool: {name}")
+
+
+def _changelog_filters_from_args(args: dict[str, Any]) -> dict[str, Any]:
+    raw_filters = args.get("filters")
+    filters: dict[str, Any] = dict(raw_filters) if isinstance(raw_filters, dict) else {}
+    mapping = {
+        "start_timestamp": "start_timestamp",
+        "end_timestamp": "end_timestamp",
+        "change_type": "type",
+        "root": "root",
+        "change_identifier": "change_identifier",
+        "change_path": "change_path",
+        "user_id": "user_id",
+    }
+    for input_key, output_key in mapping.items():
+        if input_key not in args:
+            continue
+        value = args[input_key]
+        if value == "":
+            continue
+        if input_key == "user_id" and isinstance(value, str):
+            value = [item.strip() for item in value.split(",") if item.strip()]
+        filters[output_key] = value
+    return filters
 
 
 def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:

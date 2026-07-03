@@ -196,6 +196,64 @@ these index paths target the wrong page or parent.
 Use `--no-auto-context` only when deliberately compiling without live project
 context.
 
+## `bubble-mcp branch`
+
+Reads and manages Bubble editor branches through the stored local session.
+
+```bash
+bubble-mcp branch list --profile my-app
+bubble-mcp branch contributors --profile my-app --app-version test
+```
+
+Create a branch from the profile/default version:
+
+```bash
+bubble-mcp branch create --profile my-app --name feature-x --description "Feature branch"
+```
+
+Add `--execute` to actually create it in Bubble. To create a sub-branch, pass
+the parent branch/version id:
+
+```bash
+bubble-mcp branch create \
+  --profile my-app \
+  --name feature-x-child \
+  --from-app-version parent-branch-id \
+  --execute
+```
+
+Delete previews by default. Real deletion requires both `--execute` and
+`--confirm`.
+
+```bash
+bubble-mcp branch delete --profile my-app --app-version feature-branch-id
+bubble-mcp branch delete --profile my-app --app-version feature-branch-id --execute --confirm
+```
+
+## `bubble-mcp changelog fetch`
+
+Fetches Bubble editor changelog entries for a profile and branch/version.
+
+```bash
+bubble-mcp changelog fetch --profile my-app --app-version test --num-fetch 50
+```
+
+Common filters:
+
+```bash
+bubble-mcp changelog fetch \
+  --profile my-app \
+  --app-version test \
+  --start-timestamp 1780282800000 \
+  --end-timestamp 1783091092976 \
+  --change-type Data \
+  --change-path user_types.user. \
+  --user-id 1234567890x1234567890
+```
+
+For advanced Bubble-native filters, pass `--filters` with either a JSON object
+or a path to a JSON file.
+
 ## `bubble-mcp compile-plan`
 
 Compiles supported abstract plan steps into Bubble write payloads.

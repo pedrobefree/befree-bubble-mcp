@@ -234,6 +234,92 @@ def list_tool_schemas() -> list[dict[str, Any]]:
                 "additionalProperties": False,
             },
         },
+        {
+            "name": "bubble_branch_list",
+            "description": "List Bubble editor branches/versions for a profile by calling the authenticated editor get_versions endpoint.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "app_id": {"type": "string"},
+                },
+                "required": ["profile"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_branch_contributors",
+            "description": "List Bubble collaborators who contributed to the selected branch/version using the stored editor session.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "app_id": {"type": "string"},
+                    "app_version": {"type": "string"},
+                },
+                "required": ["profile"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_changelog_fetch",
+            "description": "Fetch recent Bubble editor changelog entries with optional filters for date, user, category, root, identifier, and change path.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "app_id": {"type": "string"},
+                    "app_version": {"type": "string"},
+                    "start_index": {"type": "integer"},
+                    "num_fetch": {"type": "integer"},
+                    "filters": {"type": "object"},
+                    "start_timestamp": {"type": "integer"},
+                    "end_timestamp": {"type": "integer"},
+                    "change_type": {"type": "string"},
+                    "root": {"type": ["string", "null"]},
+                    "change_identifier": {"type": ["string", "null"]},
+                    "change_path": {"type": ["string", "array", "null"], "items": {"type": "string"}},
+                    "user_id": {"type": ["string", "array"], "items": {"type": "string"}},
+                },
+                "required": ["profile"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_branch_create",
+            "description": "Create a new Bubble development branch or sub-branch from an existing app version. Pass from_app_version to choose the parent branch/version. Without execute=true it only previews the authenticated request.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "app_id": {"type": "string"},
+                    "name": {"type": "string"},
+                    "from_app_version": {"type": "string"},
+                    "description": {"type": "string"},
+                    "execute": {"type": "boolean"},
+                    "version_control_api_version": {"type": "integer"},
+                },
+                "required": ["profile", "name"],
+                "additionalProperties": False,
+            },
+        },
+        {
+            "name": "bubble_branch_delete",
+            "description": "Soft-delete a Bubble branch/version. Requires execute=true and confirm=true to mutate Bubble; otherwise it previews the request.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "profile": {"type": "string"},
+                    "app_id": {"type": "string"},
+                    "app_version": {"type": "string"},
+                    "soft_delete": {"type": "boolean"},
+                    "execute": {"type": "boolean"},
+                    "confirm": {"type": "boolean"},
+                },
+                "required": ["profile", "app_version"],
+                "additionalProperties": False,
+            },
+        },
     ]
     native_names = {tool["name"] for tool in native_tools}
     legacy_tools = [

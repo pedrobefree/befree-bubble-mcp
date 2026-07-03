@@ -32,6 +32,7 @@ SENSITIVE_PATTERNS = [
 
 SKIP_DIRS = {
     ".git",
+    ".local",
     ".venv",
     "__pycache__",
     ".pytest_cache",
@@ -61,11 +62,14 @@ ALLOWLIST = {
     "SECURITY.md",
     "docs/source-audit.md",
     "src/bubble_mcp/core/redaction.py",
+    "src/bubble_mcp/context/mutation_overlay.py",
     "src/bubble_mcp/execution/client.py",
     "bridge/figma/server.mjs",
     "scripts/audit_sensitive_paths.py",
     "test-node/figma-bridge.test.mjs",
     "tests/unit/test_redaction.py",
+    "tests/unit/test_html_converter.py",
+    "tests/unit/test_mcp_server.py",
     "tests/unit/test_sensitive_audit.py",
 }
 

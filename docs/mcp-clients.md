@@ -87,6 +87,11 @@ standalone execution, pass `app_id` for compiler-supported families or
 - `bubble_session_import`: imports session headers/cookies into local storage.
 - `bubble_editor_write`: posts an exact Bubble `/appeditor/write` payload. Set `execute=true` to mutate Bubble.
 - `bubble_execute_plan`: executes plan steps. Set `compile=true` with `app_id` to compile supported abstract steps before execution. Set `execute=true` to mutate Bubble.
+- `bubble_branch_list`: lists Bubble editor branches/versions for the selected profile.
+- `bubble_branch_contributors`: lists collaborators who contributed to a branch/version.
+- `bubble_changelog_fetch`: fetches editor changelog entries with optional date, user, category, root, identifier, and path filters.
+- `bubble_branch_create`: creates a Bubble branch or sub-branch. Pass `from_app_version` for sub-branches and `execute=true` to apply it.
+- `bubble_branch_delete`: soft-deletes a Bubble branch/version. Requires `execute=true` and `confirm=true` to apply it.
 
 Mutating calls require a stored local session. Calls without `execute=true`
 return a preview instead of posting to Bubble.

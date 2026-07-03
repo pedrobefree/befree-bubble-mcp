@@ -165,6 +165,90 @@ def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # 
     assert "x-bubble-appname" in inspected["computed_write_header_keys"]
 
 
+def test_cli_branch_create_passes_sub_branch_source(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_create_bubble_branch(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "request": {"payload": kwargs}}
+
+    monkeypatch.setattr("bubble_mcp.cli.main.create_bubble_branch", fake_create_bubble_branch)
+
+    assert (
+        main(
+            [
+                "branch",
+                "create",
+                "--profile",
+                "smoke",
+                "--name",
+                "sub-feature",
+                "--from-app-version",
+                "parent-branch",
+                "--description",
+                "child branch",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert calls[0]["profile"] == "smoke"
+    assert calls[0]["name"] == "sub-feature"
+    assert calls[0]["from_app_version"] == "parent-branch"
+    assert calls[0]["execute"] is True
+
+
+def test_cli_changelog_fetch_builds_filters(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_fetch_changelog_entries(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "entries": []}
+
+    monkeypatch.setattr("bubble_mcp.cli.main.fetch_changelog_entries", fake_fetch_changelog_entries)
+
+    assert (
+        main(
+            [
+                "changelog",
+                "fetch",
+                "--profile",
+                "smoke",
+                "--app-version",
+                "test",
+                "--start-index",
+                "50",
+                "--num-fetch",
+                "25",
+                "--change-type",
+                "Data",
+                "--change-path",
+                "user_types.user.",
+                "--user-id",
+                "user-1",
+                "--user-id",
+                "user-2",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert calls[0]["profile"] == "smoke"
+    assert calls[0]["app_version"] == "test"
+    assert calls[0]["start_index"] == 50
+    assert calls[0]["num_fetch"] == 25
+    assert calls[0]["filters"] == {
+        "type": "Data",
+        "change_path": "user_types.user.",
+        "user_id": ["user-1", "user-2"],
+    }
+
+
 def test_cli_compile_plan_outputs_write_payload(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(

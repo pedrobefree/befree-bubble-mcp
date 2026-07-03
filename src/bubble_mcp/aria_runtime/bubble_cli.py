@@ -427,7 +427,7 @@ class BubbleCLI:
 
         self.profile_name = profile_name
         self.webhook_url = webhook_url or os.getenv("BUBBLE_CLI_WEBHOOK_URL", "local://bubble-mcp")
-        self.appname = appname or os.getenv("BUBBLE_CLI_APPNAME", "befree-page")
+        self.appname = appname or os.getenv("BUBBLE_CLI_APPNAME", "synthetic-page")
         self.nl_config = nl_config or {}
         self.render_config = render_config or {}
         self.style_defaults = style_defaults or {}

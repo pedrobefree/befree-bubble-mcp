@@ -23,6 +23,13 @@ from bubble_mcp.core.config import (
     with_profile,
 )
 from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
+from bubble_mcp.execution.editor_api import (
+    create_bubble_branch,
+    delete_bubble_branch,
+    fetch_changelog_entries,
+    list_branch_contributors,
+    list_bubble_branches,
+)
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
@@ -286,6 +293,94 @@ def command_session_login(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_optional_json_object(value: str) -> dict[str, object]:
+    if not value:
+        return {}
+    path = Path(value).expanduser()
+    raw = path.read_text(encoding="utf-8") if path.exists() else value
+    payload = json.loads(raw)
+    if not isinstance(payload, dict):
+        raise ValueError("Expected a JSON object.")
+    return payload
+
+
+def _cli_changelog_filters(args: argparse.Namespace) -> dict[str, object]:
+    filters: dict[str, object] = _load_optional_json_object(args.filters)
+    for attr, key in (
+        ("start_timestamp", "start_timestamp"),
+        ("end_timestamp", "end_timestamp"),
+        ("change_type", "type"),
+        ("root", "root"),
+        ("change_identifier", "change_identifier"),
+        ("change_path", "change_path"),
+    ):
+        value = getattr(args, attr, None)
+        if value not in (None, ""):
+            filters[key] = value
+    if args.user_id:
+        filters["user_id"] = args.user_id
+    return filters
+
+
+def command_branch_list(args: argparse.Namespace) -> int:
+    emit_json(list_bubble_branches(profile=args.profile, app_id=args.app_id or None))
+    return 0
+
+
+def command_branch_contributors(args: argparse.Namespace) -> int:
+    emit_json(
+        list_branch_contributors(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            app_version=args.app_version or None,
+        )
+    )
+    return 0
+
+
+def command_branch_create(args: argparse.Namespace) -> int:
+    emit_json(
+        create_bubble_branch(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            name=args.name,
+            from_app_version=args.from_app_version or None,
+            description=args.description or "",
+            execute=args.execute,
+            version_control_api_version=args.version_control_api_version,
+        )
+    )
+    return 0
+
+
+def command_branch_delete(args: argparse.Namespace) -> int:
+    emit_json(
+        delete_bubble_branch(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            app_version=args.app_version,
+            soft_delete=not args.hard_delete,
+            execute=args.execute,
+            confirm=args.confirm,
+        )
+    )
+    return 0
+
+
+def command_changelog_fetch(args: argparse.Namespace) -> int:
+    emit_json(
+        fetch_changelog_entries(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            app_version=args.app_version or None,
+            start_index=args.start_index,
+            num_fetch=args.num_fetch,
+            filters=_cli_changelog_filters(args),
+        )
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="bubble-mcp")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -447,6 +542,64 @@ def build_parser() -> argparse.ArgumentParser:
         help="Actually post to Bubble. Without this flag the command validates and prints the request.",
     )
     write_parser.set_defaults(func=command_write)
+
+    branch_parser = subparsers.add_parser("branch", help="Inspect and manage Bubble editor branches.")
+    branch_subparsers = branch_parser.add_subparsers(dest="branch_command", required=True)
+
+    branch_list_parser = branch_subparsers.add_parser("list", help="List Bubble branches for a profile.")
+    branch_list_parser.add_argument("--profile", required=True)
+    branch_list_parser.add_argument("--app-id", default="")
+    branch_list_parser.set_defaults(func=command_branch_list)
+
+    branch_contributors_parser = branch_subparsers.add_parser(
+        "contributors",
+        help="List contributors for a Bubble branch/version.",
+    )
+    branch_contributors_parser.add_argument("--profile", required=True)
+    branch_contributors_parser.add_argument("--app-id", default="")
+    branch_contributors_parser.add_argument("--app-version", default="")
+    branch_contributors_parser.set_defaults(func=command_branch_contributors)
+
+    branch_create_parser = branch_subparsers.add_parser("create", help="Create a Bubble branch or sub-branch.")
+    branch_create_parser.add_argument("--profile", required=True)
+    branch_create_parser.add_argument("--name", required=True, help="Display name for the new Bubble branch.")
+    branch_create_parser.add_argument("--app-id", default="")
+    branch_create_parser.add_argument(
+        "--from-app-version",
+        default="",
+        help="Source branch/version. Use an existing branch id to create a sub-branch.",
+    )
+    branch_create_parser.add_argument("--description", default="")
+    branch_create_parser.add_argument("--version-control-api-version", type=int, default=7)
+    branch_create_parser.add_argument("--execute", action="store_true")
+    branch_create_parser.set_defaults(func=command_branch_create)
+
+    branch_delete_parser = branch_subparsers.add_parser("delete", help="Delete a Bubble branch/version.")
+    branch_delete_parser.add_argument("--profile", required=True)
+    branch_delete_parser.add_argument("--app-version", required=True, help="Branch/version id to delete.")
+    branch_delete_parser.add_argument("--app-id", default="")
+    branch_delete_parser.add_argument("--hard-delete", action="store_true", help="Disable Bubble soft-delete flag.")
+    branch_delete_parser.add_argument("--execute", action="store_true")
+    branch_delete_parser.add_argument("--confirm", action="store_true")
+    branch_delete_parser.set_defaults(func=command_branch_delete)
+
+    changelog_parser = subparsers.add_parser("changelog", help="Fetch Bubble editor changelog entries.")
+    changelog_subparsers = changelog_parser.add_subparsers(dest="changelog_command", required=True)
+    changelog_fetch_parser = changelog_subparsers.add_parser("fetch", help="Fetch Bubble changelog entries.")
+    changelog_fetch_parser.add_argument("--profile", required=True)
+    changelog_fetch_parser.add_argument("--app-id", default="")
+    changelog_fetch_parser.add_argument("--app-version", default="")
+    changelog_fetch_parser.add_argument("--start-index", type=int, default=0)
+    changelog_fetch_parser.add_argument("--num-fetch", type=int, default=50)
+    changelog_fetch_parser.add_argument("--filters", default="", help="JSON object or path to JSON object.")
+    changelog_fetch_parser.add_argument("--start-timestamp", type=int, default=None)
+    changelog_fetch_parser.add_argument("--end-timestamp", type=int, default=None)
+    changelog_fetch_parser.add_argument("--change-type", default="")
+    changelog_fetch_parser.add_argument("--root", default="")
+    changelog_fetch_parser.add_argument("--change-identifier", default="")
+    changelog_fetch_parser.add_argument("--change-path", default="")
+    changelog_fetch_parser.add_argument("--user-id", action="append", default=[])
+    changelog_fetch_parser.set_defaults(func=command_changelog_fetch)
 
     execute_plan_parser = subparsers.add_parser(
         "execute-plan",

@@ -195,6 +195,103 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
     assert "payload" not in list_styles["properties"]
 
 
+def test_tools_list_exposes_branch_and_changelog_tools() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 16, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    for name in [
+        "bubble_branch_list",
+        "bubble_branch_contributors",
+        "bubble_changelog_fetch",
+        "bubble_branch_create",
+        "bubble_branch_delete",
+    ]:
+        assert name in tools
+        assert tools[name]["inputSchema"]["properties"]["profile"]["description"]
+
+    assert tools["bubble_branch_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_branch_contributors"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_changelog_fetch"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_branch_create"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_branch_create"]["annotations"]["openWorldHint"] is True
+    assert tools["bubble_branch_delete"]["annotations"]["destructiveHint"] is True
+    assert tools["bubble_branch_delete"]["inputSchema"]["required"] == ["profile", "app_version"]
+    assert "from_app_version" in tools["bubble_branch_create"]["inputSchema"]["properties"]
+    assert "change_type" in tools["bubble_changelog_fetch"]["inputSchema"]["properties"]
+
+
+def test_changelog_tool_maps_flat_filters(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_fetch_changelog_entries(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "entries": []}
+
+    monkeypatch.setattr("bubble_mcp.server.tools.fetch_changelog_entries", fake_fetch_changelog_entries)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 17,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_changelog_fetch",
+                "arguments": {
+                    "profile": "smoke",
+                    "start_index": 10,
+                    "num_fetch": 25,
+                    "change_type": "Workflow",
+                    "root": "bRoot",
+                    "user_id": "u1,u2",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert calls[0]["profile"] == "smoke"
+    assert calls[0]["start_index"] == 10
+    assert calls[0]["num_fetch"] == 25
+    assert calls[0]["filters"] == {"type": "Workflow", "root": "bRoot", "user_id": ["u1", "u2"]}
+
+
+def test_branch_create_tool_routes_sub_branch_source(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_create_bubble_branch(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "request": {"payload": kwargs}}
+
+    monkeypatch.setattr("bubble_mcp.server.tools.create_bubble_branch", fake_create_bubble_branch)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 18,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_branch_create",
+                "arguments": {
+                    "profile": "smoke",
+                    "name": "sub-feature",
+                    "from_app_version": "parent-branch-id",
+                    "description": "child branch",
+                    "execute": True,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert calls[0]["from_app_version"] == "parent-branch-id"
+    assert calls[0]["execute"] is True
+
+
 def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     save_session(

@@ -5933,7 +5933,7 @@ class PayloadBuilder:
         "type_of_content": "%gt", "group_type": "%gt", "data_source": "%ds"
     }
 
-    def __init__(self, appname: str = "befree-page", app_version: str = "test", metadata: Dict[str, str] = None):
+    def __init__(self, appname: str = "synthetic-page", app_version: str = "test", metadata: Dict[str, str] = None):
         self.appname = appname
         self.app_version = app_version
         self.id_gen = BubbleIDGenerator()
@@ -8162,7 +8162,7 @@ class PathDiscovery:
 class BubbleClient:
     """Cliente HTTP para enviar requisições ao Bubble"""
 
-    def __init__(self, appname: str = "befree-page", cookies: Optional[str] = None):
+    def __init__(self, appname: str = "synthetic-page", cookies: Optional[str] = None):
         self.appname = appname
         self.cookies = cookies
         self.base_url = "https://bubble.io/appeditor/write"
@@ -8201,7 +8201,7 @@ class BubbleClient:
 class WebhookClient:
     """Cliente para enviar requisições ao gateway do editor (Webhook)"""
 
-    def __init__(self, url: str = "local://bubble-mcp", app_name: str = "befree-page"):
+    def __init__(self, url: str = "local://bubble-mcp", app_name: str = "synthetic-page"):
         self.url = url
         self.app_name = app_name
         try:
@@ -8299,7 +8299,7 @@ if __name__ == "__main__":
 
     # 3. Build payload
     print("\n3️⃣ Building payload:")
-    payload_builder = PayloadBuilder("befree-page", "test")
+    payload_builder = PayloadBuilder("synthetic-page", "test")
 
     page_path = PathBuilder.build_for_elements("bTRKY")
 
