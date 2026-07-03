@@ -18,6 +18,7 @@ Implemented metrics:
 - fallback/failure reason summary
 - step count
 - deterministic estimated token count
+- structural validation status when plans are inspected through planning/execution tools
 
 Dataset cases accept either standalone snake_case keys or Aria-style camelCase
 keys:
@@ -70,3 +71,25 @@ reruns. A compiled report includes `summary.compile_ok`,
 `summary.estimated_tokens`, and per-case `has_write_payload` evidence.
 The summary also includes `parser_summary` and `fallback_summary` for quick
 regression triage.
+
+## Exporting Redacted Expert Captures
+
+Use `bubble-mcp eval export-expert` or MCP tool `bubble_eval_export_expert` to
+turn local captured editor writes into eval-friendly cases:
+
+```bash
+bubble-mcp eval export-expert \
+  --input /tmp/captures.json \
+  --output /tmp/generated-evals.json
+```
+
+The exporter:
+
+- accepts arrays or objects with `entries`, `captures`, `requests`, or `events`;
+- detects Bubble write payloads under `payload`, `write_payload`, `body`, or `request.payload`;
+- classifies operation families such as visual element, page, workflow, data schema, option set, style, and delete;
+- adds `expectedTool` hints when the payload maps cleanly to a tool family;
+- redacts sensitive keys and long secret-like values before writing the output.
+
+Do not commit captured project data unless it has been reviewed and intentionally
+sanitized.

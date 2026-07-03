@@ -284,6 +284,7 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
     assert tools["bubble_branch_list"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_branch_contributors"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_changelog_fetch"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_eval_export_expert"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_branch_create"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_branch_create"]["annotations"]["openWorldHint"] is True
     assert tools["bubble_branch_delete"]["annotations"]["destructiveHint"] is True

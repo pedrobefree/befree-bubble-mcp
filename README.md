@@ -18,21 +18,21 @@ bubble-mcp-server
 - MCP server for agent clients.
 - Full Aria Bubble MCP tool catalog exposed over MCP.
 - Local profile management.
-- Compact context loading, search, and import from `.bubble`/consolelog or crawler-index JSON.
-- Deterministic planner and semantic validator.
+- Compact context loading, search, import, freshness reporting, and mutation-overlay merge from `.bubble`/consolelog/crawler artifacts plus successful local MCP writes.
+- Deterministic planner with packaged routing corpus, semantic validator, structural execution validation, and operation snapshots for agent harnesses.
 - HTML-to-Bubble import: conservative plan converter plus Aria's advanced `create-from-html` runtime.
 - Local session import/listing for Bubble editor credentials.
 - Authenticated `/appeditor/write` execution through CLI and MCP.
-- Compiler for basic `create_text` and `create_group` plans into executable Bubble write payloads.
+- Compiler for supported visual/schema/workflow/style plan steps into executable Bubble write payloads.
 - Browser-assisted session login through optional Playwright support.
-- Eval harness for deterministic routing.
+- Eval harness with focused reruns, parser/fallback diagnostics, token estimates, and redacted expert-capture export.
 - Local Figma bridge for the Befree Figma plugin. Figma-side integration code is intentionally outside this repository.
 
 ## Planned Capabilities
 
-- Context engine from `.bubble` exports and crawler artifacts.
-- Richer planner and semantic validator ported from Aria.
-- Richer Bubble payload compilation for generated visual/schema/workflow plans.
+- Broader public eval corpus across Bubble editor families.
+- Contributor-friendly tool-family extension scaffolding.
+- More visual parity validators for HTML and design bridge conversions.
 
 ## Codex MCP Setup
 
@@ -72,6 +72,7 @@ returning success.
 - No real project data is included in this repository.
 - Mutating commands require a local session and explicit `execute=true`/`--execute`.
 - Without execution opt-in, write commands preview the normalized request.
+- `bubble_execute_plan` runs structural validation before writes and returns `operation_snapshot.next_user_action` for agents.
 - Session credentials stay local.
 - Sensitive values are redacted before logs or reports.
 

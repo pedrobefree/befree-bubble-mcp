@@ -263,6 +263,17 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "parallax": "Floating/parallax behavior setting.",
     "limit_image_size_before_upload": "Whether Bubble should limit image size before upload.",
     "prefer_last": "When multiple matches exist, prefer the last matching element.",
+    "language": "Language code for app text or translation operations.",
+    "commands": "Batch command list or command text to execute through a higher-level Bubble MCP command.",
+    "ref": "Reference id, alias, key, or name used by inspection or verification tools.",
+    "values": "Option-set values, static choices, or bulk values depending on the tool.",
+    "attributes": "Option-set attributes or structured metadata depending on the tool.",
+    "names": "Comma-separated or array-like list of Bubble entity names.",
+    "pattern": "Name-matching pattern for bulk cleanup or selection operations.",
+    "token_id": "Bubble API token id or key.",
+    "private_key": "Private API token value. Never log or commit real secrets.",
+    "exposed_api": "Whether the Bubble data type should be exposed through Bubble's Data API.",
+    "include_cache": "Include local cache data in the read-only response.",
 }
 
 
@@ -306,6 +317,10 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "styles, asset handling, Bubble mapping, validation, context resolution, and optional authenticated execution."
     ),
     "bubble_eval_run": "Run deterministic Bubble planning eval datasets. Use for package validation, not user app edits.",
+    "bubble_eval_export_expert": (
+        "Export local captured Bubble editor writes into redacted eval cases with operation-family classification and "
+        "tool hints. Use this for harness growth from known-good examples; it is local and read-only."
+    ),
     "bubble_compile_plan": (
         "Compile supported abstract Bubble MCP plan steps into Bubble /appeditor/write payloads. Use after planning "
         "and before execution when the caller needs auditable payloads."
@@ -835,6 +850,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_context_summary",
         "bubble_context_find",
         "bubble_eval_run",
+        "bubble_eval_export_expert",
         "bubble_plan",
         "bubble_plan_dry_run",
         "bubble_compile_plan",

@@ -29,6 +29,7 @@ For each tool family:
 
 - `profile_session_context_tools`: profiles, session import/list, context summary/search/import/detect.
 - `planning_execution_tools`: plan, eval, compile, direct editor write, execute plan.
+- `bubble_eval_export_expert`: local redacted expert-capture export for eval growth.
 - `html_import_tools`: advanced HTML-to-Bubble runtime import.
 - `branch_changelog_tools`: branch list/create/delete, contributors, changelog fetch.
 
@@ -43,3 +44,14 @@ When adding or refining a family, update tests in
 - source-selection fields use `anyOf` when there are alternative input sources;
 - numeric fields include realistic min/max bounds;
 - `tools/list` still exposes the full catalog.
+
+## Agent Efficiency Rules
+
+Schemas should reduce discovery loops:
+
+- descriptions must say when to use the tool by user intent, not only what API it wraps;
+- read-only tools must set `readOnlyHint`;
+- mutating tools must expose `execute` and default it to `false`;
+- destructive tools must expose `confirm` and set `destructiveHint`;
+- context-producing tools should explain freshness and artifact priority;
+- eval tools should support focused reruns (`filter`, `failed_from`, `offset`, `limit`) so agents avoid rerunning the full suite.

@@ -80,6 +80,10 @@ Summarizes a compact Bubble context JSON file.
 bubble-mcp context summary --file /path/to/context.json
 ```
 
+The response includes `freshness` with source, timestamp source, age, and stale
+status. This helps agents decide whether to call `context detect --force` before
+a mutation.
+
 ## `bubble-mcp context find`
 
 Searches a compact Bubble context JSON file.
@@ -96,8 +100,14 @@ Creates and semantically validates a local Bubble plan from a message.
 bubble-mcp plan "add a button to the index page" --context index --parent index
 ```
 
-This command does not mutate Bubble by itself. Use `execute-plan --execute` for
-plans whose steps include `args.write_payload`.
+This command does not mutate Bubble by itself. The response includes:
+
+- `routing`/`parser`: whether the packaged example corpus or fallback regex matched.
+- `validation`: semantic validation.
+- `structural_validation`: step graph and payload readiness.
+- `operation_snapshot.next_user_action`: the next action an agent should take.
+
+Use `execute-plan --execute` for plans whose steps include `args.write_payload`.
 
 ## `bubble-mcp import html`
 
@@ -196,6 +206,11 @@ these index paths target the wrong page or parent.
 Use `--no-auto-context` only when deliberately compiling without live project
 context.
 
+When a context file is loaded for compile/execute, the runtime also merges the
+local mutation overlay for the selected profile/app. This makes pages and
+elements created by earlier MCP writes visible even when the cached `.bubble`
+export has not been refreshed yet.
+
 ## `bubble-mcp branch`
 
 Reads and manages Bubble editor branches through the stored local session.
@@ -293,13 +308,29 @@ bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --compile 
 bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --failed-from reports/basic-compiled.json
 ```
 
+## `bubble-mcp eval export-expert`
+
+Exports local captured Bubble editor writes into redacted eval cases with family
+classification and tool hints. Use it to grow the eval corpus from known-good
+examples without committing sessions, cookies, or raw secrets.
+
+```bash
+bubble-mcp eval export-expert \
+  --input /tmp/captured-writes.json \
+  --output /tmp/bubble-expert-evals.json
+```
+
 ## `bubble-mcp validate-plan`
 
 Validates a plan JSON file.
 
 ```bash
 bubble-mcp validate-plan --file /path/to/plan.json
+bubble-mcp validate-plan --file /path/to/plan.json --execute
 ```
+
+Pass `--execute` to require executable write payloads and destructive-operation
+confirmation checks.
 
 ## `bubble-mcp-server`
 
@@ -329,6 +360,7 @@ Implemented tools:
 - `create_from_html`
 - `bubble_compile_plan`
 - `bubble_eval_run`
+- `bubble_eval_export_expert`
 - `bubble_session_list`
 - `bubble_session_import`
 - `bubble_editor_write`
