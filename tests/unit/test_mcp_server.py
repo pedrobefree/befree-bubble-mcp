@@ -16,7 +16,7 @@ def test_initialize_returns_server_info() -> None:
     assert response is not None
     assert response["id"] == 1
     assert response["result"]["serverInfo"]["name"] == "befree-bubble-mcp"
-    assert response["result"]["capabilities"] == {"tools": {}, "resources": {}, "prompts": {}}
+    assert response["result"]["capabilities"] == {"tools": {}, "resources": {"templates": True}, "prompts": {}}
 
 
 def test_tools_list_includes_profile_list() -> None:
@@ -69,6 +69,31 @@ def test_resources_read_catalog_summary_json() -> None:
     assert payload["ok"] is True
     assert payload["tool_count"] >= 220
     assert "bubble_task_recipe" in payload["native_agent_tools"]
+
+
+def test_resource_templates_list_and_read_recipe_detail() -> None:
+    listed = handle_request({"jsonrpc": "2.0", "id": 35, "method": "resources/templates/list"})
+
+    assert listed is not None
+    templates = listed["result"]["resourceTemplates"]
+    assert templates[0]["uriTemplate"] == "bubble://recipes/{recipe_id}"
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 36,
+            "method": "resources/read",
+            "params": {"uri": "bubble://recipes/html_import"},
+        }
+    )
+
+    assert response is not None
+    content = response["result"]["contents"][0]
+    assert content["mimeType"] == "application/json"
+    payload = json.loads(content["text"])
+    assert payload["ok"] is True
+    assert payload["id"] == "html_import"
+    assert payload["steps"][1]["tool"] == "create_from_html"
 
 
 def test_prompts_list_and_get_task_runbook() -> None:

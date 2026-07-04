@@ -91,6 +91,19 @@ def _recipes_summary() -> dict[str, Any]:
     }
 
 
+def _recipe_detail(recipe_id: str) -> dict[str, Any]:
+    recipe = RECIPES.get(recipe_id)
+    if not recipe:
+        raise ValueError(f"Unknown Bubble MCP recipe: {recipe_id}")
+    return {
+        "ok": True,
+        "id": recipe_id,
+        "when": recipe["when"],
+        "tools": recipe["tools"],
+        "steps": recipe["steps"],
+    }
+
+
 RESOURCES: dict[str, dict[str, Any]] = {
     "bubble://docs/agent-runtime": {
         "name": "bubble_agent_runtime",
@@ -113,20 +126,40 @@ RESOURCES: dict[str, dict[str, Any]] = {
 }
 
 
+RESOURCE_TEMPLATES: list[dict[str, Any]] = [
+    {
+        "name": "bubble_recipe",
+        "uriTemplate": "bubble://recipes/{recipe_id}",
+        "title": "Bubble Task Recipe",
+        "description": "Read the complete operational recipe for one Bubble task family.",
+        "mimeType": RESOURCE_MIME_JSON,
+    }
+]
+
+
 def list_resources() -> list[dict[str, Any]]:
     """Return MCP resource descriptors."""
 
     return [{"uri": uri, **metadata} for uri, metadata in RESOURCES.items()]
 
 
+def list_resource_templates() -> list[dict[str, Any]]:
+    """Return MCP resource template descriptors."""
+
+    return RESOURCE_TEMPLATES.copy()
+
+
 def read_resource(uri: str) -> dict[str, Any]:
     """Read one MCP resource by URI."""
 
-    if uri not in RESOURCES:
+    mime_type = RESOURCE_MIME_JSON
+    if uri.startswith("bubble://recipes/") and uri != "bubble://recipes/summary":
+        recipe_id = uri.removeprefix("bubble://recipes/").strip()
+        text = json.dumps(_recipe_detail(recipe_id), indent=2, sort_keys=True)
+    elif uri not in RESOURCES:
         raise ValueError(f"Unknown Bubble MCP resource: {uri}")
-    metadata = RESOURCES[uri]
-    mime_type = str(metadata["mimeType"])
-    if uri == "bubble://docs/agent-runtime":
+    elif uri == "bubble://docs/agent-runtime":
+        mime_type = RESOURCE_MIME_MARKDOWN
         text = _agent_runtime_markdown()
     elif uri == "bubble://catalog/summary":
         text = json.dumps(_catalog_summary(), indent=2, sort_keys=True)

@@ -435,6 +435,7 @@ Implemented MCP methods:
 - `tools/list`
 - `tools/call`
 - `resources/list`
+- `resources/templates/list`
 - `resources/read`
 - `prompts/list`
 - `prompts/get`
@@ -444,6 +445,7 @@ Implemented resources:
 - `bubble://docs/agent-runtime`
 - `bubble://catalog/summary`
 - `bubble://recipes/summary`
+- `bubble://recipes/{recipe_id}`
 
 Implemented prompts:
 

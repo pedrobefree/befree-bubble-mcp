@@ -7,6 +7,7 @@ import pytest
 
 from scripts import install_local
 from scripts.install_local import (
+    _clear_macos_execution_metadata,
     _repair_native_extension_policy,
     _remove_stale_console_script_duplicates,
     _stale_install_paths,
@@ -58,11 +59,13 @@ def test_write_console_bootstrap_injects_source_before_import(tmp_path: Path) ->
 
     _write_console_bootstrap(script_path, python, source_dir, "bubble_mcp.cli.main:main")
 
-    text = script_path.read_text(encoding="utf-8")
-    assert str(python) in text
-    assert f"sys.path.insert(0, {str(source_dir)!r})" in text
-    assert "from bubble_mcp.cli.main import main" in text
-    assert "#!/bin/sh" not in text
+    payload = (tmp_path / "bin" / "bubble-mcp.py").read_text(encoding="utf-8")
+    assert f"sys.path.insert(0, {str(source_dir)!r})" in payload
+    assert "from bubble_mcp.cli.main import main" in payload
+    if script_path.read_bytes().startswith(b"#!"):
+        text = script_path.read_text(encoding="utf-8")
+        assert str(python) in text
+        assert text.startswith("#!/bin/sh")
     assert script_path.stat().st_mode & 0o111
 
 
@@ -115,6 +118,27 @@ def test_remove_stale_console_script_duplicates(tmp_path: Path) -> None:
     assert not duplicate.exists()
     assert not server_duplicate.exists()
     assert unrelated.exists()
+
+
+def test_clear_macos_execution_metadata_removes_quarantine_and_provenance(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = tmp_path / "bubble-mcp"
+    script.write_text("script\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(
+        install_local.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    _clear_macos_execution_metadata(script)
+
+    assert ["xattr", "-d", "com.apple.quarantine", str(script)] in calls
+    assert ["xattr", "-d", "com.apple.provenance", str(script)] in calls
 
 
 def test_repair_native_extension_policy_targets_only_native_files(

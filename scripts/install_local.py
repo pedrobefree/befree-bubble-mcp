@@ -9,7 +9,9 @@ installs, then installs the checkout into the selected virtual environment.
 from __future__ import annotations
 
 import argparse
+import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -100,6 +102,18 @@ def _clear_macos_hidden_flag(path: Path) -> None:
     subprocess.run(["chflags", "nohidden", str(path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def _clear_macos_execution_metadata(path: Path) -> None:
+    if sys.platform != "darwin" or not path.exists():
+        return
+    for attribute in ("com.apple.quarantine", "com.apple.provenance"):
+        subprocess.run(
+            ["xattr", "-d", attribute, str(path)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+
 def _repair_pth_visibility(site_packages: Path) -> None:
     for path in site_packages.glob("*.pth"):
         _clear_macos_hidden_flag(path)
@@ -131,12 +145,14 @@ def _write_local_editable_pth(site_packages: Path, source_dir: Path) -> Path:
     return path
 
 
-def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, target: str) -> None:
+def _console_payload_path(script_path: Path) -> Path:
+    if os.name == "nt":
+        return script_path
+    return script_path.with_name(f"{script_path.name}.py")
+
+
+def _write_python_console_payload(payload_path: Path, python: Path, source_dir: Path, target: str, executable_name: str) -> None:
     module_name, function_name = target.split(":", 1)
-    script_path.parent.mkdir(parents=True, exist_ok=True)
-    if script_path.exists() or script_path.is_symlink():
-        script_path.unlink()
-    executable_name = script_path.name.removesuffix(".exe")
     body = "\n".join(
         [
             f"#!{python}",
@@ -150,9 +166,90 @@ def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, 
             "",
         ]
     )
-    script_path.write_text(body, encoding="utf-8")
+    payload_path.write_text(body, encoding="utf-8")
+    payload_path.chmod(0o755)
+
+
+def _write_macos_native_launcher(script_path: Path, python: Path, payload_path: Path) -> bool:
+    if sys.platform != "darwin":
+        return False
+    compiler = shutil.which("cc") or shutil.which("clang")
+    if not compiler:
+        return False
+    source = "\n".join(
+        [
+            "#include <stdlib.h>",
+            "#include <unistd.h>",
+            "int main(int argc, char **argv) {",
+            f"  const char *python = {json.dumps(str(python))};",
+            f"  const char *payload = {json.dumps(str(payload_path))};",
+            "  char **args = calloc((size_t)argc + 2, sizeof(char *));",
+            "  if (!args) return 127;",
+            "  args[0] = (char *)python;",
+            "  args[1] = (char *)payload;",
+            "  for (int i = 1; i < argc; i++) args[i + 1] = argv[i];",
+            "  args[argc + 1] = NULL;",
+            "  execv(python, args);",
+            "  return 127;",
+            "}",
+            "",
+        ]
+    )
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".c", delete=False) as source_file:
+        source_file.write(source)
+        source_path = Path(source_file.name)
+    try:
+        result = subprocess.run(
+            [compiler, str(source_path), "-o", str(script_path)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    finally:
+        source_path.unlink(missing_ok=True)
+    if result.returncode != 0:
+        return False
     script_path.chmod(0o755)
+    codesign = shutil.which("codesign")
+    if codesign:
+        sign_result = subprocess.run(
+            [codesign, "--force", "--sign", "-", str(script_path)],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        if sign_result.returncode != 0:
+            return False
+    return True
+
+
+def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, target: str) -> None:
+    script_path.parent.mkdir(parents=True, exist_ok=True)
+    payload_path = _console_payload_path(script_path)
+    for path in {script_path, payload_path}:
+        if path.exists() or path.is_symlink():
+            path.unlink()
+    executable_name = script_path.name.removesuffix(".exe")
+    _write_python_console_payload(payload_path, python, source_dir, target, executable_name)
+    if os.name == "nt":
+        script_path = payload_path
+    elif _write_macos_native_launcher(script_path, python, payload_path):
+        pass
+    else:
+        wrapper = "\n".join(
+            [
+                "#!/bin/sh",
+                f"exec {shlex.quote(str(python))} {shlex.quote(str(payload_path))} \"$@\"",
+                "",
+            ]
+        )
+        script_path.write_text(wrapper, encoding="utf-8")
+        script_path.chmod(0o755)
     _clear_macos_hidden_flag(script_path)
+    _clear_macos_execution_metadata(script_path)
+    if payload_path != script_path:
+        _clear_macos_hidden_flag(payload_path)
+        _clear_macos_execution_metadata(payload_path)
 
 
 def _write_console_bootstraps(venv: Path, python: Path, source_dir: Path) -> None:

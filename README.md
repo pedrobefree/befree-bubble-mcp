@@ -226,7 +226,8 @@ bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubbl
 
 MCP clients that support resources and prompts can also read
 `bubble://docs/agent-runtime`, `bubble://catalog/summary`, and
-`bubble://recipes/summary`, or request the `bubble-task-runbook`,
+`bubble://recipes/summary`, read a specific recipe such as
+`bubble://recipes/html_import`, or request the `bubble-task-runbook`,
 `bubble-html-import`, and `bubble-quality-gate` prompts.
 
 When a catalog tool is called with a `profile`, the server resolves the stored

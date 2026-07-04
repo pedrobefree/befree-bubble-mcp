@@ -69,11 +69,14 @@ resources, and prompts.
 ## Resources and Prompts
 
 The server exposes read-only resources for clients that support MCP
-`resources/list` and `resources/read`:
+`resources/list`, `resources/templates/list`, and `resources/read`:
 
 - `bubble://docs/agent-runtime`: compact operating rules for agents.
 - `bubble://catalog/summary`: JSON summary of catalog size and agent entrypoints.
 - `bubble://recipes/summary`: JSON summary of available task recipes.
+- `bubble://recipes/{recipe_id}`: complete JSON recipe for one task family,
+  such as `bubble://recipes/html_import` or
+  `bubble://recipes/page_or_reusable`.
 
 The server also exposes reusable prompts through `prompts/list` and
 `prompts/get`:

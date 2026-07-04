@@ -9,7 +9,7 @@ from typing import Any, TextIO
 from bubble_mcp import __version__
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.server.prompts import get_prompt, list_prompts
-from bubble_mcp.server.resources import list_resources, read_resource
+from bubble_mcp.server.resources import list_resource_templates, list_resources, read_resource
 from bubble_mcp.server.schemas import list_tool_schemas
 from bubble_mcp.server.tools import call_tool
 
@@ -44,7 +44,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "serverInfo": {"name": "befree-bubble-mcp", "version": __version__},
-                    "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
+                    "capabilities": {"tools": {}, "resources": {"templates": True}, "prompts": {}},
                 },
             )
         if method == "tools/list":
@@ -60,6 +60,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             )
         if method == "resources/list":
             return success_response(request_id, {"resources": list_resources()})
+        if method == "resources/templates/list":
+            return success_response(request_id, {"resourceTemplates": list_resource_templates()})
         if method == "resources/read":
             uri = str(params.get("uri") or "")
             return success_response(request_id, read_resource(uri))
