@@ -100,6 +100,7 @@ def test_resources_read_catalog_summary_json() -> None:
     payload = json.loads(content["text"])
     assert payload["ok"] is True
     assert payload["tool_count"] >= 220
+    assert "bubble_readiness_check" in payload["native_agent_tools"]
     assert "bubble_task_recipe" in payload["native_agent_tools"]
     assert "bubble_catalog_quality" in payload["native_agent_tools"]
 
@@ -370,6 +371,29 @@ def test_catalog_quality_tool_is_exposed() -> None:
     assert result["structuredContent"] == payload
 
 
+def test_readiness_tool_is_exposed() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 24,
+            "method": "tools/call",
+            "params": {"name": "bubble_readiness_check", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["summary"] == {"checks": 3, "passed": 3, "failed": 0}
+    assert [check["name"] for check in payload["checks"]] == [
+        "health",
+        "catalog_gate",
+        "agent_routing",
+    ]
+    assert result["structuredContent"] == payload
+
+
 def test_agent_guide_routes_user_tasks_without_cli_discovery() -> None:
     response = handle_request(
         {
@@ -476,13 +500,17 @@ def test_task_recipe_quality_gate_uses_consolidated_coverage_smoke() -> None:
     assert payload["ok"] is True
     assert payload["recipe"] == "quality_gate"
     assert payload["matched"]["tools"] == [
-        "bubble_health_check",
+        "bubble_readiness_check",
         "bubble_runtime_smoke",
+        "bubble_health_check",
         "bubble_tool_coverage",
         "bubble_catalog_quality",
     ]
+    assert payload["steps"][0]["tool"] == "bubble_readiness_check"
+    assert payload["inputs"]["profile"] == "cliente2"
+    assert payload["steps"][0]["args"]["profile"] == "$profile"
     assert payload["steps"][1]["tool"] == "bubble_runtime_smoke"
-    assert payload["steps"][1]["args"]["suite"] == "coverage"
+    assert payload["steps"][1]["args"]["suite"] == "family-preview"
 
 
 def test_agent_routing_understands_portuguese_page_creation() -> None:

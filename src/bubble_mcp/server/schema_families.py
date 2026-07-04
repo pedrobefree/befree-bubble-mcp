@@ -237,6 +237,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "For execute-write smoke only: refresh Bubble context after writes and verify the temporary page/elements materialized with required defaults.",
         default=False,
     ),
+    "include_family_preview": _prop(
+        "boolean",
+        "For readiness checks only: also run the broader family-preview smoke when a profile is available. This remains execute=false.",
+        default=False,
+    ),
     "verification_output": _prop(
         "string",
         "Optional local context JSON output path used by verify_context.",
@@ -472,6 +477,20 @@ def profile_session_context_tools() -> list[ToolSchema]:
         _empty_tool(
             "bubble_health_check",
             "Return local Bubble MCP server health and capability metadata.",
+        ),
+        tool_schema(
+            "bubble_readiness_check",
+            "Run the recommended Bubble MCP readiness sequence in one call: server health, compact catalog coverage/quality gate, agent-routing smoke, and optional profile safe-read/family-preview checks. Read-only.",
+            [
+                "profile",
+                "context",
+                "parent",
+                "app_id",
+                "app_version",
+                "include_family_preview",
+                "include_details",
+                "stop_on_failure",
+            ],
         ),
         tool_schema(
             "bubble_agent_guide",

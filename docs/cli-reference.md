@@ -405,6 +405,23 @@ schemas, property descriptions, annotations, resource metadata, prompt
 arguments, and runtime coverage. Use it as a CI-friendly gate before claiming
 catalog or harness work is complete.
 
+## `bubble-mcp readiness`
+
+Runs the recommended MCP readiness sequence in one command.
+
+```bash
+bubble-mcp readiness
+bubble-mcp readiness --profile my-app --context index
+bubble-mcp readiness --profile my-app --context index --include-family-preview
+bubble-mcp readiness --include-details
+```
+
+The check runs server health, the compact coverage/catalog-quality smoke, and
+agent-routing. When `--profile` is provided it also runs read-only profile
+checks. `--include-family-preview` adds the broader execute=false family smoke.
+The default output is compact; pass `--include-details` only when debugging a
+failed nested smoke result.
+
 ## `bubble-mcp smoke runtime`
 
 Runs safe runtime smoke suites through the same tool handlers used by MCP
@@ -508,6 +525,7 @@ Implemented completions:
 Implemented tools:
 
 - `bubble_health_check`
+- `bubble_readiness_check`
 - `bubble_agent_guide`
 - `bubble_tool_search`
 - `bubble_task_recipe`

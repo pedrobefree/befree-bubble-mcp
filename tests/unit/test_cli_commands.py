@@ -258,6 +258,19 @@ def test_cli_tools_quality_reports_catalog_gate(capsys) -> None:  # type: ignore
     assert checks["runtime_coverage"]["uncovered_count"] == 0
 
 
+def test_cli_readiness_runs_recommended_sequence(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["readiness"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["summary"] == {"checks": 3, "passed": 3, "failed": 0}
+    assert [check["name"] for check in payload["checks"]] == [
+        "health",
+        "catalog_gate",
+        "agent_routing",
+    ]
+
+
 def test_cli_tools_recipe_routes_page_creation_before_generic_create(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["tools", "recipe", "--task", "Create a new page called mcp-02", "--profile", "smoke"]) == 0
 

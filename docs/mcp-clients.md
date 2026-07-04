@@ -119,6 +119,8 @@ Use `bubble_tool_coverage` to audit how every exposed tool is handled.
 Use `bubble_catalog_quality` to audit whether the catalog is efficient for
 agents: clear descriptions, documented fields, valid annotations, readable
 resources/prompts, and complete runtime coverage.
+Use `bubble_readiness_check` when the client needs the standard readiness
+sequence in one compact call.
 Use `bubble_runtime_smoke` when the user asks whether the MCP is operational
 against a local install or profile.
 
@@ -132,6 +134,7 @@ For lower-level standalone execution, pass `app_id` for compiler-supported
 families or `write_payload` for exact Bubble editor writes.
 
 - `bubble_health_check`: reports local server capabilities.
+- `bubble_readiness_check`: runs server health, compact coverage/catalog-quality smoke, agent-routing, and optional profile safe-read or family-preview checks in one call. Use this before broad Bubble work or after installation; pass `include_details=true` only when debugging a failed nested check.
 - `bubble_agent_guide`: returns a compact routing guide for agents. Call it
   with the user task when the client is unsure which Bubble MCP tool family to
   use; it is read-only and avoids CLI/repository discovery.
@@ -185,9 +188,8 @@ return a preview instead of posting to Bubble.
 - If the client knows the capability but not the order of operations, call
   `bubble_task_recipe` with the user task, profile, and context before
   executing mutating tools.
-- Before relying on a modified catalog or harness, call `bubble_runtime_smoke`
-  with `suite=coverage` and require both coverage and catalog-quality cases to
-  pass.
+- Before relying on a modified catalog or harness, call `bubble_readiness_check`
+  and require `ok=true`. Use individual smoke suites only for deeper diagnosis.
 - Do not ask the user to memorize internal tool names; infer the right tool
   from the intent, then pass the visible app/page/element names as arguments.
 - Do not shell out to inspect CLI help unless a required capability is missing

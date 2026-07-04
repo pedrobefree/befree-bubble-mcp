@@ -31,6 +31,7 @@ from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.readiness import run_readiness_check
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe
@@ -67,6 +68,19 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return catalog_coverage_report(include_tools=bool(args.get("include_tools") or args.get("include_details")))
     if name == "bubble_catalog_quality":
         return catalog_quality_report()
+    if name == "bubble_readiness_check":
+        args = arguments or {}
+        return run_readiness_check(
+            call_tool,
+            profile=str(args.get("profile") or ""),
+            context=str(args.get("context") or "index"),
+            parent=str(args.get("parent") or "root"),
+            app_id=str(args.get("app_id") or ""),
+            app_version=str(args.get("app_version") or "test"),
+            include_family_preview=bool(args.get("include_family_preview")),
+            include_details=bool(args.get("include_details")),
+            stop_on_failure=bool(args.get("stop_on_failure")),
+        )
     if name == "bubble_agent_guide":
         return agent_guide(str((arguments or {}).get("task") or (arguments or {}).get("message") or ""))
     if name == "bubble_tool_search":

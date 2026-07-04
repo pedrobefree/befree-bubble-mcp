@@ -36,6 +36,8 @@ python scripts/install_local.py --repair --extras browser,dev
   alias, custom adapter, compiler fallback, and uncovered categories.
 - Built-in MCP catalog quality gate for agent-facing descriptions, schemas,
   annotations, resources, prompts, and coverage.
+- One-command readiness check for health, coverage, catalog quality,
+  agent-routing, and optional profile smoke validation.
 - Safe runtime smoke suites for local catalog coverage, read-only profile
   checks, and representative `execute=false` mutation previews.
 - Local profile management.
@@ -226,6 +228,7 @@ bubble-mcp tools search --query "html selector import" --limit 5
 bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index
 bubble-mcp tools coverage
 bubble-mcp tools quality
+bubble-mcp readiness --profile my-app --context index
 ```
 
 MCP clients that support resources and prompts can also read
@@ -267,6 +270,12 @@ The `preview-write` suite compiles representative mutations with
 The `family-preview` suite exercises representative visual, container, input,
 schema, workflow, style, HTML import, branch, and changelog paths without
 posting changes.
+
+Use `bubble_readiness_check` from an MCP client, or `bubble-mcp readiness` from
+the CLI, when you want the recommended compact sequence in one call: health,
+coverage/catalog quality, agent-routing, and optional profile safe-read or
+family-preview smoke. Detailed nested smoke output is opt-in with
+`include_details=true` or `--include-details`.
 
 For an authenticated real-write smoke test, use the explicit `execute-write`
 suite. It creates a temporary page and representative elements only when

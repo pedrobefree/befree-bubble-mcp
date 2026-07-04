@@ -10,8 +10,8 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "check_server_or_catalog",
         "when": "The user asks whether the MCP is installed, healthy, covered, or ready.",
-        "tools": ["bubble_health_check", "bubble_runtime_smoke", "bubble_tool_coverage", "bubble_catalog_quality"],
-        "notes": "Use bubble_runtime_smoke suite=coverage first for catalog integrity and schema quality, agent-routing for tool-selection quality, and safe-read or family-preview for runtime confidence.",
+        "tools": ["bubble_readiness_check", "bubble_runtime_smoke", "bubble_health_check", "bubble_tool_coverage", "bubble_catalog_quality"],
+        "notes": "Use bubble_readiness_check first for the compact health, coverage, catalog-quality, and routing sequence. Use individual smoke suites only for deeper diagnosis.",
     },
     {
         "intent": "find_profile_session_or_context",
@@ -319,23 +319,18 @@ RECIPES: dict[str, dict[str, Any]] = {
     },
     "quality_gate": {
         "when": "Verify install health, catalog coverage, runtime behavior, or safe profile integration.",
-        "tools": ["bubble_health_check", "bubble_runtime_smoke", "bubble_tool_coverage", "bubble_catalog_quality"],
+        "tools": ["bubble_readiness_check", "bubble_runtime_smoke", "bubble_health_check", "bubble_tool_coverage", "bubble_catalog_quality"],
         "steps": [
             {
-                "tool": "bubble_health_check",
-                "purpose": "Check server capabilities.",
+                "tool": "bubble_readiness_check",
+                "purpose": "Run health, compact coverage/catalog-quality gate, agent-routing, and optional profile checks in one call.",
+                "args": {"profile": "$profile", "context": "$context", "parent": "$parent"},
                 "required_before_execute": False,
             },
             {
                 "tool": "bubble_runtime_smoke",
-                "purpose": "Run the compact coverage gate: execution coverage plus agent-facing catalog quality.",
-                "args": {"suite": "coverage"},
-                "required_before_execute": False,
-            },
-            {
-                "tool": "bubble_runtime_smoke",
-                "purpose": "Run agent-routing, safe-read, preview-write, family-preview, or execute-write depending on risk.",
-                "args": {"suite": "agent-routing", "profile": "$profile", "context": "$context", "parent": "$parent"},
+                "purpose": "Optional deeper execute=false family smoke when the profile is configured and broader runtime confidence is needed.",
+                "args": {"suite": "family-preview", "profile": "$profile", "context": "$context", "parent": "$parent"},
                 "required_before_execute": False,
             },
         ],

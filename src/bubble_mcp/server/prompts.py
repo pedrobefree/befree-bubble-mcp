@@ -91,11 +91,9 @@ def get_prompt(name: str, arguments: dict[str, Any] | None = None) -> dict[str, 
         text = (
             "Validate the Befree Bubble MCP before claiming the work is complete.\n\n"
             "Run or call these checks:\n"
-            "1. `bubble_health_check`.\n"
-            "2. `bubble_runtime_smoke` with suite=coverage and confirm both coverage and catalog-quality cases pass.\n"
-            "3. `bubble_runtime_smoke` with suite=agent-routing.\n"
-            f"4. `bubble_runtime_smoke` with suite=family-preview, profile={profile}, context={context}, parent=root.\n"
-            "5. For real writes, use execute-write only when explicitly allowed and verify context afterward."
+            f"1. `bubble_readiness_check` with profile={profile}, context={context}, parent=root.\n"
+            "2. If deeper profile confidence is needed, run `bubble_runtime_smoke` with suite=family-preview.\n"
+            "3. For real writes, use execute-write only when explicitly allowed and verify context afterward."
         )
     else:
         raise ValueError(f"Unknown Bubble MCP prompt: {name}")

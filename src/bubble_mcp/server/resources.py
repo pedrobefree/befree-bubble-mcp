@@ -43,6 +43,7 @@ def _agent_runtime_markdown() -> str:
             "",
             "Operational checks:",
             "",
+            "- `bubble_readiness_check` runs the recommended health, coverage, catalog-quality, and routing sequence.",
             "- `bubble_tool_coverage` verifies catalog handling.",
             "- `bubble_catalog_quality` verifies schema, description, annotation, resource, prompt, and coverage quality.",
             "- `bubble_runtime_smoke` with `coverage` runs local catalog coverage and quality checks.",
@@ -90,6 +91,7 @@ def _catalog_summary() -> dict[str, Any]:
     tools = list_tool_schemas()
     native = [
         "bubble_health_check",
+        "bubble_readiness_check",
         "bubble_agent_guide",
         "bubble_task_recipe",
         "bubble_tool_search",
@@ -108,6 +110,7 @@ def _catalog_summary() -> dict[str, Any]:
             "bubble_agent_guide",
             "bubble_task_recipe",
             "bubble_tool_search",
+            "bubble_readiness_check",
             "bubble_catalog_quality",
             "bubble_runtime_smoke",
         ],

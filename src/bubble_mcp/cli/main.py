@@ -39,6 +39,7 @@ from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.readiness import run_readiness_check
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe
@@ -482,6 +483,22 @@ def command_tools_quality(_args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 1
 
 
+def command_readiness(args: argparse.Namespace) -> int:
+    report = run_readiness_check(
+        call_tool,
+        profile=args.profile or "",
+        context=args.context,
+        parent=args.parent,
+        app_id=args.app_id or "",
+        app_version=args.app_version,
+        include_family_preview=args.include_family_preview,
+        include_details=args.include_details,
+        stop_on_failure=args.stop_on_failure,
+    )
+    emit_json(report)
+    return 0 if report.get("ok") else 1
+
+
 def command_smoke_runtime(args: argparse.Namespace) -> int:
     result = run_runtime_smoke(
         call_tool,
@@ -795,6 +812,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Audit MCP catalog usability for agents, including schemas, descriptions, annotations, prompts, resources, and coverage.",
     )
     tools_quality_parser.set_defaults(func=command_tools_quality)
+
+    readiness_parser = subparsers.add_parser(
+        "readiness",
+        help="Run the recommended MCP readiness sequence: health, coverage quality gate, routing, and optional profile smokes.",
+    )
+    readiness_parser.add_argument("--profile", default="")
+    readiness_parser.add_argument("--context", default="index")
+    readiness_parser.add_argument("--parent", default="root")
+    readiness_parser.add_argument("--app-id", default="")
+    readiness_parser.add_argument("--app-version", default="test")
+    readiness_parser.add_argument(
+        "--include-family-preview",
+        action="store_true",
+        help="Also run the broader execute=false family-preview smoke. Requires --profile for useful coverage.",
+    )
+    readiness_parser.add_argument(
+        "--include-details",
+        action="store_true",
+        help="Include full nested smoke results. Omitted by default to keep output compact.",
+    )
+    readiness_parser.add_argument("--stop-on-failure", action="store_true")
+    readiness_parser.set_defaults(func=command_readiness)
 
     smoke_parser = subparsers.add_parser("smoke", help="Run safe runtime smoke checks.")
     smoke_subparsers = smoke_parser.add_subparsers(dest="smoke_command", required=True)

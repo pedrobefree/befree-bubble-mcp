@@ -288,6 +288,12 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Report server version and capability flags for profiles, session capture, context, planning, mutations, "
         "HTML import, evals, and Figma bridge support. Read-only."
     ),
+    "bubble_readiness_check": (
+        "Run the recommended Bubble MCP readiness sequence in one compact call: server health, catalog coverage and "
+        "quality gate, agent-routing smoke, and optional profile safe-read or family-preview checks. Use this before "
+        "broad Bubble work or after installation to avoid trial-and-error discovery. Output is compact by default; "
+        "pass include_details=true only when debugging. Read-only."
+    ),
     "bubble_agent_guide": (
         "Return compact routing guidance for MCP clients and agents. Use this when deciding which Bubble MCP tool "
         "family matches a user request, especially to avoid shelling out to CLI help or inspecting repository code. "
@@ -775,7 +781,13 @@ def legacy_description(name: str) -> str:
 
 
 def tool_annotations(name: str) -> dict[str, bool]:
-    agent_read_only = {"bubble_agent_guide", "bubble_tool_search", "bubble_task_recipe", "bubble_catalog_quality"}
+    agent_read_only = {
+        "bubble_agent_guide",
+        "bubble_tool_search",
+        "bubble_task_recipe",
+        "bubble_catalog_quality",
+        "bubble_readiness_check",
+    }
     read_only = _is_read_only(name) or name in agent_read_only
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}
     return {
