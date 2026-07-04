@@ -92,6 +92,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Search query for pages, reusable elements, styles, data types, element names, ids, or visible labels.",
         examples=["checkout button", "mcp-01", "primary button style"],
     ),
+    "exact": _prop(
+        "boolean",
+        "When true, match only exact node ids, labels, Bubble ids, or context refs. Use for verification and absence checks.",
+        default=False,
+    ),
     "limit": _prop(
         "integer",
         "Maximum number of search results or eval cases to return.",
@@ -561,7 +566,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
         tool_schema(
             "bubble_context_find",
             "Search a compact Bubble context JSON file.",
-            ["file", "query", "limit"],
+            ["file", "query", "limit", "exact"],
             required=["file", "query"],
         ),
         tool_schema(

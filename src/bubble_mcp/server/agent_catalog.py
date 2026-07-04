@@ -342,7 +342,7 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "bubble_context_find": (
         "Search a compact Bubble project context file for pages, containers, elements, styles, data types, workflows, "
-        "or ids. Use to resolve targets before mutating Bubble. Read-only."
+        "or ids. Use exact=true for validation checks that must not accept fuzzy matches. Read-only."
     ),
     "bubble_context_import": (
         "Convert a Bubble project artifact into compact context. Supports .bubble exports, console.log(app) JSON, "

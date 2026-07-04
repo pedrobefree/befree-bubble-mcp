@@ -23,6 +23,25 @@ def test_search_context_finds_data_type_by_field() -> None:
     assert results[0]["id"] == "datatype:user"
 
 
+def test_search_context_exact_matches_only_identifiers_or_labels() -> None:
+    context = load_context(FIXTURE)
+
+    assert search_context(context, "user email", exact=True) == []
+
+    results = search_context(context, "datatype:user", exact=True)
+
+    assert results == [
+        {
+            "id": "datatype:user",
+            "label": "User",
+            "type": "data_type",
+            "score": 1,
+            "match": "exact",
+            "metadata": {"fields": "email, name"},
+        }
+    ]
+
+
 def test_context_neighbors_returns_related_nodes() -> None:
     context = load_context(FIXTURE)
 

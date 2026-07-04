@@ -16,8 +16,36 @@ def tokenize(value: str) -> set[str]:
     }
 
 
-def search_context(context: BubbleProjectContext, query: str, limit: int = 10) -> list[dict[str, Any]]:
+def _exact_values(node: BubbleContextNode) -> set[str]:
+    values = {node.id, node.label}
+    for key in ("bubble_id", "context", "element_type", "path", "path_array"):
+        value = node.metadata.get(key)
+        if isinstance(value, str):
+            values.add(value)
+        elif isinstance(value, list):
+            values.add("/".join(str(item) for item in value))
+    return {value.strip().lower() for value in values if value and value.strip()}
+
+
+def search_context(context: BubbleProjectContext, query: str, limit: int = 10, *, exact: bool = False) -> list[dict[str, Any]]:
     """Return simple lexical matches from the context graph."""
+
+    normalized_query = query.strip().lower()
+    if exact:
+        if not normalized_query:
+            return []
+        matches = [node for node in context.nodes if normalized_query in _exact_values(node)]
+        return [
+            {
+                "id": node.id,
+                "label": node.label,
+                "type": node.type,
+                "score": 1,
+                "match": "exact",
+                "metadata": node.metadata,
+            }
+            for node in matches[:limit]
+        ]
 
     query_tokens = tokenize(query)
     if not query_tokens:

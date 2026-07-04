@@ -116,7 +116,7 @@ def command_context_summary(args: argparse.Namespace) -> int:
 
 def command_context_find(args: argparse.Namespace) -> int:
     context = load_context(Path(args.file))
-    emit_json({"ok": True, "results": search_context(context, args.query, args.limit)})
+    emit_json({"ok": True, "results": search_context(context, args.query, args.limit, exact=args.exact)})
     return 0
 
 
@@ -583,6 +583,7 @@ def build_parser() -> argparse.ArgumentParser:
     find_parser.add_argument("query")
     find_parser.add_argument("--file", required=True, help="Path to compact context JSON.")
     find_parser.add_argument("--limit", type=int, default=10)
+    find_parser.add_argument("--exact", action="store_true", help="Match exact ids, labels, Bubble ids, or context refs.")
     find_parser.set_defaults(func=command_context_find)
 
     import_context_parser = context_subparsers.add_parser(

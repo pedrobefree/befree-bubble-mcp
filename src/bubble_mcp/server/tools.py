@@ -149,7 +149,12 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         context = load_context(Path(str(args.get("file") or "")))
         return {
             "ok": True,
-            "results": search_context(context, str(args.get("query") or ""), int(args.get("limit") or 10)),
+            "results": search_context(
+                context,
+                str(args.get("query") or ""),
+                int(args.get("limit") or 10),
+                exact=bool(args.get("exact")),
+            ),
         }
     if name == "bubble_context_import":
         args = arguments or {}

@@ -161,7 +161,7 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_runtime_smoke`: runs an operational smoke suite. `coverage` is local-only and validates both execution coverage and catalog quality, `agent-routing` validates natural-language tool selection without writes, `safe-read` performs read-only checks, `preview-write` compiles representative mutations with `execute=false`, `family-preview` exercises representative visual/container/input/schema/workflow/style/HTML/branch/changelog paths without writes, and `execute-write` performs authenticated temporary writes only when `execute=true`. Use `verify_context=true` for real-write smokes that must refresh the Bubble context and confirm the temporary objects materialized; if `cleanup=true` is also set, cleanup runs after verification and the context is refreshed again after cleanup.
 - `bubble_profile_list`: lists configured local Bubble profiles.
 - `bubble_context_summary`: summarizes a compact context JSON file.
-- `bubble_context_find`: searches a compact context JSON file.
+- `bubble_context_find`: searches a compact context JSON file. Use `exact=true` when validating that a specific node id, label, Bubble id, or context reference exists or is absent.
 - `bubble_context_import`: imports `.bubble`/consolelog or crawler-index JSON into compact context.
 - `bubble_plan`: creates a validated deterministic plan.
 - `bubble_plan_dry_run`: compatibility alias for `bubble_plan`.
