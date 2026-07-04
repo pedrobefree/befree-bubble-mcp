@@ -61,14 +61,14 @@ Expected:
 ## Local Setup Smoke
 
 ```bash
-bubble-mcp init
-bubble-mcp profile add release-smoke --app-id example-app --app-version test
-bubble-mcp profile status --profile release-smoke
+python scripts/setup_smoke.py
 ```
 
 Expected:
 
 - Local config can be created.
 - Profile creation works.
-- Profile status returns JSON with `next_actions` when session/context are not
-  configured yet.
+- Profile status returns `ready=false` with `next_actions` when
+  session/context are not configured yet.
+- Readiness fails in the expected controlled way for a fresh profile without
+  credentials or context.
