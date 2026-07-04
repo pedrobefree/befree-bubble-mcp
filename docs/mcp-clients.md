@@ -116,7 +116,8 @@ flags.
 Tool argument completion is also available for common routing values: `profile`,
 `context`, `parent`, boolean flags such as `execute`, `force`,
 `include_metadata`, `include_profile_status`, `rendered_html`, and
-`refresh_context`, plus `bubble_runtime_smoke.suite` and
+`refresh_context`, plus declared schema enums/examples/defaults such as `kind`,
+`app_version`, `from_app_version`, `bubble_runtime_smoke.suite`, and
 `bubble_task_recipe.recipe`.
 
 ## Available tools

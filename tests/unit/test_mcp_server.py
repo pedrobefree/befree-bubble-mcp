@@ -418,6 +418,31 @@ def test_completion_suggests_common_boolean_tool_arguments() -> None:
         assert response["result"]["completion"]["values"] == expected
 
 
+def test_completion_uses_tool_schema_suggestions() -> None:
+    cases = [
+        ("bubble_context_import", "kind", "b", ["bubble"]),
+        ("bubble_context_detect", "app_version", "v", ["version-test"]),
+        ("create_text", "app_version", "t", ["test"]),
+        ("bubble_branch_create", "from_app_version", "f", ["feature-parent"]),
+    ]
+
+    for index, (tool_name, argument_name, value, expected) in enumerate(cases, start=1):
+        response = handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 510 + index,
+                "method": "completion/complete",
+                "params": {
+                    "ref": {"type": "ref/tool", "name": tool_name},
+                    "argument": {"name": argument_name, "value": value},
+                },
+            }
+        )
+
+        assert response is not None
+        assert response["result"]["completion"]["values"] == expected
+
+
 def test_prompts_list_and_get_task_runbook() -> None:
     listed = handle_request({"jsonrpc": "2.0", "id": 33, "method": "prompts/list"})
 

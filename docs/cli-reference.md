@@ -566,8 +566,9 @@ Implemented completions:
 - Tool arguments: `profile`, `context`, `parent`, common boolean arguments such
   as `execute`, `force`, `exact`, `include_metadata`,
   `include_profile_status`, `rendered_html`, and `refresh_context`,
-  `bubble_runtime_smoke.suite`, and `bubble_task_recipe.recipe` where
-  applicable.
+  declared schema enums/examples/defaults such as `kind`, `app_version`,
+  `from_app_version`, `bubble_runtime_smoke.suite`, and
+  `bubble_task_recipe.recipe` where applicable.
 
 Implemented tools:
 
