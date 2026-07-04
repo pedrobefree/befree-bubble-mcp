@@ -22,4 +22,5 @@ jobs:
       - run: python -m ruff check src tests scripts
       - run: python -m mypy src
       - run: python scripts/audit_sensitive_paths.py .
+      - run: python scripts/package_smoke.py --python python3.11
       - run: npm test
