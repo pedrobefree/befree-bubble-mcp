@@ -392,6 +392,32 @@ def test_completion_suggests_tool_arguments(monkeypatch) -> None:  # type: ignor
     assert profile_response["result"]["completion"]["values"] == ["cliente2"]
 
 
+def test_completion_suggests_common_boolean_tool_arguments() -> None:
+    cases = [
+        ("bubble_task_runbook", "include_profile_status", "t", ["true"]),
+        ("bubble_context_find", "include_metadata", "f", ["false"]),
+        ("bubble_context_detect", "force", "", ["false", "true"]),
+        ("create_from_html", "rendered_html", "t", ["true"]),
+        ("create_from_html", "refresh_context", "f", ["false"]),
+    ]
+
+    for index, (tool_name, argument_name, value, expected) in enumerate(cases, start=1):
+        response = handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 490 + index,
+                "method": "completion/complete",
+                "params": {
+                    "ref": {"type": "ref/tool", "name": tool_name},
+                    "argument": {"name": argument_name, "value": value},
+                },
+            }
+        )
+
+        assert response is not None
+        assert response["result"]["completion"]["values"] == expected
+
+
 def test_prompts_list_and_get_task_runbook() -> None:
     listed = handle_request({"jsonrpc": "2.0", "id": 33, "method": "prompts/list"})
 

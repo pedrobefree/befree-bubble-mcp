@@ -12,6 +12,24 @@ from bubble_mcp.server.prompts import PROMPTS
 DEFAULT_CONTEXT_SUGGESTIONS = ["index", "root"]
 DEFAULT_PARENT_SUGGESTIONS = ["root"]
 BOOLEAN_SUGGESTIONS = ["false", "true"]
+BOOLEAN_ARGUMENT_NAMES = {
+    "cleanup",
+    "confirm",
+    "dry_run",
+    "exact",
+    "execute",
+    "force",
+    "include_details",
+    "include_family_preview",
+    "include_metadata",
+    "include_profile_status",
+    "refresh_context",
+    "rendered_html",
+    "skip_id_to_path",
+    "stop_on_failure",
+    "strict_validate",
+    "verify_context",
+}
 RUNTIME_SMOKE_SUITE_SUGGESTIONS = [
     "coverage",
     "agent-routing",
@@ -81,7 +99,7 @@ def complete(params: dict[str, Any]) -> dict[str, Any]:
             return _completion(DEFAULT_CONTEXT_SUGGESTIONS, value)
         if argument_name == "parent":
             return _completion(DEFAULT_PARENT_SUGGESTIONS, value)
-        if argument_name == "execute":
+        if argument_name in BOOLEAN_ARGUMENT_NAMES:
             return _completion(BOOLEAN_SUGGESTIONS, value)
 
     if ref_type.endswith("tool"):
@@ -91,7 +109,7 @@ def complete(params: dict[str, Any]) -> dict[str, Any]:
             return _completion(DEFAULT_CONTEXT_SUGGESTIONS, value)
         if argument_name == "parent":
             return _completion(DEFAULT_PARENT_SUGGESTIONS, value)
-        if argument_name == "execute":
+        if argument_name in BOOLEAN_ARGUMENT_NAMES:
             return _completion(BOOLEAN_SUGGESTIONS, value)
         if ref_name == "bubble_runtime_smoke" and argument_name == "suite":
             return _completion(RUNTIME_SMOKE_SUITE_SUGGESTIONS, value)
