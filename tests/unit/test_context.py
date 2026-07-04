@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from bubble_mcp.context.models import BubbleContextNode, BubbleProjectContext
-from bubble_mcp.context.queries import context_neighbors, search_context
+from bubble_mcp.context.queries import context_find_payload, context_neighbors, search_context
 from bubble_mcp.context.source import load_context
 
 
@@ -85,6 +85,28 @@ def test_search_context_exact_identifies_context_reference_matches() -> None:
     assert results[0]["match_field"] == "id"
     assert results[1]["id"] == "element:hero"
     assert results[1]["match_field"] == "context"
+
+
+def test_context_find_payload_reports_count_and_truncation() -> None:
+    context = BubbleProjectContext(
+        app_id="synthetic-app",
+        source="test",
+        nodes=[
+            BubbleContextNode(id="page:index", label="index", type="page"),
+            BubbleContextNode(id="element:hero", label="Hero", type="element", metadata={"context": "page:index"}),
+        ],
+        edges=[],
+    )
+
+    payload = context_find_payload(context, "page:index", limit=1, exact=True, include_metadata=False)
+
+    assert payload["query"] == "page:index"
+    assert payload["limit"] == 1
+    assert payload["count"] == 1
+    assert payload["truncated"] is True
+    assert payload["exact"] is True
+    assert payload["include_metadata"] is False
+    assert payload["results"][0]["match_field"] == "id"
 
 
 def test_context_neighbors_returns_related_nodes() -> None:

@@ -13,7 +13,7 @@ from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import detect_project_context
 from bubble_mcp.context.mutation_overlay import record_mutation_overlay
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
-from bubble_mcp.context.queries import search_context
+from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import load_settings
 from bubble_mcp.execution.client import BubbleEditorClient
@@ -149,7 +149,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         context = load_context(Path(str(args.get("file") or "")))
         return {
             "ok": True,
-            "results": search_context(
+            **context_find_payload(
                 context,
                 str(args.get("query") or ""),
                 int(args.get("limit") or 10),

@@ -110,6 +110,38 @@ def search_context(
     ]
 
 
+def context_find_payload(
+    context: BubbleProjectContext,
+    query: str,
+    limit: int = 10,
+    *,
+    exact: bool = False,
+    include_metadata: bool = True,
+) -> dict[str, Any]:
+    """Return context search results with an agent-friendly summary envelope."""
+
+    safe_limit = max(0, limit)
+    raw_limit = safe_limit + 1 if safe_limit else 1
+    raw_results = search_context(
+        context,
+        query,
+        raw_limit,
+        exact=exact,
+        include_metadata=include_metadata,
+    )
+    truncated = safe_limit > 0 and len(raw_results) > safe_limit
+    results = raw_results[:safe_limit]
+    return {
+        "query": query,
+        "limit": safe_limit,
+        "count": len(results),
+        "truncated": truncated,
+        "exact": exact,
+        "include_metadata": include_metadata,
+        "results": results,
+    }
+
+
 def context_neighbors(context: BubbleProjectContext, node_id: str) -> dict[str, Any]:
     """Return direct neighbors for a context node."""
 

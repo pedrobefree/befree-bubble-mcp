@@ -111,7 +111,8 @@ Use `--exact` for verification checks that must match a specific node id,
 label, Bubble id, or context reference without fuzzy token matches. Add
 `--no-include-metadata` for compact existence/absence checks. Exact results
 include `match_field` and `match_value` so agents can distinguish direct node
-matches from references such as `context`.
+matches from references such as `context`. The response also includes `count`,
+`limit`, `truncated`, `exact`, and `include_metadata` for low-token verification.
 
 ## `bubble-mcp plan`
 

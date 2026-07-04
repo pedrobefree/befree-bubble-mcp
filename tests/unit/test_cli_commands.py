@@ -34,6 +34,12 @@ def test_cli_context_find_exact_avoids_fuzzy_matches(capsys) -> None:  # type: i
 
     payload = json.loads(capsys.readouterr().out)
 
+    assert payload["query"] == "page:index"
+    assert payload["count"] == 1
+    assert payload["limit"] == 10
+    assert payload["truncated"] is False
+    assert payload["exact"] is True
+    assert payload["include_metadata"] is False
     assert payload["results"][0]["id"] == "page:index"
     assert payload["results"][0]["match"] == "exact"
     assert payload["results"][0]["match_field"] == "id"

@@ -183,6 +183,36 @@ def test_profile_status_tool_and_resource(tmp_path, monkeypatch) -> None:  # typ
     assert resource_payload["ready"] is False
 
 
+def test_context_find_tool_returns_agent_summary_envelope() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 46,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_context_find",
+                "arguments": {
+                    "file": "tests/fixtures/context/synthetic-app-context.json",
+                    "query": "page:index",
+                    "exact": True,
+                    "include_metadata": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["query"] == "page:index"
+    assert payload["count"] == 1
+    assert payload["exact"] is True
+    assert payload["include_metadata"] is False
+    assert payload["results"][0]["match_field"] == "id"
+    assert "metadata" not in payload["results"][0]
+    assert response["result"]["structuredContent"] == payload
+
+
 def test_completion_suggests_recipe_ids() -> None:
     response = handle_request(
         {

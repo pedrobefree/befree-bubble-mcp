@@ -13,7 +13,7 @@ from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import detect_project_context
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
-from bubble_mcp.context.queries import search_context
+from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.core.config import (
@@ -119,7 +119,7 @@ def command_context_find(args: argparse.Namespace) -> int:
     emit_json(
         {
             "ok": True,
-            "results": search_context(
+            **context_find_payload(
                 context,
                 args.query,
                 args.limit,
