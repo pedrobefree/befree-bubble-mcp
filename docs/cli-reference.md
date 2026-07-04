@@ -61,6 +61,24 @@ Bubble app id are known; it can create/update the profile and return readiness
 next actions in one call. Use `bubble_profile_add` only for the lower-level
 local settings write.
 
+## `bubble-mcp profile bootstrap`
+
+Creates or updates a local profile and returns readiness plus the next setup
+actions in one response.
+
+```bash
+bubble-mcp profile bootstrap my-app --app-id my-bubble-app
+```
+
+Optional context refresh:
+
+```bash
+bubble-mcp profile bootstrap my-app --app-id my-bubble-app --detect-context --force-context
+```
+
+Use this as the preferred CLI setup command when you already know the profile
+name and Bubble app id.
+
 ## `bubble-mcp profile list`
 
 Lists local profiles.

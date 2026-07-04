@@ -418,6 +418,27 @@ def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # 
     assert "x-bubble-appname" in inspected["computed_write_header_keys"]
 
 
+def test_cli_profile_bootstrap_creates_profile(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert main(["profile", "bootstrap", "dev", "--app-id", "synthetic-app"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["ok"] is True
+    assert payload["profile"] == "dev"
+    assert payload["profile_changed"] is True
+    assert payload["status"]["profile"]["app_id"] == "synthetic-app"
+    assert [action["tool"] for action in payload["next_actions"]] == [
+        "bubble_session_import",
+        "bubble_context_detect",
+    ]
+
+    assert main(["profile", "list"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["profiles"][0]["name"] == "dev"
+    assert listed["profiles"][0]["app_id"] == "synthetic-app"
+
+
 def test_cli_session_login_reports_progress_on_stderr(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 

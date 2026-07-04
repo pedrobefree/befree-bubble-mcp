@@ -105,6 +105,12 @@ Confirm the profile exists:
 bubble-mcp profile list
 ```
 
+For a one-call CLI setup/readiness response, use:
+
+```bash
+bubble-mcp profile bootstrap my-app --app-id my-bubble-app
+```
+
 MCP clients can do the same setup without shelling out by calling
 `bubble_project_bootstrap` with `profile`, `app_id`, and optional
 `app_version`, `appname`, `editor_url`, `app_json_path`, or

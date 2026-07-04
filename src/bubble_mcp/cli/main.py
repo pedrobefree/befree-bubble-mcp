@@ -109,6 +109,28 @@ def command_profile_status(args: argparse.Namespace) -> int:
     return 0 if status.get("ok") else 1
 
 
+def command_profile_bootstrap(args: argparse.Namespace) -> int:
+    from bubble_mcp.server.tools import call_tool
+
+    result = call_tool(
+        "bubble_project_bootstrap",
+        {
+            "profile": args.profile,
+            "app_id": args.app_id,
+            "appname": args.appname,
+            "editor_url": args.editor_url,
+            "app_version": args.app_version,
+            "app_json_path": args.app_json_path,
+            "consolelog_json_path": args.consolelog_json_path,
+            "detect_context": args.detect_context,
+            "force_context": args.force_context,
+            "max_age_hours": args.max_age_hours,
+        },
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def command_context_summary(args: argparse.Namespace) -> int:
     context = load_context(Path(args.file))
     emit_json({"ok": True, "summary": context.summary(), "freshness": context_freshness(context, path=Path(args.file))})
@@ -628,6 +650,22 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--profile", default="", help="Profile to inspect. Defaults to settings.default_profile.")
     status_parser.add_argument("--max-age-hours", type=int, default=24)
     status_parser.set_defaults(func=command_profile_status)
+
+    bootstrap_parser = profile_subparsers.add_parser(
+        "bootstrap",
+        help="Create/update a profile and return setup readiness plus next actions.",
+    )
+    bootstrap_parser.add_argument("profile")
+    bootstrap_parser.add_argument("--app-id", default="")
+    bootstrap_parser.add_argument("--appname", default="")
+    bootstrap_parser.add_argument("--editor-url", default="")
+    bootstrap_parser.add_argument("--app-version", default="test")
+    bootstrap_parser.add_argument("--app-json-path", default="")
+    bootstrap_parser.add_argument("--consolelog-json-path", default="")
+    bootstrap_parser.add_argument("--detect-context", action="store_true")
+    bootstrap_parser.add_argument("--force-context", action="store_true")
+    bootstrap_parser.add_argument("--max-age-hours", type=int, default=24)
+    bootstrap_parser.set_defaults(func=command_profile_bootstrap)
 
     context_parser = subparsers.add_parser("context", help="Inspect compact Bubble context.")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)
