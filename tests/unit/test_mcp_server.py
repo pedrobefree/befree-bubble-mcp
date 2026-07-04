@@ -145,7 +145,10 @@ def test_resource_templates_list_and_read_recipe_detail() -> None:
     payload = json.loads(content["text"])
     assert payload["ok"] is True
     assert payload["id"] == "html_import"
-    assert payload["steps"][1]["tool"] == "create_from_html"
+    assert payload["steps"][1]["tool"] == "bubble_context_find"
+    assert payload["steps"][1]["args"]["exact"] is True
+    assert payload["steps"][1]["args"]["include_metadata"] is False
+    assert payload["steps"][2]["tool"] == "create_from_html"
 
 
 def test_profile_status_tool_and_resource(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -218,6 +221,53 @@ def test_context_find_tool_returns_agent_summary_envelope() -> None:
     assert payload["results"][0]["match_field"] == "id"
     assert "metadata" not in payload["results"][0]
     assert response["result"]["structuredContent"] == payload
+
+
+def test_context_find_tool_can_resolve_context_from_profile(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    context_path = tmp_path / "client-context.json"
+    context_path.write_text(
+        '{"app_id":"synthetic-app","source":"test","nodes":[{"id":"page:index","label":"index","type":"page","metadata":{"bubble_id":"index"}}],"edges":[]}\n',
+        encoding="utf-8",
+    )
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={
+                "client": BubbleProfile(
+                    name="client",
+                    app_id="synthetic-app",
+                    appname="synthetic-app",
+                    app_json_path=str(context_path),
+                )
+            },
+        )
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 47,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_context_find",
+                "arguments": {
+                    "profile": "client",
+                    "query": "page:index",
+                    "exact": True,
+                    "include_metadata": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["count"] == 1
+    assert payload["results"][0]["id"] == "page:index"
+    assert "metadata" not in payload["results"][0]
 
 
 def test_completion_suggests_recipe_ids() -> None:
@@ -619,8 +669,15 @@ def test_task_recipe_returns_ordered_html_import_steps() -> None:
     assert payload["inputs"]["context"] == "mcp-01"
     assert payload["matched"]["tools"] == ["create_from_html", "bubble_context_detect"]
     tools = [step["tool"] for step in payload["steps"]]
-    assert tools == ["bubble_context_detect", "create_from_html", "create_from_html"]
-    assert payload["steps"][1]["args"]["execute"] is False
+    assert tools == ["bubble_context_detect", "bubble_context_find", "create_from_html", "create_from_html"]
+    assert payload["steps"][1]["args"] == {
+        "profile": "$profile",
+        "query": "$target",
+        "limit": 5,
+        "exact": True,
+        "include_metadata": False,
+    }
+    assert payload["steps"][2]["args"]["execute"] is False
 
 
 def test_task_recipe_quality_gate_uses_consolidated_coverage_smoke() -> None:
@@ -701,6 +758,9 @@ def test_agent_routing_understands_portuguese_page_creation() -> None:
     assert "manage_pages_or_reusables" in route_intents
     assert "check_server_or_catalog" not in route_intents
     assert recipe["recipe"] == "page_or_reusable"
+    assert recipe["steps"][1]["tool"] == "bubble_context_find"
+    assert recipe["steps"][1]["args"]["exact"] is True
+    assert recipe["steps"][1]["args"]["include_metadata"] is False
     assert "create_page" in [match["name"] for match in search["matches"]]
 
 

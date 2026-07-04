@@ -15,7 +15,7 @@ from bubble_mcp.context.mutation_overlay import record_mutation_overlay
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
-from bubble_mcp.core.config import load_settings
+from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.execution.editor_api import (
     create_bubble_branch,
@@ -146,9 +146,37 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return {"ok": True, "summary": context.summary(), "freshness": context_freshness(context, path=path)}
     if name == "bubble_context_find":
         args = arguments or {}
-        context = load_context(Path(str(args.get("file") or "")))
+        profile_name = str(args.get("profile") or "").strip()
+        if args.get("file"):
+            context = load_context(Path(str(args.get("file") or "")))
+        else:
+            settings = load_settings()
+            resolved_profile = resolve_profile(settings, profile_name or None)
+            if resolved_profile is None:
+                return {
+                    "ok": False,
+                    "error": "profile_required",
+                    "message": "Provide file or a configured profile to search project context.",
+                }
+            status = profile_status(resolved_profile.name)
+            raw_context_status = status.get("context")
+            context_status = raw_context_status if isinstance(raw_context_status, dict) else {}
+            context_path = str(context_status.get("path") or "").strip()
+            if not context_path or not Path(context_path).exists():
+                return {
+                    "ok": False,
+                    "error": "context_missing",
+                    "profile": resolved_profile.name,
+                    "next_actions": status.get("next_actions", []),
+                }
+            context = load_context_with_overlay(
+                Path(context_path),
+                profile=resolved_profile.name,
+                app_id=resolved_profile.app_id,
+            )
         return {
             "ok": True,
+            **({"profile": profile_name} if profile_name and args.get("file") else {}),
             **context_find_payload(
                 context,
                 str(args.get("query") or ""),

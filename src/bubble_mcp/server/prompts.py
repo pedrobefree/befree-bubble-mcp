@@ -68,8 +68,10 @@ def get_prompt(name: str, arguments: dict[str, Any] | None = None) -> dict[str, 
             "First call `bubble_profile_status` for the target profile. If the profile is unclear, call "
             "`bubble_profile_list` before asking the user. Then call `bubble_agent_guide` with the natural-language "
             "task, followed by `bubble_task_recipe` with the task/profile/context/parent/execute values. Use the "
-            "returned preflight and steps as the source of truth. Preview before real writes unless execute was "
-            "explicitly requested, and verify real writes with context refresh, changelog, or smoke."
+            "returned preflight and steps as the source of truth. When resolving known pages, reusables, parents, "
+            "or elements, call `bubble_context_find` with profile, exact=true, and include_metadata=false. Preview "
+            "before real writes unless execute was explicitly requested, and verify real writes with context refresh, "
+            "compact context lookup, changelog, or smoke."
         )
     elif name == "bubble-html-import":
         profile = str(args.get("profile") or "<profile>")
@@ -83,9 +85,10 @@ def get_prompt(name: str, arguments: dict[str, Any] | None = None) -> dict[str, 
             f"Use profile `{profile}`, context `{context}`, parent `{parent}`, source `{url}`, selector `{selector}`, "
             f"and execute={execute}.\n\n"
             "Do not search CLI help or repository code for this flow. Call `bubble_profile_status` first, then "
-            "`bubble_task_recipe` with an HTML import task. Then call `create_from_html` with rendered_html=true, "
-            "refresh_context=true, and execute=false for preview. Repeat with execute=true only if the user asked "
-            "to apply the import and the preview is valid."
+            "`bubble_task_recipe` with an HTML import task. Resolve the target page/reusable with "
+            "`bubble_context_find` using profile, exact=true, and include_metadata=false. Then call "
+            "`create_from_html` with rendered_html=true, refresh_context=true, and execute=false for preview. "
+            "Repeat with execute=true only if the user asked to apply the import and the preview is valid."
         )
     elif name == "bubble-quality-gate":
         profile = str(args.get("profile") or "<profile>")

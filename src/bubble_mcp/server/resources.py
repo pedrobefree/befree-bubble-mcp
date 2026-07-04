@@ -39,7 +39,7 @@ def _agent_runtime_markdown() -> str:
             "- Preview first unless the user explicitly asked to apply the change.",
             "- Use profile-based calls so the server can use stored session, context, and mutation overlay.",
             "- Refresh context with `bubble_context_detect` when targets may be stale.",
-            "- Use `bubble_context_find` with `exact=true` and `include_metadata=false` for low-token target",
+            "- Use `bubble_context_find` with `profile`, `exact=true`, and `include_metadata=false` for low-token target",
             "  existence/absence checks; inspect `count`, `truncated`, `match_field`, and `match_value`.",
             "- Destructive operations require explicit confirmation arguments.",
             "- After real writes, verify with context refresh, changelog, or a smoke suite when materialization matters.",

@@ -100,12 +100,17 @@ a mutation.
 
 ## `bubble-mcp context find`
 
-Searches a compact Bubble context JSON file.
+Searches a compact Bubble context from a configured profile or a local JSON file.
 
 ```bash
+bubble-mcp context find "page:index" --profile my-app --exact --no-include-metadata
 bubble-mcp context find "button" --file /path/to/context.json --limit 10
 bubble-mcp context find "page:index" --file /path/to/context.json --exact --no-include-metadata
 ```
+
+Prefer `--profile` for agent workflows so the CLI resolves the current profile
+context and mutation overlay without requiring the caller to know local file
+paths. Use `--file` for diagnostics or standalone context artifacts.
 
 Use `--exact` for verification checks that must match a specific node id,
 label, Bubble id, or context reference without fuzzy token matches. Add

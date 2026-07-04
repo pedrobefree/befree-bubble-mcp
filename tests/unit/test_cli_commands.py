@@ -47,6 +47,36 @@ def test_cli_context_find_exact_avoids_fuzzy_matches(capsys) -> None:  # type: i
     assert "metadata" not in payload["results"][0]
 
 
+def test_cli_context_find_can_resolve_context_from_profile(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    context_path = tmp_path / "client-context.json"
+    context_path.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={
+                "client": BubbleProfile(
+                    name="client",
+                    app_id="synthetic-app",
+                    appname="synthetic-app",
+                    app_json_path=str(context_path),
+                )
+            },
+        )
+    )
+
+    assert main(["context", "find", "page:index", "--profile", "client", "--exact", "--no-include-metadata"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["count"] == 1
+    assert payload["exact"] is True
+    assert payload["include_metadata"] is False
+    assert payload["results"][0]["id"] == "page:index"
+    assert "metadata" not in payload["results"][0]
+
+
 def test_cli_profile_status_reports_existing_profile(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     save_settings(
@@ -269,9 +299,12 @@ def test_cli_tools_recipe_returns_operational_sequence(capsys) -> None:  # type:
     assert payload["inputs"]["context"] == "mcp-01"
     assert [step["tool"] for step in payload["steps"]] == [
         "bubble_context_detect",
+        "bubble_context_find",
         "create_from_html",
         "create_from_html",
     ]
+    assert payload["steps"][1]["args"]["exact"] is True
+    assert payload["steps"][1]["args"]["include_metadata"] is False
 
 
 def test_cli_tools_coverage_reports_runtime_paths(capsys) -> None:  # type: ignore[no-untyped-def]

@@ -21,6 +21,7 @@ from bubble_mcp.core.config import (
     BubbleProfile,
     get_config_dir,
     load_settings,
+    resolve_profile,
     save_settings,
     with_profile,
 )
@@ -115,10 +116,40 @@ def command_context_summary(args: argparse.Namespace) -> int:
 
 
 def command_context_find(args: argparse.Namespace) -> int:
-    context = load_context(Path(args.file))
+    profile_name = str(args.profile or "").strip()
+    if args.file:
+        context = load_context(Path(args.file))
+    else:
+        settings = load_settings()
+        profile = resolve_profile(settings, profile_name or None)
+        if profile is None:
+            emit_json(
+                {
+                    "ok": False,
+                    "error": "profile_required",
+                    "message": "Provide --file or a configured --profile to search project context.",
+                }
+            )
+            return 1
+        status = profile_status(profile.name)
+        raw_context_status = status.get("context")
+        context_status = raw_context_status if isinstance(raw_context_status, dict) else {}
+        context_path = str(context_status.get("path") or "").strip()
+        if not context_path or not Path(context_path).exists():
+            emit_json(
+                {
+                    "ok": False,
+                    "error": "context_missing",
+                    "profile": profile.name,
+                    "next_actions": status.get("next_actions", []),
+                }
+            )
+            return 1
+        context = load_context_with_overlay(Path(context_path), profile=profile.name, app_id=profile.app_id)
     emit_json(
         {
             "ok": True,
+            **({"profile": profile_name} if profile_name and args.file else {}),
             **context_find_payload(
                 context,
                 args.query,
@@ -592,7 +623,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     find_parser = context_subparsers.add_parser("find", help="Search a context file.")
     find_parser.add_argument("query")
-    find_parser.add_argument("--file", required=True, help="Path to compact context JSON.")
+    find_parser.add_argument("--file", default="", help="Path to compact context JSON. Optional when --profile is provided.")
+    find_parser.add_argument("--profile", default="", help="Configured profile whose active compact context should be searched.")
     find_parser.add_argument("--limit", type=int, default=10)
     find_parser.add_argument("--exact", action="store_true", help="Match exact ids, labels, Bubble ids, or context refs.")
     find_parser.add_argument(

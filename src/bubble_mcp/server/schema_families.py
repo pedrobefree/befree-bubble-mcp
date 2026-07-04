@@ -570,9 +570,9 @@ def profile_session_context_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_context_find",
-            "Search a compact Bubble context JSON file.",
-            ["file", "query", "limit", "exact", "include_metadata"],
-            required=["file", "query"],
+            "Search a compact Bubble context by profile or local JSON file.",
+            ["profile", "file", "query", "limit", "exact", "include_metadata"],
+            required=["query"],
         ),
         tool_schema(
             "bubble_context_import",

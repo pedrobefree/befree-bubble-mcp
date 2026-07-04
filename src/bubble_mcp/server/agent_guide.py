@@ -6,6 +6,15 @@ from typing import Any
 import unicodedata
 
 
+COMPACT_CONTEXT_FIND_ARGS: dict[str, Any] = {
+    "profile": "$profile",
+    "query": "$target",
+    "limit": 5,
+    "exact": True,
+    "include_metadata": False,
+}
+
+
 ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "check_server_or_catalog",
@@ -17,7 +26,7 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "intent": "find_profile_session_or_context",
         "when": "The user names a project/profile, asks what projects are available, or a target cannot be resolved.",
         "tools": ["bubble_profile_status", "bubble_profile_list", "bubble_session_list", "bubble_context_detect", "bubble_context_find"],
-        "notes": "Call bubble_profile_status first when a profile is known; it combines profile, session, and context readiness with next actions.",
+        "notes": "Call bubble_profile_status first when a profile is known. For known page/element refs, use bubble_context_find with profile, exact=true, and include_metadata=false before broader searches.",
     },
     {
         "intent": "create_or_update_visual_editor_elements",
@@ -148,7 +157,8 @@ RECIPES: dict[str, dict[str, Any]] = {
             },
             {
                 "tool": "bubble_context_find",
-                "purpose": "Resolve page, reusable, parent, or element names only when the target is ambiguous.",
+                "purpose": "Resolve or verify a known page, reusable, parent, or element without discovering local context paths.",
+                "args": COMPACT_CONTEXT_FIND_ARGS,
                 "required_before_execute": False,
             },
         ],
@@ -161,6 +171,12 @@ RECIPES: dict[str, dict[str, Any]] = {
                 "tool": "bubble_context_detect",
                 "purpose": "Refresh context if the target page/reusable was recently changed or created.",
                 "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_context_find",
+                "purpose": "Verify the target context/parent by profile before importing when a page or reusable name was provided.",
+                "args": COMPACT_CONTEXT_FIND_ARGS,
                 "required_before_execute": False,
             },
             {
@@ -203,6 +219,12 @@ RECIPES: dict[str, dict[str, Any]] = {
                 "required_before_execute": False,
             },
             {
+                "tool": "bubble_context_find",
+                "purpose": "Resolve the target parent or element by profile with compact exact output before choosing a mutation.",
+                "args": COMPACT_CONTEXT_FIND_ARGS,
+                "required_before_execute": False,
+            },
+            {
                 "tool": "<specific visual tool>",
                 "purpose": "Call the exact visual tool with profile, context, parent/element_name, and execute.",
                 "args": {"profile": "$profile", "context": "$context", "parent": "$parent", "execute": "$execute"},
@@ -221,6 +243,12 @@ RECIPES: dict[str, dict[str, Any]] = {
                 "required_before_execute": False,
             },
             {
+                "tool": "bubble_context_find",
+                "purpose": "Check exact page/reusable existence by profile before create/delete decisions.",
+                "args": COMPACT_CONTEXT_FIND_ARGS,
+                "required_before_execute": False,
+            },
+            {
                 "tool": "<specific page/reusable tool>",
                 "purpose": "Call create_page, create_reusable, delete_page, or delete_reusable with explicit names and execute.",
                 "args": {"profile": "$profile", "name": "$name", "execute": "$execute"},
@@ -230,6 +258,12 @@ RECIPES: dict[str, dict[str, Any]] = {
                 "tool": "bubble_context_detect",
                 "purpose": "After execute=true, refresh context to verify the page or reusable exists or was removed.",
                 "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_context_find",
+                "purpose": "After execute=true, verify exact page/reusable materialization or absence by profile.",
+                "args": COMPACT_CONTEXT_FIND_ARGS,
                 "required_before_execute": False,
             },
         ],
@@ -242,6 +276,12 @@ RECIPES: dict[str, dict[str, Any]] = {
                 "tool": "bubble_context_detect",
                 "purpose": "Refresh context before resolving page or element workflow targets.",
                 "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_context_find",
+                "purpose": "Resolve the workflow page/element target by profile with compact exact output.",
+                "args": COMPACT_CONTEXT_FIND_ARGS,
                 "required_before_execute": False,
             },
             {
@@ -501,6 +541,7 @@ def task_recipe(
             "Use profile-based calls whenever possible.",
             "Run a preview first unless the user explicitly asked to execute.",
             "Refresh context when targets may have changed outside this MCP session.",
+            "For known page, reusable, parent, or element refs, call bubble_context_find with profile, exact=true, and include_metadata=false before broad discovery.",
             "Never ask the user to name internal tools; infer from the task and use search/recipe when uncertain.",
         ],
         "steps": selected["steps"],
