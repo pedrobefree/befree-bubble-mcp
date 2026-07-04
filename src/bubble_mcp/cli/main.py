@@ -470,8 +470,8 @@ def command_tools_recipe(args: argparse.Namespace) -> int:
     return 0
 
 
-def command_tools_coverage(_args: argparse.Namespace) -> int:
-    report = catalog_coverage_report()
+def command_tools_coverage(args: argparse.Namespace) -> int:
+    report = catalog_coverage_report(include_tools=bool(args.include_tools))
     emit_json(report)
     return 0 if report.get("ok") else 1
 
@@ -782,6 +782,11 @@ def build_parser() -> argparse.ArgumentParser:
     tools_coverage_parser = tools_subparsers.add_parser(
         "coverage",
         help="Report how exposed MCP tools are executed by runtime, compiler, or native handlers.",
+    )
+    tools_coverage_parser.add_argument(
+        "--include-tools",
+        action="store_true",
+        help="Include per-tool classifications. Omitted by default to keep agent/CI output compact.",
     )
     tools_coverage_parser.set_defaults(func=command_tools_coverage)
 

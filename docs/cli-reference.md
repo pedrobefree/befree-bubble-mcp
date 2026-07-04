@@ -384,10 +384,13 @@ fallback, or uncovered.
 
 ```bash
 bubble-mcp tools coverage
+bubble-mcp tools coverage --include-tools
 ```
 
 Use this as a fast local parity check. The full exposed catalog and the
-Aria-compatible subset are expected to report `uncovered_count: 0`.
+Aria-compatible subset are expected to report `uncovered_count: 0`. The default
+output is compact; pass `--include-tools` only when you need per-tool
+classifications.
 
 ## `bubble-mcp tools quality`
 

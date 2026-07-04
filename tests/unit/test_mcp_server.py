@@ -314,8 +314,12 @@ def test_tool_coverage_reports_no_uncovered_aria_catalog_tools() -> None:
     assert report["aria_catalog"]["uncovered"] == []
     assert report["uncovered_count"] == 0
     assert report["uncovered"] == []
+    assert "tools" not in report
     assert report["by_coverage"]["runtime_direct"] >= 180
     assert report["by_coverage"]["runtime_alias"] >= 10
+
+    detailed = catalog_coverage_report(include_tools=True)
+    assert len(detailed["tools"]) == detailed["tool_count"]
 
 
 def test_tool_coverage_tool_is_exposed() -> None:
@@ -332,6 +336,20 @@ def test_tool_coverage_tool_is_exposed() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["ok"] is True
     assert payload["aria_catalog"]["uncovered_count"] == 0
+    assert "tools" not in payload
+
+    detailed_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 23,
+            "method": "tools/call",
+            "params": {"name": "bubble_tool_coverage", "arguments": {"include_details": True}},
+        }
+    )
+
+    assert detailed_response is not None
+    detailed_payload = json.loads(detailed_response["result"]["content"][0]["text"])
+    assert len(detailed_payload["tools"]) == detailed_payload["tool_count"]
 
 
 def test_catalog_quality_tool_is_exposed() -> None:

@@ -306,7 +306,8 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_tool_coverage": (
         "Report execution coverage for every exposed MCP tool. Use this to audit whether tools are handled by "
         "standalone native code, direct Aria-runtime methods, Aria-runtime aliases, custom runtime adapters, compiler "
-        "fallback, or are uncovered. Read-only."
+        "fallback, or are uncovered. The default response is compact; pass include_details=true only when per-tool "
+        "classifications are needed. Read-only."
     ),
     "bubble_catalog_quality": (
         "Audit the exposed MCP catalog for agent usability. Checks tool/resource/prompt identifiers, descriptions, "

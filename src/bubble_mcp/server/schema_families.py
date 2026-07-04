@@ -490,9 +490,10 @@ def profile_session_context_tools() -> list[ToolSchema]:
             ["task", "recipe", "profile", "context", "parent", "execute"],
             required=["task"],
         ),
-        _empty_tool(
+        tool_schema(
             "bubble_tool_coverage",
             "Report runtime coverage for every exposed Bubble MCP tool, including native, Aria-runtime, alias, custom, compiler fallback, and uncovered categories. Read-only.",
+            ["include_details"],
         ),
         _empty_tool(
             "bubble_catalog_quality",

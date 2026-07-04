@@ -91,7 +91,7 @@ def classify_tool(name: str, *, runtime_methods: set[str] | None = None) -> dict
     return {"tool": name, "coverage": "uncovered", "engine": None}
 
 
-def catalog_coverage_report() -> dict[str, Any]:
+def catalog_coverage_report(*, include_tools: bool = False) -> dict[str, Any]:
     """Return a compact machine-readable coverage report for all exposed tools."""
 
     methods = _runtime_methods()
@@ -110,7 +110,7 @@ def catalog_coverage_report() -> dict[str, Any]:
         aria_by_coverage[coverage] = aria_by_coverage.get(coverage, 0) + 1
     uncovered = [item["tool"] for item in classifications if item["coverage"] == "uncovered"]
     aria_uncovered = [item["tool"] for item in aria_classifications if item["coverage"] == "uncovered"]
-    return {
+    report: dict[str, Any] = {
         "ok": not aria_uncovered,
         "tool_count": len(tool_names),
         "aria_catalog_count": len(ARIA_BUBBLE_TOOL_NAMES),
@@ -124,5 +124,7 @@ def catalog_coverage_report() -> dict[str, Any]:
         },
         "uncovered_count": len(uncovered),
         "uncovered": uncovered,
-        "tools": classifications,
     }
+    if include_tools:
+        report["tools"] = classifications
+    return report

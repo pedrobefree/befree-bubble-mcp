@@ -233,7 +233,13 @@ def test_cli_tools_coverage_reports_runtime_paths(capsys) -> None:  # type: igno
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
     assert payload["aria_catalog"]["uncovered_count"] == 0
+    assert payload["uncovered_count"] == 0
     assert payload["tool_count"] >= payload["aria_catalog_count"]
+    assert "tools" not in payload
+
+    assert main(["tools", "coverage", "--include-tools"]) == 0
+    detailed = json.loads(capsys.readouterr().out)
+    assert len(detailed["tools"]) == detailed["tool_count"]
 
 
 def test_cli_tools_quality_reports_catalog_gate(capsys) -> None:  # type: ignore[no-untyped-def]

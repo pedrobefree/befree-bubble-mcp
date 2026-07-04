@@ -63,7 +63,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             },
         }
     if name == "bubble_tool_coverage":
-        return catalog_coverage_report()
+        args = arguments or {}
+        return catalog_coverage_report(include_tools=bool(args.get("include_tools") or args.get("include_details")))
     if name == "bubble_catalog_quality":
         return catalog_quality_report()
     if name == "bubble_agent_guide":

@@ -248,7 +248,9 @@ write to `/appeditor/write`.
 
 Use `bubble_tool_coverage` from an MCP client, or `bubble-mcp tools coverage`
 from the CLI, to verify current catalog coverage. The full exposed catalog and
-the Aria-compatible subset are expected to report `uncovered_count: 0`.
+the Aria-compatible subset are expected to report `uncovered_count: 0`. Coverage
+is compact by default; use `include_details=true` in MCP or `--include-tools`
+in the CLI only when per-tool classifications are needed.
 
 Use `bubble_catalog_quality` from an MCP client, or `bubble-mcp tools quality`
 from the CLI, to verify that the catalog remains efficient for agents: no
