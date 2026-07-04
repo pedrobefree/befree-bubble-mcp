@@ -141,6 +141,23 @@ def test_health_tool_returns_text_content() -> None:
     assert payload["capabilities"]["aria_runtime_dispatch"] is True
 
 
+def test_tool_call_returns_structured_content_matching_redacted_text() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 37,
+            "method": "tools/call",
+            "params": {"name": "bubble_health_check", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["structuredContent"] == payload
+    assert result["structuredContent"]["ok"] is True
+
+
 def test_tool_coverage_reports_no_uncovered_aria_catalog_tools() -> None:
     report = catalog_coverage_report()
 

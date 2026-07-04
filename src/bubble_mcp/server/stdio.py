@@ -29,6 +29,14 @@ def error_response(request_id: Any, code: int, message: str) -> dict[str, Any]:
     }
 
 
+def tool_result(result: dict[str, Any]) -> dict[str, Any]:
+    redacted = redact_sensitive(result)
+    return {
+        "content": [{"type": "text", "text": json.dumps(redacted)}],
+        "structuredContent": redacted,
+    }
+
+
 def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
     """Handle a JSON-RPC request."""
 
@@ -54,10 +62,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             raw_arguments = params.get("arguments")
             arguments: dict[str, Any] = raw_arguments if isinstance(raw_arguments, dict) else {}
             result = call_tool(name, arguments)
-            return success_response(
-                request_id,
-                {"content": [{"type": "text", "text": json.dumps(redact_sensitive(result))}]},
-            )
+            return success_response(request_id, tool_result(result))
         if method == "resources/list":
             return success_response(request_id, {"resources": list_resources()})
         if method == "resources/templates/list":

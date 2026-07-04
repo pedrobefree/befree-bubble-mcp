@@ -66,6 +66,10 @@ printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"
 The response should include server info for `befree-bubble-mcp`, tools,
 resources, and prompts.
 
+Tool call responses include both a JSON text fallback and `structuredContent`
+with the same redacted payload for clients that can consume structured MCP
+results directly.
+
 ## Resources and Prompts
 
 The server exposes read-only resources for clients that support MCP

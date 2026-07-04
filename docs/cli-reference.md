@@ -440,6 +440,9 @@ Implemented MCP methods:
 - `prompts/list`
 - `prompts/get`
 
+`tools/call` responses include JSON text content and matching
+`structuredContent` for clients that can consume structured tool results.
+
 Implemented resources:
 
 - `bubble://docs/agent-runtime`
