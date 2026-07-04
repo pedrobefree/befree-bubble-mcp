@@ -376,6 +376,19 @@ Use this when the caller already understands the user intent but needs the
 right preflight checks, tool sequence, arguments to fill, safeguards, and
 verification path. It is read-only and does not mutate Bubble.
 
+## `bubble-mcp tools coverage`
+
+Reports how every exposed MCP tool is handled: standalone native code, direct
+Aria-runtime dispatch, runtime alias dispatch, custom runtime adapter, compiler
+fallback, or uncovered.
+
+```bash
+bubble-mcp tools coverage
+```
+
+Use this as a fast local parity check. The Aria catalog is expected to report
+`uncovered_count: 0`.
+
 ## `bubble-mcp smoke runtime`
 
 Runs safe runtime smoke suites through the same tool handlers used by MCP

@@ -222,6 +222,7 @@ only have shell access:
 bubble-mcp tools guide --task "convert an HTML selector from a URL into a Bubble page"
 bubble-mcp tools search --query "html selector import" --limit 5
 bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index
+bubble-mcp tools coverage
 ```
 
 MCP clients that support resources and prompts can also read
@@ -242,8 +243,9 @@ runtime path when possible, but the Bubble write is intercepted and returned as
 a preview. Calls with `execute=true` use the captured local Bubble session and
 write to `/appeditor/write`.
 
-Use `bubble_tool_coverage` from an MCP client to verify current catalog
-coverage. The Aria catalog is expected to report `uncovered_count: 0`.
+Use `bubble_tool_coverage` from an MCP client, or `bubble-mcp tools coverage`
+from the CLI, to verify current catalog coverage. The Aria catalog is expected
+to report `uncovered_count: 0`.
 
 Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
 The `agent-routing` suite validates representative natural-language Bubble

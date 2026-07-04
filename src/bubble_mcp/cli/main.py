@@ -38,6 +38,7 @@ from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe
 from bubble_mcp.server.tools import call_tool
@@ -468,6 +469,12 @@ def command_tools_recipe(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_tools_coverage(_args: argparse.Namespace) -> int:
+    report = catalog_coverage_report()
+    emit_json(report)
+    return 0 if report.get("ok") else 1
+
+
 def command_smoke_runtime(args: argparse.Namespace) -> int:
     result = run_runtime_smoke(
         call_tool,
@@ -764,6 +771,12 @@ def build_parser() -> argparse.ArgumentParser:
     tools_recipe_parser.add_argument("--parent", default="root", help="Optional parent value to include in templates.")
     tools_recipe_parser.add_argument("--execute", action="store_true", help="Mark the generated template as an execution path.")
     tools_recipe_parser.set_defaults(func=command_tools_recipe)
+
+    tools_coverage_parser = tools_subparsers.add_parser(
+        "coverage",
+        help="Report how exposed MCP tools are executed by runtime, compiler, or native handlers.",
+    )
+    tools_coverage_parser.set_defaults(func=command_tools_coverage)
 
     smoke_parser = subparsers.add_parser("smoke", help="Run safe runtime smoke checks.")
     smoke_subparsers = smoke_parser.add_subparsers(dest="smoke_command", required=True)

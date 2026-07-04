@@ -112,13 +112,14 @@ def _clear_macos_execution_metadata(path: Path) -> None:
         )
 
 
-def _refresh_macos_entrypoint_inode(path: Path) -> None:
-    """Replace script inodes through /bin/cp+/bin/mv to avoid macOS exec kills.
+def _refresh_macos_file_inode(path: Path) -> None:
+    """Replace file inodes through /bin/cp+/bin/mv to avoid macOS policy issues.
 
     On some local volumes, Python-written scripts under `.venv/bin` keep a
     provenance state that survives `xattr -d` and can be killed by zsh when
-    executed directly. A system copy to `/tmp` followed by a move back has proven
-    to create an executable inode while preserving the script contents.
+    executed directly. `.pth` files can also be silently ignored by Python when
+    they keep the same state. A system copy to `/tmp` followed by a move back
+    has proven to create a usable inode while preserving file contents.
     """
 
     if sys.platform != "darwin" or not path.exists() or not path.is_file():
@@ -136,6 +137,7 @@ def _refresh_macos_entrypoint_inode(path: Path) -> None:
 
 def _repair_pth_visibility(site_packages: Path) -> None:
     for path in site_packages.glob("*.pth"):
+        _refresh_macos_file_inode(path)
         _clear_macos_hidden_flag(path)
 
 
@@ -161,6 +163,7 @@ def _repair_native_extension_policy(site_packages: Path) -> None:
 def _write_local_editable_pth(site_packages: Path, source_dir: Path) -> Path:
     path = site_packages / LOCAL_PTH_NAME
     path.write_text(f"{source_dir}\n", encoding="utf-8")
+    _refresh_macos_file_inode(path)
     _clear_macos_hidden_flag(path)
     return path
 
@@ -207,7 +210,7 @@ def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, 
         if temp_path.exists():
             temp_path.unlink()
     payload_path.chmod(0o755)
-    _refresh_macos_entrypoint_inode(script_path)
+    _refresh_macos_file_inode(script_path)
     _clear_macos_hidden_flag(script_path)
     _clear_macos_execution_metadata(script_path)
 
