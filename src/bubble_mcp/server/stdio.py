@@ -8,6 +8,8 @@ from typing import Any, TextIO
 
 from bubble_mcp import __version__
 from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.server.prompts import get_prompt, list_prompts
+from bubble_mcp.server.resources import list_resources, read_resource
 from bubble_mcp.server.schemas import list_tool_schemas
 from bubble_mcp.server.tools import call_tool
 
@@ -42,7 +44,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "serverInfo": {"name": "befree-bubble-mcp", "version": __version__},
-                    "capabilities": {"tools": {}},
+                    "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
                 },
             )
         if method == "tools/list":
@@ -56,6 +58,18 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 request_id,
                 {"content": [{"type": "text", "text": json.dumps(redact_sensitive(result))}]},
             )
+        if method == "resources/list":
+            return success_response(request_id, {"resources": list_resources()})
+        if method == "resources/read":
+            uri = str(params.get("uri") or "")
+            return success_response(request_id, read_resource(uri))
+        if method == "prompts/list":
+            return success_response(request_id, {"prompts": list_prompts()})
+        if method == "prompts/get":
+            name = str(params.get("name") or "")
+            raw_arguments = params.get("arguments")
+            arguments = raw_arguments if isinstance(raw_arguments, dict) else {}
+            return success_response(request_id, get_prompt(name, arguments))
         if method and str(method).startswith("notifications/"):
             return None
         return error_response(request_id, -32601, f"Method not found: {method}")

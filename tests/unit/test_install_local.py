@@ -8,6 +8,7 @@ import pytest
 from scripts import install_local
 from scripts.install_local import (
     _repair_native_extension_policy,
+    _remove_stale_console_script_duplicates,
     _stale_install_paths,
     _write_console_bootstrap,
     _write_local_editable_pth,
@@ -96,6 +97,24 @@ def test_write_console_bootstrap_runs_directly(tmp_path: Path) -> None:
         "bubble-mcp",
         "tools|search|--query|html selector import",
     ]
+
+
+def test_remove_stale_console_script_duplicates(tmp_path: Path) -> None:
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    canonical = bindir / "bubble-mcp"
+    duplicate = bindir / "bubble-mcp 2"
+    server_duplicate = bindir / "bubble-mcp-server 3"
+    unrelated = bindir / "pytest 2"
+    for path in [canonical, duplicate, server_duplicate, unrelated]:
+        path.write_text("script\n", encoding="utf-8")
+
+    _remove_stale_console_script_duplicates(tmp_path)
+
+    assert canonical.exists()
+    assert not duplicate.exists()
+    assert not server_duplicate.exists()
+    assert unrelated.exists()
 
 
 def test_repair_native_extension_policy_targets_only_native_files(

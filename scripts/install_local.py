@@ -156,8 +156,18 @@ def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, 
 
 
 def _write_console_bootstraps(venv: Path, python: Path, source_dir: Path) -> None:
+    _remove_stale_console_script_duplicates(venv)
     for script_name, target in CONSOLE_SCRIPTS.items():
         _write_console_bootstrap(_venv_script(venv, script_name), python, source_dir, target)
+
+
+def _remove_stale_console_script_duplicates(venv: Path) -> None:
+    bindir = venv / ("Scripts" if os.name == "nt" else "bin")
+    if not bindir.exists():
+        return
+    for script_name in CONSOLE_SCRIPTS:
+        for path in bindir.glob(f"{script_name} *"):
+            _remove_path(path)
 
 
 def _ensure_venv(venv: Path) -> Path:

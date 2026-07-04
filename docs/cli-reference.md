@@ -434,6 +434,22 @@ Implemented MCP methods:
 - `initialize`
 - `tools/list`
 - `tools/call`
+- `resources/list`
+- `resources/read`
+- `prompts/list`
+- `prompts/get`
+
+Implemented resources:
+
+- `bubble://docs/agent-runtime`
+- `bubble://catalog/summary`
+- `bubble://recipes/summary`
+
+Implemented prompts:
+
+- `bubble-task-runbook`
+- `bubble-html-import`
+- `bubble-quality-gate`
 
 Implemented tools:
 

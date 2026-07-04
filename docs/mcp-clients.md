@@ -63,8 +63,30 @@ You can verify the server responds before adding it to a client:
 printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | bubble-mcp-server
 ```
 
-The response should include server info for `befree-bubble-mcp` and the tools
-listed below.
+The response should include server info for `befree-bubble-mcp`, tools,
+resources, and prompts.
+
+## Resources and Prompts
+
+The server exposes read-only resources for clients that support MCP
+`resources/list` and `resources/read`:
+
+- `bubble://docs/agent-runtime`: compact operating rules for agents.
+- `bubble://catalog/summary`: JSON summary of catalog size and agent entrypoints.
+- `bubble://recipes/summary`: JSON summary of available task recipes.
+
+The server also exposes reusable prompts through `prompts/list` and
+`prompts/get`:
+
+- `bubble-task-runbook`: turns a user task/profile/context into a short
+  execution runbook.
+- `bubble-html-import`: guides URL/selector imports through the advanced HTML
+  runtime.
+- `bubble-quality-gate`: lists the smoke and coverage checks to run before
+  claiming MCP work is complete.
+
+Agents should prefer these resources/prompts over inspecting repository docs
+when the client supports them.
 
 ## Available tools
 
@@ -125,6 +147,10 @@ return a preview instead of posting to Bubble.
   that matches the requested capability.
 - If the correct tool family is unclear, call `bubble_agent_guide` with the
   user's task and use its recommended route before inspecting CLI help.
+- If the client supports MCP resources, read `bubble://docs/agent-runtime`
+  before broad Bubble work.
+- If the client supports MCP prompts, use `bubble-task-runbook` for ambiguous
+  user tasks that require a multi-step execution sequence.
 - If the client only needs candidate tools for a narrow capability, call
   `bubble_tool_search` with a short query instead of reasoning over the full
   `tools/list` payload.

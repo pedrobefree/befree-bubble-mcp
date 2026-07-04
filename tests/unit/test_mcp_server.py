@@ -16,6 +16,7 @@ def test_initialize_returns_server_info() -> None:
     assert response is not None
     assert response["id"] == 1
     assert response["result"]["serverInfo"]["name"] == "befree-bubble-mcp"
+    assert response["result"]["capabilities"] == {"tools": {}, "resources": {}, "prompts": {}}
 
 
 def test_tools_list_includes_profile_list() -> None:
@@ -24,6 +25,77 @@ def test_tools_list_includes_profile_list() -> None:
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert "bubble_profile_list" in names
+
+
+def test_resources_list_and_read_agent_runtime() -> None:
+    listed = handle_request({"jsonrpc": "2.0", "id": 30, "method": "resources/list"})
+
+    assert listed is not None
+    resources = listed["result"]["resources"]
+    uris = [resource["uri"] for resource in resources]
+    assert "bubble://docs/agent-runtime" in uris
+    assert "bubble://catalog/summary" in uris
+
+    read = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "resources/read",
+            "params": {"uri": "bubble://docs/agent-runtime"},
+        }
+    )
+
+    assert read is not None
+    content = read["result"]["contents"][0]
+    assert content["mimeType"] == "text/markdown"
+    assert "bubble_task_recipe" in content["text"]
+    assert "Preview first" in content["text"]
+
+
+def test_resources_read_catalog_summary_json() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 32,
+            "method": "resources/read",
+            "params": {"uri": "bubble://catalog/summary"},
+        }
+    )
+
+    assert response is not None
+    content = response["result"]["contents"][0]
+    assert content["mimeType"] == "application/json"
+    payload = json.loads(content["text"])
+    assert payload["ok"] is True
+    assert payload["tool_count"] >= 220
+    assert "bubble_task_recipe" in payload["native_agent_tools"]
+
+
+def test_prompts_list_and_get_task_runbook() -> None:
+    listed = handle_request({"jsonrpc": "2.0", "id": 33, "method": "prompts/list"})
+
+    assert listed is not None
+    names = [prompt["name"] for prompt in listed["result"]["prompts"]]
+    assert "bubble-task-runbook" in names
+    assert "bubble-html-import" in names
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 34,
+            "method": "prompts/get",
+            "params": {
+                "name": "bubble-task-runbook",
+                "arguments": {"task": "Create a page", "profile": "smoke", "context": "index"},
+            },
+        }
+    )
+
+    assert response is not None
+    message = response["result"]["messages"][0]
+    assert message["role"] == "user"
+    assert "bubble_task_recipe" in message["content"]["text"]
+    assert "Create a page" in message["content"]["text"]
 
 
 def test_health_tool_returns_text_content() -> None:

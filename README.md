@@ -224,6 +224,11 @@ bubble-mcp tools search --query "html selector import" --limit 5
 bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index
 ```
 
+MCP clients that support resources and prompts can also read
+`bubble://docs/agent-runtime`, `bubble://catalog/summary`, and
+`bubble://recipes/summary`, or request the `bubble-task-runbook`,
+`bubble-html-import`, and `bubble-quality-gate` prompts.
+
 When a catalog tool is called with a `profile`, the server resolves the stored
 profile, session, context, and local mutation overlay, then tries to execute the
 matching packaged Aria-compatible runtime method. This keeps element creation,
