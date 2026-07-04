@@ -211,6 +211,16 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Local reference screenshot path. The tool returns an LLM-ready multimodal comparison payload for screenshots.",
         examples=["/tmp/reference.png"],
     ),
+    "reference_snapshot": _prop(
+        "object",
+        "Inline structured reference visual snapshot object. Use when the caller already captured a snapshot and does not need a local file path.",
+        additional_properties=True,
+    ),
+    "actual_snapshot": _prop(
+        "object",
+        "Inline structured actual visual snapshot object. Use when the caller already captured a snapshot and does not need a local file path.",
+        additional_properties=True,
+    ),
     "actual_screenshot": _prop(
         "string",
         "Local actual screenshot path. The tool returns an LLM-ready multimodal comparison payload for screenshots.",
@@ -317,6 +327,7 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         enum=[
             "setup_or_refresh_context",
             "html_import",
+            "visual_quality_gate",
             "visual_edit",
             "page_or_reusable",
             "workflow",
@@ -607,8 +618,8 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "suite": _prop(
         "string",
-        "Runtime smoke suite to run. coverage checks catalog execution coverage and agent-facing catalog quality; agent-routing validates natural-language tool routing without writes; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false; family-preview exercises representative visual/container/input/schema/workflow/style/html/branch/changelog paths without writes; execute-write creates temporary Bubble objects and requires execute=true.",
-        enum=["coverage", "agent-routing", "safe-read", "preview-write", "family-preview", "execute-write"],
+        "Runtime smoke suite to run. coverage checks catalog execution coverage and agent-facing catalog quality; agent-routing validates natural-language tool routing without writes; visual-repair validates visual audit repair planning without writes; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false; family-preview exercises representative visual/container/input/schema/workflow/style/html/branch/changelog paths without writes; execute-write creates temporary Bubble objects and requires execute=true.",
+        enum=["coverage", "agent-routing", "visual-repair", "safe-read", "preview-write", "family-preview", "execute-write"],
         default="coverage",
     ),
     "include_details": _prop(
@@ -803,7 +814,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_runtime_smoke",
-            "Run an operational smoke suite for the MCP runtime. coverage is local-only and validates catalog execution coverage plus agent-facing catalog quality; agent-routing validates natural-language tool selection without writes; safe-read performs read-only calls; preview-write compiles representative Bubble mutations with execute=false; and execute-write creates temporary Bubble objects only when execute=true.",
+            "Run an operational smoke suite for the MCP runtime. coverage is local-only and validates catalog execution coverage plus agent-facing catalog quality; agent-routing validates natural-language tool selection without writes; visual-repair validates visual audit repair planning without writes; safe-read performs read-only calls; preview-write compiles representative Bubble mutations with execute=false; and execute-write creates temporary Bubble objects only when execute=true.",
             [
                 "suite",
                 "profile",
@@ -910,6 +921,8 @@ def planning_execution_tools() -> list[ToolSchema]:
                 "actual",
                 "reference_source",
                 "actual_source",
+                "reference_snapshot",
+                "actual_snapshot",
                 "actual_profile",
                 "actual_app_id",
                 "actual_app_version",
@@ -942,6 +955,7 @@ def planning_execution_tools() -> list[ToolSchema]:
             ],
             any_of=[
                 {"required": ["reference", "actual"]},
+                {"required": ["reference_snapshot", "actual_snapshot"]},
                 {"required": ["reference_source", "actual_source"]},
                 {"required": ["reference_source", "actual_profile"]},
                 {"required": ["reference_screenshot", "actual_screenshot"]},

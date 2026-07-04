@@ -309,6 +309,8 @@ requests against `bubble_task_runbook`, `bubble_agent_guide`,
 creation, Figma/style sync, branches/changelog, setup/context refresh,
 interactive session login, and workflow prompts, and it does not post changes
 to Bubble.
+The `visual-repair` suite validates that visual parity requests produce an
+actionable `bubble_visual_audit` repair plan without posting changes to Bubble.
 The `preview-write` suite compiles representative mutations with
 `execute=false`; it does not post changes to Bubble.
 The `family-preview` suite exercises representative visual, container, input,

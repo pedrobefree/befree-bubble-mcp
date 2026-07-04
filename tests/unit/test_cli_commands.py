@@ -222,6 +222,16 @@ def test_cli_smoke_runtime_runs_coverage_suite(capsys) -> None:  # type: ignore[
     ]
 
 
+def test_cli_smoke_runtime_runs_visual_repair_suite(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["smoke", "runtime", "--suite", "visual-repair", "--profile", "cliente2", "--context", "mcp-01"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["execute"] is False
+    assert payload["summary"] == {"cases": 1, "passed": 1, "failed": 0, "skipped": 0}
+    assert payload["results"][0]["tool"] == "bubble_visual_audit"
+
+
 def test_cli_smoke_runtime_writes_report(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
     report = tmp_path / "runtime-smoke.json"
 
@@ -302,6 +312,9 @@ def test_cli_tools_recipe_returns_operational_sequence(capsys) -> None:  # type:
         "bubble_context_find",
         "create_from_html",
         "create_from_html",
+        "bubble_visual_capture",
+        "bubble_visual_capture_actual",
+        "bubble_visual_audit",
     ]
     assert payload["steps"][1]["args"]["exact"] is True
     assert payload["steps"][1]["args"]["include_metadata"] is False
@@ -333,6 +346,7 @@ def test_cli_tools_runbook_returns_one_call_agent_plan(capsys) -> None:  # type:
     assert "import_html_component" in payload["route_intents"]
     assert payload["tool_search"]["limit"] == 5
     assert "create_from_html" in [match["name"] for match in payload["tool_search"]["matches"]]
+    assert "bubble_visual_audit" in [match["name"] for match in payload["tool_search"]["matches"]]
     assert payload["recommended_next_call"]["tool"] == "bubble_context_detect"
 
 

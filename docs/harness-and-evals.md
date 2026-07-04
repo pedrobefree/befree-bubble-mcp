@@ -158,8 +158,20 @@ bubble-mcp smoke runtime --suite agent-routing
 This local-only suite exercises `bubble_task_runbook`, `bubble_agent_guide`,
 `bubble_task_recipe`, and `bubble_tool_search` against natural-language tasks
 for HTML import, page creation, Figma/style sync, branches/changelog,
-setup/context refresh, interactive session login, and workflow actions. It
-performs no Bubble writes.
+setup/context refresh, interactive session login, workflow actions, and visual
+quality gates. It performs no Bubble writes.
+
+Use the `visual-repair` runtime smoke suite to validate the visual audit repair
+loop itself:
+
+```bash
+bubble-mcp smoke runtime --suite visual-repair
+```
+
+This suite feeds structured reference/actual snapshots to `bubble_visual_audit`
+and fails unless it returns visual issues plus an executable repair plan for
+group gradient/max-width, text typography, and image sizing drift. It remains
+local-only and does not execute repairs.
 
 ## Exporting Redacted Expert Captures
 

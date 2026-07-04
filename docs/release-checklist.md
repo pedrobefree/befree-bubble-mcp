@@ -21,6 +21,7 @@ python -m mypy src
 python -m pytest -q
 python -m bubble_mcp.cli.main smoke runtime --suite coverage
 python -m bubble_mcp.cli.main smoke runtime --suite agent-routing
+python -m bubble_mcp.cli.main smoke runtime --suite visual-repair
 ```
 
 Expected:

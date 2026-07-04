@@ -591,6 +591,7 @@ clients.
 ```bash
 bubble-mcp smoke runtime --suite coverage
 bubble-mcp smoke runtime --suite agent-routing
+bubble-mcp smoke runtime --suite visual-repair
 bubble-mcp smoke runtime --suite safe-read --profile my-app
 bubble-mcp smoke runtime --suite preview-write --profile my-app --context index --parent root
 bubble-mcp smoke runtime --suite family-preview --profile my-app --context index --parent root
@@ -604,6 +605,9 @@ Suites:
 - `agent-routing`: local-only natural-language routing check that validates
   `bubble_task_runbook`, `bubble_agent_guide`, `bubble_task_recipe`, and
   `bubble_tool_search` against representative user prompts without writes.
+- `visual-repair`: local-only visual audit check that validates
+  `bubble_visual_audit` can turn structured visual drift into a specific repair
+  plan without posting changes to Bubble.
 - `safe-read`: read-only profile/session/project checks.
 - `preview-write`: representative create/import mutations compiled with
   `execute=false`; this does not post changes to Bubble.

@@ -15,7 +15,69 @@ from bubble_mcp.runtime_smoke_validation import validate_execute_write_context
 
 
 ToolCaller = Callable[[str, dict[str, Any]], dict[str, Any]]
-RUNTIME_SMOKE_SUITES = {"coverage", "safe-read", "preview-write", "execute-write", "family-preview", "agent-routing"}
+RUNTIME_SMOKE_SUITES = {
+    "coverage",
+    "safe-read",
+    "preview-write",
+    "execute-write",
+    "family-preview",
+    "agent-routing",
+    "visual-repair",
+}
+
+
+VISUAL_REPAIR_REFERENCE: dict[str, Any] = {
+    "root": {
+        "id": "hero",
+        "bbox": {"x": 0, "y": 0, "width": 1298, "height": 760},
+        "style": {
+            "background": "linear-gradient(110deg, #5533ff, #25b6f0)",
+            "maxWidth": 1298,
+        },
+    },
+    "nodes": [
+        {
+            "id": "headline",
+            "type": "text",
+            "text": "The best landing page for your digital product.",
+            "bbox": {"x": 80, "y": 300, "width": 500, "height": 190},
+            "style": {"fontFamily": "Josefin Sans", "fontSize": 60, "fontWeight": 700},
+        },
+        {
+            "id": "watch",
+            "type": "image",
+            "src": "watch.png",
+            "bbox": {"x": 760, "y": 270, "width": 458, "height": 458},
+        },
+    ],
+}
+
+
+VISUAL_REPAIR_ACTUAL: dict[str, Any] = {
+    "root": {
+        "id": "hero",
+        "bbox": {"x": 0, "y": 0, "width": 1298, "height": 760},
+        "style": {
+            "background": "linear-gradient(110deg, #25b6f0, #5533ff)",
+            "maxWidth": 2400,
+        },
+    },
+    "nodes": [
+        {
+            "id": "headline",
+            "type": "text",
+            "text": "The best landing page for your digital product.",
+            "bbox": {"x": 430, "y": 300, "width": 500, "height": 190},
+            "style": {"fontFamily": "Arial", "fontSize": 44, "fontWeight": 700},
+        },
+        {
+            "id": "watch",
+            "type": "image",
+            "src": "watch.png",
+            "bbox": {"x": 760, "y": 270, "width": 760, "height": 760},
+        },
+    ],
+}
 
 
 @dataclass(frozen=True)
@@ -52,6 +114,16 @@ AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
         search_query="converter seletor html url",
         expected_search_tool="create_from_html",
         description="Route Portuguese HTML selector import requests to the advanced HTML importer.",
+        forbidden_intents=("check_server_or_catalog",),
+    ),
+    AgentRoutingCase(
+        task="compare o print do HTML original com o Bubble criado e corrija problemas visuais de fonte, gradiente e imagem",
+        expected_recipe="visual_quality_gate",
+        expected_intents=("visual_quality_gate",),
+        expected_recipe_tools=("bubble_visual_capture", "bubble_visual_capture_actual", "bubble_visual_audit"),
+        search_query="comparar print visual corrigir drift",
+        expected_search_tool="bubble_visual_audit",
+        description="Route visual parity and repair requests to the visual audit harness.",
         forbidden_intents=("check_server_or_catalog",),
     ),
     AgentRoutingCase(
@@ -511,7 +583,9 @@ def run_runtime_smoke(
     """Run an operational smoke suite by calling MCP tool handlers."""
 
     if suite not in RUNTIME_SMOKE_SUITES:
-        raise ValueError("suite must be one of: coverage, safe-read, preview-write, execute-write, family-preview, agent-routing.")
+        raise ValueError(
+            "suite must be one of: coverage, safe-read, preview-write, execute-write, family-preview, agent-routing, visual-repair."
+        )
     effective_run_id = _safe_run_id(run_id)
     if suite == "agent-routing":
         routing_results = _run_agent_routing_suite(
@@ -544,6 +618,37 @@ def run_runtime_smoke(
             "run_id": effective_run_id,
             "summary": summary,
             "results": routing_results,
+        }
+    if suite == "visual-repair":
+        visual_results = _run_visual_repair_suite(
+            tool_caller,
+            profile=profile,
+            context=context,
+            parent=parent,
+            app_id=app_id,
+            app_version=app_version,
+            include_details=include_details,
+        )
+        summary = {
+            "cases": len(visual_results),
+            "passed": sum(1 for item in visual_results if item["status"] == "passed"),
+            "failed": sum(1 for item in visual_results if item["status"] == "failed"),
+            "skipped": sum(1 for item in visual_results if item["status"] == "skipped"),
+        }
+        return {
+            "ok": summary["failed"] == 0,
+            "suite": suite,
+            "profile": profile or None,
+            "context": context,
+            "parent": parent,
+            "app_id": app_id or None,
+            "app_version": app_version,
+            "execute": False,
+            "cleanup": False,
+            "verify_context": False,
+            "run_id": effective_run_id,
+            "summary": summary,
+            "results": visual_results,
         }
     if suite == "execute-write" and not execute:
         return {
@@ -698,6 +803,106 @@ def run_runtime_smoke(
         "summary": summary,
         "results": results,
     }
+
+
+def _run_visual_repair_suite(
+    tool_caller: ToolCaller,
+    *,
+    profile: str,
+    context: str,
+    parent: str,
+    app_id: str,
+    app_version: str,
+    include_details: bool,
+) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    try:
+        result = tool_caller(
+            "bubble_visual_audit",
+            {
+                "reference_snapshot": VISUAL_REPAIR_REFERENCE,
+                "actual_snapshot": VISUAL_REPAIR_ACTUAL,
+                "profile": profile or "$profile",
+                "context": context,
+                "parent": parent,
+                "app_id": app_id or "synthetic-app",
+                "app_version": app_version,
+                "require_images": True,
+                "execute": False,
+            },
+        )
+        issues = result.get("issues", [])
+        repair_plan = result.get("repair_plan", {}) if isinstance(result.get("repair_plan"), dict) else {}
+        plan = repair_plan.get("plan", {}) if isinstance(repair_plan.get("plan"), dict) else {}
+        steps = plan.get("steps", []) if isinstance(plan.get("steps"), list) else []
+        repair_tools = {str(step.get("tool_name")) for step in steps if isinstance(step, dict)}
+        issue_codes = {str(issue.get("code")) for issue in issues if isinstance(issue, dict)}
+        checks.extend(
+            [
+                {
+                    "name": "detects_visual_drift",
+                    "ok": result.get("ok") is False and int(result.get("summary", {}).get("issue_count") or 0) >= 4,
+                    "actual": result.get("summary", {}),
+                },
+                {
+                    "name": "executable_repair_plan",
+                    "ok": bool(repair_plan.get("executable")) and int(repair_plan.get("step_count") or 0) >= 4,
+                    "actual": {"executable": repair_plan.get("executable"), "step_count": repair_plan.get("step_count")},
+                },
+                {
+                    "name": "covers_expected_issue_types",
+                    "ok": {
+                        "gradient_direction_mismatch",
+                        "root_max_width_drift",
+                        "font_family_mismatch",
+                        "image_width_drift",
+                    }.issubset(issue_codes),
+                    "actual": sorted(issue_codes),
+                },
+                {
+                    "name": "routes_repairs_to_specific_tools",
+                    "ok": {"update_group", "update_layout", "update_text_element", "update_image_element"}.issubset(repair_tools),
+                    "actual": sorted(repair_tools),
+                },
+                {
+                    "name": "does_not_execute",
+                    "ok": "execution" not in result,
+                },
+            ]
+        )
+        case_ok = all(check["ok"] for check in checks)
+        payload: dict[str, Any] = {
+            "index": 1,
+            "tool": "bubble_visual_audit",
+            "suite": "visual-repair",
+            "status": "passed" if case_ok else "failed",
+            "ok": case_ok,
+            "description": "Validate that visual audit produces an actionable repair plan without writing to Bubble.",
+            "checks": checks,
+        }
+        if include_details:
+            payload["result"] = redact_sensitive(result)
+        else:
+            payload["result"] = {
+                "ok": result.get("ok"),
+                "issue_count": result.get("summary", {}).get("issue_count"),
+                "repair_step_count": repair_plan.get("step_count"),
+                "repair_tools": sorted(repair_tools),
+            }
+        return [payload]
+    except Exception as exc:  # noqa: BLE001 - smoke reports must capture failures.
+        return [
+            {
+                "index": 1,
+                "tool": "bubble_visual_audit",
+                "suite": "visual-repair",
+                "status": "failed",
+                "ok": False,
+                "description": "Validate that visual audit produces an actionable repair plan without writing to Bubble.",
+                "checks": checks,
+                "error": str(exc),
+            }
+        ]
 
 
 def _run_agent_routing_suite(

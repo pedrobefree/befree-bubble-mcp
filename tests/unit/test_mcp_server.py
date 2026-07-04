@@ -1075,7 +1075,8 @@ def test_agent_guide_routes_user_tasks_without_cli_discovery() -> None:
     assert "import_html_component" in intents
     assert "branches_or_changelog" in intents
     html_route = next(route for route in payload["recommended_routes"] if route["intent"] == "import_html_component")
-    assert html_route["tools"] == ["create_from_html"]
+    assert html_route["tools"][0] == "create_from_html"
+    assert "bubble_visual_audit" in html_route["tools"]
 
 
 def test_tool_search_returns_compact_relevant_catalog_matches() -> None:
@@ -1208,9 +1209,23 @@ def test_task_recipe_returns_ordered_html_import_steps() -> None:
     assert payload["recipe"] == "html_import"
     assert payload["inputs"]["profile"] == "smoke"
     assert payload["inputs"]["context"] == "mcp-01"
-    assert payload["matched"]["tools"] == ["create_from_html", "bubble_context_detect"]
+    assert payload["matched"]["tools"] == [
+        "create_from_html",
+        "bubble_context_detect",
+        "bubble_visual_capture",
+        "bubble_visual_capture_actual",
+        "bubble_visual_audit",
+    ]
     tools = [step["tool"] for step in payload["steps"]]
-    assert tools == ["bubble_context_detect", "bubble_context_find", "create_from_html", "create_from_html"]
+    assert tools == [
+        "bubble_context_detect",
+        "bubble_context_find",
+        "create_from_html",
+        "create_from_html",
+        "bubble_visual_capture",
+        "bubble_visual_capture_actual",
+        "bubble_visual_audit",
+    ]
     assert payload["steps"][1]["args"] == {
         "profile": "$profile",
         "query": "$target",
@@ -1219,6 +1234,35 @@ def test_task_recipe_returns_ordered_html_import_steps() -> None:
         "include_metadata": False,
     }
     assert payload["steps"][2]["args"]["execute"] is False
+
+
+def test_task_runbook_routes_visual_quality_gate_to_audit_tools() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 48,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_runbook",
+                "arguments": {
+                    "task": "Compare o print original com o Bubble e corrija problemas visuais de fonte, imagem e gradiente",
+                    "profile": "smoke",
+                    "context": "mcp-01",
+                    "parent": "root",
+                    "search_limit": 6,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["recipe"] == "visual_quality_gate"
+    assert "visual_quality_gate" in payload["route_intents"]
+    assert "bubble_visual_audit" in payload["matched"]["tools"]
+    assert [step["tool"] for step in payload["steps"]][-1] == "bubble_visual_audit"
+    assert "bubble_visual_audit" in [match["name"] for match in payload["tool_search"]["matches"]]
 
 
 def test_task_recipe_setup_context_includes_profile_add_and_session_inspect() -> None:
@@ -1436,8 +1480,26 @@ def test_runtime_smoke_tool_runs_agent_routing_suite() -> None:
     assert payload["ok"] is True
     assert payload["suite"] == "agent-routing"
     assert payload["summary"]["failed"] == 0
-    assert payload["summary"]["passed"] == 7
+    assert payload["summary"]["passed"] == 8
     assert all("bubble_task_runbook" in result["tool"] for result in payload["results"])
+
+
+def test_runtime_smoke_tool_runs_visual_repair_suite() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 47,
+            "method": "tools/call",
+            "params": {"name": "bubble_runtime_smoke", "arguments": {"suite": "visual-repair"}},
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["suite"] == "visual-repair"
+    assert payload["summary"] == {"cases": 1, "passed": 1, "failed": 0, "skipped": 0}
+    assert payload["results"][0]["tool"] == "bubble_visual_audit"
 
 
 def test_runtime_smoke_tool_requires_execute_for_execute_write() -> None:
@@ -1475,7 +1537,9 @@ def test_runtime_smoke_schema_exposes_execute_write_controls() -> None:
     assert recipe["annotations"]["idempotentHint"] is True
     assert recipe["inputSchema"]["required"] == ["task"]
     assert "recipe" in recipe["inputSchema"]["properties"]
+    assert "visual_quality_gate" in recipe["inputSchema"]["properties"]["recipe"]["enum"]
     properties = smoke["inputSchema"]["properties"]
+    assert "visual-repair" in properties["suite"]["enum"]
     assert "execute-write" in properties["suite"]["enum"]
     assert "family-preview" in properties["suite"]["enum"]
     assert "execute" in properties

@@ -37,6 +37,7 @@ APP_VERSION_SUGGESTIONS = ["test", "version-test"]
 RUNTIME_SMOKE_SUITE_SUGGESTIONS = [
     "coverage",
     "agent-routing",
+    "visual-repair",
     "safe-read",
     "preview-write",
     "family-preview",

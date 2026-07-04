@@ -598,6 +598,12 @@ def audit_visual_from_inputs(arguments: dict[str, Any]) -> dict[str, Any]:
 
     reference_path = str(arguments.get("reference") or "").strip()
     actual_path = str(arguments.get("actual") or "").strip()
+    raw_reference_snapshot = arguments.get("reference_snapshot") or arguments.get("visual_reference")
+    raw_actual_snapshot = arguments.get("actual_snapshot") or arguments.get("visual_actual")
+    if isinstance(raw_reference_snapshot, dict):
+        reference_snapshot = raw_reference_snapshot
+    if isinstance(raw_actual_snapshot, dict):
+        actual_snapshot = raw_actual_snapshot
     if reference_path:
         reference_snapshot = load_visual_snapshot(Path(reference_path))
     if actual_path:

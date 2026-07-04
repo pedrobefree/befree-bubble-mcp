@@ -210,11 +210,32 @@ def test_agent_routing_smoke_validates_natural_language_tool_selection() -> None
 
     assert report["ok"] is True
     assert report["execute"] is False
-    assert report["summary"] == {"cases": 7, "passed": 7, "failed": 0, "skipped": 0}
+    assert report["summary"] == {"cases": 8, "passed": 8, "failed": 0, "skipped": 0}
     assert {result["status"] for result in report["results"]} == {"passed"}
     assert all(result["suite"] == "agent-routing" for result in report["results"])
     assert all("bubble_task_runbook" in result["tool"] for result in report["results"])
     assert all(any(check["name"] == "runbook_expected_recipe_match" and check["ok"] for check in result["checks"]) for result in report["results"])
+
+
+def test_visual_repair_smoke_validates_actionable_audit_plan() -> None:
+    report = run_runtime_smoke(
+        call_tool,
+        suite="visual-repair",
+        profile="cliente2",
+        context="mcp-01",
+        parent="root",
+        app_id="synthetic-app",
+    )
+
+    assert report["ok"] is True
+    assert report["execute"] is False
+    assert report["summary"] == {"cases": 1, "passed": 1, "failed": 0, "skipped": 0}
+    result = report["results"][0]
+    assert result["tool"] == "bubble_visual_audit"
+    assert result["result"]["issue_count"] >= 4
+    assert {"update_group", "update_layout", "update_text_element", "update_image_element"}.issubset(
+        set(result["result"]["repair_tools"])
+    )
 
 
 def test_execute_write_can_append_cleanup_case() -> None:
