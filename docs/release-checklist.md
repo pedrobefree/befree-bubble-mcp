@@ -43,41 +43,11 @@ Expected:
 
 ## Packaging Smoke
 
-Build a wheel into a temporary directory:
-
-```bash
-rm -rf /tmp/befree-bubble-mcp-wheel
-mkdir -p /tmp/befree-bubble-mcp-wheel
-python -m pip wheel . -w /tmp/befree-bubble-mcp-wheel
-```
-
-Install the generated wheel in a clean Python 3.11 venv and verify imports,
+Build and install a wheel in a clean Python 3.11 venv, then verify imports,
 CLI, and MCP initialize:
 
 ```bash
-tmpdir=$(mktemp -d /tmp/befree-bubble-mcp-install.XXXXXX)
-python3.11 -m venv "$tmpdir/.venv"
-"$tmpdir/.venv/bin/python" -m pip install /tmp/befree-bubble-mcp-wheel/befree_bubble_mcp-0.1.0-py3-none-any.whl
-"$tmpdir/.venv/bin/python" - <<'PY'
-import bubble_mcp
-from bubble_mcp.server.stdio import handle_request
-
-print(bubble_mcp.__version__)
-print(handle_request({"jsonrpc": "2.0", "id": 1, "method": "initialize"})["result"]["serverInfo"])
-PY
-"$tmpdir/.venv/bin/bubble-mcp" --help >/tmp/befree-wheel-cli-help.txt
-"$tmpdir/.venv/bin/bubble-mcp-server" <<'EOF' >/tmp/befree-wheel-server-init.json
-{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}
-EOF
-python - <<'PY'
-import json
-
-payload = json.load(open("/tmp/befree-wheel-server-init.json"))
-assert payload["result"]["serverInfo"]["name"] == "befree-bubble-mcp"
-assert "instructions" in payload["result"]
-print("wheel smoke passed")
-PY
-rm -rf "$tmpdir"
+python scripts/package_smoke.py --python python3.11
 ```
 
 Expected:
