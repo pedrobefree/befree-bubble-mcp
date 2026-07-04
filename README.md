@@ -254,8 +254,11 @@ MCP clients that support resources and prompts can also read
 `bubble://docs/agent-runtime`, `bubble://catalog/summary`, and
 `bubble://recipes/summary`, read a specific recipe such as
 `bubble://recipes/html_import`, read profile readiness such as
-`bubble://profiles/my-app/status`, or request the `bubble-task-runbook`,
-`bubble-html-import`, and `bubble-quality-gate` prompts.
+`bubble://profiles/my-app/status`, read one complete tool schema such as
+`bubble://tools/create_from_html`, or request the `bubble-task-runbook`,
+`bubble-html-import`, and `bubble-quality-gate` prompts. Use the one-tool
+schema resource instead of loading the full `tools/list` response after the
+agent already selected a tool.
 
 When a catalog tool is called with a `profile`, the server resolves the stored
 profile, session, context, and local mutation overlay, then tries to execute the

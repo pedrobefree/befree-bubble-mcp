@@ -73,6 +73,10 @@ def _tool_schema_by_name() -> dict[str, dict[str, Any]]:
     return {str(tool.get("name") or ""): tool for tool in list_tool_schemas()}
 
 
+def _tool_names() -> list[str]:
+    return sorted(_tool_schema_by_name())
+
+
 def _schema_property(tool_name: str, argument_name: str) -> dict[str, Any]:
     schema = _tool_schema_by_name().get(tool_name, {})
     input_schema = schema.get("inputSchema")
@@ -145,6 +149,9 @@ def complete(params: dict[str, Any]) -> dict[str, Any]:
     if ref_type.endswith("resource") and argument_name == "profile":
         if ref_uri in {"bubble://profiles/{profile}/status", "bubble://profiles/"} or ref_uri.startswith("bubble://profiles/"):
             return _completion(_profile_names(), value)
+    if ref_type.endswith("resource") and argument_name == "tool_name":
+        if ref_uri in {"bubble://tools/{tool_name}", "bubble://tools/"} or ref_uri.startswith("bubble://tools/"):
+            return _completion(_tool_names(), value)
 
     if ref_type.endswith("prompt") and ref_name in PROMPTS:
         if argument_name == "profile":

@@ -98,6 +98,7 @@ def test_resources_read_agent_quickstart() -> None:
     assert "Default call sequence" in content["text"]
     assert "bubble_task_runbook" in content["text"]
     assert "Do not inspect repository code" in content["text"]
+    assert "bubble://tools/{tool_name}" in content["text"]
     assert "exact=true" in content["text"]
 
 
@@ -124,6 +125,7 @@ def test_resources_read_catalog_summary_json() -> None:
     assert "bubble_catalog_quality" in payload["native_agent_tools"]
     assert "bubble_context_find" in payload["native_agent_tools"]
     assert "bubble_context_detect" in payload["native_agent_tools"]
+    assert "bubble://tools/{tool_name}" in payload["recommended_entrypoints"]
 
 
 def test_resource_templates_list_and_read_recipe_detail() -> None:
@@ -133,6 +135,7 @@ def test_resource_templates_list_and_read_recipe_detail() -> None:
     templates = listed["result"]["resourceTemplates"]
     assert templates[0]["uriTemplate"] == "bubble://recipes/{recipe_id}"
     assert any(template["uriTemplate"] == "bubble://profiles/{profile}/status" for template in templates)
+    assert any(template["uriTemplate"] == "bubble://tools/{tool_name}" for template in templates)
 
     response = handle_request(
         {
@@ -153,6 +156,27 @@ def test_resource_templates_list_and_read_recipe_detail() -> None:
     assert payload["steps"][1]["args"]["exact"] is True
     assert payload["steps"][1]["args"]["include_metadata"] is False
     assert payload["steps"][2]["tool"] == "create_from_html"
+
+
+def test_resource_templates_read_tool_schema_detail() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 37,
+            "method": "resources/read",
+            "params": {"uri": "bubble://tools/create_from_html"},
+        }
+    )
+
+    assert response is not None
+    content = response["result"]["contents"][0]
+    assert content["mimeType"] == "application/json"
+    payload = json.loads(content["text"])
+    assert payload["ok"] is True
+    assert payload["tool"]["name"] == "create_from_html"
+    assert "profile" in payload["tool"]["inputSchema"]["properties"]
+    assert "selector" in payload["tool"]["inputSchema"]["properties"]
+    assert payload["tool"]["annotations"]["readOnlyHint"] is False
 
 
 def test_profile_status_tool_and_resource(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -390,6 +414,23 @@ def test_completion_suggests_tool_arguments(monkeypatch) -> None:  # type: ignor
     assert suite_response["result"]["completion"]["values"] == ["agent-routing"]
     assert recipe_response["result"]["completion"]["values"] == ["html_import"]
     assert profile_response["result"]["completion"]["values"] == ["cliente2"]
+
+
+def test_completion_suggests_tool_resource_names() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 491,
+            "method": "completion/complete",
+            "params": {
+                "ref": {"type": "ref/resource", "uri": "bubble://tools/{tool_name}"},
+                "argument": {"name": "tool_name", "value": "create_from_h"},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["completion"]["values"] == ["create_from_html"]
 
 
 def test_completion_suggests_common_boolean_tool_arguments() -> None:

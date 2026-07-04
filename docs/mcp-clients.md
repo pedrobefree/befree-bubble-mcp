@@ -95,6 +95,9 @@ The server exposes read-only resources for clients that support MCP
 - `bubble://recipes/{recipe_id}`: complete JSON recipe for one task family,
   such as `bubble://recipes/html_import` or
   `bubble://recipes/page_or_reusable`.
+- `bubble://tools/{tool_name}`: complete JSON schema for one exposed MCP tool,
+  such as `bubble://tools/create_from_html`, without loading the full
+  `tools/list` payload.
 
 The server also exposes reusable prompts through `prompts/list` and
 `prompts/get`:
@@ -202,6 +205,9 @@ return a preview instead of posting to Bubble.
 - If the client only needs candidate tools for a narrow capability, call
   `bubble_tool_search` with a short query instead of reasoning over the full
   `tools/list` payload.
+- After selecting one tool, read `bubble://tools/{tool_name}` when exact
+  argument names or annotations are needed. Do this instead of loading all
+  tool schemas.
 - If the client only needs route-family guidance, call `bubble_agent_guide`.
   If it only needs the ordered sequence after the family is known, call
   `bubble_task_recipe`.

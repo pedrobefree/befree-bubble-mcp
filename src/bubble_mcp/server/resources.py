@@ -19,6 +19,10 @@ def _tool_count() -> int:
     return len(list_tool_schemas())
 
 
+def _tool_schema_by_name() -> dict[str, dict[str, Any]]:
+    return {str(tool.get("name") or ""): tool for tool in list_tool_schemas()}
+
+
 def _agent_runtime_markdown() -> str:
     return "\n".join(
         [
@@ -33,7 +37,8 @@ def _agent_runtime_markdown() -> str:
             "2. `bubble_agent_guide` when only route-family guidance is needed.",
             "3. `bubble_task_recipe` when the agent already knows the family but needs ordered preflight/steps.",
             "4. `bubble_tool_search` when the agent needs a compact subset of tool schemas.",
-            "5. The specific Bubble mutation/read tool with `profile`, `context`, and `execute` filled intentionally.",
+            "5. `bubble://tools/{tool_name}` when the agent picked one tool and needs its complete schema without reading all of `tools/list`.",
+            "6. The specific Bubble mutation/read tool with `profile`, `context`, and `execute` filled intentionally.",
             "",
             "Mutation policy:",
             "",
@@ -73,9 +78,11 @@ def _agent_quickstart_markdown() -> str:
             "3. Call `bubble_task_runbook` with `task`, `profile`, `context`, `parent`, and `execute`.",
             "4. Execute the runbook's MCP tools in order. Use `execute=false` for preview unless the user",
             "   explicitly asked to apply the change.",
-            "5. When resolving or verifying a known page/element/context ref, prefer `bubble_context_find`",
+            "5. If you need exact arguments for one selected tool, read `bubble://tools/{tool_name}` instead",
+            "   of loading the full `tools/list` response.",
+            "6. When resolving or verifying a known page/element/context ref, prefer `bubble_context_find`",
             "   with `exact=true` and `include_metadata=false` before using broader searches.",
-            "6. After real writes, verify with `bubble_context_detect`, changelog tools, or `bubble_runtime_smoke`.",
+            "7. After real writes, verify with `bubble_context_detect`, changelog tools, or `bubble_runtime_smoke`.",
             "",
             "Setup assumptions:",
             "",
@@ -122,6 +129,7 @@ def _catalog_summary() -> dict[str, Any]:
             "bubble_agent_guide",
             "bubble_task_recipe",
             "bubble_tool_search",
+            "bubble://tools/{tool_name}",
             "bubble_readiness_check",
             "bubble_catalog_quality",
             "bubble_runtime_smoke",
@@ -155,6 +163,13 @@ def _recipe_detail(recipe_id: str) -> dict[str, Any]:
         "tools": recipe["tools"],
         "steps": recipe["steps"],
     }
+
+
+def _tool_detail(tool_name: str) -> dict[str, Any]:
+    tool = _tool_schema_by_name().get(tool_name)
+    if not tool:
+        raise ValueError(f"Unknown Bubble MCP tool: {tool_name}")
+    return {"ok": True, "tool": tool}
 
 
 RESOURCES: dict[str, dict[str, Any]] = {
@@ -199,6 +214,13 @@ RESOURCE_TEMPLATES: list[dict[str, Any]] = [
         "title": "Bubble Profile Status",
         "description": "Read setup/readiness status for one local Bubble MCP profile.",
         "mimeType": RESOURCE_MIME_JSON,
+    },
+    {
+        "name": "bubble_tool_schema",
+        "uriTemplate": "bubble://tools/{tool_name}",
+        "title": "Bubble Tool Schema",
+        "description": "Read the complete schema for one exposed Bubble MCP tool without loading all tools/list.",
+        "mimeType": RESOURCE_MIME_JSON,
     }
 ]
 
@@ -225,6 +247,9 @@ def read_resource(uri: str) -> dict[str, Any]:
     elif uri.startswith("bubble://profiles/") and uri.endswith("/status"):
         profile = uri.removeprefix("bubble://profiles/").removesuffix("/status").strip()
         text = json.dumps(profile_status(profile), indent=2, sort_keys=True)
+    elif uri.startswith("bubble://tools/"):
+        tool_name = uri.removeprefix("bubble://tools/").strip()
+        text = json.dumps(_tool_detail(tool_name), indent=2, sort_keys=True)
     elif uri not in RESOURCES:
         raise ValueError(f"Unknown Bubble MCP resource: {uri}")
     elif uri == "bubble://docs/agent-quickstart":

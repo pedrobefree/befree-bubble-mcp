@@ -551,6 +551,8 @@ Implemented resources:
 - `bubble://catalog/summary`
 - `bubble://recipes/summary`
 - `bubble://recipes/{recipe_id}`
+- `bubble://tools/{tool_name}`
+- `bubble://profiles/{profile}/status`
 
 Implemented prompts:
 
@@ -561,6 +563,9 @@ Implemented prompts:
 Implemented completions:
 
 - `bubble://recipes/{recipe_id}`: recipe ids such as `html_import`.
+- `bubble://tools/{tool_name}`: exposed MCP tool names such as
+  `create_from_html`.
+- `bubble://profiles/{profile}/status`: configured profile names.
 - Prompt arguments: `profile`, `context`, `parent`, and common boolean
   arguments such as `execute` where applicable.
 - Tool arguments: `profile`, `context`, `parent`, common boolean arguments such
