@@ -474,6 +474,19 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
 }
 
 
+RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
+    "branch_or_changelog": "branch changelog contributors version",
+    "data_schema": "data type field option set option value schema",
+    "html_import": "create_from_html html selector url import",
+    "page_or_reusable": "create page reusable clone delete context",
+    "quality_gate": "readiness coverage catalog smoke health",
+    "setup_or_refresh_context": "profile session context detect find status",
+    "style_or_tokens": "style color font token figma condition hovered",
+    "visual_edit": "create visual element text button group input image update delete",
+    "workflow": "workflow event action condition click page load",
+}
+
+
 def _normalize_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
     ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
@@ -597,6 +610,112 @@ def task_recipe(
     }
 
 
+def _compact_tool_schema(tool: dict[str, Any]) -> dict[str, Any]:
+    input_schema = tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {}
+    properties = input_schema.get("properties") if isinstance(input_schema, dict) else {}
+    property_names = list(properties.keys()) if isinstance(properties, dict) else []
+    return {
+        "name": str(tool.get("name") or ""),
+        "description": str(tool.get("description") or ""),
+        "required": input_schema.get("required", []) if isinstance(input_schema, dict) else [],
+        "properties": property_names[:40],
+        "annotations": tool.get("annotations", {}),
+    }
+
+
+def _runbook_tool_search(recipe: dict[str, Any], query: str, *, limit: int) -> dict[str, Any]:
+    from bubble_mcp.server.schemas import list_tool_schemas
+
+    max_results = min(max(int(limit or 6), 1), 25)
+    schemas = {str(tool.get("name") or ""): tool for tool in list_tool_schemas()}
+    exact_tools = [str(name) for name in recipe.get("matched", {}).get("tools", []) if str(name) in schemas]
+    matches: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, name in enumerate(exact_tools):
+        compact = _compact_tool_schema(schemas[name])
+        matches.append({"score": 1000 - index, "source": "recipe", **compact})
+        seen.add(name)
+        if len(matches) >= max_results:
+            break
+
+    if len(matches) < max_results:
+        lexical = search_tool_catalog(query, limit=25)
+        for item in lexical["matches"]:
+            name = str(item.get("name") or "")
+            if name in seen:
+                continue
+            matches.append({"source": "search", **item})
+            seen.add(name)
+            if len(matches) >= max_results:
+                break
+
+    return {
+        "ok": True,
+        "query": query,
+        "limit": max_results,
+        "match_count": len(matches),
+        "matches": matches,
+        "usage": "Use recipe matches first; search matches are fallback candidates when the exact tool is still ambiguous.",
+    }
+
+
+def task_runbook(
+    task: str = "",
+    *,
+    profile: str = "",
+    context: str = "",
+    parent: str = "root",
+    execute: bool = False,
+    search_limit: int = 6,
+    include_profile_status: bool = False,
+) -> dict[str, Any]:
+    """Return a one-call operational runbook for a Bubble task."""
+
+    guide = agent_guide(task)
+    recipe = task_recipe(
+        task,
+        profile=profile,
+        context=context,
+        parent=parent,
+        execute=execute,
+    )
+    search_query = RUNBOOK_SEARCH_QUERIES.get(str(recipe["recipe"]), task or str(recipe["recipe"]))
+    search = _runbook_tool_search(recipe, search_query, limit=search_limit)
+    profile_readiness: dict[str, Any] | None = None
+    if include_profile_status and profile:
+        from bubble_mcp.profile_status import profile_status
+
+        status = profile_status(profile)
+        profile_readiness = {
+            "ok": bool(status.get("ok")),
+            "ready": bool(status.get("ready")),
+            "profile": status.get("profile"),
+            "context": status.get("context"),
+            "session": status.get("session"),
+            "next_actions": status.get("next_actions", []),
+        }
+
+    return {
+        "ok": True,
+        "task": task or None,
+        "inputs": recipe["inputs"],
+        "profile_status": profile_readiness,
+        "route_intents": [route["intent"] for route in guide["recommended_routes"]],
+        "recipe": recipe["recipe"],
+        "matched": recipe["matched"],
+        "preflight": recipe["preflight"],
+        "steps": recipe["steps"],
+        "safeguards": recipe["safeguards"],
+        "tool_search": search,
+        "recommended_next_call": recipe["steps"][0] if recipe["steps"] else None,
+        "usage": (
+            "Use this runbook as the source of truth for the next MCP calls. "
+            "Do not inspect CLI help, repository code, or the full tools/list response unless this runbook lacks a capability."
+        ),
+        "cli_equivalent": f"bubble-mcp tools runbook --task {task!r}" if task else "bubble-mcp tools runbook --task '<task>'",
+    }
+
+
 def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
     """Search exposed MCP tools and return compact matching metadata."""
 
@@ -635,13 +754,7 @@ def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
                     score += 1
         if score <= 0:
             continue
-        compact = {
-            "name": name,
-            "description": description,
-            "required": input_schema.get("required", []) if isinstance(input_schema, dict) else [],
-            "properties": property_names[:40],
-            "annotations": tool.get("annotations", {}),
-        }
+        compact = _compact_tool_schema(tool)
         scored.append((score, compact))
 
     scored.sort(key=lambda item: (-item[0], item[1]["name"]))

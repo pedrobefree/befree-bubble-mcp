@@ -5,7 +5,7 @@ client, not kept running as a separate HTTP service.
 
 The `initialize` response includes compact server instructions that tell agents
 to use MCP tools directly, check `bubble_profile_status` for the target profile,
-use `bubble_agent_guide`/`bubble_task_recipe` for routing, and keep
+use `bubble_task_runbook` for routing and ordered execution guidance, and keep
 `execute=false` unless the user explicitly requested a real write.
 
 ## Before connecting
@@ -146,6 +146,7 @@ families or `write_payload` for exact Bubble editor writes.
   session metadata and loadable/fresh context, plus next actions when session
   login or context detection is still needed.
 - `bubble_readiness_check`: runs server health, compact coverage/catalog-quality smoke, agent-routing, profile-status readiness when a profile is provided, and optional profile safe-read or family-preview checks in one call. Use this before broad Bubble work or after installation; pass `include_details=true` only when debugging a failed nested check.
+- `bubble_task_runbook`: returns a one-call compact runbook for a Bubble task, including route intents, ordered recipe steps, safeguards, compact relevant tool matches, and optional profile readiness. Use this as the preferred planning call for agents.
 - `bubble_agent_guide`: returns a compact routing guide for agents. Call it
   with the user task when the client is unsure which Bubble MCP tool family to
   use; it is read-only and avoids CLI/repository discovery.
@@ -187,8 +188,9 @@ return a preview instead of posting to Bubble.
   that matches the requested capability.
 - If the client supports MCP resources, read `bubble://docs/agent-quickstart`
   before the first Bubble task in a session.
-- If the correct tool family is unclear, call `bubble_agent_guide` with the
-  user's task and use its recommended route before inspecting CLI help.
+- If the correct tool family or sequence is unclear, call `bubble_task_runbook`
+  with the user's task/profile/context and use its route, recipe, and compact
+  tool matches before inspecting CLI help.
 - If the client supports MCP resources, read `bubble://docs/agent-runtime`
   before broad Bubble work.
 - If the client supports MCP prompts, use `bubble-task-runbook` for ambiguous
@@ -196,9 +198,9 @@ return a preview instead of posting to Bubble.
 - If the client only needs candidate tools for a narrow capability, call
   `bubble_tool_search` with a short query instead of reasoning over the full
   `tools/list` payload.
-- If the client knows the capability but not the order of operations, call
-  `bubble_task_recipe` with the user task, profile, and context before
-  executing mutating tools.
+- If the client only needs route-family guidance, call `bubble_agent_guide`.
+  If it only needs the ordered sequence after the family is known, call
+  `bubble_task_recipe`.
 - Before relying on a modified catalog or harness, call `bubble_readiness_check`
   and require `ok=true`. Use individual smoke suites only for deeper diagnosis.
 - Before applying a user-requested mutation to a project profile, call

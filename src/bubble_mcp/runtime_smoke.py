@@ -722,10 +722,28 @@ def _run_agent_routing_suite(
                 },
             )
             search = tool_caller("bubble_tool_search", {"query": case.search_query, "limit": 8})
+            runbook = tool_caller(
+                "bubble_task_runbook",
+                {
+                    "task": case.task,
+                    "profile": profile or "$profile",
+                    "context": context,
+                    "parent": parent,
+                    "execute": execute,
+                    "search_limit": 8,
+                },
+            )
 
             route_intents = {str(route.get("intent")) for route in guide.get("recommended_routes", [])}
             recipe_tools = set(recipe.get("matched", {}).get("tools", []))
             search_tools = [str(match.get("name")) for match in search.get("matches", [])]
+            runbook_intents = set(str(intent) for intent in runbook.get("route_intents", []))
+            runbook_tools = set(runbook.get("matched", {}).get("tools", []))
+            runbook_matches = [
+                str(match.get("name"))
+                for match in runbook.get("tool_search", {}).get("matches", [])
+                if match.get("source") == "recipe"
+            ]
             direct_policy = guide.get("direct_tool_policy", {})
             preflight = " ".join(str(item) for item in recipe.get("preflight", []))
 
@@ -743,10 +761,22 @@ def _run_agent_routing_suite(
                         "actual": recipe.get("recipe"),
                     },
                     {
+                        "name": "runbook_expected_recipe",
+                        "ok": runbook.get("recipe") == case.expected_recipe,
+                        "expected": case.expected_recipe,
+                        "actual": runbook.get("recipe"),
+                    },
+                    {
                         "name": "expected_intents",
                         "ok": set(case.expected_intents).issubset(route_intents),
                         "expected": list(case.expected_intents),
                         "actual": sorted(route_intents),
+                    },
+                    {
+                        "name": "runbook_expected_intents",
+                        "ok": set(case.expected_intents).issubset(runbook_intents),
+                        "expected": list(case.expected_intents),
+                        "actual": sorted(runbook_intents),
                     },
                     {
                         "name": "forbidden_intents",
@@ -755,16 +785,34 @@ def _run_agent_routing_suite(
                         "actual": sorted(route_intents),
                     },
                     {
+                        "name": "runbook_forbidden_intents",
+                        "ok": not set(case.forbidden_intents).intersection(runbook_intents),
+                        "forbidden": list(case.forbidden_intents),
+                        "actual": sorted(runbook_intents),
+                    },
+                    {
                         "name": "expected_recipe_tools",
                         "ok": set(case.expected_recipe_tools).issubset(recipe_tools),
                         "expected": list(case.expected_recipe_tools),
                         "actual": sorted(recipe_tools),
                     },
                     {
+                        "name": "runbook_expected_recipe_tools",
+                        "ok": set(case.expected_recipe_tools).issubset(runbook_tools),
+                        "expected": list(case.expected_recipe_tools),
+                        "actual": sorted(runbook_tools),
+                    },
+                    {
                         "name": "expected_search_tool",
                         "ok": case.expected_search_tool in search_tools,
                         "expected": case.expected_search_tool,
                         "actual": search_tools,
+                    },
+                    {
+                        "name": "runbook_expected_recipe_match",
+                        "ok": case.expected_search_tool in runbook_matches,
+                        "expected": case.expected_search_tool,
+                        "actual": runbook_matches,
                     },
                     {
                         "name": "no_internal_tool_name_requirement",
@@ -775,7 +823,7 @@ def _run_agent_routing_suite(
             case_ok = all(check["ok"] for check in checks)
             result: dict[str, Any] = {
                 "index": index,
-                "tool": "bubble_agent_guide/bubble_task_recipe/bubble_tool_search",
+                "tool": "bubble_task_runbook+bubble_agent_guide/bubble_task_recipe/bubble_tool_search",
                 "suite": "agent-routing",
                 "status": "passed" if case_ok else "failed",
                 "ok": case_ok,
@@ -784,13 +832,13 @@ def _run_agent_routing_suite(
                 "checks": checks,
             }
             if include_details:
-                result["result"] = redact_sensitive({"guide": guide, "recipe": recipe, "search": search})
+                result["result"] = redact_sensitive({"guide": guide, "recipe": recipe, "search": search, "runbook": runbook})
             results.append(result)
         except Exception as exc:  # noqa: BLE001 - smoke reports must capture failures.
             results.append(
                 {
                     "index": index,
-                    "tool": "bubble_agent_guide/bubble_task_recipe/bubble_tool_search",
+                    "tool": "bubble_task_runbook+bubble_agent_guide/bubble_task_recipe/bubble_tool_search",
                     "suite": "agent-routing",
                     "status": "failed",
                     "ok": False,

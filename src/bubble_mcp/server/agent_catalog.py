@@ -316,6 +316,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "arguments to fill, safeguards, and verification guidance. Use this when a client knows the user intent but "
         "needs the correct execution sequence without trial-and-error. Read-only."
     ),
+    "bubble_task_runbook": (
+        "Return a one-call compact runbook for a Bubble task: route intents, ordered recipe steps, safeguards, "
+        "compact matching tool metadata, and optional profile readiness. Use this as the first planning call when an "
+        "agent needs to act without inspecting CLI help, repository code, or the full tools/list response. Read-only."
+    ),
     "bubble_tool_coverage": (
         "Report execution coverage for every exposed MCP tool. Use this to audit whether tools are handled by "
         "standalone native code, direct Aria-runtime methods, Aria-runtime aliases, custom runtime adapters, compiler "
@@ -795,6 +800,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_profile_status",
         "bubble_tool_search",
         "bubble_task_recipe",
+        "bubble_task_runbook",
         "bubble_catalog_quality",
         "bubble_readiness_check",
     }

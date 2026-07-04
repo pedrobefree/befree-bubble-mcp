@@ -213,6 +213,8 @@ def test_agent_routing_smoke_validates_natural_language_tool_selection() -> None
     assert report["summary"] == {"cases": 6, "passed": 6, "failed": 0, "skipped": 0}
     assert {result["status"] for result in report["results"]} == {"passed"}
     assert all(result["suite"] == "agent-routing" for result in report["results"])
+    assert all("bubble_task_runbook" in result["tool"] for result in report["results"])
+    assert all(any(check["name"] == "runbook_expected_recipe_match" and check["ok"] for check in result["checks"]) for result in report["results"])
 
 
 def test_execute_write_can_append_cleanup_case() -> None:

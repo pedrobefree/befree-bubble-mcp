@@ -366,6 +366,20 @@ bubble-mcp validate-plan --file /path/to/plan.json --execute
 Pass `--execute` to require executable write payloads and destructive-operation
 confirmation checks.
 
+## `bubble-mcp tools runbook`
+
+Returns a one-call compact agent runbook for a Bubble task: route intents,
+ordered recipe steps, safeguards, relevant tool matches, and optional profile
+readiness.
+
+```bash
+bubble-mcp tools runbook --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index
+bubble-mcp tools runbook --task "create a text in page index" --profile my-app --context index --include-profile-status
+```
+
+Use this as the preferred first discovery command for agents. It avoids reading
+CLI help, repository code, or the full MCP `tools/list` response.
+
 ## `bubble-mcp tools guide`
 
 Returns compact routing guidance for agents or humans that need to choose the

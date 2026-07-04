@@ -39,6 +39,7 @@ def test_tools_list_includes_profile_list() -> None:
     names = list(tools)
     assert "bubble_profile_list" in names
     assert "bubble_profile_status" in names
+    assert "bubble_task_runbook" in names
     assert tools["bubble_session_list"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_session_list"]["annotations"]["destructiveHint"] is False
     assert "exact" in tools["bubble_context_find"]["inputSchema"]["properties"]
@@ -93,7 +94,7 @@ def test_resources_read_agent_quickstart() -> None:
     content = response["result"]["contents"][0]
     assert content["mimeType"] == "text/markdown"
     assert "Default call sequence" in content["text"]
-    assert "bubble_agent_guide" in content["text"]
+    assert "bubble_task_runbook" in content["text"]
     assert "Do not inspect repository code" in content["text"]
     assert "exact=true" in content["text"]
 
@@ -116,6 +117,7 @@ def test_resources_read_catalog_summary_json() -> None:
     assert payload["tool_count"] >= 220
     assert "bubble_profile_status" in payload["native_agent_tools"]
     assert "bubble_readiness_check" in payload["native_agent_tools"]
+    assert "bubble_task_runbook" in payload["native_agent_tools"]
     assert "bubble_task_recipe" in payload["native_agent_tools"]
     assert "bubble_catalog_quality" in payload["native_agent_tools"]
     assert "bubble_context_find" in payload["native_agent_tools"]
@@ -413,9 +415,9 @@ def test_prompts_list_and_get_task_runbook() -> None:
     assert message["role"] == "user"
     assert "bubble_profile_status" in message["content"]["text"]
     assert message["content"]["text"].index("bubble_profile_status") < message["content"]["text"].index(
-        "bubble_task_recipe"
+        "bubble_task_runbook"
     )
-    assert "bubble_task_recipe" in message["content"]["text"]
+    assert "bubble_task_runbook" in message["content"]["text"]
     assert "Create a page" in message["content"]["text"]
     assert "Do not inspect repository code" in message["content"]["text"]
 
@@ -441,9 +443,41 @@ def test_prompt_get_html_import_prioritizes_profile_status() -> None:
     assert response is not None
     text = response["result"]["messages"][0]["content"]["text"]
     assert "bubble_profile_status" in text
-    assert "bubble_task_recipe" in text
-    assert text.index("bubble_profile_status") < text.index("bubble_task_recipe")
+    assert "bubble_task_runbook" in text
+    assert text.index("bubble_profile_status") < text.index("bubble_task_runbook")
     assert "create_from_html" in text
+
+
+def test_task_runbook_returns_route_recipe_and_tool_matches() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 54,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_runbook",
+                "arguments": {
+                    "task": "Convert #home-area from a URL into page mcp-01",
+                    "profile": "smoke",
+                    "context": "mcp-01",
+                    "parent": "root",
+                    "search_limit": 5,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["recipe"] == "html_import"
+    assert "import_html_component" in payload["route_intents"]
+    assert payload["inputs"]["profile"] == "smoke"
+    assert payload["steps"][0]["tool"] == "bubble_context_detect"
+    assert payload["tool_search"]["limit"] == 5
+    assert "create_from_html" in [match["name"] for match in payload["tool_search"]["matches"]]
+    assert "Do not inspect CLI help" in payload["usage"]
+    assert response["result"]["structuredContent"] == payload
 
 
 def test_health_tool_returns_text_content() -> None:
@@ -857,6 +891,7 @@ def test_runtime_smoke_tool_runs_agent_routing_suite() -> None:
     assert payload["suite"] == "agent-routing"
     assert payload["summary"]["failed"] == 0
     assert payload["summary"]["passed"] == 6
+    assert all("bubble_task_runbook" in result["tool"] for result in payload["results"])
 
 
 def test_runtime_smoke_tool_requires_execute_for_execute_write() -> None:

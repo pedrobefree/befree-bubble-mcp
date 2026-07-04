@@ -44,7 +44,7 @@ from bubble_mcp.profile_status import profile_status
 from bubble_mcp.readiness import run_readiness_check
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
-from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe
+from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
 from bubble_mcp.server.tools import call_tool
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
@@ -520,6 +520,21 @@ def command_tools_recipe(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_tools_runbook(args: argparse.Namespace) -> int:
+    emit_json(
+        task_runbook(
+            args.task,
+            profile=args.profile or "",
+            context=args.context or "",
+            parent=args.parent or "root",
+            execute=args.execute,
+            search_limit=args.search_limit,
+            include_profile_status=args.include_profile_status,
+        )
+    )
+    return 0
+
+
 def command_tools_coverage(args: argparse.Namespace) -> int:
     report = catalog_coverage_report(include_tools=bool(args.include_tools))
     emit_json(report)
@@ -858,6 +873,19 @@ def build_parser() -> argparse.ArgumentParser:
     tools_recipe_parser.add_argument("--parent", default="root", help="Optional parent value to include in templates.")
     tools_recipe_parser.add_argument("--execute", action="store_true", help="Mark the generated template as an execution path.")
     tools_recipe_parser.set_defaults(func=command_tools_recipe)
+
+    tools_runbook_parser = tools_subparsers.add_parser(
+        "runbook",
+        help="Return one compact agent runbook with route, recipe, relevant tools, and optional profile status.",
+    )
+    tools_runbook_parser.add_argument("--task", required=True)
+    tools_runbook_parser.add_argument("--profile", default="")
+    tools_runbook_parser.add_argument("--context", default="")
+    tools_runbook_parser.add_argument("--parent", default="root")
+    tools_runbook_parser.add_argument("--execute", action="store_true")
+    tools_runbook_parser.add_argument("--search-limit", type=int, default=6)
+    tools_runbook_parser.add_argument("--include-profile-status", action="store_true")
+    tools_runbook_parser.set_defaults(func=command_tools_runbook)
 
     tools_coverage_parser = tools_subparsers.add_parser(
         "coverage",

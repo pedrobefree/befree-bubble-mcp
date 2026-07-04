@@ -307,6 +307,35 @@ def test_cli_tools_recipe_returns_operational_sequence(capsys) -> None:  # type:
     assert payload["steps"][1]["args"]["include_metadata"] is False
 
 
+def test_cli_tools_runbook_returns_one_call_agent_plan(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert (
+        main(
+            [
+                "tools",
+                "runbook",
+                "--task",
+                "Convert #home-area from a URL into page mcp-01",
+                "--profile",
+                "smoke",
+                "--context",
+                "mcp-01",
+                "--search-limit",
+                "5",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["recipe"] == "html_import"
+    assert payload["inputs"]["profile"] == "smoke"
+    assert "import_html_component" in payload["route_intents"]
+    assert payload["tool_search"]["limit"] == 5
+    assert "create_from_html" in [match["name"] for match in payload["tool_search"]["matches"]]
+    assert payload["recommended_next_call"]["tool"] == "bubble_context_detect"
+
+
 def test_cli_tools_coverage_reports_runtime_paths(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["tools", "coverage"]) == 0
 

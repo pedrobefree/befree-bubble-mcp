@@ -226,24 +226,21 @@ manually for normal Bubble editor work.
 
 The stdio server returns compact operating instructions during MCP
 `initialize`, so clients that honor server instructions are steered toward
-`bubble_profile_status`, `bubble_agent_guide`, `bubble_task_recipe`, and
-`execute=false` previews before real writes.
+`bubble_profile_status`, `bubble_task_runbook`, and `execute=false` previews
+before real writes.
 
-When the client is unsure which tool family matches the user request, call
-`bubble_agent_guide` with the task text. It returns a compact read-only routing
-map for common flows such as context refresh, visual edits, HTML import,
-workflows, data schema, branches, changelog, evals, and exact payload writes.
-For narrower discovery, call `bubble_tool_search` with a query such as
-`html selector`, `workflow action`, or `branch changelog`; it returns compact
-tool metadata instead of the full catalog.
-When the client knows the task but needs the ordered execution sequence, call
-`bubble_task_recipe`; it returns preflight checks, ordered tool calls, arguments
-to fill, safeguards, and verification guidance.
+When the client has a user task and needs the next MCP calls, call
+`bubble_task_runbook` with the task/profile/context/parent/execute values. It
+returns route intents, ordered recipe steps, safeguards, compact matching tool
+metadata, and optional profile readiness in one call. Use `bubble_agent_guide`,
+`bubble_task_recipe`, and `bubble_tool_search` only when the client needs those
+smaller pieces for diagnosis or a narrow follow-up.
 
 The CLI exposes the same compact discovery layer for terminals and agents that
 only have shell access:
 
 ```bash
+bubble-mcp tools runbook --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index
 bubble-mcp tools guide --task "convert an HTML selector from a URL into a Bubble page"
 bubble-mcp tools search --query "html selector import" --limit 5
 bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index

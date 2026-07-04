@@ -22,6 +22,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_agent_guide",
     "bubble_tool_search",
     "bubble_task_recipe",
+    "bubble_task_runbook",
     "bubble_tool_coverage",
     "bubble_catalog_quality",
     "bubble_runtime_smoke",

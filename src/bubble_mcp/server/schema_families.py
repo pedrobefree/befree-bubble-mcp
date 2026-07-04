@@ -415,6 +415,17 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Include redacted raw tool results in smoke output. Leave false for compact agent-friendly summaries.",
         default=False,
     ),
+    "include_profile_status": _prop(
+        "boolean",
+        "Include compact profile/session/context readiness in the task runbook. Leave false when the profile was already checked.",
+        default=False,
+    ),
+    "search_limit": _prop(
+        "integer",
+        "Maximum number of relevant tool matches to include in a one-call task runbook.",
+        minimum=1,
+        default=6,
+    ),
     "stop_on_failure": _prop(
         "boolean",
         "Stop the smoke suite after the first failed case.",
@@ -529,6 +540,12 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "bubble_task_recipe",
             "Return a compact operational recipe for a Bubble task: preflight checks, ordered MCP tool calls, arguments to fill, safeguards, and verification guidance. Use this after bubble_agent_guide or bubble_tool_search when the agent needs the execution sequence, not just candidate tools.",
             ["task", "recipe", "profile", "context", "parent", "execute"],
+            required=["task"],
+        ),
+        tool_schema(
+            "bubble_task_runbook",
+            "Return a one-call compact runbook for a Bubble task: route intents, ordered recipe steps, safeguards, compact relevant tool matches, and optional profile readiness. Use this first when an agent needs to act without inspecting CLI help, repository code, or the full tools/list response.",
+            ["task", "profile", "context", "parent", "execute", "search_limit", "include_profile_status"],
             required=["task"],
         ),
         tool_schema(
