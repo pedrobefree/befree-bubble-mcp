@@ -431,9 +431,10 @@ bubble-mcp readiness --include-details
 ```
 
 The check runs server health, the compact coverage/catalog-quality smoke, and
-agent-routing. When `--profile` is provided it also runs read-only profile
-checks. `--include-family-preview` adds the broader execute=false family smoke.
-The default output is compact; pass `--include-details` only when debugging a
+agent-routing. When `--profile` is provided it also requires
+`bubble_profile_status.ready=true` and runs read-only profile checks.
+`--include-family-preview` adds the broader execute=false family smoke. The
+default output is compact; pass `--include-details` only when debugging a
 failed nested smoke result.
 
 ## `bubble-mcp smoke runtime`

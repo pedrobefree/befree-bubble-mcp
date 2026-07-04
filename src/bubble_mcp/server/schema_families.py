@@ -491,13 +491,14 @@ def profile_session_context_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_readiness_check",
-            "Run the recommended Bubble MCP readiness sequence in one call: server health, compact catalog coverage/quality gate, agent-routing smoke, and optional profile safe-read/family-preview checks. Read-only.",
+            "Run the recommended Bubble MCP readiness sequence in one call: server health, compact catalog coverage/quality gate, agent-routing smoke, profile-status readiness when a profile is provided, and optional profile safe-read/family-preview checks. Read-only.",
             [
                 "profile",
                 "context",
                 "parent",
                 "app_id",
                 "app_version",
+                "max_age_hours",
                 "include_family_preview",
                 "include_details",
                 "stop_on_failure",

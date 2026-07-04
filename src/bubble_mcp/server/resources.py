@@ -44,7 +44,7 @@ def _agent_runtime_markdown() -> str:
             "",
             "Operational checks:",
             "",
-            "- `bubble_readiness_check` runs the recommended health, coverage, catalog-quality, and routing sequence.",
+            "- `bubble_readiness_check` runs the recommended health, coverage, catalog-quality, routing, and profile-status sequence.",
             "- `bubble_tool_coverage` verifies catalog handling.",
             "- `bubble_catalog_quality` verifies schema, description, annotation, resource, prompt, and coverage quality.",
             "- `bubble_runtime_smoke` with `coverage` runs local catalog coverage and quality checks.",

@@ -291,8 +291,9 @@ posting changes.
 
 Use `bubble_readiness_check` from an MCP client, or `bubble-mcp readiness` from
 the CLI, when you want the recommended compact sequence in one call: health,
-coverage/catalog quality, agent-routing, and optional profile safe-read or
-family-preview smoke. Detailed nested smoke output is opt-in with
+coverage/catalog quality, agent-routing, profile-status readiness when a
+profile is provided, and optional profile safe-read or family-preview smoke.
+Detailed nested smoke output is opt-in with
 `include_details=true` or `--include-details`.
 
 For an authenticated real-write smoke test, use the explicit `execute-write`

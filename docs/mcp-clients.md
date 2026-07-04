@@ -140,7 +140,7 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_profile_status`: reports whether a configured profile has matching
   session metadata and loadable/fresh context, plus next actions when session
   login or context detection is still needed.
-- `bubble_readiness_check`: runs server health, compact coverage/catalog-quality smoke, agent-routing, and optional profile safe-read or family-preview checks in one call. Use this before broad Bubble work or after installation; pass `include_details=true` only when debugging a failed nested check.
+- `bubble_readiness_check`: runs server health, compact coverage/catalog-quality smoke, agent-routing, profile-status readiness when a profile is provided, and optional profile safe-read or family-preview checks in one call. Use this before broad Bubble work or after installation; pass `include_details=true` only when debugging a failed nested check.
 - `bubble_agent_guide`: returns a compact routing guide for agents. Call it
   with the user task when the client is unsure which Bubble MCP tool family to
   use; it is read-only and avoids CLI/repository discovery.

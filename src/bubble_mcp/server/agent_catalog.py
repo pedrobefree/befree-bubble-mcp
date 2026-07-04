@@ -296,9 +296,10 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "bubble_readiness_check": (
         "Run the recommended Bubble MCP readiness sequence in one compact call: server health, catalog coverage and "
-        "quality gate, agent-routing smoke, and optional profile safe-read or family-preview checks. Use this before "
-        "broad Bubble work or after installation to avoid trial-and-error discovery. Output is compact by default; "
-        "pass include_details=true only when debugging. Read-only."
+        "quality gate, agent-routing smoke, profile-status readiness when a profile is provided, and optional "
+        "profile safe-read or family-preview checks. Use this before broad Bubble work or after installation to avoid "
+        "trial-and-error discovery. Output is compact by default; pass include_details=true only when debugging. "
+        "Read-only."
     ),
     "bubble_agent_guide": (
         "Return compact routing guidance for MCP clients and agents. Use this when deciding which Bubble MCP tool "

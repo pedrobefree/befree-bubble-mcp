@@ -42,6 +42,25 @@ def test_execute_write_cases_use_unique_target_page_and_execute_flag() -> None:
     assert write_cases[3].arguments["fit_height"] is True
 
 
+def test_safe_read_includes_profile_status_and_fails_when_not_ready() -> None:
+    calls: list[str] = []
+
+    def fake_tool(tool: str, _args: dict[str, object]) -> dict[str, object]:
+        calls.append(tool)
+        if tool == "bubble_profile_status":
+            return {"ok": True, "ready": False, "next_actions": [{"tool": "bubble_context_detect"}]}
+        return {"ok": True, "tool": tool}
+
+    report = run_runtime_smoke(fake_tool, suite="safe-read", profile="cliente2")
+
+    assert "bubble_profile_status" in calls
+    profile_result = next(item for item in report["results"] if item["tool"] == "bubble_profile_status")
+    assert profile_result["status"] == "failed"
+    assert profile_result["result"]["ready"] is False
+    assert profile_result["result"]["next_action_count"] == 1
+    assert report["ok"] is False
+
+
 def test_family_preview_covers_representative_tool_families_without_execute() -> None:
     cases = build_runtime_smoke_cases(
         suite="family-preview",
@@ -84,6 +103,8 @@ def test_family_preview_runs_call_sequence() -> None:
 
     def fake_tool(tool: str, args: dict[str, object]) -> dict[str, object]:
         calls.append((tool, args))
+        if tool == "bubble_profile_status":
+            return {"ok": True, "ready": True}
         return {"ok": True, "executed": bool(args.get("execute")), "write_count": int(tool.startswith("create_"))}
 
     report = run_runtime_smoke(
@@ -141,6 +162,8 @@ def test_execute_write_runs_call_sequence() -> None:
 
     def fake_tool(tool: str, args: dict[str, object]) -> dict[str, object]:
         calls.append((tool, args))
+        if tool == "bubble_profile_status":
+            return {"ok": True, "ready": True}
         return {"ok": True, "executed": args.get("execute"), "write_count": 1}
 
     report = run_runtime_smoke(
@@ -155,12 +178,13 @@ def test_execute_write_runs_call_sequence() -> None:
     assert report["execute"] is True
     assert report["run_id"] == "sequence"
     assert report["summary"]["failed"] == 0
-    assert [tool for tool, _args in calls[:7]] == [
+    assert [tool for tool, _args in calls[:8]] == [
         "bubble_tool_coverage",
         "bubble_catalog_quality",
         "bubble_health_check",
         "bubble_profile_list",
         "bubble_session_list",
+        "bubble_profile_status",
         "list_data_types",
         "list_styles",
     ]
@@ -245,6 +269,8 @@ def test_execute_write_can_verify_refreshed_context(tmp_path) -> None:  # type: 
         calls.append((tool, args))
         if tool == "bubble_context_detect":
             return {"ok": True, "context_path": str(context_file)}
+        if tool == "bubble_profile_status":
+            return {"ok": True, "ready": True}
         return {"ok": True, "executed": args.get("execute"), "write_count": 1}
 
     report = run_runtime_smoke(
@@ -258,7 +284,7 @@ def test_execute_write_can_verify_refreshed_context(tmp_path) -> None:  # type: 
     )
 
     assert report["ok"] is True
-    assert report["summary"]["passed"] == 16
+    assert report["summary"]["passed"] == 17
     assert calls[-1] == (
         "bubble_context_detect",
         {

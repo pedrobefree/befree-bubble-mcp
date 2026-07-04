@@ -498,6 +498,7 @@ def command_readiness(args: argparse.Namespace) -> int:
         parent=args.parent,
         app_id=args.app_id or "",
         app_version=args.app_version,
+        max_age_hours=args.max_age_hours,
         include_family_preview=args.include_family_preview,
         include_details=args.include_details,
         stop_on_failure=args.stop_on_failure,
@@ -834,6 +835,7 @@ def build_parser() -> argparse.ArgumentParser:
     readiness_parser.add_argument("--parent", default="root")
     readiness_parser.add_argument("--app-id", default="")
     readiness_parser.add_argument("--app-version", default="test")
+    readiness_parser.add_argument("--max-age-hours", type=int, default=24)
     readiness_parser.add_argument(
         "--include-family-preview",
         action="store_true",

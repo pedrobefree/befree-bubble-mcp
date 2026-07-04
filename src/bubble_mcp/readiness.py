@@ -14,6 +14,16 @@ def _result_summary(result: dict[str, Any]) -> dict[str, Any]:
     for key in ("version", "suite", "summary", "error"):
         if key in result:
             summary[key] = result[key]
+    if "ready" in result:
+        summary["ready"] = bool(result.get("ready"))
+    if isinstance(result.get("profile"), dict):
+        profile = result["profile"]
+        summary["profile"] = {
+            "name": profile.get("name"),
+            "app_id": profile.get("app_id"),
+        }
+    if isinstance(result.get("next_actions"), list):
+        summary["next_action_count"] = len(result["next_actions"])
     if "capabilities" in result and isinstance(result["capabilities"], dict):
         summary["capabilities"] = {
             key: result["capabilities"][key]
@@ -51,6 +61,7 @@ def run_readiness_check(
     parent: str = "root",
     app_id: str = "",
     app_version: str = "test",
+    max_age_hours: int = 24,
     include_family_preview: bool = False,
     include_details: bool = False,
     stop_on_failure: bool = False,
@@ -61,6 +72,8 @@ def run_readiness_check(
 
     def run(name: str, tool: str, args: dict[str, Any]) -> bool:
         result = tool_caller(tool, args)
+        if tool == "bubble_profile_status" and not result.get("ready"):
+            result = {**result, "ok": False}
         checks.append(_check_result(name, result, include_details=include_details))
         return bool(result.get("ok"))
 
@@ -78,6 +91,13 @@ def run_readiness_check(
         "app_version": app_version,
     }
     if profile:
+        sequence.append(
+            (
+                "profile_status",
+                "bubble_profile_status",
+                {"profile": profile, "max_age_hours": max_age_hours},
+            )
+        )
         sequence.append(("safe_read", "bubble_runtime_smoke", {**profile_args, "suite": "safe-read"}))
         if include_family_preview:
             sequence.append(
@@ -101,6 +121,7 @@ def run_readiness_check(
         "parent": parent,
         "app_id": app_id or None,
         "app_version": app_version,
+        "max_age_hours": max_age_hours,
         "include_family_preview": include_family_preview,
         "include_details": include_details,
         "summary": {

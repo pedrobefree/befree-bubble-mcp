@@ -78,6 +78,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             parent=str(args.get("parent") or "root"),
             app_id=str(args.get("app_id") or ""),
             app_version=str(args.get("app_version") or "test"),
+            max_age_hours=int(args.get("max_age_hours") or 24),
             include_family_preview=bool(args.get("include_family_preview")),
             include_details=bool(args.get("include_details")),
             stop_on_failure=bool(args.get("stop_on_failure")),

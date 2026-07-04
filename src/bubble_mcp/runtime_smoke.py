@@ -304,6 +304,7 @@ def build_runtime_smoke_cases(
         profile_args_with_json = {**profile_args, "json": True}
         cases.extend(
             [
+                SmokeCase("bubble_profile_status", dict(profile_args), "safe-read", "Read profile session/context readiness."),
                 SmokeCase("list_data_types", dict(profile_args_with_json), "safe-read", "List Bubble data types.", True),
                 SmokeCase("list_styles", dict(profile_args), "safe-read", "List Bubble styles.", True),
                 SmokeCase("list_colors", dict(profile_args_with_json), "safe-read", "List Bubble colors.", True),
@@ -468,9 +469,12 @@ def _compact_result(result: dict[str, Any], *, include_details: bool) -> dict[st
         "executed": result.get("executed"),
         "compiled": result.get("compiled"),
         "write_count": result.get("write_count"),
+        "ready": result.get("ready"),
         "error": result.get("error"),
         "reason": result.get("reason"),
     }
+    if isinstance(result.get("next_actions"), list):
+        compact["next_action_count"] = len(result["next_actions"])
     return {key: value for key, value in compact.items() if value is not None}
 
 
@@ -582,6 +586,8 @@ def run_runtime_smoke(
         try:
             result = tool_caller(case.tool, dict(case.arguments))
             case_ok = bool(result.get("ok"))
+            if case.tool == "bubble_profile_status" and not result.get("ready"):
+                case_ok = False
             results.append(
                 {
                     "index": index,
