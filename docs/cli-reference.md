@@ -339,6 +339,30 @@ bubble-mcp validate-plan --file /path/to/plan.json --execute
 Pass `--execute` to require executable write payloads and destructive-operation
 confirmation checks.
 
+## `bubble-mcp tools guide`
+
+Returns compact routing guidance for agents or humans that need to choose the
+right MCP tool family without reading the full catalog.
+
+```bash
+bubble-mcp tools guide --task "convert an HTML selector from a URL into a Bubble page"
+```
+
+Use this when the request is natural language and the caller needs the likely
+route, setup requirements, execution policy, and next tool families.
+
+## `bubble-mcp tools search`
+
+Searches the exposed MCP catalog and returns compact matching tool metadata.
+
+```bash
+bubble-mcp tools search --query "html selector import" --limit 5
+bubble-mcp tools search --query "workflow page load action"
+```
+
+Use this instead of dumping `tools/list` when an agent only needs a small,
+relevant subset of names, required fields, properties, and annotations.
+
 ## `bubble-mcp smoke runtime`
 
 Runs safe runtime smoke suites through the same tool handlers used by MCP

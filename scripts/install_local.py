@@ -136,34 +136,20 @@ def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, 
     script_path.parent.mkdir(parents=True, exist_ok=True)
     if script_path.exists() or script_path.is_symlink():
         script_path.unlink()
-    if os.name == "nt":
-        body = "\n".join(
-            [
-                f"#!{python}",
-                "import sys",
-                f"sys.path.insert(0, {str(source_dir)!r})",
-                f"from {module_name} import {function_name}",
-                "if __name__ == '__main__':",
-                "    sys.argv[0] = sys.argv[0].removesuffix('.exe')",
-                f"    raise SystemExit({function_name}())",
-                "",
-            ]
-        )
-    else:
-        code = (
-            "import sys; "
-            f"sys.path.insert(0, {str(source_dir)!r}); "
-            f"from {module_name} import {function_name}; "
-            f"sys.argv[0] = {script_path.name!r}; "
-            f"raise SystemExit({function_name}())"
-        )
-        body = "\n".join(
-            [
-                "#!/bin/sh",
-                f"exec {str(python)!r} -c {code!r} \"$@\"",
-                "",
-            ]
-        )
+    executable_name = script_path.name.removesuffix(".exe")
+    body = "\n".join(
+        [
+            f"#!{python}",
+            "import sys",
+            f"sys.path.insert(0, {str(source_dir)!r})",
+            f"from {module_name} import {function_name}",
+            "",
+            "if __name__ == '__main__':",
+            f"    sys.argv[0] = {executable_name!r}",
+            f"    raise SystemExit({function_name}())",
+            "",
+        ]
+    )
     script_path.write_text(body, encoding="utf-8")
     script_path.chmod(0o755)
     _clear_macos_hidden_flag(script_path)

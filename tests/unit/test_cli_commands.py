@@ -164,6 +164,40 @@ def test_cli_smoke_runtime_execute_write_requires_execute(capsys) -> None:  # ty
     assert payload["error"] == "execute-write requires execute=true."
 
 
+def test_cli_tools_guide_routes_task_without_catalog_dump(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert (
+        main(
+            [
+                "tools",
+                "guide",
+                "--task",
+                "Convert an HTML selector from a URL into a Bubble page and then inspect the changelog.",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["direct_tool_policy"]["avoid_shell_cli_discovery"] is True
+    intents = {route["intent"] for route in payload["recommended_routes"]}
+    assert "import_html_component" in intents
+    assert "branches_or_changelog" in intents
+
+
+def test_cli_tools_search_returns_compact_matches(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["tools", "search", "--query", "html selector import", "--limit", "5"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["limit"] == 5
+    names = [match["name"] for match in payload["matches"]]
+    assert "create_from_html" in names
+    match = next(match for match in payload["matches"] if match["name"] == "create_from_html")
+    assert "selector" in match["properties"]
+    assert match["required"] == ["profile", "context", "parent"]
+
+
 def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     session_path = tmp_path / "session.json"

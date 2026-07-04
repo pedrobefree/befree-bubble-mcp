@@ -39,6 +39,7 @@ from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.runtime_smoke import run_runtime_smoke
+from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog
 from bubble_mcp.server.tools import call_tool
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
@@ -443,6 +444,16 @@ def command_changelog_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_tools_guide(args: argparse.Namespace) -> int:
+    emit_json(agent_guide(task=args.task or ""))
+    return 0
+
+
+def command_tools_search(args: argparse.Namespace) -> int:
+    emit_json(search_tool_catalog(args.query, limit=args.limit))
+    return 0
+
+
 def command_smoke_runtime(args: argparse.Namespace) -> int:
     result = run_runtime_smoke(
         call_tool,
@@ -709,6 +720,24 @@ def build_parser() -> argparse.ArgumentParser:
     changelog_fetch_parser.add_argument("--change-path", default="")
     changelog_fetch_parser.add_argument("--user-id", action="append", default=[])
     changelog_fetch_parser.set_defaults(func=command_changelog_fetch)
+
+    tools_parser = subparsers.add_parser("tools", help="Discover the MCP tool catalog without opening the full schema.")
+    tools_subparsers = tools_parser.add_subparsers(dest="tools_command", required=True)
+
+    tools_guide_parser = tools_subparsers.add_parser(
+        "guide",
+        help="Return compact agent routing guidance for a Bubble task.",
+    )
+    tools_guide_parser.add_argument("--task", default="", help="Optional natural-language Bubble task to route.")
+    tools_guide_parser.set_defaults(func=command_tools_guide)
+
+    tools_search_parser = tools_subparsers.add_parser(
+        "search",
+        help="Search exposed MCP tools and return compact matching schemas.",
+    )
+    tools_search_parser.add_argument("--query", required=True, help="Search text such as 'html selector import'.")
+    tools_search_parser.add_argument("--limit", type=int, default=8, help="Maximum matches to return, clamped to 1-25.")
+    tools_search_parser.set_defaults(func=command_tools_search)
 
     smoke_parser = subparsers.add_parser("smoke", help="Run safe runtime smoke checks.")
     smoke_subparsers = smoke_parser.add_subparsers(dest="smoke_command", required=True)
