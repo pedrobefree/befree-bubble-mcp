@@ -152,6 +152,10 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_profile_status`: reports whether a configured profile has matching
   session metadata and loadable/fresh context, plus next actions when session
   login or context detection is still needed.
+- `bubble_session_inspect`: inspects one stored profile session with redacted
+  session data, stored header keys, cookie presence, and computed Bubble write
+  headers. Use it to debug auth/session capture without shelling out to
+  `bubble-mcp session inspect`.
 - `bubble_readiness_check`: runs server health, compact coverage/catalog-quality smoke, agent-routing, profile-status readiness when a profile is provided, and optional profile safe-read or family-preview checks in one call. Use this before broad Bubble work or after installation; pass `include_details=true` only when debugging a failed nested check.
 - `bubble_task_runbook`: returns a one-call compact runbook for a Bubble task, including route intents, ordered recipe steps, safeguards, compact relevant tool matches, and optional profile readiness. Use this as the preferred planning call for agents.
 - `bubble_agent_guide`: returns a compact routing guide for agents. Call it

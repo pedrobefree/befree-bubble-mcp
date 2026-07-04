@@ -36,6 +36,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_eval_export_expert",
     "bubble_compile_plan",
     "bubble_session_list",
+    "bubble_session_inspect",
     "bubble_session_import",
     "bubble_editor_write",
     "bubble_execute_plan",

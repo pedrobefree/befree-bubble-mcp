@@ -511,6 +511,12 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "Return local Bubble MCP server health and capability metadata.",
         ),
         tool_schema(
+            "bubble_session_inspect",
+            "Inspect redacted stored Bubble session data and computed editor write headers for one profile. Use this to debug whether a captured/imported session contains the headers needed for authenticated writes. Read-only.",
+            ["profile", "app_id"],
+            required=["profile"],
+        ),
+        tool_schema(
             "bubble_readiness_check",
             "Run the recommended Bubble MCP readiness sequence in one call: server health, compact catalog coverage/quality gate, agent-routing smoke, profile-status readiness when a profile is provided, and optional profile safe-read/family-preview checks. Read-only.",
             [

@@ -383,6 +383,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "and before execution when the caller needs auditable payloads."
     ),
     "bubble_session_list": "List stored Bubble editor session metadata for local profiles. Secrets are redacted. Read-only.",
+    "bubble_session_inspect": (
+        "Inspect a stored Bubble editor session for one profile, returning redacted session metadata, captured header "
+        "keys, cookie presence, and computed /appeditor/write headers. Use this to debug authentication/session "
+        "capture without exposing secrets. Read-only."
+    ),
     "bubble_session_import": (
         "Import captured Bubble editor headers/cookies into a local profile so future mutating tools can write through "
         "the user's authenticated editor session."
@@ -919,6 +924,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_context_summary",
         "bubble_context_find",
         "bubble_session_list",
+        "bubble_session_inspect",
         "bubble_eval_run",
         "bubble_eval_export_expert",
         "bubble_plan",

@@ -41,9 +41,12 @@ def test_tools_list_includes_profile_list() -> None:
     names = list(tools)
     assert "bubble_profile_list" in names
     assert "bubble_profile_status" in names
+    assert "bubble_session_inspect" in names
     assert "bubble_task_runbook" in names
     assert tools["bubble_session_list"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_session_list"]["annotations"]["destructiveHint"] is False
+    assert tools["bubble_session_inspect"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_session_inspect"]["inputSchema"]["required"] == ["profile"]
     assert "exact" in tools["bubble_context_find"]["inputSchema"]["properties"]
     assert "include_metadata" in tools["bubble_context_find"]["inputSchema"]["properties"]
 
@@ -219,6 +222,51 @@ def test_profile_status_tool_and_resource(tmp_path, monkeypatch) -> None:  # typ
     resource_payload = json.loads(content["text"])
     assert resource_payload["profile"]["name"] == "client"
     assert resource_payload["ready"] is False
+
+
+def test_session_inspect_tool_returns_redacted_computed_headers(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_session(
+        "client",
+        BubbleSessionData(
+            app_id="client-app",
+            url="https://bubble.io/page?id=client-app",
+            method="POST",
+            headers={
+                "accept": "application/json",
+                "cookie": "bubble_session=secret-cookie",
+                "user-agent": "Test Agent",
+                "x-bubble-client-version": "client-version-token",
+            },
+            cookies="bubble_session=secret-cookie",
+            app_version="test",
+            captured_at="2026-07-04T10:00:00+00:00",
+            source="test",
+        ),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 45,
+            "method": "tools/call",
+            "params": {"name": "bubble_session_inspect", "arguments": {"profile": "client"}},
+        }
+    )
+
+    assert response is not None
+    raw_text = response["result"]["content"][0]["text"]
+    assert "secret-cookie" not in raw_text
+    payload = json.loads(raw_text)
+    assert payload["ok"] is True
+    assert payload["profile"] == "client"
+    assert payload["session"]["cookies"] == "[REDACTED]"
+    assert payload["session_auth_present"] is True
+    assert payload["session_auth_value_length"] == len("bubble_session=secret-cookie")
+    assert "cookie" in [key.lower() for key in payload["stored_header_keys"]]
+    assert "x-bubble-appname" in payload["computed_write_header_keys"]
+    assert payload["computed_write_headers"]["cookie"] == "[REDACTED]"
+    assert response["result"]["structuredContent"] == payload
 
 
 def test_context_find_tool_returns_agent_summary_envelope() -> None:
@@ -1338,6 +1386,10 @@ def test_native_family_schemas_expose_agent_selection_constraints() -> None:
     session_import = tools["bubble_session_import"]["inputSchema"]
     assert session_import["properties"]["session"]["properties"]["headers"]["type"] == "object"
     assert session_import["properties"]["session"]["properties"]["url"]["format"] == "uri"
+
+    session_inspect = tools["bubble_session_inspect"]["inputSchema"]
+    assert session_inspect["required"] == ["profile"]
+    assert "app_id" in session_inspect["properties"]
 
     changelog = tools["bubble_changelog_fetch"]["inputSchema"]
     assert changelog["properties"]["start_index"]["minimum"] == 0

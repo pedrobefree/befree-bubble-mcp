@@ -16,7 +16,8 @@ from bubble_mcp.context.freshness import context_freshness, load_context_with_ov
 from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import load_settings, resolve_profile
-from bubble_mcp.execution.client import BubbleEditorClient
+from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
 from bubble_mcp.execution.editor_api import (
     create_bubble_branch,
     delete_bubble_branch,
@@ -297,6 +298,31 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         }
     if name == "bubble_session_list":
         return {"ok": True, "sessions": list_sessions()}
+    if name == "bubble_session_inspect":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_session_inspect requires a profile.")
+        inspected_session = load_session(profile)
+        if inspected_session is None:
+            raise ValueError(f"No Bubble session stored for profile '{profile}'.")
+        app_id = str(args.get("app_id") or inspected_session.app_id or "").strip()
+        sample_payload: dict[str, Any] = {
+            "appname": app_id,
+            "app_version": inspected_session.app_version or "test",
+            "changes": [],
+        }
+        write_headers = build_editor_write_headers(inspected_session, sample_payload)
+        return {
+            "ok": True,
+            "profile": profile,
+            "session": inspected_session.to_dict(redact=True),
+            "stored_header_keys": sorted(inspected_session.headers.keys()),
+            "session_auth_present": bool(inspected_session.cookies),
+            "session_auth_value_length": len(inspected_session.cookies or ""),
+            "computed_write_header_keys": sorted(write_headers.keys()),
+            "computed_write_headers": redact_sensitive(write_headers),
+        }
     if name == "bubble_session_import":
         args = arguments or {}
         raw_session = args.get("session")

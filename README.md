@@ -150,7 +150,8 @@ bubble-mcp session inspect --profile my-app
 ```
 
 `session inspect` never prints raw cookies. Use it to confirm that cookies are
-present and Bubble write headers can be computed.
+present and Bubble write headers can be computed. MCP clients can perform the
+same read-only check with `bubble_session_inspect`.
 
 ### 4. Detect Project Context
 
