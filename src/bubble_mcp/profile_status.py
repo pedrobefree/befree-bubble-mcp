@@ -116,7 +116,8 @@ def _next_actions(*, profile: BubbleProfile | None, session: dict[str, Any] | No
     if not session or not session.get("exists"):
         actions.append(
             {
-                "tool": "bubble_session_import",
+                "tool": "bubble_session_login",
+                "args": {"profile": profile.name, "app_id": profile.app_id, "wait_seconds": 180},
                 "command": f"bubble-mcp session login --profile {profile.name} --app-id {profile.app_id}",
                 "reason": "No captured Bubble editor session exists for this profile. Run interactive session login or import a captured session before real writes.",
             }
@@ -124,7 +125,8 @@ def _next_actions(*, profile: BubbleProfile | None, session: dict[str, Any] | No
     elif not session.get("app_id_matches_profile"):
         actions.append(
             {
-                "tool": "bubble_session_import",
+                "tool": "bubble_session_login",
+                "args": {"profile": profile.name, "app_id": profile.app_id, "wait_seconds": 180},
                 "command": f"bubble-mcp session login --profile {profile.name} --app-id {profile.app_id}",
                 "reason": "Stored session app_id does not match the configured profile app_id. Capture a new session for this profile.",
             }

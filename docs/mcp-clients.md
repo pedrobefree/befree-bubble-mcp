@@ -165,6 +165,11 @@ families or `write_payload` for exact Bubble editor writes.
   session data, stored header keys, cookie presence, and computed Bubble write
   headers. Use it to debug auth/session capture without shelling out to
   `bubble-mcp session inspect`.
+- `bubble_session_login`: opens a local Playwright browser for interactive
+  Bubble login, captures editor cookies/request headers, and saves the redacted
+  session for a profile. Use it from MCP clients when session readiness reports
+  a missing or mismatched session and the user can complete login in the opened
+  browser.
 - `bubble_readiness_check`: runs server health, compact coverage/catalog-quality smoke, agent-routing, profile-status readiness when a profile is provided, and optional profile safe-read or family-preview checks in one call. Use this before broad Bubble work or after installation; pass `include_details=true` only when debugging a failed nested check.
 - `bubble_task_runbook`: returns a one-call compact runbook for a Bubble task, including route intents, ordered recipe steps, safeguards, compact relevant tool matches, and optional profile readiness. Use this as the preferred planning call for agents.
 - `bubble_agent_guide`: returns a compact routing guide for agents. Call it
@@ -190,6 +195,8 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_compile_plan`: compiles supported abstract plan steps into Bubble write payloads.
 - `bubble_eval_run`: runs a deterministic planning eval dataset. Pass `compile=true` and `app_id` to include compiler coverage, token estimates, parser summary, and fallback reasons; pass `filter`, `failed_from`, `offset`, or `limit` for focused reruns.
 - `bubble_session_list`: lists locally imported Bubble editor sessions.
+- `bubble_session_login`: captures and stores a Bubble editor session through a
+  local interactive browser.
 - `bubble_session_import`: imports session headers/cookies into local storage.
 - `bubble_editor_write`: posts an exact Bubble `/appeditor/write` payload. Set `execute=true` to mutate Bubble.
 - `bubble_execute_plan`: executes plan steps. Set `compile=true` with `app_id` to compile supported abstract steps before execution. Set `execute=true` to mutate Bubble.

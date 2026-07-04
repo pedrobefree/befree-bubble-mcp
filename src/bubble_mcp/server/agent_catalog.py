@@ -398,6 +398,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "keys, cookie presence, and computed /appeditor/write headers. Use this to debug authentication/session "
         "capture without exposing secrets. Read-only."
     ),
+    "bubble_session_login": (
+        "Start an interactive local Playwright browser login for one Bubble profile, capture editor cookies and "
+        "request headers, and save the redacted session locally. Use when the profile lacks an authenticated Bubble "
+        "editor session and the user can complete login in the opened browser."
+    ),
     "bubble_session_import": (
         "Import captured Bubble editor headers/cookies into a local profile so future mutating tools can write through "
         "the user's authenticated editor session."
@@ -830,6 +835,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "openWorldHint": name
         in {
             "bubble_project_bootstrap",
+            "bubble_session_login",
             "bubble_context_detect",
             "create_from_html",
             "bubble_editor_write",

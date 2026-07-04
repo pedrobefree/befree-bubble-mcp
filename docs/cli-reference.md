@@ -603,6 +603,7 @@ Implemented tools:
 - `bubble_health_check`
 - `bubble_profile_status`
 - `bubble_session_inspect`
+- `bubble_session_login`
 - `bubble_readiness_check`
 - `bubble_task_runbook`
 - `bubble_agent_guide`

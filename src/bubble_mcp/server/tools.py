@@ -38,6 +38,7 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
+from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
 
@@ -418,6 +419,41 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             "session_auth_value_length": len(inspected_session.cookies or ""),
             "computed_write_header_keys": sorted(write_headers.keys()),
             "computed_write_headers": redact_sensitive(write_headers),
+        }
+    if name == "bubble_session_login":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_session_login requires a profile.")
+        settings = load_settings()
+        configured_profile = resolve_profile(settings, profile)
+        app_id = str(args.get("app_id") or (configured_profile.app_id if configured_profile else "")).strip()
+        if not app_id:
+            raise ValueError("bubble_session_login requires app_id when the profile is not configured.")
+        app_version = str(
+            args.get("app_version") or (configured_profile.app_version if configured_profile else "test")
+        ).strip() or "test"
+        progress_messages: list[str] = []
+
+        def collect_progress(message: str) -> None:
+            progress_messages.append(message)
+
+        session = capture_session_with_playwright(
+            app_id=app_id,
+            editor_url=str(args.get("editor_url") or "").strip() or None,
+            headless=bool(args.get("headless")),
+            wait_seconds=int(args.get("wait_seconds") or 180),
+            user_data_dir=settings.config_dir / "browser-profiles" / profile,
+            app_version=app_version,
+            progress=collect_progress,
+        )
+        path = save_session(profile, session)
+        return {
+            "ok": True,
+            "profile": profile,
+            "path": str(path),
+            "progress": progress_messages,
+            "session": session.to_dict(redact=True),
         }
     if name == "bubble_session_import":
         args = arguments or {}

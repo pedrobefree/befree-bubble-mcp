@@ -6,7 +6,7 @@ import bubble_mcp.server.completion as completion_module
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
-from bubble_mcp.sessions.store import BubbleSessionData, save_session
+from bubble_mcp.sessions.store import BubbleSessionData, load_session, save_session, session_from_payload
 
 
 def first_change(payload: dict, intent_name: str) -> dict:  # type: ignore[type-arg]
@@ -44,6 +44,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_profile_list" in names
     assert "bubble_profile_status" in names
     assert "bubble_session_inspect" in names
+    assert "bubble_session_login" in names
     assert "bubble_task_runbook" in names
     assert tools["bubble_project_bootstrap"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_project_bootstrap"]["annotations"]["idempotentHint"] is True
@@ -55,6 +56,9 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_session_list"]["annotations"]["destructiveHint"] is False
     assert tools["bubble_session_inspect"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_session_inspect"]["inputSchema"]["required"] == ["profile"]
+    assert tools["bubble_session_login"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_session_login"]["annotations"]["openWorldHint"] is True
+    assert tools["bubble_session_login"]["inputSchema"]["required"] == ["profile"]
     assert "exact" in tools["bubble_context_find"]["inputSchema"]["properties"]
     assert "include_metadata" in tools["bubble_context_find"]["inputSchema"]["properties"]
 
@@ -263,7 +267,7 @@ def test_project_bootstrap_creates_profile_and_returns_next_actions(tmp_path, mo
     assert payload["ready"] is False
     assert payload["status"]["profile"]["app_id"] == "client-app"
     assert [action["tool"] for action in payload["next_actions"]] == [
-        "bubble_session_import",
+        "bubble_session_login",
         "bubble_context_detect",
     ]
 
@@ -353,6 +357,58 @@ def test_session_inspect_tool_returns_redacted_computed_headers(tmp_path, monkey
     assert "x-bubble-appname" in payload["computed_write_header_keys"]
     assert payload["computed_write_headers"]["cookie"] == "[REDACTED]"
     assert response["result"]["structuredContent"] == payload
+
+
+def test_session_login_tool_saves_redacted_browser_session(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={"client": BubbleProfile(name="client", app_id="client-app", appname="client-app")},
+        )
+    )
+
+    def fake_capture_session_with_playwright(**kwargs):  # type: ignore[no-untyped-def]
+        assert kwargs["app_id"] == "client-app"
+        assert kwargs["wait_seconds"] == 5
+        assert kwargs["user_data_dir"] == tmp_path / "browser-profiles" / "client"
+        kwargs["progress"]("Session cookies detected. You can close the browser now.")
+        return session_from_payload(
+            {
+                "appId": "client-app",
+                "url": "https://bubble.io/page?id=client-app",
+                "headers": {"Cookie": "sid=secret", "User-Agent": "test"},
+                "appVersion": "test",
+                "source": "browser",
+            }
+        )
+
+    monkeypatch.setattr("bubble_mcp.server.tools.capture_session_with_playwright", fake_capture_session_with_playwright)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 47,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_session_login",
+                "arguments": {"profile": "client", "wait_seconds": 5},
+            },
+        }
+    )
+
+    assert response is not None
+    raw_text = response["result"]["content"][0]["text"]
+    assert "sid=secret" not in raw_text
+    payload = json.loads(raw_text)
+    assert payload["ok"] is True
+    assert payload["profile"] == "client"
+    assert payload["progress"] == ["Session cookies detected. You can close the browser now."]
+    assert payload["session"]["headers"]["Cookie"] == "[REDACTED]"
+    saved = load_session("client", tmp_path)
+    assert saved is not None
+    assert saved.cookies == "sid=secret"
 
 
 def test_context_find_tool_returns_agent_summary_envelope() -> None:
@@ -1044,18 +1100,21 @@ def test_task_recipe_setup_context_includes_profile_add_and_session_inspect() ->
     assert payload["recipe"] == "setup_or_refresh_context"
     assert payload["inputs"]["profile"] == "cliente2"
     tools = [step["tool"] for step in payload["steps"]]
-    assert tools[:5] == [
+    assert tools[:6] == [
         "bubble_project_bootstrap",
         "bubble_profile_status",
         "bubble_profile_list",
         "bubble_profile_add",
+        "bubble_session_login",
         "bubble_session_inspect",
     ]
     assert payload["steps"][0]["args"]["profile"] == "$profile"
     assert payload["steps"][0]["args"]["app_id"] == "$app_id"
     assert payload["steps"][3]["args"]["name"] == "$profile"
     assert payload["steps"][3]["args"]["app_id"] == "$app_id"
-    assert payload["steps"][4]["args"] == {"profile": "$profile"}
+    assert payload["steps"][4]["args"]["profile"] == "$profile"
+    assert payload["steps"][4]["args"]["wait_seconds"] == 180
+    assert payload["steps"][5]["args"] == {"profile": "$profile"}
 
 
 def test_task_recipe_quality_gate_uses_consolidated_coverage_smoke() -> None:
@@ -1512,6 +1571,11 @@ def test_native_family_schemas_expose_agent_selection_constraints() -> None:
     session_inspect = tools["bubble_session_inspect"]["inputSchema"]
     assert session_inspect["required"] == ["profile"]
     assert "app_id" in session_inspect["properties"]
+
+    session_login = tools["bubble_session_login"]["inputSchema"]
+    assert session_login["required"] == ["profile"]
+    assert session_login["properties"]["wait_seconds"]["default"] == 180
+    assert session_login["properties"]["headless"]["default"] is False
 
     changelog = tools["bubble_changelog_fetch"]["inputSchema"]
     assert changelog["properties"]["start_index"]["minimum"] == 0

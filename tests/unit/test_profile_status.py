@@ -86,7 +86,8 @@ def test_profile_status_reports_missing_setup_next_actions(tmp_path, monkeypatch
     assert status["session"]["exists"] is False
     assert status["context"]["loadable"] is False
     tools = [action["tool"] for action in status["next_actions"]]
-    assert tools == ["bubble_session_import", "bubble_context_detect"]
+    assert tools == ["bubble_session_login", "bubble_context_detect"]
+    assert status["next_actions"][0]["args"]["wait_seconds"] == 180
     assert "session login" in status["next_actions"][0]["command"]
 
 

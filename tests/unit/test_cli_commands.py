@@ -429,7 +429,7 @@ def test_cli_profile_bootstrap_creates_profile(tmp_path, monkeypatch, capsys) ->
     assert payload["profile_changed"] is True
     assert payload["status"]["profile"]["app_id"] == "synthetic-app"
     assert [action["tool"] for action in payload["next_actions"]] == [
-        "bubble_session_import",
+        "bubble_session_login",
         "bubble_context_detect",
     ]
 

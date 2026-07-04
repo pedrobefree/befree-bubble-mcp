@@ -165,6 +165,17 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Force context detection when detect_context is true.",
         default=False,
     ),
+    "wait_seconds": _prop(
+        "integer",
+        "Maximum time to keep the local browser login flow open while polling for Bubble session cookies.",
+        default=180,
+        minimum=1,
+    ),
+    "headless": _prop(
+        "boolean",
+        "Run the browser in headless mode. Leave false for normal user-driven Bubble login.",
+        default=False,
+    ),
     "bubble_file": _prop(
         "string",
         "Optional .bubble export path. This is the preferred source when available because it contains the real project structure.",
@@ -576,6 +587,12 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "bubble_session_inspect",
             "Inspect redacted stored Bubble session data and computed editor write headers for one profile. Use this to debug whether a captured/imported session contains the headers needed for authenticated writes. Read-only.",
             ["profile", "app_id"],
+            required=["profile"],
+        ),
+        tool_schema(
+            "bubble_session_login",
+            "Open a local Playwright browser, let the user log in to Bubble, capture editor cookies and request headers, and save the redacted session for a profile. This is interactive and writes only local MCP session storage.",
+            ["profile", "app_id", "editor_url", "app_version", "wait_seconds", "headless"],
             required=["profile"],
         ),
         tool_schema(

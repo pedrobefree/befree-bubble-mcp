@@ -139,6 +139,10 @@ Then capture the session:
 bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180
 ```
 
+MCP clients can trigger the same interactive browser capture with
+`bubble_session_login` when a readiness check reports that a profile has no
+stored session.
+
 The command opens a local Chromium window. Log in to Bubble and keep the editor
 tab open until the terminal prints:
 

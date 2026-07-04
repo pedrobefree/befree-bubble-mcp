@@ -34,7 +34,7 @@ def _assert_next_actions(status: dict[str, Any]) -> None:
     if not isinstance(actions, list):
         raise AssertionError("profile status did not include next_actions")
     tools = [action.get("tool") for action in actions if isinstance(action, dict)]
-    if tools != ["bubble_session_import", "bubble_context_detect"]:
+    if tools != ["bubble_session_login", "bubble_context_detect"]:
         raise AssertionError(f"unexpected next action tools: {tools!r}")
 
 
