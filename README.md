@@ -216,8 +216,8 @@ bubble-mcp profile status --profile my-app
 
 The `ready` flag is true when the profile exists, the stored session targets
 the same Bubble app, and the compact context is loadable and fresh. If setup is
-incomplete, `next_actions` tells you whether to run session login/import or
-context detection.
+incomplete, `next_actions` tells you whether to run interactive session login,
+explicit session import, or context detection.
 
 ### 6. Use The Profile From Your MCP Client
 
@@ -304,8 +304,10 @@ Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
 The `coverage` suite runs local catalog coverage and catalog quality checks.
 The `agent-routing` suite validates representative natural-language Bubble
 requests against `bubble_task_runbook`, `bubble_agent_guide`,
-`bubble_task_recipe`, and `bubble_tool_search`; it does not post changes to
-Bubble.
+`bubble_task_recipe`, and `bubble_tool_search`; it includes HTML import, page
+creation, Figma/style sync, branches/changelog, setup/context refresh,
+interactive session login, and workflow prompts, and it does not post changes
+to Bubble.
 The `preview-write` suite compiles representative mutations with
 `execute=false`; it does not post changes to Bubble.
 The `family-preview` suite exercises representative visual, container, input,
