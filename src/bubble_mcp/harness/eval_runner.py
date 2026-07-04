@@ -9,6 +9,7 @@ from typing import Any
 
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.harness.visual import compare_visual_snapshots, load_visual_snapshot
+from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.validators.semantic import validate_plan
@@ -133,8 +134,52 @@ def _visual_snapshot_or_capture(
         viewport_width=int(_first_present(case, "visual_viewport_width", "visualViewportWidth", default=1365)),
         viewport_height=int(_first_present(case, "visual_viewport_height", "visualViewportHeight", default=768)),
         wait_ms=int(_first_present(case, "visual_wait_ms", "visualWaitMs", default=0)),
+        selector_timeout_ms=int(_first_present(case, "visual_selector_timeout_ms", "visualSelectorTimeoutMs", default=5000)),
         max_nodes=int(_first_present(case, "visual_max_nodes", "visualMaxNodes", default=250)),
         allow_raw_fallback=bool(_first_present(case, "visual_allow_raw_fallback", "visualAllowRawFallback", default=True)),
+    )
+
+
+def _visual_actual_bubble_snapshot(case: dict[str, Any]) -> dict[str, Any] | None:
+    value = _first_present(case, "visual_actual_bubble", "visualActualBubble")
+    if not isinstance(value, dict):
+        has_flat_config = any(
+            key in case
+            for key in (
+                "visual_actual_profile",
+                "visualActualProfile",
+                "visual_actual_app_id",
+                "visualActualAppId",
+                "visual_actual_url",
+                "visualActualUrl",
+            )
+        )
+        if not has_flat_config:
+            return None
+        value = {
+            "profile": _first_present(case, "visual_actual_profile", "visualActualProfile", default=""),
+            "app_id": _first_present(case, "visual_actual_app_id", "visualActualAppId", default=""),
+            "app_version": _first_present(case, "visual_actual_app_version", "visualActualAppVersion", default="test"),
+            "page": _first_present(case, "visual_actual_page", "visualActualPage", "visual_context", "visualContext", default="index"),
+            "url": _first_present(case, "visual_actual_url", "visualActualUrl", default=""),
+            "public_base_url": _first_present(case, "visual_actual_public_base_url", "visualActualPublicBaseUrl", default=""),
+        }
+    query = value.get("url_query") or value.get("urlQuery")
+    clean_query = {str(key): str(item) for key, item in query.items()} if isinstance(query, dict) else {}
+    return capture_bubble_visual_snapshot(
+        profile=str(value.get("profile") or ""),
+        app_id=str(value.get("app_id") or value.get("appId") or ""),
+        app_version=str(value.get("app_version") or value.get("appVersion") or "test"),
+        page=str(value.get("page") or value.get("context") or "index"),
+        selector=str(value.get("selector") or _first_present(case, "visual_actual_selector", "visualActualSelector", "visual_selector", "visualSelector", default="")),
+        public_base_url=str(value.get("public_base_url") or value.get("publicBaseUrl") or ""),
+        url=str(value.get("url") or ""),
+        query=clean_query,
+        viewport_width=int(value.get("viewport_width") or value.get("viewportWidth") or _first_present(case, "visual_viewport_width", "visualViewportWidth", default=1365)),
+        viewport_height=int(value.get("viewport_height") or value.get("viewportHeight") or _first_present(case, "visual_viewport_height", "visualViewportHeight", default=768)),
+        wait_ms=int(value.get("wait_ms") or value.get("waitMs") or _first_present(case, "visual_wait_ms", "visualWaitMs", default=1000)),
+        selector_timeout_ms=int(value.get("selector_timeout_ms") or value.get("selectorTimeoutMs") or _first_present(case, "visual_selector_timeout_ms", "visualSelectorTimeoutMs", default=10000)),
+        max_nodes=int(value.get("max_nodes") or value.get("maxNodes") or _first_present(case, "visual_max_nodes", "visualMaxNodes", default=250)),
     )
 
 
@@ -272,7 +317,7 @@ def run_eval(
             snapshot_keys=("visual_actual", "visualActual"),
             source_keys=("visual_actual_source", "visualActualSource"),
             selector_keys=("visual_actual_selector", "visualActualSelector", "visual_selector", "visualSelector"),
-        )
+        ) or _visual_actual_bubble_snapshot(case)
         visual_report: dict[str, Any] | None = None
         visual_ok = True
         if visual_reference is not None or visual_actual is not None:

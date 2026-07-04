@@ -38,6 +38,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_eval_export_expert",
     "bubble_visual_compare",
     "bubble_visual_capture",
+    "bubble_visual_capture_actual",
     "bubble_compile_plan",
     "bubble_session_list",
     "bubble_session_inspect",

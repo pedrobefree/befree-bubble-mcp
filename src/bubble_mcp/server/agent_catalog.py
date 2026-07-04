@@ -398,6 +398,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "bubble_visual_compare when the agent needs a reference or actual snapshot from source material without "
         "hand-authoring JSON. Read-only."
     ),
+    "bubble_visual_capture_actual": (
+        "Capture the actual rendered Bubble app or preview output for a profile, app, page, or explicit URL. Use "
+        "this after a Bubble write/import to compare the real rendered result against a source/reference snapshot. "
+        "Read-only."
+    ),
     "bubble_compile_plan": (
         "Compile supported abstract Bubble MCP plan steps into Bubble /appeditor/write payloads. Use after planning "
         "and before execution when the caller needs auditable payloads."
@@ -896,6 +901,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_editor_write",
             "bubble_execute_plan",
             "bubble_visual_capture",
+            "bubble_visual_capture_actual",
             "bubble_branch_list",
             "bubble_branch_contributors",
             "bubble_changelog_fetch",
@@ -1003,6 +1009,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_eval_export_expert",
         "bubble_visual_compare",
         "bubble_visual_capture",
+        "bubble_visual_capture_actual",
         "bubble_plan",
         "bubble_plan_dry_run",
         "bubble_compile_plan",

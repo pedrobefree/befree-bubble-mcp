@@ -407,6 +407,23 @@ bubble-mcp eval capture-visual \
 For deterministic local corpus tests, use `--no-rendered-html` with a fixture
 file. For URL fidelity checks, keep the default rendered browser capture.
 
+## `bubble-mcp eval capture-bubble-visual`
+
+Captures the actual rendered Bubble app/preview output for a configured profile,
+app, page, or explicit URL. Use it after an authenticated write/import to create
+the actual snapshot that will be compared against the source/reference.
+
+```bash
+bubble-mcp eval capture-bubble-visual \
+  --profile my-app \
+  --page mcp-01 \
+  --selector '#hero' \
+  --output /tmp/hero-actual.json
+```
+
+By default `app_version=test` maps to `/version-test`. Use `--url` for a fully
+explicit app URL, or `--public-base-url` for custom Bubble app domains.
+
 ## `bubble-mcp validate-plan`
 
 Validates a plan JSON file.
@@ -654,6 +671,7 @@ Implemented tools:
 - `bubble_eval_export_expert`
 - `bubble_visual_compare`
 - `bubble_visual_capture`
+- `bubble_visual_capture_actual`
 - `bubble_session_list`
 - `bubble_session_import`
 - `bubble_editor_write`

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import bubble_mcp.harness.eval_runner as eval_runner
 from bubble_mcp.harness.eval_runner import run_eval
 
 
@@ -122,3 +123,36 @@ def test_run_eval_can_capture_visual_sources_before_comparison() -> None:
     assert report["summary"]["visual_cases"] == 1
     assert report["summary"]["visual_ok"] == 1
     assert report["results"][0]["visual_report"]["summary"]["reference_image_count"] == 1
+
+
+def test_run_eval_can_capture_actual_from_bubble_config(monkeypatch) -> None:
+    reference = {
+        "root": {"id": "hero", "bbox": {"width": 100, "height": 50}},
+        "nodes": [{"tag": "h1", "text": "Hello", "bbox": {"width": 100, "height": 20}}],
+    }
+
+    def fake_actual_capture(**_kwargs):
+        return reference
+
+    monkeypatch.setattr(eval_runner, "capture_bubble_visual_snapshot", fake_actual_capture)
+    dataset = [
+        {
+            "id": "visual_actual_bubble",
+            "message": "Create a text saying \"Hello\"",
+            "expected_tool": "create_text",
+            "expected_args": {"context": "index", "content": "Hello"},
+            "visual_reference": reference,
+            "visual_actual_bubble": {
+                "url": "https://demo.bubbleapps.io/version-test/index",
+                "selector": "#hero",
+            },
+        }
+    ]
+    path = Path("/tmp/bubble-visual-actual-eval.json")
+    path.write_text(json.dumps(dataset), encoding="utf-8")
+
+    report = run_eval(path)
+
+    assert report["summary"]["passed"] == 1
+    assert report["summary"]["visual_ok"] == 1
+    assert report["results"][0]["visual_report"]["ok"] is True

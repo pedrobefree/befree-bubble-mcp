@@ -76,10 +76,13 @@ regression triage.
 ## Visual Snapshot Harness
 
 Use `bubble-mcp eval capture-visual` or MCP tool `bubble_visual_capture` to
-capture a structured snapshot from a URL, HTML file, or raw HTML snippet. Then
-use `bubble-mcp eval visual` or MCP tool `bubble_visual_compare` to compare two
-snapshots. This is the first lightweight perceptual gate for HTML/Figma/Bubble
-conversion quality before a full authenticated screenshot diff is available.
+capture a structured reference snapshot from a URL, HTML file, or raw HTML
+snippet. Use `bubble-mcp eval capture-bubble-visual` or MCP tool
+`bubble_visual_capture_actual` to capture the actual rendered Bubble
+app/preview output after a write/import. Then use `bubble-mcp eval visual` or
+MCP tool `bubble_visual_compare` to compare the two snapshots. This is the
+first lightweight perceptual gate for HTML/Figma/Bubble conversion quality
+before a full authenticated screenshot diff is available.
 
 ```bash
 bubble-mcp eval capture-visual \
@@ -88,9 +91,15 @@ bubble-mcp eval capture-visual \
   --no-rendered-html \
   --output /tmp/hero-reference.json
 
+bubble-mcp eval capture-bubble-visual \
+  --profile my-app \
+  --page mcp-01 \
+  --selector '#hero' \
+  --output /tmp/hero-actual.json
+
 bubble-mcp eval visual \
   --reference /tmp/hero-reference.json \
-  --actual tests/fixtures/visual-snapshots/hero-actual-ok.json \
+  --actual /tmp/hero-actual.json \
   --require-images
 ```
 
@@ -99,10 +108,13 @@ Eval cases can also include `visual_reference` / `visual_actual` paths or
 `visual_reference_source` / `visual_actual_source` or camelCase equivalents to
 capture snapshots during the eval run. Use `visual_selector`,
 `visual_rendered_html`, `visual_viewport_width`, `visual_viewport_height`, and
-`visual_wait_ms` to control capture. Visual comparison checks layout geometry,
-required text, image dimensions, typography, max-width, and gradient
-direction/color order with configurable `visual_tolerance_px` and
-`visual_tolerance_ratio`.
+`visual_wait_ms` to control capture. To capture the actual Bubble result during
+an eval, add `visual_actual_bubble` with `profile`, `app_id`, `app_version`,
+`page`, `selector`, or `url`; flat fields such as `visual_actual_profile`,
+`visual_actual_page`, and `visual_actual_url` are also supported. Visual
+comparison checks layout geometry, required text, image dimensions, typography,
+max-width, and gradient direction/color order with configurable
+`visual_tolerance_px` and `visual_tolerance_ratio`.
 
 ## Agent Routing Smoke
 

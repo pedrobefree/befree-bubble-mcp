@@ -39,6 +39,7 @@ from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
+from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
@@ -335,8 +336,31 @@ def command_eval_capture_visual(args: argparse.Namespace) -> int:
         viewport_width=args.viewport_width,
         viewport_height=args.viewport_height,
         wait_ms=args.wait_ms,
+        selector_timeout_ms=args.selector_timeout_ms,
         max_nodes=args.max_nodes,
         allow_raw_fallback=args.allow_raw_fallback,
+        output=Path(args.output) if args.output else None,
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_eval_capture_bubble_visual(args: argparse.Namespace) -> int:
+    query = _load_optional_json_object(args.query) if args.query else {}
+    result = capture_bubble_visual_snapshot(
+        profile=args.profile or "",
+        app_id=args.app_id or "",
+        app_version=args.app_version or "test",
+        page=args.page or "index",
+        selector=args.selector or "",
+        public_base_url=args.public_base_url or "",
+        url=args.url or "",
+        query={str(key): str(value) for key, value in query.items()},
+        viewport_width=args.viewport_width,
+        viewport_height=args.viewport_height,
+        wait_ms=args.wait_ms,
+        selector_timeout_ms=args.selector_timeout_ms,
+        max_nodes=args.max_nodes,
         output=Path(args.output) if args.output else None,
     )
     emit_json(result)
@@ -830,9 +854,30 @@ def build_parser() -> argparse.ArgumentParser:
     capture_visual_parser.add_argument("--viewport-width", type=int, default=1365)
     capture_visual_parser.add_argument("--viewport-height", type=int, default=768)
     capture_visual_parser.add_argument("--wait-ms", type=int, default=0)
+    capture_visual_parser.add_argument("--selector-timeout-ms", type=int, default=5000)
     capture_visual_parser.add_argument("--max-nodes", type=int, default=250)
     capture_visual_parser.add_argument("--allow-raw-fallback", action=argparse.BooleanOptionalAction, default=True)
     capture_visual_parser.set_defaults(func=command_eval_capture_visual)
+
+    capture_bubble_visual_parser = eval_subparsers.add_parser(
+        "capture-bubble-visual",
+        help="Capture the rendered Bubble app/preview output for a profile, app, page, or explicit URL.",
+    )
+    capture_bubble_visual_parser.add_argument("--profile", default="")
+    capture_bubble_visual_parser.add_argument("--app-id", default="")
+    capture_bubble_visual_parser.add_argument("--app-version", default="test")
+    capture_bubble_visual_parser.add_argument("--page", default="index")
+    capture_bubble_visual_parser.add_argument("--selector", default="")
+    capture_bubble_visual_parser.add_argument("--public-base-url", default="")
+    capture_bubble_visual_parser.add_argument("--url", default="", help="Explicit Bubble app URL override.")
+    capture_bubble_visual_parser.add_argument("--query", default="", help="JSON object or file path with URL query params.")
+    capture_bubble_visual_parser.add_argument("--output", default="")
+    capture_bubble_visual_parser.add_argument("--viewport-width", type=int, default=1365)
+    capture_bubble_visual_parser.add_argument("--viewport-height", type=int, default=768)
+    capture_bubble_visual_parser.add_argument("--wait-ms", type=int, default=1000)
+    capture_bubble_visual_parser.add_argument("--selector-timeout-ms", type=int, default=10000)
+    capture_bubble_visual_parser.add_argument("--max-nodes", type=int, default=250)
+    capture_bubble_visual_parser.set_defaults(func=command_eval_capture_bubble_visual)
 
     session_parser = subparsers.add_parser("session", help="Manage local Bubble editor sessions.")
     session_subparsers = session_parser.add_subparsers(dest="session_command", required=True)

@@ -343,9 +343,15 @@ bubble-mcp eval capture-visual \
   --selector '#hero' \
   --output /tmp/hero-reference.json
 
+bubble-mcp eval capture-bubble-visual \
+  --profile my-app \
+  --page mcp-01 \
+  --selector '#hero' \
+  --output /tmp/hero-actual.json
+
 bubble-mcp eval visual \
   --reference /tmp/hero-reference.json \
-  --actual tests/fixtures/visual-snapshots/hero-actual-ok.json \
+  --actual /tmp/hero-actual.json \
   --require-images
 ```
 

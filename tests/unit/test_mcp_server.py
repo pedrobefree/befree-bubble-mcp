@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 import bubble_mcp.server.completion as completion_module
+import bubble_mcp.server.tools as tools_module
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
@@ -48,6 +49,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_session_login" in names
     assert "bubble_visual_compare" in names
     assert "bubble_visual_capture" in names
+    assert "bubble_visual_capture_actual" in names
     assert "bubble_task_runbook" in names
     assert tools["bubble_project_bootstrap"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_project_bootstrap"]["annotations"]["idempotentHint"] is True
@@ -67,6 +69,8 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_visual_capture"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_visual_capture"]["annotations"]["openWorldHint"] is True
     assert tools["bubble_visual_capture"]["inputSchema"]["required"] == ["source"]
+    assert tools["bubble_visual_capture_actual"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_visual_capture_actual"]["annotations"]["openWorldHint"] is True
     assert tools["create_group"]["inputSchema"]["properties"]["layout"]["enum"] == [
         "column",
         "row",
@@ -130,6 +134,44 @@ def test_visual_capture_tool_returns_structured_snapshot() -> None:
     assert payload["ok"] is True
     assert payload["root"]["id"] == "hero"
     assert payload["rendered"] is False
+
+
+def test_visual_capture_actual_tool_resolves_bubble_preview(monkeypatch) -> None:
+    calls = []
+
+    def fake_capture(**kwargs):
+        calls.append(kwargs)
+        return {
+            "ok": True,
+            "bubble": {"url": "https://demo.bubbleapps.io/version-test/mcp-01"},
+            "root": {"id": "hero"},
+            "nodes": [],
+        }
+
+    monkeypatch.setattr(tools_module, "capture_bubble_visual_snapshot", fake_capture)
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 46,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_visual_capture_actual",
+                "arguments": {
+                    "app_id": "demo",
+                    "app_version": "test",
+                    "page": "mcp-01",
+                    "selector": "#hero",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["bubble"]["url"] == "https://demo.bubbleapps.io/version-test/mcp-01"
+    assert calls[0]["app_id"] == "demo"
+    assert calls[0]["page"] == "mcp-01"
 
 
 def test_ping_returns_empty_success() -> None:

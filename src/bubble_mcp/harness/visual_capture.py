@@ -157,6 +157,7 @@ def _capture_rendered(
     viewport_width: int,
     viewport_height: int,
     wait_ms: int,
+    selector_timeout_ms: int,
     max_nodes: int,
 ) -> JsonObject:
     from playwright.sync_api import sync_playwright
@@ -237,6 +238,8 @@ def _capture_rendered(
                 page.goto(source, wait_until="networkidle")
             else:
                 page.set_content(html, wait_until="networkidle")
+            if selector and selector_timeout_ms > 0:
+                page.wait_for_selector(selector, state="attached", timeout=selector_timeout_ms)
             if wait_ms > 0:
                 page.wait_for_timeout(wait_ms)
             captured = page.evaluate(js, {"selector": selector, "styleFields": STYLE_FIELDS, "maxNodes": max_nodes})
@@ -270,6 +273,7 @@ def capture_visual_snapshot(
     viewport_width: int = 1365,
     viewport_height: int = 768,
     wait_ms: int = 0,
+    selector_timeout_ms: int = 5000,
     max_nodes: int = 250,
     allow_raw_fallback: bool = True,
     output: Path | None = None,
@@ -287,6 +291,7 @@ def capture_visual_snapshot(
                 viewport_width=viewport_width,
                 viewport_height=viewport_height,
                 wait_ms=wait_ms,
+                selector_timeout_ms=selector_timeout_ms,
                 max_nodes=max_nodes,
             )
         except Exception as exc:
