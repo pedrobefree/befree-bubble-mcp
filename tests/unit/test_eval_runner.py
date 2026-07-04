@@ -156,3 +156,18 @@ def test_run_eval_can_capture_actual_from_bubble_config(monkeypatch) -> None:
     assert report["summary"]["passed"] == 1
     assert report["summary"]["visual_ok"] == 1
     assert report["results"][0]["visual_report"]["ok"] is True
+
+
+def test_run_eval_can_assert_expected_visual_regressions() -> None:
+    report = run_eval(Path("tests/fixtures/evals/visual-regression.json"))
+
+    assert report["summary"]["cases"] == 1
+    assert report["summary"]["passed"] == 1
+    assert report["summary"]["visual_cases"] == 1
+    assert report["summary"]["visual_ok"] == 1
+    result = report["results"][0]
+    assert result["visual_expected_ok"] is False
+    assert result["visual_report"]["ok"] is False
+    issue_codes = {item["code"] for item in result["visual_report"]["issue_details"]}
+    assert "gradient_mismatch" in issue_codes
+    assert "image_size_mismatch" in issue_codes

@@ -1234,6 +1234,10 @@ def test_task_recipe_returns_ordered_html_import_steps() -> None:
         "include_metadata": False,
     }
     assert payload["steps"][2]["args"]["execute"] is False
+    assert payload["execution_policy"]["avoid_shell_cli_discovery"] is True
+    assert any("bubble_visual_audit" in gate for gate in payload["quality_gates"])
+    assert any("write_count" in gate for gate in payload["quality_gates"])
+    assert any("bubble_context_detect" in step for step in payload["verification"])
 
 
 def test_task_runbook_routes_visual_quality_gate_to_audit_tools() -> None:
@@ -1263,6 +1267,8 @@ def test_task_runbook_routes_visual_quality_gate_to_audit_tools() -> None:
     assert "bubble_visual_audit" in payload["matched"]["tools"]
     assert [step["tool"] for step in payload["steps"]][-1] == "bubble_visual_audit"
     assert "bubble_visual_audit" in [match["name"] for match in payload["tool_search"]["matches"]]
+    assert any("reference_screenshot" in gate for gate in payload["quality_gates"])
+    assert any("rerun" in step for step in payload["verification"])
 
 
 def test_task_recipe_setup_context_includes_profile_add_and_session_inspect() -> None:
@@ -1338,6 +1344,39 @@ def test_task_recipe_quality_gate_uses_consolidated_coverage_smoke() -> None:
     assert payload["steps"][0]["args"]["profile"] == "$profile"
     assert payload["steps"][1]["tool"] == "bubble_runtime_smoke"
     assert payload["steps"][1]["args"]["suite"] == "family-preview"
+
+
+def test_task_recipe_figma_sync_requires_runtime_and_visual_parity_gate() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 54,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_recipe",
+                "arguments": {
+                    "task": "sincronize um componente do Figma para Bubble e compare com o print original",
+                    "profile": "smoke",
+                    "context": "mcp-01",
+                    "parent": "root",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["recipe"] == "visual_quality_gate"
+    route_tools = {
+        tool
+        for route in payload["recommended_routes"]
+        if route["intent"] == "manage_styles_tokens_design_system"
+        for tool in route["tools"]
+    }
+    assert "sync_figma_component" in route_tools
+    assert "sync_component" in route_tools
+    assert any("structured snapshots" in gate for gate in payload["quality_gates"])
+    assert any("bubble_visual_audit" in step for step in payload["verification"])
 
 
 def test_agent_routing_does_not_treat_bubble_version_test_as_quality_gate() -> None:
@@ -1832,6 +1871,13 @@ def test_legacy_catalog_tools_expose_common_agent_arguments() -> None:
     tools = {tool["name"]: tool for tool in response["result"]["tools"]}
     schema = tools["create_group"]["inputSchema"]
     assert schema["additionalProperties"] is True
+    assert schema["x-bubble-defaults"]["layout"] == "column"
+    assert schema["x-bubble-name-prefix"] == "gp_"
+    assert schema["x-bubble-element-type"] == "Group"
+    assert schema["properties"]["name"]["examples"] == ["gp_example"]
+    assert schema["properties"]["fit_height"]["default"] is True
+    assert schema["properties"]["min_height"]["default"] == 40
+    assert schema["properties"]["min_width"]["default"] == 40
     for field in ["profile", "dry_run", "settings_path", "context", "parent", "execute", "app_id", "context_file"]:
         assert field in schema["properties"]
         assert schema["properties"][field]["description"]
@@ -1853,6 +1899,23 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
     assert create_page["required"] == ["profile", "name"]
     for field in ["layout", "meta_title", "gradient_angle", "app_id", "execute"]:
         assert field in create_page["properties"]
+
+    create_text = tools["create_text"]["inputSchema"]
+    assert create_text["required"] == ["profile", "context", "parent", "content"]
+    assert create_text["x-bubble-name-prefix"] == "tx_"
+    assert create_text["properties"]["fit_height"]["default"] is True
+    assert create_text["properties"]["name"]["examples"] == ["tx_example"]
+
+    create_image = tools["create_image"]["inputSchema"]
+    assert create_image["x-bubble-name-prefix"] == "im_"
+    assert create_image["properties"]["width"]["default"] == 120
+    assert create_image["properties"]["fixed_width"]["default"] is True
+    assert create_image["properties"]["min_height"]["default"] == 64
+
+    create_video = tools["create_video"]["inputSchema"]
+    assert create_video["properties"]["use_aspect_ratio"]["default"] is True
+    assert create_video["properties"]["aspect_ratio_width"]["default"] == 16
+    assert create_video["properties"]["aspect_ratio_height"]["default"] == 9
 
     create_style = tools["create_style"]["inputSchema"]
     assert create_style["required"] == ["profile", "name", "element_type"]

@@ -10,6 +10,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from bubble_mcp.compiler.payload import CREATE_DEFAULT_ARGS, CREATE_NAME_PREFIXES, VISUAL_CREATE_TYPES
+
 
 COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "profile": "Local Bubble MCP profile to use for settings, context, and authenticated editor sessions.",
@@ -259,6 +261,16 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "meta_title": "SEO meta title.",
     "meta_description": "SEO meta description.",
     "html_header": "Custom HTML header content.",
+    "width": "Initial Bubble element width in pixels. Prefer max_width/fixed_width when preserving source asset dimensions.",
+    "height": "Initial Bubble element height in pixels. Pair with fixed_height or fit_height depending on the element family.",
+    "cell_min_height": "Repeating group/table cell minimum height in pixels.",
+    "cell_min_width": "Repeating group/table cell minimum width in pixels.",
+    "stable_pagination": "Use stable Bubble pagination behavior for repeating groups and tables.",
+    "table_direction": "Bubble table direction, usually vertical unless the source explicitly uses horizontal table behavior.",
+    "at_to_top": "Position Bubble Alert at the top of the page.",
+    "use_aspect_ratio": "Preserve media aspect ratio instead of stretching height independently.",
+    "aspect_ratio_width": "Aspect ratio width component, such as 16 for 16:9 video.",
+    "aspect_ratio_height": "Aspect ratio height component, such as 9 for 16:9 video.",
     "float_v_relative": "Floating group vertical reference behavior.",
     "float_h_relative": "Floating group horizontal reference behavior.",
     "float_zindex": "Floating group z-index.",
@@ -631,6 +643,9 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "query_ignore_empty_constraints": {"type": "boolean"},
     "sort_desc": {"type": "boolean"},
     "ignore_empty_constraints": {"type": "boolean"},
+    "stable_pagination": {"type": "boolean"},
+    "at_to_top": {"type": "boolean"},
+    "use_aspect_ratio": {"type": "boolean"},
     "show_time": {"type": "boolean"},
     "autoplay": {"type": "boolean"},
     "open_in_new_tab": {"type": "boolean"},
@@ -650,6 +665,30 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "action_index": {"type": "integer"},
     "pause_ms": {"type": "integer"},
     "interval_seconds": {"type": "number"},
+    "width": {"type": "number", "minimum": 0},
+    "height": {"type": "number", "minimum": 0},
+    "default_builder_width": {"type": "number", "minimum": 0},
+    "row_gap": {"type": "number", "minimum": 0},
+    "column_gap": {"type": "number", "minimum": 0},
+    "padding": {"type": "number", "minimum": 0},
+    "padding_top": {"type": "number", "minimum": 0},
+    "padding_bottom": {"type": "number", "minimum": 0},
+    "padding_left": {"type": "number", "minimum": 0},
+    "padding_right": {"type": "number", "minimum": 0},
+    "margin_top": {"type": "number"},
+    "margin_bottom": {"type": "number"},
+    "margin_left": {"type": "number"},
+    "margin_right": {"type": "number"},
+    "min_width": {"type": "number", "minimum": 0},
+    "max_width": {"type": "number", "minimum": 0},
+    "min_height": {"type": "number", "minimum": 0},
+    "max_height": {"type": "number", "minimum": 0},
+    "cell_min_height": {"type": "number", "minimum": 0},
+    "cell_min_width": {"type": "number", "minimum": 0},
+    "aspect_ratio_width": {"type": "number", "exclusiveMinimum": 0},
+    "aspect_ratio_height": {"type": "number", "exclusiveMinimum": 0},
+    "border_width": {"type": "number", "minimum": 0},
+    "border_radius": {"type": "number", "minimum": 0},
     "min": {"type": "number"},
     "max": {"type": "number"},
     "val": {"type": "number"},
@@ -709,6 +748,7 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "scope": {"type": "string", "enum": ["elements", "workflows", "styles", "schema", "all"]},
     "mode": {"type": "string", "enum": ["full", "fast", "events", "types", "elements"]},
     "placement": {"type": "string", "enum": ["top", "bottom", "append", "prepend", "replace children"]},
+    "table_direction": {"type": "string", "enum": ["vertical", "horizontal"]},
     "change_path": {"type": ["string", "array"], "items": {"type": "string"}},
     "user_id": {"type": ["string", "array"], "items": {"type": "string"}},
     "reference": {"type": "string"},
@@ -750,8 +790,32 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
         bridge_fields = ("app_id", "app_version", "context_file", "execute", "write_payload", "payload")
     if tool_annotations(name)["destructiveHint"]:
         bridge_fields = (*bridge_fields, "confirm")
-    for field in dict.fromkeys((*required, *optional, *bridge_fields)):
-        properties.setdefault(field, _property_schema(field))
+    defaults = CREATE_DEFAULT_ARGS.get(name, {})
+    field_names = list(dict.fromkeys((*required, *optional, *defaults.keys(), *bridge_fields)))
+    for field in field_names:
+        field_schema = properties.setdefault(field, _property_schema(field))
+        if field in defaults and isinstance(field_schema, dict):
+            field_schema.setdefault("default", deepcopy(defaults[field]))
+    _apply_visual_create_metadata(name, input_schema, properties)
+
+
+def _apply_visual_create_metadata(name: str, input_schema: dict[str, Any], properties: dict[str, Any]) -> None:
+    if name not in CREATE_DEFAULT_ARGS:
+        return
+    defaults = CREATE_DEFAULT_ARGS[name]
+    input_schema["x-bubble-defaults"] = deepcopy(defaults)
+    if name in CREATE_NAME_PREFIXES:
+        prefix = CREATE_NAME_PREFIXES[name]
+        input_schema["x-bubble-name-prefix"] = prefix
+        name_schema = properties.get("name")
+        if isinstance(name_schema, dict):
+            name_schema.setdefault("examples", [f"{prefix}example"])
+            name_schema["description"] = (
+                f"{name_schema.get('description', COMMON_PROPERTY_DESCRIPTIONS['name'])} "
+                f"Use the `{prefix}` prefix unless the user supplied an exact Bubble name."
+            )
+    if name in VISUAL_CREATE_TYPES:
+        input_schema["x-bubble-element-type"] = VISUAL_CREATE_TYPES[name]
 
 
 def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:

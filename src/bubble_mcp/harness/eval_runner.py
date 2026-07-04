@@ -88,6 +88,10 @@ def _list_field(case: dict[str, Any], *keys: str) -> list[str]:
     return [str(item) for item in value if str(item).strip()]
 
 
+def _has_any_key(case: dict[str, Any], *keys: str) -> bool:
+    return any(key in case for key in keys)
+
+
 def _visual_snapshot_field(case: dict[str, Any], dataset_dir: Path, *keys: str) -> dict[str, Any] | None:
     value = _first_present(case, *keys)
     if isinstance(value, dict):
@@ -194,6 +198,22 @@ def _expected_compilable(case: dict[str, Any], compile_plans: bool) -> bool:
 def _warnings_match(actual: Iterable[str], expected_includes: list[str]) -> bool:
     warnings = list(actual)
     return all(any(expected in warning for warning in warnings) for expected in expected_includes)
+
+
+def _visual_issues_match(report: dict[str, Any], expected_includes: list[str]) -> bool:
+    issues = [str(issue) for issue in report.get("issues", []) if str(issue).strip()]
+    details = report.get("issue_details")
+    if isinstance(details, list):
+        for detail in details:
+            if not isinstance(detail, dict):
+                continue
+            code = str(detail.get("code") or "").strip()
+            message = str(detail.get("message") or "").strip()
+            if code:
+                issues.append(code)
+            if message:
+                issues.append(message)
+    return all(any(expected in issue for issue in issues) for expected in expected_includes)
 
 
 def _missing_ok(validation: dict[str, Any]) -> bool:
@@ -320,14 +340,22 @@ def run_eval(
         ) or _visual_actual_bubble_snapshot(case)
         visual_report: dict[str, Any] | None = None
         visual_ok = True
+        expected_visual_ok_present = _has_any_key(case, "expected_visual_ok", "expectedVisualOk")
+        expected_visual_ok = bool(_first_present(case, "expected_visual_ok", "expectedVisualOk", default=True))
+        expected_visual_issues = _list_field(case, "expected_visual_issues", "expectedVisualIssues")
         if visual_reference is not None or visual_actual is not None:
             if visual_reference is None or visual_actual is None:
-                visual_ok = False
                 visual_report = {
                     "ok": False,
                     "score": 0.0,
                     "summary": {"comparisons": 0, "issue_count": 1, "warning_count": 0},
                     "issues": ["visual eval cases require both visual_reference and visual_actual."],
+                    "issue_details": [
+                        {
+                            "code": "visual_snapshot_missing",
+                            "message": "visual eval cases require both visual_reference and visual_actual.",
+                        }
+                    ],
                     "warnings": [],
                 }
             else:
@@ -343,7 +371,13 @@ def run_eval(
                         _first_present(case, "visual_require_images", "visualRequireImages", default=False)
                     ),
                 )
-                visual_ok = bool(visual_report.get("ok"))
+            actual_visual_ok = bool(visual_report.get("ok")) if visual_report is not None else True
+            if expected_visual_ok_present:
+                visual_ok = actual_visual_ok is expected_visual_ok
+            else:
+                visual_ok = actual_visual_ok
+            if visual_report is not None and expected_visual_issues:
+                visual_ok = visual_ok and _visual_issues_match(visual_report, expected_visual_issues)
         fallback_reasons = _fallback_reasons(
             matched=matched,
             tool_ok=tool_ok,
@@ -367,6 +401,7 @@ def run_eval(
             "warnings_ok": warnings_ok,
             "compile_ok": compile_ok,
             "visual_ok": visual_ok,
+            "visual_expected_ok": expected_visual_ok if expected_visual_ok_present else None,
             "compiled": compiled,
             "has_write_payload": has_write_payload,
             "validation_ok": validation_ok,

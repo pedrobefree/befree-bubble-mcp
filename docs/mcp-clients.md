@@ -171,7 +171,7 @@ families or `write_payload` for exact Bubble editor writes.
   a missing or mismatched session and the user can complete login in the opened
   browser.
 - `bubble_readiness_check`: runs server health, compact coverage/catalog-quality smoke, agent-routing, profile-status readiness when a profile is provided, and optional profile safe-read or family-preview checks in one call. Use this before broad Bubble work or after installation; pass `include_details=true` only when debugging a failed nested check.
-- `bubble_task_runbook`: returns a one-call compact runbook for a Bubble task, including route intents, ordered recipe steps, safeguards, compact relevant tool matches, and optional profile readiness. Use this as the preferred planning call for agents.
+- `bubble_task_runbook`: returns a one-call compact runbook for a Bubble task, including route intents, ordered recipe steps, execution policy, quality gates, stop conditions, verification steps, safeguards, compact relevant tool matches, and optional profile readiness. Use this as the preferred planning call for agents.
 - `bubble_agent_guide`: returns a compact routing guide for agents. Call it
   with the user task when the client is unsure which Bubble MCP tool family to
   use; it is read-only and avoids CLI/repository discovery.
@@ -179,9 +179,9 @@ families or `write_payload` for exact Bubble editor writes.
   compact matching metadata. Use it for narrow discovery such as `html selector`,
   `workflow action`, or `branch changelog` instead of loading the full catalog.
 - `bubble_task_recipe`: returns a compact ordered recipe for a task, including
-  preflight checks, tool sequence, arguments to fill, safeguards, and
-  verification guidance. Use it when the agent knows the intent but needs the
-  execution sequence.
+  preflight checks, tool sequence, arguments to fill, execution policy, quality
+  gates, stop conditions, safeguards, and verification guidance. Use it when
+  the agent knows the intent but needs the execution sequence.
 - `bubble_tool_coverage`: reports whether exposed tools are handled by standalone native code, direct Aria-runtime dispatch, runtime alias dispatch, a custom runtime adapter, compiler fallback, or are uncovered. The default response is compact; pass `include_details=true` only when per-tool classifications are needed.
 - `bubble_catalog_quality`: audits tool/resource/prompt identifiers, descriptions, input schemas, property descriptions, annotations, resource metadata, prompt arguments, and runtime coverage. Use it as the catalog quality gate before claiming MCP/harness work is complete.
 - `bubble_runtime_smoke`: runs an operational smoke suite. `coverage` is local-only and validates both execution coverage and catalog quality, `agent-routing` validates natural-language tool selection for HTML import, page creation, Figma/style sync, branches/changelog, setup/context refresh, interactive login, workflow requests, and visual quality gates without writes, `visual-repair` validates actionable visual audit repair planning without writes, `safe-read` performs read-only checks, `preview-write` compiles representative mutations with `execute=false`, `family-preview` exercises representative visual/container/input/schema/workflow/style/HTML/branch/changelog paths without writes, and `execute-write` performs authenticated temporary writes only when `execute=true`. Use `verify_context=true` for real-write smokes that must refresh the Bubble context and confirm the temporary objects materialized; if `cleanup=true` is also set, cleanup runs after verification and the context is refreshed again after cleanup.
@@ -222,6 +222,11 @@ return a preview instead of posting to Bubble.
 - If the correct tool family or sequence is unclear, call `bubble_task_runbook`
   with the user's task/profile/context and use its route, recipe, and compact
   tool matches before inspecting CLI help.
+- Treat the runbook's `quality_gates`, `stop_conditions`, and `verification`
+  fields as the active harness contract for the task. For HTML/Figma visual
+  work, do not treat a Bubble write response alone as success; capture actual
+  output and run `bubble_visual_audit` when source snapshots or screenshots are
+  available.
 - If the client supports MCP resources, read `bubble://docs/agent-runtime`
   before broad Bubble work.
 - If the client supports MCP prompts, use `bubble-task-runbook` for ambiguous

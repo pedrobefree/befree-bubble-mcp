@@ -143,7 +143,30 @@ an eval, add `visual_actual_bubble` with `profile`, `app_id`, `app_version`,
 `visual_actual_page`, and `visual_actual_url` are also supported. Visual
 comparison checks layout geometry, required text, image dimensions, typography,
 max-width, and gradient direction/color order with configurable
-`visual_tolerance_px` and `visual_tolerance_ratio`.
+`visual_tolerance_px` and `visual_tolerance_ratio`. Reports include
+`issue_details` with stable codes such as `gradient_mismatch`,
+`root_style_numeric_mismatch`, `node_style_value_mismatch`, and
+`image_size_mismatch`.
+
+Regression datasets may intentionally expect visual drift. Set
+`expected_visual_ok=false` and provide `expected_visual_issues` with issue
+codes or message fragments. The eval passes only when the visual harness
+detects the expected drift, which is useful for locking HTML/Figma/Bubble
+parity checks without mutating a live Bubble app.
+
+```json
+{
+  "id": "visual_hero_detects_regressions",
+  "message": "Create a text saying \"Hello\"",
+  "expected_tool": "create_text",
+  "expected_args": {"context": "index", "content": "Hello"},
+  "visual_reference": "../visual-snapshots/hero-reference.json",
+  "visual_actual": "../visual-snapshots/hero-actual-bad.json",
+  "visual_require_images": true,
+  "expected_visual_ok": false,
+  "expected_visual_issues": ["gradient_mismatch", "image_size_mismatch"]
+}
+```
 
 ## Agent Routing Smoke
 

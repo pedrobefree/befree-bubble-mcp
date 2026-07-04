@@ -1,0 +1,21 @@
+[
+  {
+    "id": "visual_hero_detects_regressions",
+    "message": "Create a text saying \"Hello\"",
+    "expected_tool": "create_text",
+    "expected_args": {
+      "context": "index",
+      "content": "Hello"
+    },
+    "visual_reference": "../visual-snapshots/hero-reference.json",
+    "visual_actual": "../visual-snapshots/hero-actual-bad.json",
+    "visual_require_images": true,
+    "expected_visual_ok": false,
+    "expected_visual_issues": [
+      "gradient_mismatch",
+      "root_style_numeric_mismatch",
+      "node_style_value_mismatch",
+      "image_size_mismatch"
+    ]
+  }
+]

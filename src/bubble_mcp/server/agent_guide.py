@@ -56,8 +56,19 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "manage_styles_tokens_design_system",
         "when": "The user asks to list, create, update, or sync Bubble styles, colors, fonts, or design-system tokens.",
-        "tools": ["list_styles", "create_style", "add_style_condition", "list_colors", "create_color", "sync_figma_style", "sync_figma_tokens", "bubble_visual_audit"],
-        "notes": "Prefer list_* before mutation when matching existing design-system assets matters. After Figma/style sync, use bubble_visual_audit when parity with a reference should be checked or repaired.",
+        "tools": [
+            "list_styles",
+            "create_style",
+            "add_style_condition",
+            "list_colors",
+            "create_color",
+            "sync_figma_component",
+            "sync_component",
+            "sync_figma_style",
+            "sync_figma_tokens",
+            "bubble_visual_audit",
+        ],
+        "notes": "Prefer list_* before mutation when matching existing design-system assets matters. For Figma component/style sync, route through the bridge/runtime and then use bubble_visual_audit when parity with a reference should be checked or repaired.",
     },
     {
         "intent": "manage_workflows",
@@ -447,7 +458,17 @@ RECIPES: dict[str, dict[str, Any]] = {
     },
     "style_or_tokens": {
         "when": "List, create, sync, or apply styles, colors, fonts, or design-system tokens.",
-        "tools": ["list_styles", "list_colors", "create_style", "add_style_condition", "sync_figma_style", "sync_figma_tokens", "bubble_visual_audit"],
+        "tools": [
+            "list_styles",
+            "list_colors",
+            "create_style",
+            "add_style_condition",
+            "sync_figma_component",
+            "sync_component",
+            "sync_figma_style",
+            "sync_figma_tokens",
+            "bubble_visual_audit",
+        ],
         "steps": [
             {
                 "tool": "list_styles",
@@ -737,6 +758,74 @@ RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
 }
 
 
+RECIPE_CONTRACTS: dict[str, dict[str, list[str]]] = {
+    "html_import": {
+        "quality_gates": [
+            "Preview create_from_html with execute=false before any real write.",
+            "Resolve target context/parent with bubble_context_find exact=true and include_metadata=false.",
+            "When the user provided a source URL/selector or screenshots, capture reference and actual snapshots and run bubble_visual_audit.",
+            "Do not treat write_count or HTTP 200 alone as visual success.",
+        ],
+        "stop_conditions": [
+            "Stop before execute=true if target context or parent cannot be resolved.",
+            "Stop before execute=true if create_from_html preview reports validation errors.",
+            "Stop repair execution if bubble_visual_audit returns no executable repair plan.",
+        ],
+        "verification": [
+            "After execute=true, refresh context with bubble_context_detect force=true.",
+            "Verify the generated root element exists with bubble_context_find exact=true.",
+            "For visual work, compare source/reference vs rendered Bubble actual and inspect issue_details.",
+        ],
+    },
+    "visual_quality_gate": {
+        "quality_gates": [
+            "Use structured snapshots for deterministic repair planning whenever possible.",
+            "Accept reference_screenshot and actual_screenshot for LLM multimodal comparison, but keep executable fixes grounded in structured snapshot issues.",
+            "Return both the issue list and the repair plan before execute=true unless execution was explicit.",
+        ],
+        "stop_conditions": [
+            "Stop if neither structured snapshots/sources nor screenshots are supplied.",
+            "Stop if actual Bubble capture cannot be produced and no actual screenshot was supplied.",
+            "Stop before repair execution when profile/context/session are missing.",
+        ],
+        "verification": [
+            "After repairs, rerun bubble_visual_capture_actual and bubble_visual_audit.",
+            "Require issue_count to decrease or explain unsupported residual drift.",
+        ],
+    },
+    "style_or_tokens": {
+        "quality_gates": [
+            "List existing styles/colors before creating duplicates.",
+            "For Figma component/style sync, preserve bridge payload metadata and route through the packaged Aria runtime.",
+            "When a Figma/source reference is available, run bubble_visual_audit after sync to catch font, size, gap, image, max-width, and state drift.",
+        ],
+        "stop_conditions": [
+            "Stop if the style/component target type is ambiguous after tool search.",
+            "Stop before execute=true if profile session or context is not ready.",
+            "Stop if the bridge/runtime returns success but captured write_count is zero for a mutating sync.",
+        ],
+        "verification": [
+            "For style sync, inspect Bubble style existence/state after context refresh or style list.",
+            "For component sync, verify reusable/page element materialization and run visual audit when reference material exists.",
+        ],
+    },
+    "visual_edit": {
+        "quality_gates": [
+            "Use the most specific create_*/update_*/delete_* tool instead of generic payload writes.",
+            "Honor schema x-bubble-defaults and x-bubble-name-prefix for new elements unless the user provided explicit values.",
+            "Use bubble_context_find before updates/deletes when element references are ambiguous.",
+        ],
+        "stop_conditions": [
+            "Stop before destructive tools unless confirm=true is explicit.",
+            "Stop before execute=true if required profile/context/parent/element_name cannot be resolved.",
+        ],
+        "verification": [
+            "After execute=true, refresh context and verify exact element name/id materialization or updated property.",
+        ],
+    },
+}
+
+
 def _normalize_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
     ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
@@ -835,6 +924,21 @@ def task_recipe(
         recipe_id = "visual_edit"
 
     selected = RECIPES[recipe_id]
+    contract = RECIPE_CONTRACTS.get(
+        recipe_id,
+        {
+            "quality_gates": [
+                "Preview first unless the user explicitly asked for execution.",
+                "Use profile/session/context readiness before mutating Bubble.",
+            ],
+            "stop_conditions": [
+                "Stop before execute=true if required targets or authenticated session are missing.",
+            ],
+            "verification": [
+                "After execute=true, refresh context or use the relevant list/inspect tool to verify the requested outcome.",
+            ],
+        },
+    )
     guide = agent_guide(task)
     return {
         "ok": True,
@@ -857,6 +961,16 @@ def task_recipe(
             "For known page, reusable, parent, or element refs, call bubble_context_find with profile, exact=true, and include_metadata=false before broad discovery.",
             "Never ask the user to name internal tools; infer from the task and use search/recipe when uncertain.",
         ],
+        "execution_policy": {
+            "preview_first": True,
+            "execute_requires_user_intent": True,
+            "use_mcp_tools_directly": True,
+            "avoid_shell_cli_discovery": True,
+            "mutation_verification_required": True,
+        },
+        "quality_gates": contract["quality_gates"],
+        "stop_conditions": contract["stop_conditions"],
+        "verification": contract["verification"],
         "steps": selected["steps"],
         "recommended_routes": guide["recommended_routes"],
         "safeguards": {
@@ -997,6 +1111,10 @@ def task_runbook(
         "recipe": recipe["recipe"],
         "matched": recipe["matched"],
         "preflight": recipe["preflight"],
+        "execution_policy": recipe["execution_policy"],
+        "quality_gates": recipe["quality_gates"],
+        "stop_conditions": recipe["stop_conditions"],
+        "verification": recipe["verification"],
         "steps": recipe["steps"],
         "safeguards": recipe["safeguards"],
         "tool_search": search,

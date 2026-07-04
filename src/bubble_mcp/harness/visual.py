@@ -161,6 +161,11 @@ def _style_value(style: JsonObject, *keys: str) -> Any:
     return None
 
 
+def _record_issue(issues: list[str], issue_details: list[JsonObject], *, code: str, message: str) -> None:
+    issues.append(message)
+    issue_details.append({"code": code, "message": message})
+
+
 def compare_visual_snapshots(
     reference: JsonObject,
     actual: JsonObject,
@@ -173,6 +178,7 @@ def compare_visual_snapshots(
     """Compare two structured visual snapshots and return a compact report."""
 
     issues: list[str] = []
+    issue_details: list[JsonObject] = []
     warnings: list[str] = []
     comparisons = 0
 
@@ -184,6 +190,7 @@ def compare_visual_snapshots(
         if ref_value is None or actual_value is None:
             continue
         comparisons += 1
+        before = len(issues)
         _compare_numeric(
             issues,
             label=f"root.{field}",
@@ -192,6 +199,8 @@ def compare_visual_snapshots(
             tolerance_px=tolerance_px,
             tolerance_ratio=tolerance_ratio,
         )
+        if len(issues) > before:
+            issue_details.append({"code": "root_bbox_mismatch", "message": issues[-1]})
 
     reference_style = _style(reference_root)
     actual_style = _style(actual_root)
@@ -205,6 +214,7 @@ def compare_visual_snapshots(
             continue
         comparisons += 1
         if _number(ref_value) is not None and _number(actual_value) is not None:
+            before = len(issues)
             _compare_numeric(
                 issues,
                 label=f"root.style.{style_name}",
@@ -213,8 +223,15 @@ def compare_visual_snapshots(
                 tolerance_px=tolerance_px,
                 tolerance_ratio=tolerance_ratio,
             )
+            if len(issues) > before:
+                issue_details.append({"code": "root_style_numeric_mismatch", "message": issues[-1]})
         elif _norm_text(ref_value).lower() != _norm_text(actual_value).lower():
-            issues.append(f"root.style.{style_name} expected {ref_value!r}, got {actual_value!r}.")
+            _record_issue(
+                issues,
+                issue_details,
+                code="root_style_value_mismatch",
+                message=f"root.style.{style_name} expected {ref_value!r}, got {actual_value!r}.",
+            )
 
     ref_gradient = _normalized_gradient(
         _style_value(reference_style, "background", "backgroundImage", "background_image")
@@ -225,7 +242,12 @@ def compare_visual_snapshots(
     if ref_gradient and actual_gradient:
         comparisons += 1
         if ref_gradient != actual_gradient:
-            issues.append("root.style.gradient does not match reference direction/color order.")
+            _record_issue(
+                issues,
+                issue_details,
+                code="gradient_mismatch",
+                message="root.style.gradient does not match reference direction/color order.",
+            )
 
     reference_texts = [_norm_text(node.get("text") or node.get("content") or node.get("label")) for node in _text_nodes(reference)]
     actual_texts = [_norm_text(node.get("text") or node.get("content") or node.get("label")) for node in _text_nodes(actual)]
@@ -233,7 +255,12 @@ def compare_visual_snapshots(
         for text in reference_texts:
             comparisons += 1
             if text not in actual_texts:
-                issues.append(f"text missing from actual snapshot: {text!r}.")
+                _record_issue(
+                    issues,
+                    issue_details,
+                    code="text_missing",
+                    message=f"text missing from actual snapshot: {text!r}.",
+                )
 
     actual_index = _node_index(actual)
     for ref_node in _walk_nodes(reference):
@@ -247,6 +274,7 @@ def compare_visual_snapshots(
             if ref_value is None or actual_value is None:
                 continue
             comparisons += 1
+            before = len(issues)
             _compare_numeric(
                 issues,
                 label=f"node.{ref_key}.{field}",
@@ -255,6 +283,8 @@ def compare_visual_snapshots(
                 tolerance_px=tolerance_px,
                 tolerance_ratio=tolerance_ratio,
             )
+            if len(issues) > before:
+                issue_details.append({"code": "node_bbox_mismatch", "message": issues[-1]})
         ref_style = _style(ref_node)
         actual_node_style = _style(actual_node)
         for style_name, aliases in {
@@ -268,6 +298,7 @@ def compare_visual_snapshots(
                 continue
             comparisons += 1
             if _number(ref_value) is not None and _number(actual_value) is not None:
+                before = len(issues)
                 _compare_numeric(
                     issues,
                     label=f"node.{ref_key}.style.{style_name}",
@@ -276,15 +307,27 @@ def compare_visual_snapshots(
                     tolerance_px=tolerance_px,
                     tolerance_ratio=tolerance_ratio,
                 )
+                if len(issues) > before:
+                    issue_details.append({"code": "node_style_numeric_mismatch", "message": issues[-1]})
             elif _norm_text(ref_value).lower() != _norm_text(actual_value).lower():
-                issues.append(f"node.{ref_key}.style.{style_name} expected {ref_value!r}, got {actual_value!r}.")
+                _record_issue(
+                    issues,
+                    issue_details,
+                    code="node_style_value_mismatch",
+                    message=f"node.{ref_key}.style.{style_name} expected {ref_value!r}, got {actual_value!r}.",
+                )
 
     reference_images = _image_nodes(reference)
     actual_images = _image_nodes(actual)
     if reference_images and (require_images or actual_images):
         comparisons += 1
         if len(actual_images) < len(reference_images):
-            issues.append(f"expected at least {len(reference_images)} image nodes, got {len(actual_images)}.")
+            _record_issue(
+                issues,
+                issue_details,
+                code="image_count_mismatch",
+                message=f"expected at least {len(reference_images)} image nodes, got {len(actual_images)}.",
+            )
         for index, ref_image in enumerate(reference_images):
             if index >= len(actual_images):
                 break
@@ -295,6 +338,7 @@ def compare_visual_snapshots(
                 if ref_value is None or actual_value is None:
                     continue
                 comparisons += 1
+                before = len(issues)
                 _compare_numeric(
                     issues,
                     label=f"image[{index}].{field}",
@@ -303,6 +347,8 @@ def compare_visual_snapshots(
                     tolerance_px=tolerance_px,
                     tolerance_ratio=tolerance_ratio,
                 )
+                if len(issues) > before:
+                    issue_details.append({"code": "image_size_mismatch", "message": issues[-1]})
     elif reference_images and not require_images:
         warnings.append("reference snapshot has images but image comparison is not required.")
 
@@ -323,6 +369,7 @@ def compare_visual_snapshots(
             "actual_image_count": len(actual_images),
         },
         "issues": issues,
+        "issue_details": issue_details,
         "warnings": warnings,
     }
 
