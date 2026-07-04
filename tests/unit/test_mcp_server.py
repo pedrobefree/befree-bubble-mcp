@@ -19,8 +19,9 @@ def test_initialize_returns_server_info() -> None:
     assert response is not None
     assert response["id"] == 1
     assert response["result"]["serverInfo"]["name"] == "befree-bubble-mcp"
-    assert "bubble_profile_status" in response["result"]["instructions"]
     assert "bubble_task_runbook" in response["result"]["instructions"]
+    assert "bubble_project_bootstrap" in response["result"]["instructions"]
+    assert "bubble_session_login" in response["result"]["instructions"]
     assert "bubble_agent_guide or" not in response["result"]["instructions"]
     assert "execute=false" in response["result"]["instructions"]
     assert "bubble_context_find" in response["result"]["instructions"]
@@ -697,16 +698,14 @@ def test_prompts_list_and_get_task_runbook() -> None:
     assert response is not None
     message = response["result"]["messages"][0]
     assert message["role"] == "user"
-    assert "bubble_profile_status" in message["content"]["text"]
-    assert message["content"]["text"].index("bubble_profile_status") < message["content"]["text"].index(
-        "bubble_task_runbook"
-    )
     assert "bubble_task_runbook" in message["content"]["text"]
+    assert "bubble_project_bootstrap" in message["content"]["text"]
+    assert "bubble_session_login" in message["content"]["text"]
     assert "Create a page" in message["content"]["text"]
     assert "Do not inspect repository code" in message["content"]["text"]
 
 
-def test_prompt_get_html_import_prioritizes_profile_status() -> None:
+def test_prompt_get_html_import_prioritizes_runbook_and_setup_tools() -> None:
     response = handle_request(
         {
             "jsonrpc": "2.0",
@@ -726,9 +725,10 @@ def test_prompt_get_html_import_prioritizes_profile_status() -> None:
 
     assert response is not None
     text = response["result"]["messages"][0]["content"]["text"]
-    assert "bubble_profile_status" in text
     assert "bubble_task_runbook" in text
-    assert text.index("bubble_profile_status") < text.index("bubble_task_runbook")
+    assert "bubble_project_bootstrap" in text
+    assert "bubble_session_login" in text
+    assert text.index("bubble_task_runbook") < text.index("create_from_html")
     assert "create_from_html" in text
 
 
