@@ -910,6 +910,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_runtime_smoke",
         "bubble_context_summary",
         "bubble_context_find",
+        "bubble_session_list",
         "bubble_eval_run",
         "bubble_eval_export_expert",
         "bubble_plan",

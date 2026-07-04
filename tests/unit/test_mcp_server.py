@@ -33,9 +33,12 @@ def test_tools_list_includes_profile_list() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
 
     assert response is not None
-    names = [tool["name"] for tool in response["result"]["tools"]]
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    names = list(tools)
     assert "bubble_profile_list" in names
     assert "bubble_profile_status" in names
+    assert tools["bubble_session_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_session_list"]["annotations"]["destructiveHint"] is False
 
 
 def test_ping_returns_empty_success() -> None:
