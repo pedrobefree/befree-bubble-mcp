@@ -281,6 +281,7 @@ def build_runtime_smoke_cases(
     effective_run_id = _safe_run_id(run_id)
     cases: list[SmokeCase] = [
         SmokeCase("bubble_tool_coverage", {}, "coverage", "Verify catalog execution coverage is complete."),
+        SmokeCase("bubble_catalog_quality", {}, "coverage", "Verify agent-facing catalog quality is complete."),
     ]
 
     if suite in {"coverage"}:

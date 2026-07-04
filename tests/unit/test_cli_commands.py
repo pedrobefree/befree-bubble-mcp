@@ -142,7 +142,10 @@ def test_cli_smoke_runtime_runs_coverage_suite(capsys) -> None:  # type: ignore[
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is True
     assert payload["summary"]["failed"] == 0
-    assert payload["results"][0]["tool"] == "bubble_tool_coverage"
+    assert [result["tool"] for result in payload["results"]] == [
+        "bubble_tool_coverage",
+        "bubble_catalog_quality",
+    ]
 
 
 def test_cli_smoke_runtime_writes_report(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]

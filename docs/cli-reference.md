@@ -422,7 +422,7 @@ bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --veri
 
 Suites:
 
-- `coverage`: local-only catalog coverage check.
+- `coverage`: local-only catalog coverage and catalog quality checks.
 - `agent-routing`: local-only natural-language routing check that validates
   `bubble_agent_guide`, `bubble_task_recipe`, and `bubble_tool_search` against
   representative user prompts without writes.

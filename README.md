@@ -258,6 +258,7 @@ missing descriptions, undocumented input fields, invalid annotations, broken
 resources/prompts, or uncovered exposed tools.
 
 Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
+The `coverage` suite runs local catalog coverage and catalog quality checks.
 The `agent-routing` suite validates representative natural-language Bubble
 requests against `bubble_agent_guide`, `bubble_task_recipe`, and
 `bubble_tool_search`; it does not post changes to Bubble.

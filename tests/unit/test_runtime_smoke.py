@@ -155,8 +155,9 @@ def test_execute_write_runs_call_sequence() -> None:
     assert report["execute"] is True
     assert report["run_id"] == "sequence"
     assert report["summary"]["failed"] == 0
-    assert [tool for tool, _args in calls[:6]] == [
+    assert [tool for tool, _args in calls[:7]] == [
         "bubble_tool_coverage",
+        "bubble_catalog_quality",
         "bubble_health_check",
         "bubble_profile_list",
         "bubble_session_list",
@@ -257,7 +258,7 @@ def test_execute_write_can_verify_refreshed_context(tmp_path) -> None:  # type: 
     )
 
     assert report["ok"] is True
-    assert report["summary"]["passed"] == 15
+    assert report["summary"]["passed"] == 16
     assert calls[-1] == (
         "bubble_context_detect",
         {
