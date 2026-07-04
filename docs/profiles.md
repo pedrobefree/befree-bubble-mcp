@@ -20,6 +20,16 @@ List profiles:
 bubble-mcp profile list
 ```
 
+Check whether one profile is ready for MCP work:
+
+```bash
+bubble-mcp profile status --profile my-app
+```
+
+`profile status` checks the local profile mapping, stored session metadata,
+context freshness, and app id consistency. A profile is ready for reliable MCP
+mutations only after session capture/import and context detection are complete.
+
 Settings are stored in:
 
 ```text
