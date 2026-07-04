@@ -16,18 +16,26 @@ def tokenize(value: str) -> set[str]:
     }
 
 
-def _exact_values(node: BubbleContextNode) -> set[str]:
-    values = {node.id, node.label}
+def _exact_candidates(node: BubbleContextNode) -> list[tuple[str, str]]:
+    values = [("id", node.id), ("label", node.label)]
     for key in ("bubble_id", "context", "element_type", "path", "path_array"):
         value = node.metadata.get(key)
         if isinstance(value, str):
-            values.add(value)
+            values.append((key, value))
         elif isinstance(value, list):
-            values.add("/".join(str(item) for item in value))
-    return {value.strip().lower() for value in values if value and value.strip()}
+            values.append((key, "/".join(str(item) for item in value)))
+    return [(field, value.strip()) for field, value in values if value and value.strip()]
 
 
-def _result_payload(node: BubbleContextNode, *, score: int, match: str | None, include_metadata: bool) -> dict[str, Any]:
+def _result_payload(
+    node: BubbleContextNode,
+    *,
+    score: int,
+    match: str | None,
+    match_field: str | None = None,
+    match_value: str | None = None,
+    include_metadata: bool,
+) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "id": node.id,
         "label": node.label,
@@ -36,6 +44,10 @@ def _result_payload(node: BubbleContextNode, *, score: int, match: str | None, i
     }
     if match:
         payload["match"] = match
+    if match_field:
+        payload["match_field"] = match_field
+    if match_value:
+        payload["match_value"] = match_value
     if include_metadata:
         payload["metadata"] = node.metadata
     return payload
@@ -55,10 +67,22 @@ def search_context(
     if exact:
         if not normalized_query:
             return []
-        matches = [node for node in context.nodes if normalized_query in _exact_values(node)]
+        matches: list[tuple[BubbleContextNode, str, str]] = []
+        for node in context.nodes:
+            for field, value in _exact_candidates(node):
+                if normalized_query == value.lower():
+                    matches.append((node, field, value))
+                    break
         return [
-            _result_payload(node, score=1, match="exact", include_metadata=include_metadata)
-            for node in matches[:limit]
+            _result_payload(
+                node,
+                score=1,
+                match="exact",
+                match_field=field,
+                match_value=value,
+                include_metadata=include_metadata,
+            )
+            for node, field, value in matches[:limit]
         ]
 
     query_tokens = tokenize(query)

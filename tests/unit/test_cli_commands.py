@@ -36,6 +36,8 @@ def test_cli_context_find_exact_avoids_fuzzy_matches(capsys) -> None:  # type: i
 
     assert payload["results"][0]["id"] == "page:index"
     assert payload["results"][0]["match"] == "exact"
+    assert payload["results"][0]["match_field"] == "id"
+    assert payload["results"][0]["match_value"] == "page:index"
     assert "metadata" not in payload["results"][0]
 
 
