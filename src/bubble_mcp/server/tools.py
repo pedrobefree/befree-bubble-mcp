@@ -131,6 +131,77 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             verify_context=bool(args.get("verify_context")),
             verification_output=str(args.get("verification_output") or ""),
         )
+    if name == "bubble_project_bootstrap":
+        args = arguments or {}
+        profile_name = str(args.get("profile") or args.get("name") or "").strip()
+        if not profile_name:
+            raise ValueError("bubble_project_bootstrap requires profile.")
+        settings = load_settings()
+        existing_profile = resolve_profile(settings, profile_name)
+        app_id = str(args.get("app_id") or (existing_profile.app_id if existing_profile else "")).strip()
+        if app_id:
+            updated_profile = BubbleProfile(
+                name=profile_name,
+                app_id=app_id,
+                appname=str(args.get("appname") or (existing_profile.appname if existing_profile else app_id)).strip()
+                or app_id,
+                editor_url=str(
+                    args.get("editor_url") or (existing_profile.editor_url if existing_profile else "")
+                ).strip()
+                or None,
+                app_version=str(
+                    args.get("app_version") or (existing_profile.app_version if existing_profile else "test")
+                ).strip()
+                or None,
+                app_json_path=str(
+                    args.get("app_json_path") or (existing_profile.app_json_path if existing_profile else "")
+                ).strip()
+                or None,
+                consolelog_json_path=str(
+                    args.get("consolelog_json_path")
+                    or (existing_profile.consolelog_json_path if existing_profile else "")
+                ).strip()
+                or None,
+            )
+            save_settings(with_profile(settings, updated_profile))
+
+        context_detection: dict[str, Any] | None = None
+        if bool(args.get("detect_context")) and app_id:
+            try:
+                detection_result = detect_project_context(
+                    profile=profile_name,
+                    app_id=app_id,
+                    app_version=str(args.get("app_version") or "test"),
+                    force=bool(args.get("force_context")),
+                )
+                context_detection = detection_result.to_dict()
+            except Exception as exc:
+                context_detection = {"ok": False, "error": str(exc)}
+
+        status = profile_status(
+            profile_name,
+            max_age_hours=int(args.get("max_age_hours") or 24),
+        )
+        profile_changed = bool(app_id) and (
+            existing_profile is None
+            or existing_profile.app_id != app_id
+            or bool(
+                args.get("appname")
+                or args.get("editor_url")
+                or args.get("app_version")
+                or args.get("app_json_path")
+                or args.get("consolelog_json_path")
+            )
+        )
+        return {
+            "ok": bool(status.get("ok")),
+            "profile": profile_name,
+            "profile_changed": profile_changed,
+            "context_detection": context_detection,
+            "ready": bool(status.get("ready")),
+            "next_actions": status.get("next_actions", []),
+            "status": status,
+        }
     if name == "bubble_profile_add":
         args = arguments or {}
         profile_name = str(args.get("name") or args.get("profile") or "").strip()

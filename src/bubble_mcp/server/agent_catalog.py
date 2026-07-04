@@ -280,6 +280,11 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
 
 
 NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "bubble_project_bootstrap": (
+        "One-call setup entrypoint for a Bubble project profile. Use it when the user provides or implies a profile "
+        "and Bubble app id: it can create or update the local profile, report readiness, and optionally run context "
+        "detection. This reduces setup trial-and-error before session capture and project mutations."
+    ),
     "bubble_profile_add": (
         "Add or update a local Bubble MCP profile in settings.json. This is a local setup mutation only; it does not "
         "contact Bubble or edit the app. Use it when the user asks to configure a project profile before session "
@@ -820,9 +825,11 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "readOnlyHint": read_only,
         "destructiveHint": destructive,
         "idempotentHint": read_only
-        or name in {"bubble_health_check", "bubble_profile_add", "bubble_profile_list", *agent_read_only},
+        or name
+        in {"bubble_health_check", "bubble_project_bootstrap", "bubble_profile_add", "bubble_profile_list", *agent_read_only},
         "openWorldHint": name
         in {
+            "bubble_project_bootstrap",
             "bubble_context_detect",
             "create_from_html",
             "bubble_editor_write",

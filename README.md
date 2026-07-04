@@ -106,8 +106,10 @@ bubble-mcp profile list
 ```
 
 MCP clients can do the same setup without shelling out by calling
-`bubble_profile_add` with `name`, `app_id`, and optional `app_version`,
-`appname`, `editor_url`, `app_json_path`, or `consolelog_json_path`.
+`bubble_project_bootstrap` with `profile`, `app_id`, and optional
+`app_version`, `appname`, `editor_url`, `app_json_path`, or
+`consolelog_json_path`. Use `bubble_profile_add` only when the client needs the
+lower-level local settings write.
 
 ### 3. Capture A Bubble Editor Session
 

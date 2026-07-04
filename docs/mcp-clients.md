@@ -4,8 +4,9 @@
 client, not kept running as a separate HTTP service.
 
 The `initialize` response includes compact server instructions that tell agents
-to use MCP tools directly, check `bubble_profile_status` for the target profile,
-use `bubble_task_runbook` for routing and ordered execution guidance, and keep
+to use MCP tools directly, use `bubble_project_bootstrap` for first-time
+profile/app setup, check `bubble_profile_status` for configured profiles, use
+`bubble_task_runbook` for routing and ordered execution guidance, and keep
 `execute=false` unless the user explicitly requested a real write.
 
 ## Before connecting
@@ -149,6 +150,10 @@ For lower-level standalone execution, pass `app_id` for compiler-supported
 families or `write_payload` for exact Bubble editor writes.
 
 - `bubble_health_check`: reports local server capabilities.
+- `bubble_project_bootstrap`: creates or updates a local Bubble profile, reports
+  profile readiness, returns next setup actions, and can optionally run context
+  detection. Use this when the user provides a profile name and Bubble app id so
+  the agent does not need to discover the setup sequence.
 - `bubble_profile_add`: adds or updates a local Bubble profile from MCP. It
   writes only local MCP settings and does not contact Bubble. Use it when the
   user provided a profile name and Bubble app id, then continue with session

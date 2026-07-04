@@ -74,8 +74,8 @@ def _agent_quickstart_markdown() -> str:
             "Default call sequence:",
             "",
             "1. If the target profile is unclear, call `bubble_profile_list`.",
-            "2. If the user provided a profile name and Bubble app id but the profile is missing, call",
-            "   `bubble_profile_add`; then continue with session capture/import and context detection.",
+            "2. If the user provided a profile name and Bubble app id, call `bubble_project_bootstrap`",
+            "   to create/update the local profile and receive the next setup actions.",
             "3. Call `bubble_profile_status` for the target profile to check session/context readiness.",
             "4. Call `bubble_task_runbook` with `task`, `profile`, `context`, `parent`, and `execute`.",
             "5. Execute the runbook's MCP tools in order. Use `execute=false` for preview unless the user",
@@ -106,6 +106,7 @@ def _catalog_summary() -> dict[str, Any]:
     tools = list_tool_schemas()
     native = [
         "bubble_health_check",
+        "bubble_project_bootstrap",
         "bubble_profile_add",
         "bubble_profile_status",
         "bubble_session_inspect",
@@ -128,6 +129,7 @@ def _catalog_summary() -> dict[str, Any]:
         "route_count": len(ROUTES),
         "recipe_count": len(RECIPES),
         "recommended_entrypoints": [
+            "bubble_project_bootstrap",
             "bubble_profile_status",
             "bubble_task_runbook",
             "bubble_agent_guide",

@@ -155,6 +155,16 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Refresh or rebuild cached context even when a previous artifact exists.",
         default=False,
     ),
+    "detect_context": _prop(
+        "boolean",
+        "Run project context detection during setup when the profile is available.",
+        default=False,
+    ),
+    "force_context": _prop(
+        "boolean",
+        "Force context detection when detect_context is true.",
+        default=False,
+    ),
     "bubble_file": _prop(
         "string",
         "Optional .bubble export path. This is the preferred source when available because it contains the real project structure.",
@@ -521,6 +531,23 @@ def _empty_tool(name: str, description: str) -> ToolSchema:
 
 def profile_session_context_tools() -> list[ToolSchema]:
     return [
+        tool_schema(
+            "bubble_project_bootstrap",
+            "One-call MCP setup entrypoint for a Bubble project profile. It can create or update the local profile, report readiness, and optionally run context detection so agents do not need to discover setup command sequences.",
+            [
+                "profile",
+                "app_id",
+                "appname",
+                "editor_url",
+                "app_version",
+                "app_json_path",
+                "consolelog_json_path",
+                "detect_context",
+                "force_context",
+                "max_age_hours",
+            ],
+            required=["profile"],
+        ),
         tool_schema(
             "bubble_profile_add",
             "Add or update a local Bubble MCP profile. This writes only local MCP settings; it does not contact or mutate Bubble. After adding a profile, run session login/import and context detect before app mutations.",

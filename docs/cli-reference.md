@@ -56,8 +56,10 @@ bubble-mcp profile add my-app \
 
 The first profile added becomes `default_profile` in `settings.json`.
 
-MCP clients can use `bubble_profile_add` for the same local settings write when
-the profile name and Bubble app id are already known.
+MCP clients should prefer `bubble_project_bootstrap` when the profile name and
+Bubble app id are known; it can create/update the profile and return readiness
+next actions in one call. Use `bubble_profile_add` only for the lower-level
+local settings write.
 
 ## `bubble-mcp profile list`
 
@@ -591,6 +593,7 @@ Implemented tools:
 - `bubble_tool_coverage`
 - `bubble_catalog_quality`
 - `bubble_runtime_smoke`
+- `bubble_project_bootstrap`
 - `bubble_profile_add`
 - `bubble_profile_list`
 - `bubble_context_summary`

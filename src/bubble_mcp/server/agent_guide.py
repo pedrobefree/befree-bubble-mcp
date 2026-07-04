@@ -26,8 +26,8 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "find_profile_session_or_context",
         "when": "The user names a project/profile, asks what projects are available, or a target cannot be resolved.",
-        "tools": ["bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
-        "notes": "Call bubble_profile_status first when a profile is known. For known page/element refs, use bubble_context_find with profile, exact=true, and include_metadata=false before broader searches.",
+        "tools": ["bubble_project_bootstrap", "bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
+        "notes": "Use bubble_project_bootstrap when profile/app setup is needed. Call bubble_profile_status first when a configured profile is known. For known page/element refs, use bubble_context_find with profile, exact=true, and include_metadata=false before broader searches.",
     },
     {
         "intent": "create_or_update_visual_editor_elements",
@@ -149,8 +149,19 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 RECIPES: dict[str, dict[str, Any]] = {
     "setup_or_refresh_context": {
         "when": "A profile, session, page, element, or context target must be confirmed before mutation.",
-        "tools": ["bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
+        "tools": ["bubble_project_bootstrap", "bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
         "steps": [
+            {
+                "tool": "bubble_project_bootstrap",
+                "purpose": "Use when the user provided a profile/app id or when setup readiness should be assessed in one call.",
+                "args": {
+                    "profile": "$profile",
+                    "app_id": "$app_id",
+                    "app_version": "$app_version",
+                    "detect_context": False,
+                },
+                "required_before_execute": False,
+            },
             {
                 "tool": "bubble_profile_status",
                 "purpose": "Check whether the requested profile has a matching session and fresh loadable context.",
@@ -449,7 +460,7 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
     "changelog": ("history",),
     "clique": ("click",),
     "condicao": ("condition",),
-    "contexto": ("context",),
+    "contexto": ("context", "bootstrap"),
     "converta": ("convert", "import"),
     "converter": ("convert", "import"),
     "cor": ("color",),
@@ -474,12 +485,12 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
     "opcao": ("option",),
     "pagina": ("page",),
     "paginas": ("page",),
-    "perfil": ("profile",),
+    "perfil": ("profile", "bootstrap", "setup"),
     "plano": ("plan",),
     "reutilizavel": ("reusable",),
     "reutilizaveis": ("reusable",),
     "seletor": ("selector",),
-    "sessao": ("session",),
+    "sessao": ("session", "bootstrap", "setup"),
     "texto": ("text",),
     "validar": ("validate",),
     "versao": ("version",),
@@ -586,7 +597,7 @@ RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
     "html_import": "create_from_html html selector url import",
     "page_or_reusable": "create page reusable clone delete context",
     "quality_gate": "readiness coverage catalog smoke health",
-    "setup_or_refresh_context": "profile session context detect find status",
+    "setup_or_refresh_context": "bootstrap setup profile session context detect find status",
     "style_or_tokens": "style color font token figma condition hovered",
     "visual_edit": "create visual element text button group input image update delete",
     "workflow": "workflow event action condition click page load",

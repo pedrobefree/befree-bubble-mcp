@@ -87,9 +87,9 @@ AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
         task="faça login da sessão e detecte o contexto atualizado do projeto",
         expected_recipe="setup_or_refresh_context",
         expected_intents=("find_profile_session_or_context",),
-        expected_recipe_tools=("bubble_profile_status", "bubble_context_detect"),
+        expected_recipe_tools=("bubble_project_bootstrap", "bubble_profile_status", "bubble_context_detect"),
         search_query="sessão contexto perfil",
-        expected_search_tool="bubble_profile_status",
+        expected_search_tool="bubble_project_bootstrap",
         description="Route setup/session/context requests to profile/session/context tools.",
     ),
     AgentRoutingCase(
