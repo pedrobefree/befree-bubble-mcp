@@ -292,6 +292,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "family matches a user request, especially to avoid shelling out to CLI help or inspecting repository code. "
         "Read-only."
     ),
+    "bubble_tool_search": (
+        "Search the exposed Bubble MCP catalog and return compact tool metadata for a query. Use this when the agent "
+        "needs to choose between related Bubble tool families without loading or reasoning over the full tools/list "
+        "response. Read-only."
+    ),
     "bubble_tool_coverage": (
         "Report execution coverage for every exposed MCP tool. Use this to audit whether tools are handled by "
         "standalone native code, direct Aria-runtime methods, Aria-runtime aliases, custom runtime adapters, compiler "
@@ -757,12 +762,13 @@ def legacy_description(name: str) -> str:
 
 
 def tool_annotations(name: str) -> dict[str, bool]:
-    read_only = _is_read_only(name) or name == "bubble_agent_guide"
+    read_only = _is_read_only(name) or name in {"bubble_agent_guide", "bubble_tool_search"}
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}
     return {
         "readOnlyHint": read_only,
         "destructiveHint": destructive,
-        "idempotentHint": read_only or name in {"bubble_health_check", "bubble_profile_list", "bubble_agent_guide"},
+        "idempotentHint": read_only
+        or name in {"bubble_health_check", "bubble_profile_list", "bubble_agent_guide", "bubble_tool_search"},
         "openWorldHint": name
         in {
             "bubble_context_detect",

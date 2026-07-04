@@ -116,3 +116,59 @@ def agent_guide(task: str = "") -> dict[str, Any]:
         "recommended_routes": recommended,
         "all_routes": list(ROUTES),
     }
+
+
+def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
+    """Search exposed MCP tools and return compact matching metadata."""
+
+    from bubble_mcp.server.schemas import list_tool_schemas
+
+    normalized_query = str(query or "").strip().lower()
+    terms = [term for term in normalized_query.replace("_", " ").replace("-", " ").split() if term]
+    max_results = min(max(int(limit or 8), 1), 25)
+    tools = list_tool_schemas()
+    scored: list[tuple[int, dict[str, Any]]] = []
+
+    for tool in tools:
+        name = str(tool.get("name") or "")
+        description = str(tool.get("description") or "")
+        input_schema = tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {}
+        properties = input_schema.get("properties") if isinstance(input_schema, dict) else {}
+        property_names = list(properties.keys()) if isinstance(properties, dict) else []
+        haystack = " ".join([name, description, *property_names]).lower().replace("_", " ").replace("-", " ")
+        if not terms:
+            score = 1
+        else:
+            score = 0
+            for term in terms:
+                if term == name.lower():
+                    score += 20
+                if term in name.lower().replace("_", " ").replace("-", " "):
+                    score += 10
+                if term in description.lower():
+                    score += 4
+                if term in property_names:
+                    score += 3
+                if term in haystack:
+                    score += 1
+        if score <= 0:
+            continue
+        compact = {
+            "name": name,
+            "description": description,
+            "required": input_schema.get("required", []) if isinstance(input_schema, dict) else [],
+            "properties": property_names[:40],
+            "annotations": tool.get("annotations", {}),
+        }
+        scored.append((score, compact))
+
+    scored.sort(key=lambda item: (-item[0], item[1]["name"]))
+    matches = [{"score": score, **tool} for score, tool in scored[:max_results]]
+    return {
+        "ok": True,
+        "query": query,
+        "limit": max_results,
+        "match_count": len(matches),
+        "matches": matches,
+        "usage": "Use this read-only search when a client needs a compact subset of the MCP catalog before choosing a tool.",
+    }

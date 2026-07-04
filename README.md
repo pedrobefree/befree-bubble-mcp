@@ -208,6 +208,9 @@ When the client is unsure which tool family matches the user request, call
 `bubble_agent_guide` with the task text. It returns a compact read-only routing
 map for common flows such as context refresh, visual edits, HTML import,
 workflows, data schema, branches, changelog, evals, and exact payload writes.
+For narrower discovery, call `bubble_tool_search` with a query such as
+`html selector`, `workflow action`, or `branch changelog`; it returns compact
+tool metadata instead of the full catalog.
 
 When a catalog tool is called with a `profile`, the server resolves the stored
 profile, session, context, and local mutation overlay, then tries to execute the

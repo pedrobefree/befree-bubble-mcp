@@ -98,6 +98,32 @@ def test_agent_guide_routes_user_tasks_without_cli_discovery() -> None:
     assert html_route["tools"] == ["create_from_html"]
 
 
+def test_tool_search_returns_compact_relevant_catalog_matches() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 26,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_search",
+                "arguments": {"query": "html selector import", "limit": 5},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["limit"] == 5
+    assert payload["matches"]
+    names = [match["name"] for match in payload["matches"]]
+    assert "create_from_html" in names
+    create_from_html = next(match for match in payload["matches"] if match["name"] == "create_from_html")
+    assert create_from_html["required"] == ["profile", "context", "parent"]
+    assert "selector" in create_from_html["properties"]
+    assert create_from_html["annotations"]["readOnlyHint"] is False
+
+
 def test_runtime_smoke_tool_runs_coverage_suite() -> None:
     response = handle_request(
         {
@@ -138,9 +164,13 @@ def test_runtime_smoke_schema_exposes_execute_write_controls() -> None:
     tools = response["result"]["tools"]
     smoke = next(tool for tool in tools if tool["name"] == "bubble_runtime_smoke")
     guide = next(tool for tool in tools if tool["name"] == "bubble_agent_guide")
+    search = next(tool for tool in tools if tool["name"] == "bubble_tool_search")
     assert guide["annotations"]["readOnlyHint"] is True
     assert guide["annotations"]["idempotentHint"] is True
     assert "task" in guide["inputSchema"]["properties"]
+    assert search["annotations"]["readOnlyHint"] is True
+    assert search["annotations"]["idempotentHint"] is True
+    assert search["inputSchema"]["required"] == ["query"]
     properties = smoke["inputSchema"]["properties"]
     assert "execute-write" in properties["suite"]["enum"]
     assert "family-preview" in properties["suite"]["enum"]

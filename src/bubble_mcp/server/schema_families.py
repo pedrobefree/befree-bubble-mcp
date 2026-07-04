@@ -463,6 +463,12 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "Return compact agent-facing routing guidance for the Bubble MCP catalog. Call this when a client needs to choose the correct tool family without inspecting CLI help or repository code.",
             ["task"],
         ),
+        tool_schema(
+            "bubble_tool_search",
+            "Search the exposed Bubble MCP tool catalog and return compact matching tool metadata. Use this instead of reading the full tools/list response when the task only needs a small set of relevant tools.",
+            ["query", "limit"],
+            required=["query"],
+        ),
         _empty_tool(
             "bubble_tool_coverage",
             "Report runtime coverage for every exposed Bubble MCP tool, including native, Aria-runtime, alias, custom, compiler fallback, and uncovered categories. Read-only.",
