@@ -46,6 +46,7 @@ def test_resources_list_and_read_agent_runtime() -> None:
     assert listed is not None
     resources = listed["result"]["resources"]
     uris = [resource["uri"] for resource in resources]
+    assert "bubble://docs/agent-quickstart" in uris
     assert "bubble://docs/agent-runtime" in uris
     assert "bubble://catalog/summary" in uris
 
@@ -63,6 +64,24 @@ def test_resources_list_and_read_agent_runtime() -> None:
     assert content["mimeType"] == "text/markdown"
     assert "bubble_task_recipe" in content["text"]
     assert "Preview first" in content["text"]
+
+
+def test_resources_read_agent_quickstart() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 42,
+            "method": "resources/read",
+            "params": {"uri": "bubble://docs/agent-quickstart"},
+        }
+    )
+
+    assert response is not None
+    content = response["result"]["contents"][0]
+    assert content["mimeType"] == "text/markdown"
+    assert "Default call sequence" in content["text"]
+    assert "bubble_agent_guide" in content["text"]
+    assert "Do not inspect repository code" in content["text"]
 
 
 def test_resources_read_catalog_summary_json() -> None:
@@ -177,6 +196,7 @@ def test_prompts_list_and_get_task_runbook() -> None:
     assert message["role"] == "user"
     assert "bubble_task_recipe" in message["content"]["text"]
     assert "Create a page" in message["content"]["text"]
+    assert "Do not inspect repository code" in message["content"]["text"]
 
 
 def test_health_tool_returns_text_content() -> None:

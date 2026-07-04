@@ -451,6 +451,7 @@ errors.
 
 Implemented resources:
 
+- `bubble://docs/agent-quickstart`
 - `bubble://docs/agent-runtime`
 - `bubble://catalog/summary`
 - `bubble://recipes/summary`

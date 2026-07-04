@@ -82,6 +82,7 @@ for invalid JSON-RPC requests or unsupported MCP methods.
 The server exposes read-only resources for clients that support MCP
 `resources/list`, `resources/templates/list`, and `resources/read`:
 
+- `bubble://docs/agent-quickstart`: shortest operating sequence for agents.
 - `bubble://docs/agent-runtime`: compact operating rules for agents.
 - `bubble://catalog/summary`: JSON summary of catalog size and agent entrypoints.
 - `bubble://recipes/summary`: JSON summary of available task recipes.
@@ -163,6 +164,8 @@ return a preview instead of posting to Bubble.
 
 - If the user names a profile and asks for Bubble app work, call the MCP tool
   that matches the requested capability.
+- If the client supports MCP resources, read `bubble://docs/agent-quickstart`
+  before the first Bubble task in a session.
 - If the correct tool family is unclear, call `bubble_agent_guide` with the
   user's task and use its recommended route before inspecting CLI help.
 - If the client supports MCP resources, read `bubble://docs/agent-runtime`

@@ -50,6 +50,40 @@ def _agent_runtime_markdown() -> str:
     )
 
 
+def _agent_quickstart_markdown() -> str:
+    return "\n".join(
+        [
+            "# Bubble MCP Agent Quickstart",
+            "",
+            "When the user asks for Bubble work through this MCP, use the MCP catalog directly.",
+            "Do not inspect repository code, CLI help, or shell commands unless the required capability is missing",
+            "from `tools/list`.",
+            "",
+            "Default call sequence:",
+            "",
+            "1. If the target profile is unclear, call `bubble_profile_list`.",
+            "2. Call `bubble_agent_guide` with the user's natural-language task.",
+            "3. Call `bubble_task_recipe` with `task`, `profile`, `context`, `parent`, and `execute`.",
+            "4. Execute the recipe's MCP tools in order. Use `execute=false` for preview unless the user",
+            "   explicitly asked to apply the change.",
+            "5. After real writes, verify with `bubble_context_detect`, changelog tools, or `bubble_runtime_smoke`.",
+            "",
+            "Setup assumptions:",
+            "",
+            "- Every Bubble app needs a local profile.",
+            "- Mutating calls need a captured session for that profile.",
+            "- Reliable page/reusable/element resolution needs current context from `bubble_context_detect`.",
+            "",
+            "User interaction policy:",
+            "",
+            "- Do not ask the user to memorize or provide internal tool names.",
+            "- Infer the capability from the request and use the visible Bubble names the user provided.",
+            "- Ask the user only for missing business inputs such as profile, page/reusable name, target element,",
+            "  selector, URL, or permission to execute a real write.",
+        ]
+    )
+
+
 def _catalog_summary() -> dict[str, Any]:
     tools = list_tool_schemas()
     native = [
@@ -105,6 +139,12 @@ def _recipe_detail(recipe_id: str) -> dict[str, Any]:
 
 
 RESOURCES: dict[str, dict[str, Any]] = {
+    "bubble://docs/agent-quickstart": {
+        "name": "bubble_agent_quickstart",
+        "title": "Bubble Agent Quickstart",
+        "description": "Shortest operating sequence for agents using this Bubble MCP server.",
+        "mimeType": RESOURCE_MIME_MARKDOWN,
+    },
     "bubble://docs/agent-runtime": {
         "name": "bubble_agent_runtime",
         "title": "Bubble Agent Runtime Guide",
@@ -158,6 +198,9 @@ def read_resource(uri: str) -> dict[str, Any]:
         text = json.dumps(_recipe_detail(recipe_id), indent=2, sort_keys=True)
     elif uri not in RESOURCES:
         raise ValueError(f"Unknown Bubble MCP resource: {uri}")
+    elif uri == "bubble://docs/agent-quickstart":
+        mime_type = RESOURCE_MIME_MARKDOWN
+        text = _agent_quickstart_markdown()
     elif uri == "bubble://docs/agent-runtime":
         mime_type = RESOURCE_MIME_MARKDOWN
         text = _agent_runtime_markdown()
