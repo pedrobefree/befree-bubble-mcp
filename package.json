@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": false,
   "type": "module",
+  "license": "MIT",
   "description": "Local bridge utilities for Bubble MCP integrations.",
   "scripts": {
     "test": "node --test test-node/*.test.mjs",
