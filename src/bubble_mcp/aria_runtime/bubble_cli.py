@@ -29134,7 +29134,7 @@ class BubbleCLI:
 
         if dry_run:
             logger.info("\n DRY RUN - Set Default Style Payload:")
-            logger.log(json.dumps(pb.changes, indent=2))
+            logger.log(pb.to_json())
             return True
 
         try:
@@ -29881,7 +29881,7 @@ class BubbleCLI:
 
         if dry_run:
             logger.info(f"\n DRY RUN - Style Creation Payload ({style_id}):")
-            logger.log(json.dumps(pb.changes, indent=2))
+            logger.log(pb.to_json())
         else:
             try:
                 # Send Creation first
@@ -43288,6 +43288,8 @@ class BubbleCLI:
         if dry_run:
             logger.info(f"Creating icon: {name} ({icon_name})")
             logger.info(f"ICON PAYLOAD: {json.dumps(full_body, indent=2)}")
+            logger.info("\n DRY RUN - Payload preview:")
+            logger.log(pb.to_json())
             # print(f" DRY RUN - Icon payload prepared for '{name}'")
             self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
             return new_key
@@ -60335,14 +60337,15 @@ class BubbleCLI:
             )
             auto_wf_key = self.id_gen.element_id()
             auto_wf_id = self.id_gen.element_id()
+            is_page_event = str(element_name or "").strip().lower() == "page"
             created = self.create_event(
                 context_name=context_name,
                 event_type=event,
                 event_key=auto_wf_key,
                 event_id=auto_wf_id,
-                element_ref=element["id"],
-                element_ref_kind="id",
-                bind_name=element_name,
+                element_ref=None if is_page_event else element["id"],
+                element_ref_kind="auto" if is_page_event else "id",
+                bind_name=None if is_page_event else element_name,
                 dry_run=dry_run,
             )
             if not created:
@@ -60355,7 +60358,7 @@ class BubbleCLI:
                 "id": auto_wf_id,
                 "workflow": {
                     "id": auto_wf_id,
-                    "%p": {"%ei": element["id"]},
+                    "%p": {} if is_page_event else {"%ei": element["id"]},
                     "actions": {},
                 },
             }

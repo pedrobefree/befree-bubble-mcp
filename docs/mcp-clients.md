@@ -86,7 +86,7 @@ families or `write_payload` for exact Bubble editor writes.
 
 - `bubble_health_check`: reports local server capabilities.
 - `bubble_tool_coverage`: reports whether each exposed tool is handled by standalone native code, direct Aria-runtime dispatch, runtime alias dispatch, a custom runtime adapter, compiler fallback, or is uncovered.
-- `bubble_runtime_smoke`: runs an operational smoke suite. `coverage` is local-only, `safe-read` performs read-only checks, `preview-write` compiles representative mutations with `execute=false`, and `execute-write` performs authenticated temporary writes only when `execute=true`. Use `verify_context=true` for real-write smokes that must refresh the Bubble context and confirm the temporary objects materialized.
+- `bubble_runtime_smoke`: runs an operational smoke suite. `coverage` is local-only, `safe-read` performs read-only checks, `preview-write` compiles representative mutations with `execute=false`, `family-preview` exercises representative visual/container/input/schema/workflow/style/HTML/branch/changelog paths without writes, and `execute-write` performs authenticated temporary writes only when `execute=true`. Use `verify_context=true` for real-write smokes that must refresh the Bubble context and confirm the temporary objects materialized.
 - `bubble_profile_list`: lists configured local Bubble profiles.
 - `bubble_context_summary`: summarizes a compact context JSON file.
 - `bubble_context_find`: searches a compact context JSON file.

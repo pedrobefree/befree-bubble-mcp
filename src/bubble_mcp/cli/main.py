@@ -718,9 +718,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     runtime_smoke_parser.add_argument(
         "--suite",
-        choices=["coverage", "safe-read", "preview-write", "execute-write"],
+        choices=["coverage", "safe-read", "preview-write", "execute-write", "family-preview"],
         default="coverage",
-        help="Smoke suite to run. execute-write performs real temporary writes only when --execute is also set.",
+        help="Smoke suite to run. family-preview exercises representative tool families without writes; execute-write performs real temporary writes only when --execute is also set.",
     )
     runtime_smoke_parser.add_argument("--profile", default="")
     runtime_smoke_parser.add_argument("--context", default="index")

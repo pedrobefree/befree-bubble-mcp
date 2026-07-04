@@ -222,6 +222,9 @@ coverage. The Aria catalog is expected to report `uncovered_count: 0`.
 Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
 The `preview-write` suite compiles representative mutations with
 `execute=false`; it does not post changes to Bubble.
+The `family-preview` suite exercises representative visual, container, input,
+schema, workflow, style, HTML import, branch, and changelog paths without
+posting changes.
 
 For an authenticated real-write smoke test, use the explicit `execute-write`
 suite. It creates a temporary page and representative elements only when

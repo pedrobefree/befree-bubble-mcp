@@ -361,8 +361,8 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "suite": _prop(
         "string",
-        "Runtime smoke suite to run. coverage checks catalog coverage only; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false; execute-write creates temporary Bubble objects and requires execute=true.",
-        enum=["coverage", "safe-read", "preview-write", "execute-write"],
+        "Runtime smoke suite to run. coverage checks catalog coverage only; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false; family-preview exercises representative visual/container/input/schema/workflow/style/html/branch/changelog paths without writes; execute-write creates temporary Bubble objects and requires execute=true.",
+        enum=["coverage", "safe-read", "preview-write", "family-preview", "execute-write"],
         default="coverage",
     ),
     "include_details": _prop(

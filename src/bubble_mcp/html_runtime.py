@@ -182,11 +182,20 @@ def create_from_html_runtime(
     bubble_cli, bubble_sdk = _load_aria_runtime_modules()
     captured_payloads: list[dict[str, Any]] = []
     captured_results: list[dict[str, Any]] = []
+    captured_builder_ids: set[int] = set()
     original_send = bubble_sdk.PayloadBuilder.send_to_webhook
+    original_to_json = bubble_sdk.PayloadBuilder.to_json
+
+    def capture_payload(builder: Any) -> dict[str, Any]:
+        builder_id = id(builder)
+        write_payload = builder.build()
+        if builder_id not in captured_builder_ids:
+            captured_builder_ids.add(builder_id)
+            captured_payloads.append(write_payload)
+        return write_payload
 
     def send_to_local_bubble(builder: Any, _url: str = "") -> Any:
-        write_payload = builder.build()
-        captured_payloads.append(write_payload)
+        write_payload = capture_payload(builder)
         if not execute:
             captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
             return {"ok": True, "dry_run": True}
@@ -205,10 +214,17 @@ def create_from_html_runtime(
             raise RuntimeError(str(result.get("error") or result.get("reason") or "Bubble write failed"))
         return result
 
+    def to_json_with_capture(builder: Any) -> str:
+        write_payload = capture_payload(builder)
+        if not execute:
+            captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
+        return original_to_json(builder)
+
     stdout = StringIO()
     stderr = StringIO()
     try:
         bubble_sdk.PayloadBuilder.send_to_webhook = send_to_local_bubble
+        bubble_sdk.PayloadBuilder.to_json = to_json_with_capture
         with redirect_stdout(stdout), redirect_stderr(stderr):
             cli = bubble_cli.BubbleCLI(
                 app_json_path=str(bubble_file),
@@ -235,6 +251,7 @@ def create_from_html_runtime(
             )
     finally:
         bubble_sdk.PayloadBuilder.send_to_webhook = original_send
+        bubble_sdk.PayloadBuilder.to_json = original_to_json
         if temp_path is not None:
             try:
                 temp_path.unlink()

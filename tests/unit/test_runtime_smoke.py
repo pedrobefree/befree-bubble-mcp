@@ -41,6 +41,68 @@ def test_execute_write_cases_use_unique_target_page_and_execute_flag() -> None:
     assert write_cases[3].arguments["fit_height"] is True
 
 
+def test_family_preview_covers_representative_tool_families_without_execute() -> None:
+    cases = build_runtime_smoke_cases(
+        suite="family-preview",
+        profile="cliente2",
+        app_id="courselaunch",
+        app_version="test",
+        run_id="families",
+    )
+
+    tools = {case.tool for case in cases if case.suite == "family-preview"}
+    assert {
+        "create_text",
+        "create_button",
+        "create_icon",
+        "create_image",
+        "create_html",
+        "create_group",
+        "create_repeating_group",
+        "create_input",
+        "create_dropdown",
+        "create_checkbox",
+        "create_data_type",
+        "create_data_field",
+        "create_option_set",
+        "create_option_value",
+        "create_color",
+        "create_style",
+        "create_workflow",
+        "add_action",
+        "create_from_html",
+        "bubble_branch_list",
+        "bubble_changelog_fetch",
+    }.issubset(tools)
+    assert all(case.arguments.get("execute") is not True for case in cases if case.suite == "family-preview")
+    assert all(case.arguments.get("app_id") == "courselaunch" for case in cases if case.tool.startswith("create_"))
+
+
+def test_family_preview_runs_call_sequence() -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_tool(tool: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((tool, args))
+        return {"ok": True, "executed": bool(args.get("execute")), "write_count": int(tool.startswith("create_"))}
+
+    report = run_runtime_smoke(
+        fake_tool,
+        suite="family-preview",
+        profile="cliente2",
+        app_id="courselaunch",
+        run_id="families",
+    )
+
+    assert report["ok"] is True
+    assert report["execute"] is False
+    assert report["summary"]["failed"] == 0
+    assert any(tool == "create_data_type" for tool, _args in calls)
+    assert any(tool == "create_workflow" for tool, _args in calls)
+    assert any(tool == "create_from_html" for tool, _args in calls)
+    assert any(tool == "bubble_branch_list" for tool, _args in calls)
+    assert all(args.get("execute") is not True for _tool, args in calls)
+
+
 def test_execute_write_can_append_cleanup_case() -> None:
     cases = build_runtime_smoke_cases(
         suite="execute-write",

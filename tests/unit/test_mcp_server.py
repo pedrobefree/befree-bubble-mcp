@@ -112,6 +112,7 @@ def test_runtime_smoke_schema_exposes_execute_write_controls() -> None:
     smoke = next(tool for tool in tools if tool["name"] == "bubble_runtime_smoke")
     properties = smoke["inputSchema"]["properties"]
     assert "execute-write" in properties["suite"]["enum"]
+    assert "family-preview" in properties["suite"]["enum"]
     assert "execute" in properties
     assert "cleanup" in properties
     assert "run_id" in properties

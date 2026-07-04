@@ -15,7 +15,7 @@ from bubble_mcp.runtime_smoke_validation import validate_execute_write_context
 
 
 ToolCaller = Callable[[str, dict[str, Any]], dict[str, Any]]
-RUNTIME_SMOKE_SUITES = {"coverage", "safe-read", "preview-write", "execute-write"}
+RUNTIME_SMOKE_SUITES = {"coverage", "safe-read", "preview-write", "execute-write", "family-preview"}
 
 
 @dataclass(frozen=True)
@@ -40,6 +40,150 @@ def _safe_run_id(run_id: str = "") -> str:
     value = re.sub(r"[^A-Za-z0-9_]+", "_", value)
     value = re.sub(r"_+", "_", value).strip("_")
     return value[:40] or _default_run_id()
+
+
+def _with_app_id(args: dict[str, Any], app_id: str) -> dict[str, Any]:
+    if app_id:
+        return {**args, "app_id": app_id}
+    return args
+
+
+def _family_preview_cases(
+    *,
+    profile: str,
+    context: str,
+    parent: str,
+    app_id: str,
+    app_version: str,
+    run_id: str,
+) -> list[SmokeCase]:
+    base = {
+        "profile": profile,
+        "context": context,
+        "parent": parent,
+        "app_version": app_version,
+        "execute": False,
+    }
+    cases: list[SmokeCase] = []
+    visual_cases: list[tuple[str, dict[str, Any], str]] = [
+        ("create_text", {"name": f"tx_family_{run_id}", "content": "Family preview text"}, "visual:text"),
+        ("create_button", {"name": f"bt_family_{run_id}", "label": "Family preview"}, "visual:button"),
+        ("create_icon", {"name": f"ic_family_{run_id}", "icon_name": "feather check-circle"}, "visual:icon"),
+        ("create_image", {"name": f"im_family_{run_id}", "source": "https://example.com/image.png"}, "visual:image"),
+        ("create_html", {"name": f"html_family_{run_id}", "content": "<div>Family preview</div>"}, "visual:html"),
+        ("create_group", {"name": f"gp_family_{run_id}", "layout": "column"}, "container:group"),
+        ("create_repeating_group", {"name": f"rg_family_{run_id}", "data_type": "text"}, "container:repeating_group"),
+        ("create_input", {"name": f"in_family_{run_id}", "placeholder": "Family preview"}, "input:input"),
+        ("create_dropdown", {"name": f"dd_family_{run_id}", "placeholder": "Choose"}, "input:dropdown"),
+        ("create_checkbox", {"name": f"cb_family_{run_id}", "label": "Family checkbox"}, "input:checkbox"),
+    ]
+    for tool, args, family in visual_cases:
+        cases.append(
+            SmokeCase(
+                tool,
+                _with_app_id({**base, **args}, app_id),
+                "family-preview",
+                f"Preview {family} creation through the MCP runtime path.",
+                True,
+            )
+        )
+
+    schema_base = {"profile": profile, "app_version": app_version, "execute": False, "dry_run": True}
+    schema_cases: list[tuple[str, dict[str, Any], str]] = [
+        ("create_data_type", {"name": f"MCP Family {run_id}", "fields": [{"name": "name", "type": "text"}]}, "schema:data_type"),
+        (
+            "create_data_field",
+            {"data_type_key": "user", "field_name": f"family_field_{run_id}", "field_type": "text"},
+            "schema:data_field",
+        ),
+        ("create_option_set", {"name": f"MCP Family Options {run_id}", "values": ["One", "Two"]}, "schema:option_set"),
+        ("create_option_value", {"option_set_key": "os_status", "label": f"Family {run_id}"}, "schema:option_value"),
+    ]
+    for tool, args, family in schema_cases:
+        cases.append(
+            SmokeCase(
+                tool,
+                _with_app_id({**schema_base, **args}, app_id),
+                "family-preview",
+                f"Preview {family} mutation path.",
+                True,
+            )
+        )
+
+    style_cases: list[tuple[str, dict[str, Any], str]] = [
+        ("create_color", {"name": f"family_color_{run_id}", "rgba": "rgba(18, 52, 86, 1)"}, "style:color"),
+        ("create_style", {"name": f"family_style_{run_id}", "element_type": "Text"}, "style:definition"),
+    ]
+    for tool, args, family in style_cases:
+        cases.append(
+            SmokeCase(
+                tool,
+                _with_app_id({**schema_base, **args}, app_id),
+                "family-preview",
+                f"Preview {family} mutation path.",
+                True,
+            )
+        )
+
+    workflow_cases: list[tuple[str, dict[str, Any], str]] = [
+        ("create_workflow", {"context": context, "element_name": "Page", "event_type": "PageLoaded"}, "workflow:event"),
+        (
+            "add_action",
+            {"context": context, "element_name": "Page", "event": "PageLoaded", "action_type": "show_message", "message": "Family preview"},
+            "workflow:action",
+        ),
+    ]
+    for tool, args, family in workflow_cases:
+        cases.append(
+            SmokeCase(
+                tool,
+                _with_app_id({**schema_base, **args}, app_id),
+                "family-preview",
+                f"Preview {family} mutation path.",
+                True,
+            )
+        )
+
+    cases.extend(
+        [
+            SmokeCase(
+                "create_from_html",
+                _with_app_id(
+                    {
+                        **base,
+                        "html": "<section id='family-preview'><h1>Family preview</h1></section>",
+                        "selector": "#family-preview",
+                        "rendered_html": False,
+                        "refresh_context": False,
+                    },
+                    app_id,
+                ),
+                "family-preview",
+                "Preview advanced HTML import path.",
+                True,
+            ),
+            SmokeCase(
+                "bubble_branch_list",
+                {"profile": profile, **({"app_id": app_id} if app_id else {})},
+                "family-preview",
+                "Read Bubble branch list through the editor API.",
+                True,
+            ),
+            SmokeCase(
+                "bubble_changelog_fetch",
+                {
+                    "profile": profile,
+                    "app_version": app_version,
+                    "num_fetch": 5,
+                    **({"app_id": app_id} if app_id else {}),
+                },
+                "family-preview",
+                "Read Bubble changelog entries through the editor API.",
+                True,
+            ),
+        ]
+    )
+    return cases
 
 
 def build_runtime_smoke_cases(
@@ -89,6 +233,20 @@ def build_runtime_smoke_cases(
         )
 
     if suite in {"safe-read"}:
+        return cases
+
+    if suite == "family-preview":
+        if profile:
+            cases.extend(
+                _family_preview_cases(
+                    profile=profile,
+                    context=context,
+                    parent=parent,
+                    app_id=app_id,
+                    app_version=app_version,
+                    run_id=effective_run_id,
+                )
+            )
         return cases
 
     if profile:
@@ -259,7 +417,7 @@ def run_runtime_smoke(
     """Run an operational smoke suite by calling MCP tool handlers."""
 
     if suite not in RUNTIME_SMOKE_SUITES:
-        raise ValueError("suite must be one of: coverage, safe-read, preview-write, execute-write.")
+        raise ValueError("suite must be one of: coverage, safe-read, preview-write, execute-write, family-preview.")
     effective_run_id = _safe_run_id(run_id)
     if suite == "execute-write" and not execute:
         return {

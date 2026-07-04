@@ -51,6 +51,14 @@ ARG_ALIASES = {
     "property_name": ("property",),
     "condition_json": ("only_when_json", "condition"),
     "query": ("message", "commands"),
+    "icon_name": ("icon",),
+    "source": ("image_url", "url"),
+    "data_type_key": ("data_type_ref", "data_type"),
+    "field_name": ("name",),
+    "field_type": ("type",),
+    "option_set_key": ("option_set_ref",),
+    "rgba": ("value", "color"),
+    "event_type": ("event",),
 }
 
 RUNTIME_TOOL_ALIASES = {

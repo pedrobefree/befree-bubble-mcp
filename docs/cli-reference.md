@@ -348,6 +348,7 @@ clients.
 bubble-mcp smoke runtime --suite coverage
 bubble-mcp smoke runtime --suite safe-read --profile my-app
 bubble-mcp smoke runtime --suite preview-write --profile my-app --context index --parent root
+bubble-mcp smoke runtime --suite family-preview --profile my-app --context index --parent root
 bubble-mcp smoke runtime --suite execute-write --profile my-app --execute
 bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --verify-context
 ```
@@ -358,6 +359,9 @@ Suites:
 - `safe-read`: read-only profile/session/project checks.
 - `preview-write`: representative create/import mutations compiled with
   `execute=false`; this does not post changes to Bubble.
+- `family-preview`: representative visual, container, input, schema, workflow,
+  style, HTML import, branch, and changelog paths with `execute=false` or
+  read-only editor calls.
 - `execute-write`: authenticated real-write smoke that creates a temporary
   page and representative elements. This suite requires `--execute`.
   Add `--verify-context` to refresh the `.bubble` context after the writes and
