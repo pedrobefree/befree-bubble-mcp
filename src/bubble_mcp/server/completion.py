@@ -70,6 +70,9 @@ def complete(params: dict[str, Any]) -> dict[str, Any]:
     if ref_type.endswith("resource") and argument_name == "recipe_id":
         if ref_uri in {"bubble://recipes/{recipe_id}", "bubble://recipes/"} or ref_uri.startswith("bubble://recipes/"):
             return _completion(sorted(RECIPES), value)
+    if ref_type.endswith("resource") and argument_name == "profile":
+        if ref_uri in {"bubble://profiles/{profile}/status", "bubble://profiles/"} or ref_uri.startswith("bubble://profiles/"):
+            return _completion(_profile_names(), value)
 
     if ref_type.endswith("prompt") and ref_name in PROMPTS:
         if argument_name == "profile":

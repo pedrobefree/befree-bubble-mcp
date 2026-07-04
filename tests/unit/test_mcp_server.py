@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 import bubble_mcp.server.completion as completion_module
+from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.store import BubbleSessionData, save_session
@@ -32,6 +33,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert "bubble_profile_list" in names
+    assert "bubble_profile_status" in names
 
 
 def test_ping_returns_empty_success() -> None:
@@ -100,6 +102,7 @@ def test_resources_read_catalog_summary_json() -> None:
     payload = json.loads(content["text"])
     assert payload["ok"] is True
     assert payload["tool_count"] >= 220
+    assert "bubble_profile_status" in payload["native_agent_tools"]
     assert "bubble_readiness_check" in payload["native_agent_tools"]
     assert "bubble_task_recipe" in payload["native_agent_tools"]
     assert "bubble_catalog_quality" in payload["native_agent_tools"]
@@ -111,6 +114,7 @@ def test_resource_templates_list_and_read_recipe_detail() -> None:
     assert listed is not None
     templates = listed["result"]["resourceTemplates"]
     assert templates[0]["uriTemplate"] == "bubble://recipes/{recipe_id}"
+    assert any(template["uriTemplate"] == "bubble://profiles/{profile}/status" for template in templates)
 
     response = handle_request(
         {
@@ -128,6 +132,48 @@ def test_resource_templates_list_and_read_recipe_detail() -> None:
     assert payload["ok"] is True
     assert payload["id"] == "html_import"
     assert payload["steps"][1]["tool"] == "create_from_html"
+
+
+def test_profile_status_tool_and_resource(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={"client": BubbleProfile(name="client", app_id="client-app", appname="client-app")},
+        )
+    )
+
+    tool_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 43,
+            "method": "tools/call",
+            "params": {"name": "bubble_profile_status", "arguments": {"profile": "client"}},
+        }
+    )
+
+    assert tool_response is not None
+    tool_payload = json.loads(tool_response["result"]["content"][0]["text"])
+    assert tool_payload["ok"] is True
+    assert tool_payload["profile"]["app_id"] == "client-app"
+    assert tool_response["result"]["structuredContent"] == tool_payload
+
+    resource_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 44,
+            "method": "resources/read",
+            "params": {"uri": "bubble://profiles/client/status"},
+        }
+    )
+
+    assert resource_response is not None
+    content = resource_response["result"]["contents"][0]
+    assert content["mimeType"] == "application/json"
+    resource_payload = json.loads(content["text"])
+    assert resource_payload["profile"]["name"] == "client"
+    assert resource_payload["ready"] is False
 
 
 def test_completion_suggests_recipe_ids() -> None:
@@ -148,6 +194,32 @@ def test_completion_suggests_recipe_ids() -> None:
     assert "html_import" in completion["values"]
     assert completion["total"] >= 1
     assert completion["hasMore"] is False
+
+
+def test_completion_suggests_profile_status_profile_ids(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={"client": BubbleProfile(name="client", app_id="client-app", appname="client-app")},
+        )
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 45,
+            "method": "completion/complete",
+            "params": {
+                "ref": {"type": "ref/resource", "uri": "bubble://profiles/{profile}/status"},
+                "argument": {"name": "profile", "value": "cl"},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["completion"]["values"] == ["client"]
 
 
 def test_completion_suggests_prompt_profiles(monkeypatch) -> None:  # type: ignore[no-untyped-def]

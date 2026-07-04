@@ -284,6 +284,12 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "List configured Bubble MCP profiles, app ids, and editor URLs. Use this first when the user names a profile "
         "or asks what Bubble projects are available. Read-only."
     ),
+    "bubble_profile_status": (
+        "Return a read-only readiness snapshot for one local Bubble MCP profile: profile mapping, stored session "
+        "metadata, context artifact loadability/freshness, and concrete next actions when setup is incomplete. Use "
+        "this before mutations when the agent needs to know whether a profile is ready without calling profile, "
+        "session, and context tools separately."
+    ),
     "bubble_health_check": (
         "Report server version and capability flags for profiles, session capture, context, planning, mutations, "
         "HTML import, evals, and Figma bridge support. Read-only."
@@ -783,6 +789,7 @@ def legacy_description(name: str) -> str:
 def tool_annotations(name: str) -> dict[str, bool]:
     agent_read_only = {
         "bubble_agent_guide",
+        "bubble_profile_status",
         "bubble_tool_search",
         "bubble_task_recipe",
         "bubble_catalog_quality",

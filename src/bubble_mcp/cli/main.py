@@ -39,6 +39,7 @@ from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.profile_status import profile_status
 from bubble_mcp.readiness import run_readiness_check
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
@@ -99,6 +100,12 @@ def command_profile_list(_args: argparse.Namespace) -> int:
         }
     )
     return 0
+
+
+def command_profile_status(args: argparse.Namespace) -> int:
+    status = profile_status(args.profile or "", max_age_hours=args.max_age_hours)
+    emit_json(status)
+    return 0 if status.get("ok") else 1
 
 
 def command_context_summary(args: argparse.Namespace) -> int:
@@ -558,6 +565,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     list_parser = profile_subparsers.add_parser("list", help="List configured profiles.")
     list_parser.set_defaults(func=command_profile_list)
+
+    status_parser = profile_subparsers.add_parser("status", help="Show read-only readiness status for a profile.")
+    status_parser.add_argument("--profile", default="", help="Profile to inspect. Defaults to settings.default_profile.")
+    status_parser.add_argument("--max-age-hours", type=int, default=24)
+    status_parser.set_defaults(func=command_profile_status)
 
     context_parser = subparsers.add_parser("context", help="Inspect compact Bubble context.")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)

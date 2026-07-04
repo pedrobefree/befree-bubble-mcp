@@ -72,6 +72,20 @@ Output is JSON and includes:
 - `profiles[].appname`
 - `profiles[].editor_url`
 
+## `bubble-mcp profile status`
+
+Returns a read-only readiness snapshot for one profile.
+
+```bash
+bubble-mcp profile status --profile my-app
+bubble-mcp profile status --profile my-app --max-age-hours 12
+```
+
+The response combines profile mapping, stored session metadata, context
+loadability/freshness, and next actions. Use it before real writes when the
+caller needs to know whether session login or `context detect --force` is still
+required.
+
 ## `bubble-mcp context summary`
 
 Summarizes a compact Bubble context JSON file.
@@ -525,6 +539,7 @@ Implemented completions:
 Implemented tools:
 
 - `bubble_health_check`
+- `bubble_profile_status`
 - `bubble_readiness_check`
 - `bubble_agent_guide`
 - `bubble_tool_search`

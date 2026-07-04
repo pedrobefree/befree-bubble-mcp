@@ -31,6 +31,7 @@ from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
+from bubble_mcp.profile_status import profile_status
 from bubble_mcp.readiness import run_readiness_check
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
@@ -132,6 +133,12 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                 for profile in settings.profiles.values()
             ],
         }
+    if name == "bubble_profile_status":
+        args = arguments or {}
+        return profile_status(
+            str(args.get("profile") or ""),
+            max_age_hours=int(args.get("max_age_hours") or 24),
+        )
     if name == "bubble_context_summary":
         path = Path(str((arguments or {}).get("file") or ""))
         context = load_context(path)

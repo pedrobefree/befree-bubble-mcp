@@ -242,6 +242,12 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "For readiness checks only: also run the broader family-preview smoke when a profile is available. This remains execute=false.",
         default=False,
     ),
+    "max_age_hours": _prop(
+        "integer",
+        "Maximum accepted context age before the profile status reports the context as stale.",
+        default=24,
+        minimum=1,
+    ),
     "verification_output": _prop(
         "string",
         "Optional local context JSON output path used by verify_context.",
@@ -474,6 +480,11 @@ def _empty_tool(name: str, description: str) -> ToolSchema:
 def profile_session_context_tools() -> list[ToolSchema]:
     return [
         _empty_tool("bubble_profile_list", "List local Bubble MCP profiles. This is read-only."),
+        tool_schema(
+            "bubble_profile_status",
+            "Return a read-only readiness snapshot for one local Bubble MCP profile: mapping, session metadata, context freshness/loadability, and next actions.",
+            ["profile", "max_age_hours"],
+        ),
         _empty_tool(
             "bubble_health_check",
             "Return local Bubble MCP server health and capability metadata.",

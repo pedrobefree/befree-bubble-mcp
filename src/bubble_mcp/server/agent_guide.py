@@ -16,8 +16,8 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "find_profile_session_or_context",
         "when": "The user names a project/profile, asks what projects are available, or a target cannot be resolved.",
-        "tools": ["bubble_profile_list", "bubble_session_list", "bubble_context_detect", "bubble_context_find"],
-        "notes": "Refresh context with bubble_context_detect when pages/elements may have changed in Bubble.",
+        "tools": ["bubble_profile_status", "bubble_profile_list", "bubble_session_list", "bubble_context_detect", "bubble_context_find"],
+        "notes": "Call bubble_profile_status first when a profile is known; it combines profile, session, and context readiness with next actions.",
     },
     {
         "intent": "create_or_update_visual_editor_elements",
@@ -127,23 +127,24 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 RECIPES: dict[str, dict[str, Any]] = {
     "setup_or_refresh_context": {
         "when": "A profile, session, page, element, or context target must be confirmed before mutation.",
-        "tools": ["bubble_profile_list", "bubble_session_list", "bubble_context_detect", "bubble_context_find"],
+        "tools": ["bubble_profile_status", "bubble_profile_list", "bubble_session_list", "bubble_context_detect", "bubble_context_find"],
         "steps": [
             {
-                "tool": "bubble_profile_list",
-                "purpose": "Confirm the requested profile exists and maps to the expected Bubble app.",
+                "tool": "bubble_profile_status",
+                "purpose": "Check whether the requested profile has a matching session and fresh loadable context.",
+                "args": {"profile": "$profile"},
                 "required_before_execute": True,
             },
             {
-                "tool": "bubble_session_list",
-                "purpose": "Confirm a captured editor session exists for the profile before any real write.",
-                "required_before_execute": True,
+                "tool": "bubble_profile_list",
+                "purpose": "Use only when the requested profile is unclear or bubble_profile_status reports it missing.",
+                "required_before_execute": False,
             },
             {
                 "tool": "bubble_context_detect",
-                "purpose": "Refresh the .bubble-backed project context when targets may be stale.",
+                "purpose": "Refresh the .bubble-backed project context when bubble_profile_status reports missing or stale context.",
                 "args": {"profile": "$profile", "force": True},
-                "required_before_execute": True,
+                "required_before_execute": False,
             },
             {
                 "tool": "bubble_context_find",

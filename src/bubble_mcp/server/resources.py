@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from bubble_mcp import __version__
+from bubble_mcp.profile_status import profile_status
 from bubble_mcp.server.agent_guide import RECIPES, ROUTES
 from bubble_mcp.server.schemas import list_tool_schemas
 
@@ -65,11 +66,12 @@ def _agent_quickstart_markdown() -> str:
             "Default call sequence:",
             "",
             "1. If the target profile is unclear, call `bubble_profile_list`.",
-            "2. Call `bubble_agent_guide` with the user's natural-language task.",
-            "3. Call `bubble_task_recipe` with `task`, `profile`, `context`, `parent`, and `execute`.",
-            "4. Execute the recipe's MCP tools in order. Use `execute=false` for preview unless the user",
+            "2. Call `bubble_profile_status` for the target profile to check session/context readiness.",
+            "3. Call `bubble_agent_guide` with the user's natural-language task.",
+            "4. Call `bubble_task_recipe` with `task`, `profile`, `context`, `parent`, and `execute`.",
+            "5. Execute the recipe's MCP tools in order. Use `execute=false` for preview unless the user",
             "   explicitly asked to apply the change.",
-            "5. After real writes, verify with `bubble_context_detect`, changelog tools, or `bubble_runtime_smoke`.",
+            "6. After real writes, verify with `bubble_context_detect`, changelog tools, or `bubble_runtime_smoke`.",
             "",
             "Setup assumptions:",
             "",
@@ -91,6 +93,7 @@ def _catalog_summary() -> dict[str, Any]:
     tools = list_tool_schemas()
     native = [
         "bubble_health_check",
+        "bubble_profile_status",
         "bubble_readiness_check",
         "bubble_agent_guide",
         "bubble_task_recipe",
@@ -108,6 +111,7 @@ def _catalog_summary() -> dict[str, Any]:
         "recipe_count": len(RECIPES),
         "recommended_entrypoints": [
             "bubble_agent_guide",
+            "bubble_profile_status",
             "bubble_task_recipe",
             "bubble_tool_search",
             "bubble_readiness_check",
@@ -180,6 +184,13 @@ RESOURCE_TEMPLATES: list[dict[str, Any]] = [
         "title": "Bubble Task Recipe",
         "description": "Read the complete operational recipe for one Bubble task family.",
         "mimeType": RESOURCE_MIME_JSON,
+    },
+    {
+        "name": "bubble_profile_status",
+        "uriTemplate": "bubble://profiles/{profile}/status",
+        "title": "Bubble Profile Status",
+        "description": "Read setup/readiness status for one local Bubble MCP profile.",
+        "mimeType": RESOURCE_MIME_JSON,
     }
 ]
 
@@ -203,6 +214,9 @@ def read_resource(uri: str) -> dict[str, Any]:
     if uri.startswith("bubble://recipes/") and uri != "bubble://recipes/summary":
         recipe_id = uri.removeprefix("bubble://recipes/").strip()
         text = json.dumps(_recipe_detail(recipe_id), indent=2, sort_keys=True)
+    elif uri.startswith("bubble://profiles/") and uri.endswith("/status"):
+        profile = uri.removeprefix("bubble://profiles/").removesuffix("/status").strip()
+        text = json.dumps(profile_status(profile), indent=2, sort_keys=True)
     elif uri not in RESOURCES:
         raise ValueError(f"Unknown Bubble MCP resource: {uri}")
     elif uri == "bubble://docs/agent-quickstart":

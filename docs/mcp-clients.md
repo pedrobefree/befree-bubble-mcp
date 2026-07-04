@@ -15,6 +15,7 @@ python -m playwright install chromium
 bubble-mcp init
 bubble-mcp profile add my-app --app-id my-bubble-app
 bubble-mcp profile list
+bubble-mcp profile status --profile my-app
 ```
 
 ## Codex or other stdio MCP clients
@@ -119,6 +120,8 @@ Use `bubble_tool_coverage` to audit how every exposed tool is handled.
 Use `bubble_catalog_quality` to audit whether the catalog is efficient for
 agents: clear descriptions, documented fields, valid annotations, readable
 resources/prompts, and complete runtime coverage.
+Use `bubble_profile_status` when the client needs a compact read-only snapshot
+of one profile's session/context readiness before mutating Bubble.
 Use `bubble_readiness_check` when the client needs the standard readiness
 sequence in one compact call.
 Use `bubble_runtime_smoke` when the user asks whether the MCP is operational
@@ -134,6 +137,9 @@ For lower-level standalone execution, pass `app_id` for compiler-supported
 families or `write_payload` for exact Bubble editor writes.
 
 - `bubble_health_check`: reports local server capabilities.
+- `bubble_profile_status`: reports whether a configured profile has matching
+  session metadata and loadable/fresh context, plus next actions when session
+  login or context detection is still needed.
 - `bubble_readiness_check`: runs server health, compact coverage/catalog-quality smoke, agent-routing, and optional profile safe-read or family-preview checks in one call. Use this before broad Bubble work or after installation; pass `include_details=true` only when debugging a failed nested check.
 - `bubble_agent_guide`: returns a compact routing guide for agents. Call it
   with the user task when the client is unsure which Bubble MCP tool family to
@@ -190,6 +196,8 @@ return a preview instead of posting to Bubble.
   executing mutating tools.
 - Before relying on a modified catalog or harness, call `bubble_readiness_check`
   and require `ok=true`. Use individual smoke suites only for deeper diagnosis.
+- Before applying a user-requested mutation to a project profile, call
+  `bubble_profile_status` and inspect `ready` plus `next_actions`.
 - Do not ask the user to memorize internal tool names; infer the right tool
   from the intent, then pass the visible app/page/element names as arguments.
 - Do not shell out to inspect CLI help unless a required capability is missing

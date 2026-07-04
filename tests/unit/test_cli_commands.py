@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from bubble_mcp.cli.main import main
+from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.sessions.store import session_from_payload
 
 
@@ -19,6 +20,24 @@ def test_cli_context_summary(capsys) -> None:  # type: ignore[no-untyped-def]
 
     assert payload["ok"] is True
     assert payload["summary"]["app_id"] == "synthetic-app"
+
+
+def test_cli_profile_status_reports_existing_profile(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={"client": BubbleProfile(name="client", app_id="client-app", appname="client-app")},
+        )
+    )
+
+    assert main(["profile", "status", "--profile", "client"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["ready"] is False
+    assert payload["profile"]["app_id"] == "client-app"
 
 
 def test_cli_plan_outputs_validated_plan(capsys) -> None:  # type: ignore[no-untyped-def]

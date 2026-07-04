@@ -38,6 +38,8 @@ python scripts/install_local.py --repair --extras browser,dev
   annotations, resources, prompts, and coverage.
 - One-command readiness check for health, coverage, catalog quality,
   agent-routing, and optional profile smoke validation.
+- Profile status checks that combine profile mapping, session metadata, context
+  freshness, and next actions in one read-only response.
 - Safe runtime smoke suites for local catalog coverage, read-only profile
   checks, and representative `execute=false` mutation previews.
 - Local profile management.
@@ -186,7 +188,21 @@ Refresh context after creating pages/elements outside this MCP, after importing
 from another tool, or when an agent cannot resolve a page, reusable element,
 style, workflow, data type, or path.
 
-### 5. Use The Profile From Your MCP Client
+### 5. Verify Profile Readiness
+
+Confirm profile, session, and context readiness before using the profile from an
+MCP client:
+
+```bash
+bubble-mcp profile status --profile my-app
+```
+
+The `ready` flag is true when the profile exists, the stored session targets
+the same Bubble app, and the compact context is loadable and fresh. If setup is
+incomplete, `next_actions` tells you whether to run session login/import or
+context detection.
+
+### 6. Use The Profile From Your MCP Client
 
 After `profile add`, `session login`, and `context detect` complete, refer to
 the profile name in your MCP client prompts:
@@ -229,12 +245,14 @@ bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubbl
 bubble-mcp tools coverage
 bubble-mcp tools quality
 bubble-mcp readiness --profile my-app --context index
+bubble-mcp profile status --profile my-app
 ```
 
 MCP clients that support resources and prompts can also read
 `bubble://docs/agent-runtime`, `bubble://catalog/summary`, and
 `bubble://recipes/summary`, read a specific recipe such as
-`bubble://recipes/html_import`, or request the `bubble-task-runbook`,
+`bubble://recipes/html_import`, read profile readiness such as
+`bubble://profiles/my-app/status`, or request the `bubble-task-runbook`,
 `bubble-html-import`, and `bubble-quality-gate` prompts.
 
 When a catalog tool is called with a `profile`, the server resolves the stored
