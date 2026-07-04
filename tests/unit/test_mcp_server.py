@@ -319,9 +319,39 @@ def test_prompts_list_and_get_task_runbook() -> None:
     assert response is not None
     message = response["result"]["messages"][0]
     assert message["role"] == "user"
+    assert "bubble_profile_status" in message["content"]["text"]
+    assert message["content"]["text"].index("bubble_profile_status") < message["content"]["text"].index(
+        "bubble_task_recipe"
+    )
     assert "bubble_task_recipe" in message["content"]["text"]
     assert "Create a page" in message["content"]["text"]
     assert "Do not inspect repository code" in message["content"]["text"]
+
+
+def test_prompt_get_html_import_prioritizes_profile_status() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 46,
+            "method": "prompts/get",
+            "params": {
+                "name": "bubble-html-import",
+                "arguments": {
+                    "profile": "smoke",
+                    "context": "mcp-01",
+                    "url": "https://example.com",
+                    "selector": "#home-area",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    text = response["result"]["messages"][0]["content"]["text"]
+    assert "bubble_profile_status" in text
+    assert "bubble_task_recipe" in text
+    assert text.index("bubble_profile_status") < text.index("bubble_task_recipe")
+    assert "create_from_html" in text
 
 
 def test_health_tool_returns_text_content() -> None:

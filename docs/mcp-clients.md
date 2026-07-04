@@ -100,9 +100,9 @@ The server also exposes reusable prompts through `prompts/list` and
 `prompts/get`:
 
 - `bubble-task-runbook`: turns a user task/profile/context into a short
-  execution runbook.
+  execution runbook that starts with profile readiness.
 - `bubble-html-import`: guides URL/selector imports through the advanced HTML
-  runtime.
+  runtime after profile readiness.
 - `bubble-quality-gate`: lists the smoke and coverage checks to run before
   claiming MCP work is complete.
 
