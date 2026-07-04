@@ -189,5 +189,5 @@ After connecting, ask naturally and reference the profile name:
 Using befree-bubble-mcp with profile my-app, create a page called mcp-01.
 ```
 
-Agents should call `bubble_profile_status`, `bubble_agent_guide`, and
-`bubble_task_recipe` instead of asking users to memorize internal tool names.
+Agents should call `bubble_profile_status` and `bubble_task_runbook` instead of
+asking users to memorize internal tool names.

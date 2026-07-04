@@ -283,8 +283,9 @@ resources/prompts, or uncovered exposed tools.
 Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
 The `coverage` suite runs local catalog coverage and catalog quality checks.
 The `agent-routing` suite validates representative natural-language Bubble
-requests against `bubble_agent_guide`, `bubble_task_recipe`, and
-`bubble_tool_search`; it does not post changes to Bubble.
+requests against `bubble_task_runbook`, `bubble_agent_guide`,
+`bubble_task_recipe`, and `bubble_tool_search`; it does not post changes to
+Bubble.
 The `preview-write` suite compiles representative mutations with
 `execute=false`; it does not post changes to Bubble.
 The `family-preview` suite exercises representative visual, container, input,

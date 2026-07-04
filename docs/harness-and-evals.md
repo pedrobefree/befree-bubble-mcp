@@ -82,10 +82,10 @@ CLI help or repository code:
 bubble-mcp smoke runtime --suite agent-routing
 ```
 
-This local-only suite exercises `bubble_agent_guide`, `bubble_task_recipe`, and
-`bubble_tool_search` against natural-language tasks for HTML import, page
-creation, Figma/style sync, branches/changelog, setup/context refresh, and
-workflow actions. It performs no Bubble writes.
+This local-only suite exercises `bubble_task_runbook`, `bubble_agent_guide`,
+`bubble_task_recipe`, and `bubble_tool_search` against natural-language tasks
+for HTML import, page creation, Figma/style sync, branches/changelog,
+setup/context refresh, and workflow actions. It performs no Bubble writes.
 
 ## Exporting Redacted Expert Captures
 

@@ -117,8 +117,9 @@ def _catalog_summary() -> dict[str, Any]:
         "route_count": len(ROUTES),
         "recipe_count": len(RECIPES),
         "recommended_entrypoints": [
-            "bubble_agent_guide",
             "bubble_profile_status",
+            "bubble_task_runbook",
+            "bubble_agent_guide",
             "bubble_task_recipe",
             "bubble_tool_search",
             "bubble_readiness_check",

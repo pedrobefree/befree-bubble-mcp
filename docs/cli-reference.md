@@ -483,8 +483,8 @@ Suites:
 
 - `coverage`: local-only catalog coverage and catalog quality checks.
 - `agent-routing`: local-only natural-language routing check that validates
-  `bubble_agent_guide`, `bubble_task_recipe`, and `bubble_tool_search` against
-  representative user prompts without writes.
+  `bubble_task_runbook`, `bubble_agent_guide`, `bubble_task_recipe`, and
+  `bubble_tool_search` against representative user prompts without writes.
 - `safe-read`: read-only profile/session/project checks.
 - `preview-write`: representative create/import mutations compiled with
   `execute=false`; this does not post changes to Bubble.
@@ -572,6 +572,7 @@ Implemented tools:
 - `bubble_health_check`
 - `bubble_profile_status`
 - `bubble_readiness_check`
+- `bubble_task_runbook`
 - `bubble_agent_guide`
 - `bubble_tool_search`
 - `bubble_task_recipe`
