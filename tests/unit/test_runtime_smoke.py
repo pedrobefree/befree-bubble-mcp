@@ -210,7 +210,7 @@ def test_agent_routing_smoke_validates_natural_language_tool_selection() -> None
 
     assert report["ok"] is True
     assert report["execute"] is False
-    assert report["summary"] == {"cases": 6, "passed": 6, "failed": 0, "skipped": 0}
+    assert report["summary"] == {"cases": 7, "passed": 7, "failed": 0, "skipped": 0}
     assert {result["status"] for result in report["results"]} == {"passed"}
     assert all(result["suite"] == "agent-routing" for result in report["results"])
     assert all("bubble_task_runbook" in result["tool"] for result in report["results"])

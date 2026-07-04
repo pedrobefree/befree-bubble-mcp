@@ -93,6 +93,15 @@ AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
         description="Route setup/session/context requests to profile/session/context tools.",
     ),
     AgentRoutingCase(
+        task="quero fazer login em outra conta Bubble para criar um novo profile e capturar a sessão",
+        expected_recipe="setup_or_refresh_context",
+        expected_intents=("find_profile_session_or_context",),
+        expected_recipe_tools=("bubble_project_bootstrap", "bubble_session_login", "bubble_profile_status"),
+        search_query="login conta bubble capturar sessão navegador",
+        expected_search_tool="bubble_session_login",
+        description="Route interactive Bubble login requests to the MCP session login tool.",
+    ),
+    AgentRoutingCase(
         task="crie um workflow de page load que mostre uma mensagem",
         expected_recipe="workflow",
         expected_intents=("manage_workflows",),

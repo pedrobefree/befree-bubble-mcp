@@ -1293,7 +1293,7 @@ def test_runtime_smoke_tool_runs_agent_routing_suite() -> None:
     assert payload["ok"] is True
     assert payload["suite"] == "agent-routing"
     assert payload["summary"]["failed"] == 0
-    assert payload["summary"]["passed"] == 6
+    assert payload["summary"]["passed"] == 7
     assert all("bubble_task_runbook" in result["tool"] for result in payload["results"])
 
 
