@@ -7,7 +7,7 @@ import tempfile
 from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from bubble_mcp.context.detector import default_crawler_index_path, detect_project_context
 from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mutation_overlay
@@ -188,7 +188,7 @@ def create_from_html_runtime(
 
     def capture_payload(builder: Any) -> dict[str, Any]:
         builder_id = id(builder)
-        write_payload = builder.build()
+        write_payload = cast("dict[str, Any]", builder.build())
         if builder_id not in captured_builder_ids:
             captured_builder_ids.add(builder_id)
             captured_payloads.append(write_payload)
@@ -218,7 +218,7 @@ def create_from_html_runtime(
         write_payload = capture_payload(builder)
         if not execute:
             captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
-        return original_to_json(builder)
+        return cast(str, original_to_json(builder))
 
     stdout = StringIO()
     stderr = StringIO()

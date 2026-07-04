@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shlex
 import shutil
 import subprocess
 import sys
@@ -113,6 +112,28 @@ def _clear_macos_execution_metadata(path: Path) -> None:
         )
 
 
+def _refresh_macos_entrypoint_inode(path: Path) -> None:
+    """Replace script inodes through /bin/cp+/bin/mv to avoid macOS exec kills.
+
+    On some local volumes, Python-written scripts under `.venv/bin` keep a
+    provenance state that survives `xattr -d` and can be killed by zsh when
+    executed directly. A system copy to `/tmp` followed by a move back has proven
+    to create an executable inode while preserving the script contents.
+    """
+
+    if sys.platform != "darwin" or not path.exists() or not path.is_file():
+        return
+    temp_path = Path(tempfile.gettempdir()) / f"{path.name}-{os.getpid()}.entrypoint"
+    try:
+        subprocess.run(["/bin/cp", str(path), str(temp_path)], check=False)
+        temp_path.chmod(0o755)
+        subprocess.run(["/bin/mv", str(temp_path), str(path)], check=False)
+        path.chmod(0o755)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 def _repair_pth_visibility(site_packages: Path) -> None:
     for path in site_packages.glob("*.pth"):
         _clear_macos_hidden_flag(path)
@@ -147,7 +168,7 @@ def _write_local_editable_pth(site_packages: Path, source_dir: Path) -> Path:
 def _console_payload_path(script_path: Path) -> Path:
     if os.name == "nt":
         return script_path
-    return script_path.with_name(f"{script_path.name}.py")
+    return script_path
 
 
 def _write_python_console_payload(payload_path: Path, python: Path, source_dir: Path, target: str, executable_name: str) -> None:
@@ -176,24 +197,19 @@ def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, 
         if path.exists() or path.is_symlink():
             path.unlink()
     executable_name = script_path.name.removesuffix(".exe")
-    _write_python_console_payload(payload_path, python, source_dir, target, executable_name)
-    if os.name == "nt":
-        script_path = payload_path
-    else:
-        wrapper = "\n".join(
-            [
-                "#!/bin/sh",
-                f"exec {shlex.quote(str(python))} {shlex.quote(str(payload_path))} \"$@\"",
-                "",
-            ]
-        )
-        script_path.write_text(wrapper, encoding="utf-8")
-        script_path.chmod(0o755)
+    handle, temp_name = tempfile.mkstemp(prefix=f"{script_path.name}-", suffix=".tmp")
+    os.close(handle)
+    temp_path = Path(temp_name)
+    try:
+        _write_python_console_payload(temp_path, python, source_dir, target, executable_name)
+        shutil.move(str(temp_path), payload_path)
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+    payload_path.chmod(0o755)
+    _refresh_macos_entrypoint_inode(script_path)
     _clear_macos_hidden_flag(script_path)
     _clear_macos_execution_metadata(script_path)
-    if payload_path != script_path:
-        _clear_macos_hidden_flag(payload_path)
-        _clear_macos_execution_metadata(payload_path)
 
 
 def _write_console_bootstraps(venv: Path, python: Path, source_dir: Path) -> None:

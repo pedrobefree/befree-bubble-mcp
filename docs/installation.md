@@ -57,8 +57,8 @@ python scripts/install_local.py --repair --extras browser,dev
 ```
 
 On macOS, the repair command also clears hidden filesystem flags on the virtual
-environment, refreshes local console entrypoints, validates Python-module
-fallbacks for local execution policy edge cases, signs native extension modules
+environment, refreshes local console entrypoints through an external copy/move
+step that avoids local execution-policy kills, signs native extension modules
 with an ad-hoc local signature, and validates the Playwright browser dependency
 when the `browser` extra is installed.
 

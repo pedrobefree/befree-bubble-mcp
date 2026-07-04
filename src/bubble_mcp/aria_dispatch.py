@@ -9,7 +9,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from bubble_mcp.context.detector import default_bubble_export_path, detect_project_context
 from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mutation_overlay
@@ -125,7 +125,7 @@ def _load_aria_runtime_modules() -> tuple[Any, Any]:
         sys.path.insert(0, runtime_path)
     bubble_cli = importlib.import_module("bubble_cli")
     bubble_sdk = importlib.import_module("bubble_sdk")
-    bubble_cli.inquirer = _FakeInquirer()
+    setattr(bubble_cli, "inquirer", _FakeInquirer())
     return bubble_cli, bubble_sdk
 
 
@@ -313,7 +313,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
 
     def capture_payload(builder: Any) -> dict[str, Any]:
         builder_id = id(builder)
-        write_payload = builder.build()
+        write_payload = cast("dict[str, Any]", builder.build())
         if builder_id not in captured_builder_ids:
             captured_builder_ids.add(builder_id)
             captured_payloads.append(write_payload)
@@ -329,10 +329,13 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         result = BubbleEditorClient().write(write_payload, session, dry_run=False)
         captured_results.append({"ok": bool(result.get("ok")), "executed": True, "result": result})
         if result.get("ok"):
+            request = result.get("request")
+            request_payload = request.get("payload") if isinstance(request, dict) else None
+            overlay_payload = request_payload if isinstance(request_payload, dict) else write_payload
             record_mutation_overlay(
                 profile=profile,
-                app_id=str(result.get("request", {}).get("payload", {}).get("appname") or env.app_id),
-                payload=result.get("request", {}).get("payload") or write_payload,
+                app_id=str(overlay_payload.get("appname") or env.app_id),
+                payload=overlay_payload,
                 source=name,
                 response=result.get("response"),
             )
@@ -343,10 +346,11 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         write_payload = capture_payload(builder)
         if not execute:
             captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
-        return original_to_json(builder)
+        return cast(str, original_to_json(builder))
 
     stdout = StringIO()
     stderr = StringIO()
+    return_value: Any = None
     try:
         bubble_sdk.PayloadBuilder.send_to_webhook = send_to_local_bubble
         bubble_sdk.PayloadBuilder.to_json = to_json_with_capture

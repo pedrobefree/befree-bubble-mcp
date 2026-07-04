@@ -60,13 +60,11 @@ def test_write_console_bootstrap_injects_source_before_import(tmp_path: Path) ->
 
     _write_console_bootstrap(script_path, python, source_dir, "bubble_mcp.cli.main:main")
 
-    payload = (tmp_path / "bin" / "bubble-mcp.py").read_text(encoding="utf-8")
+    payload = script_path.read_text(encoding="utf-8")
     assert f"sys.path.insert(0, {str(source_dir)!r})" in payload
     assert "from bubble_mcp.cli.main import main" in payload
-    if script_path.read_bytes().startswith(b"#!"):
-        text = script_path.read_text(encoding="utf-8")
-        assert str(python) in text
-        assert text.startswith("#!/bin/sh")
+    assert str(python) in payload
+    assert payload.startswith(f"#!{python}")
     assert script_path.stat().st_mode & 0o111
 
 

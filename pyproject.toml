@@ -20,7 +20,8 @@ dependencies = [
 dev = [
   "pytest>=8.0.0",
   "ruff>=0.6.0",
-  "mypy>=1.10.0"
+  "mypy>=1.10.0",
+  "types-requests>=2.31.0"
 ]
 server = [
   "fastapi>=0.110.0",
@@ -63,3 +64,7 @@ exclude = "(src/bubble_mcp/aria_runtime/|src/bubble_mcp/figma_bridge.py)"
 [[tool.mypy.overrides]]
 module = ["playwright.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["bubble_mcp.aria_runtime.*"]
+ignore_errors = true

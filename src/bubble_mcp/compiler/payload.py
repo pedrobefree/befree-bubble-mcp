@@ -586,7 +586,8 @@ def create_visual_element_changes(
         update_index_change(["_index", "id_to_path", object_id], full_path, session_id),
         create_change(create_path, body, session_id),
     ]
-    props = body.get("%p") if isinstance(body.get("%p"), dict) else {}
+    raw_props = body.get("%p")
+    props: dict[str, Any] = raw_props if isinstance(raw_props, dict) else {}
     ordered_keys = [key for key in POST_CREATE_PROPERTY_ORDER if key in props]
     ordered_keys.extend(sorted(key for key in POST_CREATE_PROPERTY_KEYS if key in props and key not in ordered_keys))
     for key in ordered_keys:

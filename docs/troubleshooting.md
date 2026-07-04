@@ -16,7 +16,16 @@ published package with `pipx install befree-bubble-mcp`.
 ## `bubble-mcp` or `bubble-mcp-server` exits with `killed` on macOS
 
 Local editable installs can occasionally be blocked by macOS execution policy
-for generated console scripts. The Python modules are the stable fallback:
+for generated console scripts. First repair the editable install, which rewrites
+the local entrypoints through a macOS-safe replacement path:
+
+```bash
+python scripts/install_local.py --repair --extras browser,dev
+bubble-mcp --help
+```
+
+If a specific MCP client still blocks generated scripts, the Python modules are
+the stable fallback:
 
 ```bash
 python -m bubble_mcp.cli.main --help

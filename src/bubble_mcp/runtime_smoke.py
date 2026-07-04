@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 import re
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from bubble_mcp.core.redaction import redact_sensitive
@@ -460,7 +460,7 @@ def build_runtime_smoke_cases(
 
 def _compact_result(result: dict[str, Any], *, include_details: bool) -> dict[str, Any]:
     if include_details:
-        return redact_sensitive(result)
+        return cast("dict[str, Any]", redact_sensitive(result))
     compact: dict[str, Any] = {
         "ok": bool(result.get("ok")),
         "engine": result.get("engine"),
@@ -499,7 +499,7 @@ def run_runtime_smoke(
         raise ValueError("suite must be one of: coverage, safe-read, preview-write, execute-write, family-preview, agent-routing.")
     effective_run_id = _safe_run_id(run_id)
     if suite == "agent-routing":
-        results = _run_agent_routing_suite(
+        routing_results = _run_agent_routing_suite(
             tool_caller,
             profile=profile,
             context=context,
@@ -510,10 +510,10 @@ def run_runtime_smoke(
             stop_on_failure=stop_on_failure,
         )
         summary = {
-            "cases": len(results),
-            "passed": sum(1 for item in results if item["status"] == "passed"),
-            "failed": sum(1 for item in results if item["status"] == "failed"),
-            "skipped": sum(1 for item in results if item["status"] == "skipped"),
+            "cases": len(routing_results),
+            "passed": sum(1 for item in routing_results if item["status"] == "passed"),
+            "failed": sum(1 for item in routing_results if item["status"] == "failed"),
+            "skipped": sum(1 for item in routing_results if item["status"] == "skipped"),
         }
         return {
             "ok": summary["failed"] == 0,
@@ -528,7 +528,7 @@ def run_runtime_smoke(
             "verify_context": False,
             "run_id": effective_run_id,
             "summary": summary,
-            "results": results,
+            "results": routing_results,
         }
     if suite == "execute-write" and not execute:
         return {
