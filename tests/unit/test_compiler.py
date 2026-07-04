@@ -243,6 +243,162 @@ def test_compile_schema_option_theme_and_workflow_tools() -> None:
     assert payloads[6]["changes"][0]["path_array"][:3] == ["%p3", "index", "%wf"]
 
 
+def test_compile_auth_workflow_actions_to_real_create_action_payloads() -> None:
+    plan = {
+        "steps": [
+            {
+                "id": "login",
+                "tool_name": "log_the_user_in",
+                "args": {
+                    "context": "index",
+                    "event_ref": "wf_login",
+                    "action_index": 2,
+                    "action_id": "act_login",
+                    "email_input_ref": "in_email",
+                    "password_input_ref": "in_password",
+                    "stay_logged_in": True,
+                    "remember_email": False,
+                },
+            },
+            {
+                "id": "signup",
+                "tool_name": "sign_the_user_up",
+                "args": {
+                    "context": "index",
+                    "event_ref": "wf_signup",
+                    "email_input_ref": "in_email",
+                    "password_input_ref": "in_password",
+                    "require_password_confirmation": True,
+                    "password_confirmation_input_ref": "in_password_confirm",
+                    "send_confirm_email": True,
+                    "confirmation_page_ref": "confirm_email",
+                    "fields": [{"field": "name_text", "element_ref": "in_name"}],
+                },
+            },
+            {
+                "id": "change_user",
+                "tool_name": "make_changes_to_current_user",
+                "args": {
+                    "context": "index",
+                    "event_ref": "wf_save",
+                    "fields": {"phone_text": {"element_ref": "in_phone"}},
+                },
+            },
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
+
+    login_payload = compiled["steps"][0]["args"]["write_payload"]
+    login_action = first_change(login_payload, "CreateAction")
+    assert login_action["path_array"] == ["%p3", "index", "%wf", "wf_login", "actions"]
+    assert login_action["body"]["2"]["%x"] == "LogIn"
+    assert login_action["body"]["2"]["id"] == "act_login"
+    assert login_action["body"]["2"]["%p"]["%em"]["%x"] == "GetElement"
+    assert login_action["body"]["2"]["%p"]["%em"]["%p"]["%ei"] == "in_email"
+    assert login_action["body"]["2"]["%p"]["stay_logged_in"] is True
+    assert login_action["body"]["2"]["%p"]["remember_email"] is False
+
+    signup_payload = compiled["steps"][1]["args"]["write_payload"]
+    signup_action = first_change(signup_payload, "CreateAction")
+    signup_props = signup_action["body"]["0"]["%p"]
+    assert signup_action["body"]["0"]["%x"] == "SignUp"
+    assert signup_props["%rc"] is True
+    assert signup_props["%p2"]["%p"]["%ei"] == "in_password_confirm"
+    assert signup_props["send_confirm_email"] is True
+    assert signup_props["%pa"] == "confirm_email"
+    assert signup_props["%cs"]["0"]["%k"] == "name_text"
+    assert signup_props["%cs"]["0"]["%v"]["%x"] == "TextExpression"
+
+    change_user_payload = compiled["steps"][2]["args"]["write_payload"]
+    change_user_action = first_change(change_user_payload, "CreateAction")
+    assert change_user_action["body"]["0"]["%x"] == "MakeChangeCurrentUser"
+    assert change_user_action["body"]["0"]["%p"]["%cs"]["0"]["%k"] == "phone_text"
+
+
+def test_compile_oauth_and_credentials_workflow_actions() -> None:
+    plan = {
+        "steps": [
+            {
+                "id": "oauth",
+                "tool_name": "signup_login_with_a_social_network",
+                "args": {
+                    "context": "index",
+                    "event_ref": "wf_oauth",
+                    "oauth_provider": "facebook",
+                    "provider_app_id": "fb-client-id",
+                    "provider_app_secret": "fb-secret",
+                    "provider_scopes": ["email", "public_profile"],
+                    "facebook_user_link": True,
+                    "facebook_server_redirect": True,
+                },
+            },
+            {
+                "id": "confirm",
+                "tool_name": "send_confirmation_email",
+                "args": {
+                    "context": "index",
+                    "event_ref": "wf_confirm",
+                    "confirmation_page_ref": "confirm_email",
+                    "just_make_token": True,
+                },
+            },
+            {
+                "id": "credentials",
+                "tool_name": "update_user_credentials",
+                "args": {
+                    "context": "index",
+                    "event_ref": "wf_credentials",
+                    "old_password_input_ref": "old_password",
+                    "change_email": True,
+                    "new_email_input_ref": "new_email",
+                    "send_confirm_email": True,
+                    "confirmation_page_ref": "confirm_email",
+                    "change_password": True,
+                    "new_password_input_ref": "new_password",
+                    "require_password_confirmation": True,
+                    "password_confirmation_input_ref": "new_password_confirm",
+                    "do_not_show_success_alert": True,
+                },
+            },
+            {
+                "id": "logout",
+                "tool_name": "log_the_user_out",
+                "args": {"context": "index", "event_ref": "wf_logout"},
+            },
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="synthetic-app")
+
+    oauth_payload = compiled["steps"][0]["args"]["write_payload"]
+    oauth_action = first_change(oauth_payload, "CreateAction")
+    assert oauth_action["body"]["0"]["%x"] == "OAuthLogin"
+    assert oauth_action["body"]["0"]["%p"]["oauth_provider"] == "facebook"
+    setting_changes = [change for change in oauth_payload["changes"] if change.get("intent", {}).get("name") == "ChangeAppSetting"]
+    assert ["settings", "client_safe", "facebook_appid"] in [change["path_array"] for change in setting_changes]
+    assert ["settings", "secure", "facebook_appsecret"] in [change["path_array"] for change in setting_changes]
+    assert ["settings", "client_safe", "facebook_scope"] in [change["path_array"] for change in setting_changes]
+
+    confirm_action = first_change(compiled["steps"][1]["args"]["write_payload"], "CreateAction")
+    assert confirm_action["body"]["0"]["%x"] == "SendConfirmationEmail"
+    assert confirm_action["body"]["0"]["%p"]["%pa"] == "confirm_email"
+    assert confirm_action["body"]["0"]["%p"]["just_make_token"] is True
+
+    credentials_action = first_change(compiled["steps"][2]["args"]["write_payload"], "CreateAction")
+    credentials_props = credentials_action["body"]["0"]["%p"]
+    assert credentials_action["body"]["0"]["%x"] == "UpdateCredentials"
+    assert credentials_props["old_password"]["%p"]["%ei"] == "old_password"
+    assert credentials_props["%em"]["%p"]["%ei"] == "new_email"
+    assert credentials_props["%pw"]["%p"]["%ei"] == "new_password"
+    assert credentials_props["%p2"]["%p"]["%ei"] == "new_password_confirm"
+    assert credentials_props["do_not_show_success_alert"] is True
+
+    logout_action = first_change(compiled["steps"][3]["args"]["write_payload"], "CreateAction")
+    assert logout_action["body"]["0"]["%x"] == "LogOut"
+    assert logout_action["body"]["0"]["%p"] == {}
+
+
 def test_compile_generic_visual_catalog_tools() -> None:
     plan = {
         "steps": [

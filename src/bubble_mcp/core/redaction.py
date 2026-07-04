@@ -34,9 +34,15 @@ def redact_sensitive(value: Any) -> Any:
 
     if isinstance(value, dict):
         output: dict[str, Any] = {}
+        path_array = value.get("path_array")
+        body_is_sensitive = (
+            isinstance(path_array, list)
+            and any(SENSITIVE_KEY_PATTERN.search(str(part)) for part in path_array)
+            and "body" in value
+        )
         for key, child in value.items():
             key_text = str(key)
-            if SENSITIVE_KEY_PATTERN.search(key_text):
+            if SENSITIVE_KEY_PATTERN.search(key_text) or (body_is_sensitive and key_text == "body"):
                 output[key_text] = "[REDACTED]"
             else:
                 output[key_text] = redact_sensitive(child)

@@ -7,6 +7,7 @@ changes, using the same high-level envelope shape as Aria's Bubble SDK.
 
 from __future__ import annotations
 
+import json
 import random
 import string
 import time
@@ -352,6 +353,15 @@ VISUAL_DELETE_TOOLS = {
     "delete_table",
     "delete_popup",
 }
+AUTH_WORKFLOW_ACTION_TOOLS = {
+    "log_the_user_in",
+    "log_the_user_out",
+    "sign_the_user_up",
+    "signup_login_with_a_social_network",
+    "send_confirmation_email",
+    "make_changes_to_current_user",
+    "update_user_credentials",
+}
 
 
 def bubble_element_id(length: int = 5) -> str:
@@ -399,6 +409,73 @@ def resolve_context_root_id(name: str, context: BubbleProjectContext | None = No
                 root_id = node.metadata.get("root_id") or node.metadata.get("root")
                 return str(root_id).strip() or None
     return None
+
+
+def resolve_context_node_id(name: str, context: BubbleProjectContext | None = None) -> str | None:
+    target = str(name or "index").strip()
+    if context is not None:
+        for node in context.nodes:
+            if node.type not in {"page", "reusable"}:
+                continue
+            if (
+                node.label == target
+                or node.id == target
+                or node.id.endswith(f":{target}")
+                or str(node.metadata.get("bubble_id") or "") == target
+                or str(node.metadata.get("key") or "") == target
+            ):
+                return node.id
+    return None
+
+
+def resolve_context_root_token(name: str, context: BubbleProjectContext | None = None, args: dict[str, Any] | None = None) -> str:
+    if str((args or {}).get("context_type") or "").strip().lower() == "reusable":
+        return "%ed"
+    target = str(name or "index").strip()
+    if context is not None:
+        for node in context.nodes:
+            if node.type not in {"page", "reusable"}:
+                continue
+            if (
+                node.label == target
+                or node.id == target
+                or node.id.endswith(f":{target}")
+                or str(node.metadata.get("bubble_id") or "") == target
+                or str(node.metadata.get("key") or "") == target
+            ):
+                raw_path = node.metadata.get("path_array")
+                if isinstance(raw_path, list) and raw_path:
+                    return str(raw_path[0])
+                if node.type == "reusable":
+                    return "%ed"
+    return "%p3"
+
+
+def resolve_workflow_key(args: dict[str, Any], context: BubbleProjectContext | None = None) -> str:
+    explicit = str(args.get("workflow_id") or args.get("event_id") or "").strip()
+    if explicit:
+        return explicit
+    event_ref = str(args.get("event_ref") or "").strip()
+    if not event_ref:
+        raise ValueError("workflow_id or event_ref is required.")
+    context_node_id = resolve_context_node_id(str(args.get("context") or "index"), context)
+    if context is not None:
+        for node in context.nodes:
+            if node.type != "workflow":
+                continue
+            if context_node_id and str(node.metadata.get("context") or "") not in {"", context_node_id}:
+                continue
+            if (
+                node.label == event_ref
+                or node.id == event_ref
+                or node.id.endswith(f":{event_ref}")
+                or str(node.metadata.get("bubble_id") or "") == event_ref
+                or str(node.metadata.get("key") or "") == event_ref
+            ):
+                return str(node.metadata.get("bubble_id") or node.metadata.get("key") or node.id.rsplit(":", 1)[-1])
+    if ":" in event_ref:
+        return event_ref.split(":", 1)[1]
+    return event_ref
 
 
 def resolve_existing_children(args: dict[str, Any]) -> list[str]:
@@ -547,6 +624,34 @@ def set_data_change(path_array: list[str], body: Any, session_id: str) -> dict[s
             "name": "SetData",
             "id": random.randint(2, 999),
             "source_appname": "",
+        },
+        "path_array": path_array,
+        "body": body,
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": session_id,
+    }
+
+
+def create_action_change(path_array: list[str], body: dict[str, Any], session_id: str) -> dict[str, Any]:
+    return {
+        "intent": {
+            "name": "CreateAction",
+            "id": random.randint(2, 999),
+            "source_appname": "",
+        },
+        "path_array": path_array,
+        "body": body,
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": session_id,
+    }
+
+
+def change_app_setting_change(path_array: list[str], body: Any, session_id: str) -> dict[str, Any]:
+    return {
+        "intent": {
+            "name": "ChangeAppSetting",
         },
         "path_array": path_array,
         "body": body,
@@ -1183,6 +1288,297 @@ def compile_workflow_changes(tool_name: str, args: dict[str, Any], session_id: s
     return []
 
 
+def element_get_data_expression(element_ref: str) -> dict[str, Any]:
+    element_id = str(element_ref or "").strip()
+    if not element_id:
+        raise ValueError("Element reference is required.")
+    return {
+        "%x": "GetElement",
+        "%p": {"%ei": element_id},
+        "%n": {
+            "%x": "Message",
+            "%nm": "get_data",
+            "is_slidable": False,
+        },
+        "is_slidable": False,
+    }
+
+
+def workflow_text_expression(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict) and value.get("%x"):
+        return {"%x": "TextExpression", "%e": {"0": value, "1": ""}}
+    return {"%x": "TextExpression", "%e": {"0": "" if value is None else value}}
+
+
+def parse_field_assignments(raw_fields: Any) -> list[dict[str, Any]]:
+    if raw_fields is None or raw_fields == "":
+        return []
+    if isinstance(raw_fields, str):
+        stripped = raw_fields.strip()
+        if not stripped:
+            return []
+        try:
+            decoded = json.loads(stripped)
+            return parse_field_assignments(decoded)
+        except Exception:
+            fields: list[dict[str, Any]] = []
+            for part in stripped.split(";"):
+                if not part.strip():
+                    continue
+                if "=" not in part:
+                    raise ValueError(f"Invalid field assignment '{part.strip()}'. Expected field=value.")
+                key, value = part.split("=", 1)
+                fields.append({"field": key.strip(), "value": value.strip()})
+            return fields
+    if isinstance(raw_fields, dict):
+        if any(key in raw_fields for key in ("field", "key", "%k")):
+            return [raw_fields]
+        return [{"field": key, "value": value} for key, value in raw_fields.items()]
+    if isinstance(raw_fields, list):
+        parsed: list[dict[str, Any]] = []
+        for item in raw_fields:
+            if not isinstance(item, dict):
+                raise ValueError("fields array entries must be objects.")
+            parsed.extend(parse_field_assignments(item))
+        return parsed
+    raise ValueError("fields must be a string, object, or array.")
+
+
+def compile_field_changes(raw_fields: Any) -> dict[str, Any]:
+    assignments: dict[str, Any] = {}
+    for index, item in enumerate(parse_field_assignments(raw_fields)):
+        key = str(item.get("field") or item.get("key") or item.get("%k") or "").strip()
+        if not key:
+            raise ValueError("Field assignment requires field/key.")
+        source_ref = str(
+            item.get("element_ref")
+            or item.get("input_ref")
+            or item.get("source_ref")
+            or item.get("source")
+            or ""
+        ).strip()
+        if source_ref:
+            value = workflow_text_expression(element_get_data_expression(source_ref))
+        else:
+            raw_value = item.get("value", item.get("%v"))
+            value = raw_value if isinstance(raw_value, dict) and raw_value.get("%x") else workflow_text_expression(raw_value)
+        assignments[str(index)] = {
+            "%k": key,
+            "%ak": str(item.get("operator") or item.get("%ak") or "="),
+            "%v": value,
+        }
+    return assignments
+
+
+def workflow_action_base(
+    args: dict[str, Any],
+    *,
+    context: BubbleProjectContext | None,
+) -> tuple[str, str, str, str, str]:
+    context_name = str(args.get("context") or "").strip()
+    if not context_name:
+        raise ValueError("context is required for client-side workflow actions.")
+    context_key = str(args.get("context_key") or args.get("page_id") or "").strip() or resolve_context_key(
+        context_name,
+        context,
+    )
+    root_token = resolve_context_root_token(context_name, context, args)
+    workflow_key = resolve_workflow_key({**args, "context": context_name}, context)
+    action_index = str(args.get("action_index") if args.get("action_index") is not None else "0")
+    action_id = str(args.get("action_id") or bubble_element_id()).strip()
+    return root_token, context_key, workflow_key, action_index, action_id
+
+
+def workflow_action_changes(
+    args: dict[str, Any],
+    *,
+    context: BubbleProjectContext | None,
+    session_id: str,
+    action_type: str,
+    properties: dict[str, Any],
+) -> list[dict[str, Any]]:
+    root_token, context_key, workflow_key, action_index, action_id = workflow_action_base(args, context=context)
+    action_path = [root_token, context_key, "%wf", workflow_key, "actions", action_index]
+    action_body = {
+        "%x": action_type,
+        "%p": properties,
+        "id": action_id,
+    }
+    changes = [
+        update_index_change(["_index", "id_to_path", action_id], ".".join(action_path), session_id),
+        create_action_change(action_path[:-1], {action_index: action_body}, session_id),
+        update_index_change(["_index", "issues_list", action_id], "[]", session_id),
+    ]
+    if args.get("id_counter") is not None:
+        changes.append({"type": "id_counter", "value": int(args["id_counter"])})
+    return changes
+
+
+def compile_auth_workflow_action_changes(
+    tool_name: str,
+    args: dict[str, Any],
+    *,
+    context: BubbleProjectContext | None,
+    session_id: str,
+) -> list[dict[str, Any]]:
+    if tool_name == "log_the_user_in":
+        login_properties: dict[str, Any] = {
+            "%em": element_get_data_expression(str(args.get("email_input_ref") or "")),
+            "%pw": element_get_data_expression(str(args.get("password_input_ref") or "")),
+        }
+        if args.get("stay_logged_in") is not None:
+            login_properties["stay_logged_in"] = bool(args.get("stay_logged_in"))
+        if args.get("remember_email") is not None:
+            login_properties["remember_email"] = bool(args.get("remember_email"))
+        return workflow_action_changes(
+            args,
+            context=context,
+            session_id=session_id,
+            action_type="LogIn",
+            properties=login_properties,
+        )
+    if tool_name == "log_the_user_out":
+        return workflow_action_changes(
+            args,
+            context=context,
+            session_id=session_id,
+            action_type="LogOut",
+            properties={},
+        )
+    if tool_name == "sign_the_user_up":
+        signup_properties: dict[str, Any] = {
+            "%em": element_get_data_expression(str(args.get("email_input_ref") or "")),
+            "%pw": element_get_data_expression(str(args.get("password_input_ref") or "")),
+        }
+        if args.get("require_password_confirmation") is not None:
+            signup_properties["%rc"] = bool(args.get("require_password_confirmation"))
+        if args.get("password_confirmation_input_ref"):
+            signup_properties["%p2"] = element_get_data_expression(str(args.get("password_confirmation_input_ref") or ""))
+        if args.get("send_confirm_email") is not None:
+            signup_properties["send_confirm_email"] = bool(args.get("send_confirm_email"))
+        if args.get("confirmation_page_ref"):
+            signup_properties["%pa"] = str(args.get("confirmation_page_ref"))
+        if args.get("remember_email") is not None:
+            signup_properties["remember_email"] = bool(args.get("remember_email"))
+        field_changes = compile_field_changes(args.get("fields"))
+        if field_changes:
+            signup_properties["%cs"] = field_changes
+        return workflow_action_changes(
+            args,
+            context=context,
+            session_id=session_id,
+            action_type="SignUp",
+            properties=signup_properties,
+        )
+    if tool_name == "signup_login_with_a_social_network":
+        provider = str(args.get("oauth_provider") or "").strip().lower()
+        if provider not in {"google", "facebook"}:
+            raise ValueError("signup_login_with_a_social_network requires oauth_provider google or facebook.")
+        changes = workflow_action_changes(
+            args,
+            context=context,
+            session_id=session_id,
+            action_type="OAuthLogin",
+            properties={"oauth_provider": provider},
+        )
+        settings_changes: list[dict[str, Any]] = []
+        if args.get("provider_app_id"):
+            settings_changes.append(
+                change_app_setting_change(
+                    ["settings", "client_safe", f"{provider}_appid"],
+                    args.get("provider_app_id"),
+                    session_id,
+                )
+            )
+        if args.get("provider_app_secret"):
+            settings_changes.append(
+                change_app_setting_change(
+                    ["settings", "secure", f"{provider}_appsecret"],
+                    args.get("provider_app_secret"),
+                    session_id,
+                )
+            )
+        if provider == "facebook":
+            scopes = args.get("provider_scopes")
+            if isinstance(scopes, list):
+                scopes = " ".join(str(item).strip() for item in scopes if str(item).strip())
+            if scopes:
+                settings_changes.append(
+                    change_app_setting_change(
+                        ["settings", "client_safe", "facebook_scope"],
+                        scopes,
+                        session_id,
+                    )
+                )
+            for source_key, setting_key in (
+                ("facebook_user_link", "facebook_user_link"),
+                ("facebook_server_redirect", "facebook_server_redirect"),
+            ):
+                if args.get(source_key) is not None:
+                    settings_changes.append(
+                        change_app_setting_change(
+                            ["settings", "client_safe", setting_key],
+                            bool(args.get(source_key)),
+                            session_id,
+                        )
+                    )
+        return [*changes, *settings_changes]
+    if tool_name == "send_confirmation_email":
+        confirmation_properties: dict[str, Any] = {"%pa": str(args.get("confirmation_page_ref") or "").strip()}
+        if not confirmation_properties["%pa"]:
+            raise ValueError("send_confirmation_email requires confirmation_page_ref.")
+        if args.get("just_make_token") is not None:
+            confirmation_properties["just_make_token"] = bool(args.get("just_make_token"))
+        return workflow_action_changes(
+            args,
+            context=context,
+            session_id=session_id,
+            action_type="SendConfirmationEmail",
+            properties=confirmation_properties,
+        )
+    if tool_name == "make_changes_to_current_user":
+        field_changes = compile_field_changes(args.get("fields"))
+        if not field_changes:
+            raise ValueError("make_changes_to_current_user requires fields.")
+        return workflow_action_changes(
+            args,
+            context=context,
+            session_id=session_id,
+            action_type="MakeChangeCurrentUser",
+            properties={"%cs": field_changes},
+        )
+    if tool_name == "update_user_credentials":
+        credentials_properties: dict[str, Any] = {
+            "old_password": element_get_data_expression(str(args.get("old_password_input_ref") or "")),
+        }
+        if args.get("change_email") is not None:
+            credentials_properties["change_email"] = bool(args.get("change_email"))
+        if args.get("new_email_input_ref"):
+            credentials_properties["%em"] = element_get_data_expression(str(args.get("new_email_input_ref") or ""))
+        if args.get("send_confirm_email") is not None:
+            credentials_properties["send_confirm_email"] = bool(args.get("send_confirm_email"))
+        if args.get("confirmation_page_ref"):
+            credentials_properties["%pa"] = str(args.get("confirmation_page_ref"))
+        if args.get("change_password") is not None:
+            credentials_properties["change_password"] = bool(args.get("change_password"))
+        if args.get("new_password_input_ref"):
+            credentials_properties["%pw"] = element_get_data_expression(str(args.get("new_password_input_ref") or ""))
+        if args.get("require_password_confirmation") is not None:
+            credentials_properties["%rc"] = bool(args.get("require_password_confirmation"))
+        if args.get("password_confirmation_input_ref"):
+            credentials_properties["%p2"] = element_get_data_expression(str(args.get("password_confirmation_input_ref") or ""))
+        if args.get("do_not_show_success_alert") is not None:
+            credentials_properties["do_not_show_success_alert"] = bool(args.get("do_not_show_success_alert"))
+        return workflow_action_changes(
+            args,
+            context=context,
+            session_id=session_id,
+            action_type="UpdateCredentials",
+            properties=credentials_properties,
+        )
+    return []
+
+
 def compile_step_to_payload(
     step: dict[str, Any],
     *,
@@ -1224,6 +1620,8 @@ def compile_step_to_payload(
         changes = compile_theme_changes(tool_name, args, session_id)
     elif tool_name in {"create_workflow", "add_action"}:
         changes = compile_workflow_changes(tool_name, args, session_id)
+    elif tool_name in AUTH_WORKFLOW_ACTION_TOOLS:
+        changes = compile_auth_workflow_action_changes(tool_name, args, context=context, session_id=session_id)
     else:
         return None
 

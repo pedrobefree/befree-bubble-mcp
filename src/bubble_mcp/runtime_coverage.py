@@ -6,6 +6,7 @@ from typing import Any
 
 from bubble_mcp.aria_dispatch import CUSTOM_RUNTIME_TOOLS, RUNTIME_TOOL_ALIASES, _load_aria_runtime_modules
 from bubble_mcp.compiler.payload import (
+    AUTH_WORKFLOW_ACTION_TOOLS,
     VISUAL_CREATE_TYPES,
     VISUAL_DELETE_TOOLS,
     VISUAL_UPDATE_TOOLS,
@@ -59,6 +60,7 @@ COMPILER_FALLBACK_TOOLS = (
     set(VISUAL_CREATE_TYPES)
     | set(VISUAL_UPDATE_TOOLS)
     | set(VISUAL_DELETE_TOOLS)
+    | set(AUTH_WORKFLOW_ACTION_TOOLS)
     | {
         "create_data_type",
         "create_data_field",

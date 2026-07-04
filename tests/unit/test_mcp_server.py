@@ -1929,6 +1929,19 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
 
     add_action = tools["add_action"]["inputSchema"]
     assert add_action["required"] == ["profile", "context", "action_type"]
+
+    login = tools["log_the_user_in"]["inputSchema"]
+    assert login["required"] == ["profile", "context", "event_ref", "email_input_ref", "password_input_ref"]
+    for field in ["workflow_id", "action_index", "stay_logged_in", "remember_email", "app_id", "execute"]:
+        assert field in login["properties"]
+
+    social = tools["signup_login_with_a_social_network"]["inputSchema"]
+    assert social["required"] == ["profile", "context", "event_ref", "oauth_provider"]
+    assert social["properties"]["oauth_provider"]["enum"] == ["google", "facebook"]
+    assert social["properties"]["provider_app_secret"]["description"]
+
+    change_user = tools["make_changes_to_current_user"]["inputSchema"]
+    assert change_user["required"] == ["profile", "context", "event_ref", "fields"]
     for field in ["fields", "thing", "to_email", "query_json"]:
         assert field in add_action["properties"]
 
@@ -2101,7 +2114,7 @@ def test_tools_list_includes_full_aria_catalog() -> None:
 
     assert response is not None
     names = {tool["name"] for tool in response["result"]["tools"]}
-    assert len(ARIA_BUBBLE_TOOL_NAMES) == 196
+    assert len(ARIA_BUBBLE_TOOL_NAMES) == 203
     assert set(ARIA_BUBBLE_TOOL_NAMES).issubset(names)
 
 
@@ -2126,6 +2139,41 @@ def test_direct_catalog_tool_call_compiles_when_supported() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["compiled"] is True
     assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Text"
+
+
+def test_direct_auth_catalog_tool_call_compiles_and_redacts_oauth_secret() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "tools/call",
+            "params": {
+                "name": "signup_login_with_a_social_network",
+                "arguments": {
+                    "profile": "smoke",
+                    "app_id": "synthetic-app",
+                    "context": "index",
+                    "event_ref": "wf_oauth",
+                    "oauth_provider": "google",
+                    "provider_app_id": "google-client-id",
+                    "provider_app_secret": "google-secret",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    raw_text = response["result"]["content"][0]["text"]
+    assert "google-secret" not in raw_text
+    payload = json.loads(raw_text)
+    write_payload = payload["results"][0]["payload"]
+    create_action = first_change(write_payload, "CreateAction")
+    assert create_action["body"]["0"]["%x"] == "OAuthLogin"
+    assert create_action["body"]["0"]["%p"]["oauth_provider"] == "google"
+    settings = [change for change in write_payload["changes"] if change.get("intent", {}).get("name") == "ChangeAppSetting"]
+    assert ["settings", "client_safe", "google_appid"] in [change["path_array"] for change in settings]
+    secret_change = next(change for change in settings if change["path_array"] == ["settings", "secure", "google_appsecret"])
+    assert secret_change["body"] == "[REDACTED]"
 
 
 def test_compile_plan_tool_returns_write_payload() -> None:
