@@ -3,6 +3,11 @@
 `bubble-mcp-server` is a stdio MCP server. It is meant to be started by an MCP
 client, not kept running as a separate HTTP service.
 
+The `initialize` response includes compact server instructions that tell agents
+to use MCP tools directly, check `bubble_profile_status` for the target profile,
+use `bubble_agent_guide`/`bubble_task_recipe` for routing, and keep
+`execute=false` unless the user explicitly requested a real write.
+
 ## Before connecting
 
 Install the Python package and create at least one local Bubble profile:

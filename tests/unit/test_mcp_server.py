@@ -19,6 +19,8 @@ def test_initialize_returns_server_info() -> None:
     assert response is not None
     assert response["id"] == 1
     assert response["result"]["serverInfo"]["name"] == "befree-bubble-mcp"
+    assert "bubble_profile_status" in response["result"]["instructions"]
+    assert "execute=false" in response["result"]["instructions"]
     assert response["result"]["capabilities"] == {
         "tools": {},
         "resources": {"templates": True},

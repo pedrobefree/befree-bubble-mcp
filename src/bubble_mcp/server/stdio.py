@@ -9,6 +9,7 @@ from typing import Any, TextIO
 from bubble_mcp import __version__
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.server.completion import complete
+from bubble_mcp.server.instructions import SERVER_INSTRUCTIONS
 from bubble_mcp.server.prompts import get_prompt, list_prompts
 from bubble_mcp.server.resources import list_resource_templates, list_resources, read_resource
 from bubble_mcp.server.schemas import list_tool_schemas
@@ -69,6 +70,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                 {
                     "protocolVersion": "2024-11-05",
                     "serverInfo": {"name": "befree-bubble-mcp", "version": __version__},
+                    "instructions": SERVER_INSTRUCTIONS,
                     "capabilities": {
                         "tools": {},
                         "resources": {"templates": True},

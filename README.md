@@ -224,6 +224,11 @@ MCP clients should call the exposed MCP tools directly. They do not need to
 discover shell commands, inspect the repository, or reconstruct Bubble payloads
 manually for normal Bubble editor work.
 
+The stdio server returns compact operating instructions during MCP
+`initialize`, so clients that honor server instructions are steered toward
+`bubble_profile_status`, `bubble_agent_guide`, `bubble_task_recipe`, and
+`execute=false` previews before real writes.
+
 When the client is unsure which tool family matches the user request, call
 `bubble_agent_guide` with the task text. It returns a compact read-only routing
 map for common flows such as context refresh, visual edits, HTML import,
