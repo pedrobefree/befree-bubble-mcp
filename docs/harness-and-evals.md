@@ -72,6 +72,21 @@ reruns. A compiled report includes `summary.compile_ok`,
 The summary also includes `parser_summary` and `fallback_summary` for quick
 regression triage.
 
+## Agent Routing Smoke
+
+Use the `agent-routing` runtime smoke suite to verify that representative user
+requests route through the MCP catalog instead of causing the agent to inspect
+CLI help or repository code:
+
+```bash
+bubble-mcp smoke runtime --suite agent-routing
+```
+
+This local-only suite exercises `bubble_agent_guide`, `bubble_task_recipe`, and
+`bubble_tool_search` against natural-language tasks for HTML import, page
+creation, Figma/style sync, branches/changelog, setup/context refresh, and
+workflow actions. It performs no Bubble writes.
+
 ## Exporting Redacted Expert Captures
 
 Use `bubble-mcp eval export-expert` or MCP tool `bubble_eval_export_expert` to

@@ -15,7 +15,7 @@ from bubble_mcp.runtime_smoke_validation import validate_execute_write_context
 
 
 ToolCaller = Callable[[str, dict[str, Any]], dict[str, Any]]
-RUNTIME_SMOKE_SUITES = {"coverage", "safe-read", "preview-write", "execute-write", "family-preview"}
+RUNTIME_SMOKE_SUITES = {"coverage", "safe-read", "preview-write", "execute-write", "family-preview", "agent-routing"}
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,79 @@ class SmokeCase:
     suite: str
     description: str
     requires_profile: bool = False
+
+
+@dataclass(frozen=True)
+class AgentRoutingCase:
+    task: str
+    expected_recipe: str
+    expected_intents: tuple[str, ...]
+    expected_recipe_tools: tuple[str, ...]
+    search_query: str
+    expected_search_tool: str
+    description: str
+
+
+AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
+    AgentRoutingCase(
+        task=(
+            "Utilizando o befree_bubble_mcp, converta o componente com seletor #home-area "
+            "da URL https://quomodosoft.com/html/jupiter/jupiter/index2.html e adicione-o "
+            "na página mcp-01 do projeto smoke"
+        ),
+        expected_recipe="html_import",
+        expected_intents=("import_html_component",),
+        expected_recipe_tools=("create_from_html", "bubble_context_detect"),
+        search_query="converter seletor html url",
+        expected_search_tool="create_from_html",
+        description="Route Portuguese HTML selector import requests to the advanced HTML importer.",
+    ),
+    AgentRoutingCase(
+        task="crie uma nova página chamada mcp-02 no app profile smoke via MCP befree_bubble_mcp",
+        expected_recipe="page_or_reusable",
+        expected_intents=("manage_pages_or_reusables",),
+        expected_recipe_tools=("create_page", "bubble_context_detect"),
+        search_query="criar página",
+        expected_search_tool="create_page",
+        description="Route Portuguese page creation requests without asking for internal tool names.",
+    ),
+    AgentRoutingCase(
+        task="sincronize o estilo hovered de um botão vindo do Figma para o Bubble",
+        expected_recipe="style_or_tokens",
+        expected_intents=("manage_styles_tokens_design_system",),
+        expected_recipe_tools=("sync_figma_style", "create_style"),
+        search_query="estilo botão hover figma",
+        expected_search_tool="sync_figma_style",
+        description="Route Figma/style state sync requests to style/token tooling.",
+    ),
+    AgentRoutingCase(
+        task="liste as branches e busque o changelog da versão test",
+        expected_recipe="branch_or_changelog",
+        expected_intents=("branches_or_changelog",),
+        expected_recipe_tools=("bubble_branch_list", "bubble_changelog_fetch"),
+        search_query="branches changelog",
+        expected_search_tool="bubble_changelog_fetch",
+        description="Route branch and changelog requests to editor version-control tools.",
+    ),
+    AgentRoutingCase(
+        task="faça login da sessão e detecte o contexto atualizado do projeto",
+        expected_recipe="setup_or_refresh_context",
+        expected_intents=("find_profile_session_or_context",),
+        expected_recipe_tools=("bubble_profile_list", "bubble_session_list", "bubble_context_detect"),
+        search_query="sessão contexto perfil",
+        expected_search_tool="bubble_context_detect",
+        description="Route setup/session/context requests to profile/session/context tools.",
+    ),
+    AgentRoutingCase(
+        task="crie um workflow de page load que mostre uma mensagem",
+        expected_recipe="workflow",
+        expected_intents=("manage_workflows",),
+        expected_recipe_tools=("create_workflow", "add_action"),
+        search_query="workflow page load ação",
+        expected_search_tool="create_workflow",
+        description="Route workflow requests to event/action tools.",
+    ),
+)
 
 
 def _preview_name(prefix: str) -> str:
@@ -209,6 +282,9 @@ def build_runtime_smoke_cases(
 
     if suite in {"coverage"}:
         return cases
+
+    if suite in {"agent-routing"}:
+        return []
 
     safe_read_cases = [
         SmokeCase("bubble_health_check", {}, "safe-read", "Read server capability metadata."),
@@ -417,8 +493,40 @@ def run_runtime_smoke(
     """Run an operational smoke suite by calling MCP tool handlers."""
 
     if suite not in RUNTIME_SMOKE_SUITES:
-        raise ValueError("suite must be one of: coverage, safe-read, preview-write, execute-write, family-preview.")
+        raise ValueError("suite must be one of: coverage, safe-read, preview-write, execute-write, family-preview, agent-routing.")
     effective_run_id = _safe_run_id(run_id)
+    if suite == "agent-routing":
+        results = _run_agent_routing_suite(
+            tool_caller,
+            profile=profile,
+            context=context,
+            parent=parent,
+            execute=execute,
+            limit=limit,
+            include_details=include_details,
+            stop_on_failure=stop_on_failure,
+        )
+        summary = {
+            "cases": len(results),
+            "passed": sum(1 for item in results if item["status"] == "passed"),
+            "failed": sum(1 for item in results if item["status"] == "failed"),
+            "skipped": sum(1 for item in results if item["status"] == "skipped"),
+        }
+        return {
+            "ok": summary["failed"] == 0,
+            "suite": suite,
+            "profile": profile or None,
+            "context": context,
+            "parent": parent,
+            "app_id": app_id or None,
+            "app_version": app_version,
+            "execute": bool(execute),
+            "cleanup": False,
+            "verify_context": False,
+            "run_id": effective_run_id,
+            "summary": summary,
+            "results": results,
+        }
     if suite == "execute-write" and not execute:
         return {
             "ok": False,
@@ -531,6 +639,114 @@ def run_runtime_smoke(
         "summary": summary,
         "results": results,
     }
+
+
+def _run_agent_routing_suite(
+    tool_caller: ToolCaller,
+    *,
+    profile: str,
+    context: str,
+    parent: str,
+    execute: bool,
+    limit: int,
+    include_details: bool,
+    stop_on_failure: bool,
+) -> list[dict[str, Any]]:
+    cases = list(AGENT_ROUTING_CASES)
+    if limit > 0:
+        cases = cases[:limit]
+
+    results: list[dict[str, Any]] = []
+    for index, case in enumerate(cases, start=1):
+        checks: list[dict[str, Any]] = []
+        try:
+            guide = tool_caller("bubble_agent_guide", {"task": case.task})
+            recipe = tool_caller(
+                "bubble_task_recipe",
+                {
+                    "task": case.task,
+                    "profile": profile or "$profile",
+                    "context": context,
+                    "parent": parent,
+                    "execute": execute,
+                },
+            )
+            search = tool_caller("bubble_tool_search", {"query": case.search_query, "limit": 8})
+
+            route_intents = {str(route.get("intent")) for route in guide.get("recommended_routes", [])}
+            recipe_tools = set(recipe.get("matched", {}).get("tools", []))
+            search_tools = [str(match.get("name")) for match in search.get("matches", [])]
+            direct_policy = guide.get("direct_tool_policy", {})
+            preflight = " ".join(str(item) for item in recipe.get("preflight", []))
+
+            checks.extend(
+                [
+                    {
+                        "name": "direct_tool_policy",
+                        "ok": bool(direct_policy.get("use_mcp_tools_directly"))
+                        and bool(direct_policy.get("avoid_shell_cli_discovery")),
+                    },
+                    {
+                        "name": "expected_recipe",
+                        "ok": recipe.get("recipe") == case.expected_recipe,
+                        "expected": case.expected_recipe,
+                        "actual": recipe.get("recipe"),
+                    },
+                    {
+                        "name": "expected_intents",
+                        "ok": set(case.expected_intents).issubset(route_intents),
+                        "expected": list(case.expected_intents),
+                        "actual": sorted(route_intents),
+                    },
+                    {
+                        "name": "expected_recipe_tools",
+                        "ok": set(case.expected_recipe_tools).issubset(recipe_tools),
+                        "expected": list(case.expected_recipe_tools),
+                        "actual": sorted(recipe_tools),
+                    },
+                    {
+                        "name": "expected_search_tool",
+                        "ok": case.expected_search_tool in search_tools,
+                        "expected": case.expected_search_tool,
+                        "actual": search_tools,
+                    },
+                    {
+                        "name": "no_internal_tool_name_requirement",
+                        "ok": "Never ask the user to name internal tools" in preflight,
+                    },
+                ]
+            )
+            case_ok = all(check["ok"] for check in checks)
+            result: dict[str, Any] = {
+                "index": index,
+                "tool": "bubble_agent_guide/bubble_task_recipe/bubble_tool_search",
+                "suite": "agent-routing",
+                "status": "passed" if case_ok else "failed",
+                "ok": case_ok,
+                "description": case.description,
+                "task": case.task,
+                "checks": checks,
+            }
+            if include_details:
+                result["result"] = redact_sensitive({"guide": guide, "recipe": recipe, "search": search})
+            results.append(result)
+        except Exception as exc:  # noqa: BLE001 - smoke reports must capture failures.
+            results.append(
+                {
+                    "index": index,
+                    "tool": "bubble_agent_guide/bubble_task_recipe/bubble_tool_search",
+                    "suite": "agent-routing",
+                    "status": "failed",
+                    "ok": False,
+                    "description": case.description,
+                    "task": case.task,
+                    "checks": checks,
+                    "error": str(exc),
+                }
+            )
+        if stop_on_failure and results[-1]["status"] == "failed":
+            break
+    return results
 
 
 def _run_execute_write_verification(

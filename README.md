@@ -246,6 +246,9 @@ Use `bubble_tool_coverage` from an MCP client to verify current catalog
 coverage. The Aria catalog is expected to report `uncovered_count: 0`.
 
 Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
+The `agent-routing` suite validates representative natural-language Bubble
+requests against `bubble_agent_guide`, `bubble_task_recipe`, and
+`bubble_tool_search`; it does not post changes to Bubble.
 The `preview-write` suite compiles representative mutations with
 `execute=false`; it does not post changes to Bubble.
 The `family-preview` suite exercises representative visual, container, input,

@@ -385,8 +385,8 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "suite": _prop(
         "string",
-        "Runtime smoke suite to run. coverage checks catalog coverage only; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false; family-preview exercises representative visual/container/input/schema/workflow/style/html/branch/changelog paths without writes; execute-write creates temporary Bubble objects and requires execute=true.",
-        enum=["coverage", "safe-read", "preview-write", "family-preview", "execute-write"],
+        "Runtime smoke suite to run. coverage checks catalog coverage only; agent-routing validates natural-language tool routing without writes; safe-read runs read-only profile calls; preview-write compiles representative mutations with execute=false; family-preview exercises representative visual/container/input/schema/workflow/style/html/branch/changelog paths without writes; execute-write creates temporary Bubble objects and requires execute=true.",
+        enum=["coverage", "agent-routing", "safe-read", "preview-write", "family-preview", "execute-write"],
         default="coverage",
     ),
     "include_details": _prop(
@@ -496,7 +496,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_runtime_smoke",
-            "Run an operational smoke suite for the MCP runtime. coverage is local-only, safe-read performs read-only calls, preview-write compiles representative Bubble mutations with execute=false, and execute-write creates temporary Bubble objects only when execute=true.",
+            "Run an operational smoke suite for the MCP runtime. coverage is local-only, agent-routing validates natural-language tool selection without writes, safe-read performs read-only calls, preview-write compiles representative Bubble mutations with execute=false, and execute-write creates temporary Bubble objects only when execute=true.",
             [
                 "suite",
                 "profile",

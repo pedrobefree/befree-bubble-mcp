@@ -383,6 +383,7 @@ clients.
 
 ```bash
 bubble-mcp smoke runtime --suite coverage
+bubble-mcp smoke runtime --suite agent-routing
 bubble-mcp smoke runtime --suite safe-read --profile my-app
 bubble-mcp smoke runtime --suite preview-write --profile my-app --context index --parent root
 bubble-mcp smoke runtime --suite family-preview --profile my-app --context index --parent root
@@ -393,6 +394,9 @@ bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --veri
 Suites:
 
 - `coverage`: local-only catalog coverage check.
+- `agent-routing`: local-only natural-language routing check that validates
+  `bubble_agent_guide`, `bubble_task_recipe`, and `bubble_tool_search` against
+  representative user prompts without writes.
 - `safe-read`: read-only profile/session/project checks.
 - `preview-write`: representative create/import mutations compiled with
   `execute=false`; this does not post changes to Bubble.

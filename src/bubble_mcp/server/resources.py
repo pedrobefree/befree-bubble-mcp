@@ -45,6 +45,7 @@ def _agent_runtime_markdown() -> str:
             "",
             "- `bubble_tool_coverage` verifies catalog handling.",
             "- `bubble_runtime_smoke` with `coverage` is local-only.",
+            "- `bubble_runtime_smoke` with `agent-routing` validates natural-language tool selection without writes.",
             "- `bubble_runtime_smoke` with `family-preview` exercises major families without real writes.",
         ]
     )

@@ -365,6 +365,49 @@ def test_task_recipe_returns_ordered_html_import_steps() -> None:
     assert payload["steps"][1]["args"]["execute"] is False
 
 
+def test_agent_routing_understands_portuguese_page_creation() -> None:
+    guide_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 43,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_agent_guide",
+                "arguments": {"task": "crie uma nova página chamada mcp-02 no profile smoke"},
+            },
+        }
+    )
+    recipe_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 44,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_recipe",
+                "arguments": {"task": "crie uma nova página chamada mcp-02 no profile smoke"},
+            },
+        }
+    )
+    search_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 45,
+            "method": "tools/call",
+            "params": {"name": "bubble_tool_search", "arguments": {"query": "criar página", "limit": 5}},
+        }
+    )
+
+    assert guide_response is not None
+    assert recipe_response is not None
+    assert search_response is not None
+    guide = json.loads(guide_response["result"]["content"][0]["text"])
+    recipe = json.loads(recipe_response["result"]["content"][0]["text"])
+    search = json.loads(search_response["result"]["content"][0]["text"])
+    assert "manage_pages_or_reusables" in {route["intent"] for route in guide["recommended_routes"]}
+    assert recipe["recipe"] == "page_or_reusable"
+    assert "create_page" in [match["name"] for match in search["matches"]]
+
+
 def test_runtime_smoke_tool_runs_coverage_suite() -> None:
     response = handle_request(
         {
@@ -380,6 +423,24 @@ def test_runtime_smoke_tool_runs_coverage_suite() -> None:
     assert payload["ok"] is True
     assert payload["summary"]["failed"] == 0
     assert payload["results"][0]["tool"] == "bubble_tool_coverage"
+
+
+def test_runtime_smoke_tool_runs_agent_routing_suite() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 46,
+            "method": "tools/call",
+            "params": {"name": "bubble_runtime_smoke", "arguments": {"suite": "agent-routing"}},
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["suite"] == "agent-routing"
+    assert payload["summary"]["failed"] == 0
+    assert payload["summary"]["passed"] == 6
 
 
 def test_runtime_smoke_tool_requires_execute_for_execute_write() -> None:

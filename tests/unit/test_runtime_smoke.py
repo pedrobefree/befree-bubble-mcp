@@ -1,5 +1,6 @@
 import json
 
+from bubble_mcp.server.tools import call_tool
 from bubble_mcp.runtime_smoke import build_runtime_smoke_cases, run_runtime_smoke
 
 
@@ -101,6 +102,22 @@ def test_family_preview_runs_call_sequence() -> None:
     assert any(tool == "create_from_html" for tool, _args in calls)
     assert any(tool == "bubble_branch_list" for tool, _args in calls)
     assert all(args.get("execute") is not True for _tool, args in calls)
+
+
+def test_agent_routing_smoke_validates_natural_language_tool_selection() -> None:
+    report = run_runtime_smoke(
+        call_tool,
+        suite="agent-routing",
+        profile="cliente2",
+        context="mcp-01",
+        parent="root",
+    )
+
+    assert report["ok"] is True
+    assert report["execute"] is False
+    assert report["summary"] == {"cases": 6, "passed": 6, "failed": 0, "skipped": 0}
+    assert {result["status"] for result in report["results"]} == {"passed"}
+    assert all(result["suite"] == "agent-routing" for result in report["results"])
 
 
 def test_execute_write_can_append_cleanup_case() -> None:

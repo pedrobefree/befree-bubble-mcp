@@ -309,8 +309,9 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "fallback, or are uncovered. Read-only."
     ),
     "bubble_runtime_smoke": (
-        "Run an operational runtime smoke suite. Use coverage for local catalog coverage, safe-read for read-only "
-        "profile/session/context checks, preview-write to compile representative Bubble mutations with execute=false, "
+        "Run an operational runtime smoke suite. Use coverage for local catalog coverage, agent-routing to validate "
+        "natural-language tool selection without writes, safe-read for read-only profile/session/context checks, "
+        "preview-write to compile representative Bubble mutations with execute=false, "
         "family-preview to exercise representative visual/container/input/schema/workflow/style/html/branch/changelog "
         "paths without writes, and execute-write with execute=true only when the user explicitly wants real temporary "
         "Bubble writes. Add verify_context=true to refresh the Bubble context and confirm the temporary objects "
