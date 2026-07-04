@@ -21,6 +21,8 @@ def test_initialize_returns_server_info() -> None:
     assert response["result"]["serverInfo"]["name"] == "befree-bubble-mcp"
     assert "bubble_profile_status" in response["result"]["instructions"]
     assert "execute=false" in response["result"]["instructions"]
+    assert "bubble_context_find" in response["result"]["instructions"]
+    assert "include_metadata=false" in response["result"]["instructions"]
     assert response["result"]["capabilities"] == {
         "tools": {},
         "resources": {"templates": True},
