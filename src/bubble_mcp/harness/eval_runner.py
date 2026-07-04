@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
+from bubble_mcp.harness.visual import compare_visual_snapshots, load_visual_snapshot
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.validators.semantic import validate_plan
 
@@ -85,6 +86,18 @@ def _list_field(case: dict[str, Any], *keys: str) -> list[str]:
     return [str(item) for item in value if str(item).strip()]
 
 
+def _visual_snapshot_field(case: dict[str, Any], dataset_dir: Path, *keys: str) -> dict[str, Any] | None:
+    value = _first_present(case, *keys)
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        path = Path(value)
+        if not path.is_absolute():
+            path = dataset_dir / path
+        return load_visual_snapshot(path)
+    return None
+
+
 def _expected_tool(case: dict[str, Any]) -> str:
     return str(_first_present(case, "expected_tool", "expectedTool", default="") or "")
 
@@ -114,6 +127,7 @@ def _fallback_reasons(
     validation_ok: bool,
     warnings_ok: bool,
     compile_ok: bool,
+    visual_ok: bool = True,
 ) -> list[str]:
     reasons: list[str] = []
     if not matched:
@@ -130,6 +144,8 @@ def _fallback_reasons(
         reasons.append("warnings_mismatch")
     if not compile_ok:
         reasons.append("compile_missing_write_payload")
+    if not visual_ok:
+        reasons.append("visual_mismatch")
     return reasons
 
 
@@ -170,6 +186,7 @@ def run_eval(
 ) -> dict[str, Any]:
     all_cases = load_dataset(dataset_path)
     cases = filter_cases(all_cases, case_filter=case_filter, failed_from=failed_from, offset=offset, limit=limit)
+    dataset_dir = dataset_path.parent
     results: list[dict[str, Any]] = []
     for case in cases:
         message = str(case.get("message") or "")
@@ -202,6 +219,34 @@ def run_eval(
         warnings_ok = _warnings_match(warnings, expected_warnings)
         validation_ok = bool(validation["ok"])
         missing_ok = _missing_ok(validation)
+        visual_reference = _visual_snapshot_field(case, dataset_dir, "visual_reference", "visualReference")
+        visual_actual = _visual_snapshot_field(case, dataset_dir, "visual_actual", "visualActual")
+        visual_report: dict[str, Any] | None = None
+        visual_ok = True
+        if visual_reference is not None or visual_actual is not None:
+            if visual_reference is None or visual_actual is None:
+                visual_ok = False
+                visual_report = {
+                    "ok": False,
+                    "score": 0.0,
+                    "summary": {"comparisons": 0, "issue_count": 1, "warning_count": 0},
+                    "issues": ["visual eval cases require both visual_reference and visual_actual."],
+                    "warnings": [],
+                }
+            else:
+                visual_report = compare_visual_snapshots(
+                    visual_reference,
+                    visual_actual,
+                    tolerance_px=float(_first_present(case, "visual_tolerance_px", "visualTolerancePx", default=4)),
+                    tolerance_ratio=float(
+                        _first_present(case, "visual_tolerance_ratio", "visualToleranceRatio", default=0.08)
+                    ),
+                    require_text=bool(_first_present(case, "visual_require_text", "visualRequireText", default=True)),
+                    require_images=bool(
+                        _first_present(case, "visual_require_images", "visualRequireImages", default=False)
+                    ),
+                )
+                visual_ok = bool(visual_report.get("ok"))
         fallback_reasons = _fallback_reasons(
             matched=matched,
             tool_ok=tool_ok,
@@ -210,37 +255,40 @@ def run_eval(
             validation_ok=validation_ok,
             warnings_ok=warnings_ok,
             compile_ok=compile_ok,
+            visual_ok=visual_ok,
         )
-        passed = matched and tool_ok and args_ok and missing_ok and validation_ok and warnings_ok and compile_ok
-        results.append(
-            {
-                "id": case.get("id"),
-                "message": message,
-                "passed": passed,
-                "matched": matched,
-                "expected_tool": expected_tool or None,
-                "tool_ok": tool_ok,
-                "args_ok": args_ok,
-                "missing_ok": missing_ok,
-                "warnings_ok": warnings_ok,
-                "compile_ok": compile_ok,
-                "compiled": compiled,
-                "has_write_payload": has_write_payload,
-                "validation_ok": validation_ok,
-                "tool_name": current_first_step.get("tool_name") if isinstance(current_first_step, dict) else None,
-                "parser": _plan_parser(plan, matched),
-                "fallback_reason": fallback_reasons[0] if fallback_reasons else None,
-                "fallback_reasons": fallback_reasons,
-                "warnings": warnings,
-                "validation_errors": [
-                    str(error)
-                    for error in validation.get("errors", [])
-                    if str(error).strip()
-                ],
-                "step_count": len(plan.get("steps", [])),
-                "estimated_tokens": estimate_tokens(plan),
-            }
-        )
+        passed = matched and tool_ok and args_ok and missing_ok and validation_ok and warnings_ok and compile_ok and visual_ok
+        result = {
+            "id": case.get("id"),
+            "message": message,
+            "passed": passed,
+            "matched": matched,
+            "expected_tool": expected_tool or None,
+            "tool_ok": tool_ok,
+            "args_ok": args_ok,
+            "missing_ok": missing_ok,
+            "warnings_ok": warnings_ok,
+            "compile_ok": compile_ok,
+            "visual_ok": visual_ok,
+            "compiled": compiled,
+            "has_write_payload": has_write_payload,
+            "validation_ok": validation_ok,
+            "tool_name": current_first_step.get("tool_name") if isinstance(current_first_step, dict) else None,
+            "parser": _plan_parser(plan, matched),
+            "fallback_reason": fallback_reasons[0] if fallback_reasons else None,
+            "fallback_reasons": fallback_reasons,
+            "warnings": warnings,
+            "validation_errors": [
+                str(error)
+                for error in validation.get("errors", [])
+                if str(error).strip()
+            ],
+            "step_count": len(plan.get("steps", [])),
+            "estimated_tokens": estimate_tokens(plan),
+        }
+        if visual_report is not None:
+            result["visual_report"] = visual_report
+        results.append(result)
 
     fallback_summary: dict[str, int] = {}
     parser_summary: dict[str, int] = {}
@@ -266,6 +314,8 @@ def run_eval(
             "args_ok": sum(1 for result in results if result["args_ok"]),
             "missing_ok": sum(1 for result in results if result["missing_ok"]),
             "compile_ok": sum(1 for result in results if result["compile_ok"]),
+            "visual_cases": sum(1 for result in results if "visual_report" in result),
+            "visual_ok": sum(1 for result in results if result["visual_ok"]),
             "validation_ok": sum(1 for result in results if result["validation_ok"]),
             "warnings_ok": sum(1 for result in results if result["warnings_ok"]),
             "estimated_tokens": sum(int(result["estimated_tokens"]) for result in results),

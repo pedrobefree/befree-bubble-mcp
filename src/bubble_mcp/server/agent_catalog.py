@@ -388,6 +388,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Export local captured Bubble editor writes into redacted eval cases with operation-family classification and "
         "tool hints. Use this for harness growth from known-good examples; it is local and read-only."
     ),
+    "bubble_visual_compare": (
+        "Compare two structured visual snapshots for layout, text, image, typography, max-width, and gradient drift. "
+        "Use this lightweight perceptual harness to validate HTML/Figma/Bubble conversion quality from saved "
+        "snapshots without reading project code or performing Bubble writes. Read-only."
+    ),
     "bubble_compile_plan": (
         "Compile supported abstract Bubble MCP plan steps into Bubble /appeditor/write payloads. Use after planning "
         "and before execution when the caller needs auditable payloads."
@@ -588,9 +593,9 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 
 
 FIELD_TYPES: dict[str, dict[str, Any]] = {
-    "dry_run": {"type": "boolean"},
-    "execute": {"type": "boolean"},
-    "confirm": {"type": "boolean"},
+    "dry_run": {"type": "boolean", "default": True},
+    "execute": {"type": "boolean", "default": False},
+    "confirm": {"type": "boolean", "default": False},
     "force": {"type": "boolean"},
     "compile": {"type": "boolean"},
     "clear": {"type": "boolean"},
@@ -651,6 +656,51 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "return_types_json": {"type": "array", "items": {"type": "object"}},
     "fields": {"type": ["string", "object"]},
     "choices": {"type": ["string", "array"], "items": {"type": "string"}},
+    "layout": {"type": "string", "enum": ["column", "row", "align_to_parent", "fixed"]},
+    "container_alignment": {"type": "string", "enum": ["left", "center", "right", "stretch"]},
+    "horiz_alignment": {"type": "string", "enum": ["flex-start", "center", "flex-end", "space-between", "stretch"]},
+    "vert_alignment": {"type": "string", "enum": ["flex-start", "center", "flex-end", "space-between", "stretch"]},
+    "float_v_relative": {"type": "string", "enum": ["top", "bottom", "both"]},
+    "float_h_relative": {"type": "string", "enum": ["left", "right", "both"]},
+    "float_zindex": {"type": "string", "enum": ["front", "back"]},
+    "content_format": {"type": "string", "enum": ["text", "email", "password", "integer", "decimal", "date"]},
+    "origin": {"type": "string", "enum": ["youtube", "vimeo", "html5", "external"]},
+    "bg_style": {"type": "string", "enum": ["none", "color", "image", "gradient"]},
+    "border_style": {"type": "string", "enum": ["none", "solid", "dashed", "dotted"]},
+    "element_type": {
+        "type": "string",
+        "enum": [
+            "Group",
+            "Text",
+            "Button",
+            "Input",
+            "Image",
+            "Icon",
+            "HTML",
+            "Popup",
+            "RepeatingGroup",
+            "ReusableElement",
+        ],
+    },
+    "value_type": {"type": "string", "enum": ["string", "number", "boolean", "json", "expression"]},
+    "ref_kind": {"type": "string", "enum": ["auto", "id", "key", "alias", "name", "text"]},
+    "element_ref_kind": {"type": "string", "enum": ["auto", "id", "alias", "name", "text"]},
+    "event_ref_kind": {"type": "string", "enum": ["auto", "id", "key", "alias", "name"]},
+    "action_ref_kind": {"type": "string", "enum": ["auto", "id", "key", "index", "alias"]},
+    "data_type_ref_kind": {"type": "string", "enum": ["auto", "id", "name"]},
+    "option_set_ref_kind": {"type": "string", "enum": ["auto", "id", "name"]},
+    "option_value_ref_kind": {"type": "string", "enum": ["auto", "id", "name", "display"]},
+    "scope": {"type": "string", "enum": ["elements", "workflows", "styles", "schema", "all"]},
+    "mode": {"type": "string", "enum": ["full", "fast", "events", "types", "elements"]},
+    "placement": {"type": "string", "enum": ["top", "bottom", "append", "prepend", "replace children"]},
+    "change_path": {"type": ["string", "array"], "items": {"type": "string"}},
+    "user_id": {"type": ["string", "array"], "items": {"type": "string"}},
+    "reference": {"type": "string"},
+    "actual": {"type": "string"},
+    "tolerance_px": {"type": "number", "minimum": 0, "default": 4},
+    "tolerance_ratio": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.08},
+    "require_text": {"type": "boolean", "default": True},
+    "require_images": {"type": "boolean", "default": False},
 }
 
 
@@ -945,6 +995,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_session_inspect",
         "bubble_eval_run",
         "bubble_eval_export_expert",
+        "bubble_visual_compare",
         "bubble_plan",
         "bubble_plan_dry_run",
         "bubble_compile_plan",

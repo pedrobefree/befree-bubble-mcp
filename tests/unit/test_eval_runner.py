@@ -102,3 +102,13 @@ def test_run_eval_can_rerun_failed_cases_from_prior_report(tmp_path: Path) -> No
     assert report["results"][0]["id"] == "unmatched"
     assert report["summary"]["fallback_summary"] == {"no_plan_steps": 1}
     assert report["summary"]["filters"]["failed_from"] == str(prior_report)
+
+
+def test_run_eval_can_include_visual_snapshot_comparison() -> None:
+    report = run_eval(Path("tests/fixtures/evals/visual-routing.json"))
+
+    assert report["summary"]["cases"] == 1
+    assert report["summary"]["passed"] == 1
+    assert report["summary"]["visual_cases"] == 1
+    assert report["summary"]["visual_ok"] == 1
+    assert report["results"][0]["visual_report"]["ok"] is True

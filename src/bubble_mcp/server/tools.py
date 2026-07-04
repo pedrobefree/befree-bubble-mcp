@@ -30,6 +30,7 @@ from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
+from bubble_mcp.harness.visual import compare_visual_snapshot_files
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
@@ -367,6 +368,16 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             Path(str(args.get("input") or "")),
             Path(str(args.get("output") or "")),
             limit=int(args.get("limit") or 250),
+        )
+    if name == "bubble_visual_compare":
+        args = arguments or {}
+        return compare_visual_snapshot_files(
+            Path(str(args.get("reference") or "")),
+            Path(str(args.get("actual") or "")),
+            tolerance_px=float(args.get("tolerance_px") or 4),
+            tolerance_ratio=float(args.get("tolerance_ratio") or 0.08),
+            require_text=bool(args.get("require_text", True)),
+            require_images=bool(args.get("require_images")),
         )
     if name == "bubble_compile_plan":
         args = arguments or {}

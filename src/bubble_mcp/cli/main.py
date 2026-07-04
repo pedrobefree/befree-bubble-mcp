@@ -38,6 +38,7 @@ from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
+from bubble_mcp.harness.visual import compare_visual_snapshot_files
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
@@ -304,6 +305,23 @@ def command_eval_export_expert(args: argparse.Namespace) -> int:
         Path(args.output),
         limit=args.limit,
     )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_eval_visual(args: argparse.Namespace) -> int:
+    result = compare_visual_snapshot_files(
+        Path(args.reference),
+        Path(args.actual),
+        tolerance_px=args.tolerance_px,
+        tolerance_ratio=args.tolerance_ratio,
+        require_text=not args.no_require_text,
+        require_images=args.require_images,
+    )
+    if args.report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     emit_json(result)
     return 0 if result.get("ok") else 1
 
@@ -768,6 +786,19 @@ def build_parser() -> argparse.ArgumentParser:
     export_expert_parser.add_argument("--output", required=True)
     export_expert_parser.add_argument("--limit", type=int, default=250)
     export_expert_parser.set_defaults(func=command_eval_export_expert)
+
+    visual_parser = eval_subparsers.add_parser(
+        "visual",
+        help="Compare two structured visual snapshots for layout/text/image/style drift.",
+    )
+    visual_parser.add_argument("--reference", required=True)
+    visual_parser.add_argument("--actual", required=True)
+    visual_parser.add_argument("--report", default="")
+    visual_parser.add_argument("--tolerance-px", type=float, default=4)
+    visual_parser.add_argument("--tolerance-ratio", type=float, default=0.08)
+    visual_parser.add_argument("--no-require-text", action="store_true")
+    visual_parser.add_argument("--require-images", action="store_true")
+    visual_parser.set_defaults(func=command_eval_visual)
 
     session_parser = subparsers.add_parser("session", help="Manage local Bubble editor sessions.")
     session_subparsers = session_parser.add_subparsers(dest="session_command", required=True)

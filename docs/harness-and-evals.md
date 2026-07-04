@@ -18,6 +18,7 @@ Implemented metrics:
 - fallback/failure reason summary
 - step count
 - deterministic estimated token count
+- optional structured visual snapshot comparison
 - structural validation status when plans are inspected through planning/execution tools
 
 Dataset cases accept either standalone snake_case keys or Aria-style camelCase
@@ -72,6 +73,26 @@ reruns. A compiled report includes `summary.compile_ok`,
 The summary also includes `parser_summary` and `fallback_summary` for quick
 regression triage.
 
+## Visual Snapshot Harness
+
+Use `bubble-mcp eval visual` or MCP tool `bubble_visual_compare` to compare two
+structured visual snapshots. This is the first lightweight perceptual gate for
+HTML/Figma/Bubble conversion quality before a full authenticated screenshot
+diff is available.
+
+```bash
+bubble-mcp eval visual \
+  --reference tests/fixtures/visual-snapshots/hero-reference.json \
+  --actual tests/fixtures/visual-snapshots/hero-actual-ok.json \
+  --require-images
+```
+
+Eval cases can also include `visual_reference` / `visual_actual` paths or
+`visualReference` / `visualActual` objects. Visual comparison checks layout
+geometry, required text, image dimensions, typography, max-width, and gradient
+direction/color order with configurable `visual_tolerance_px` and
+`visual_tolerance_ratio`.
+
 ## Agent Routing Smoke
 
 Use the `agent-routing` runtime smoke suite to verify that representative user
@@ -105,6 +126,7 @@ The exporter:
 - detects Bubble write payloads under `payload`, `write_payload`, `body`, or `request.payload`;
 - classifies operation families such as visual element, page, workflow, data schema, option set, style, and delete;
 - adds `expectedTool` hints when the payload maps cleanly to a tool family;
+- adds basic `expectedArgs` and `visualReference` data for supported visual element captures;
 - redacts sensitive keys and long secret-like values before writing the output.
 
 Do not commit captured project data unless it has been reviewed and intentionally

@@ -23,6 +23,9 @@ For each tool family:
 - define shared fields once in `FIELD_LIBRARY`;
 - set `required` only for arguments the agent must provide;
 - add `default`, `minimum`, `maximum`, `format`, and `examples` when they help the agent choose correctly;
+- use enums for stable Bubble argument families such as layout mode, alignment,
+  content format, reference kind, value type, visual background mode, and smoke
+  suite names;
 - keep `additionalProperties: false` for native tools;
 - keep `execute` explicit and defaulted to `false` for Bubble mutations;
 - require or validate `confirm` for destructive operations;
@@ -31,7 +34,7 @@ For each tool family:
 ## Current Native Families
 
 - `profile_session_context_tools`: profiles, session import/list, tool coverage, context summary/search/import/detect.
-- `planning_execution_tools`: plan, eval, compile, direct editor write, execute plan.
+- `planning_execution_tools`: plan, eval, visual compare, compile, direct editor write, execute plan.
 - `bubble_eval_export_expert`: local redacted expert-capture export for eval growth.
 - `html_import_tools`: advanced HTML-to-Bubble runtime import.
 - `branch_changelog_tools`: branch list/create/delete, contributors, changelog fetch.
@@ -46,6 +49,7 @@ When adding or refining a family, update tests in
 - destructive tools expose `confirm`;
 - source-selection fields use `anyOf` when there are alternative input sources;
 - numeric fields include realistic min/max bounds;
+- stable option fields expose enums instead of unbounded strings;
 - `tools/list` still exposes the full catalog.
 - `bubble-mcp smoke runtime --suite coverage` passes both the execution
   coverage case and the catalog-quality case.
@@ -62,6 +66,8 @@ Schemas should reduce discovery loops:
 - destructive tools must expose `confirm` and set `destructiveHint`;
 - context-producing tools should explain freshness and artifact priority;
 - eval tools should support focused reruns (`filter`, `failed_from`, `offset`, `limit`) so agents avoid rerunning the full suite.
+- visual comparison tools should accept saved snapshots so conversion regressions
+  can be tested without authenticated screenshots.
 
 ## Runtime Compatibility Rules
 

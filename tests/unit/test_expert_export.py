@@ -47,6 +47,9 @@ def test_export_expert_eval_cases_redacts_sensitive_capture(tmp_path: Path) -> N
     assert result["ok"] is True
     assert result["cases"] == 1
     assert cases[0]["expectedTool"] == "create_text"
+    assert cases[0]["expectedArgs"]["content"] == "Hello"
+    assert cases[0]["expectedArgs"]["context"] == "index"
+    assert cases[0]["visualReference"]["nodes"][0]["text"] == "Hello"
     assert cases[0]["classification"]["families"] == ["visual_element"]
     assert "sid=secret" not in rendered
     assert "synthetic-token" not in rendered

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "visual_hero_ok",
+    "message": "Create a text saying \"Hello\"",
+    "expected_tool": "create_text",
+    "expected_args": {
+      "context": "index",
+      "content": "Hello"
+    },
+    "visual_reference": "../visual-snapshots/hero-reference.json",
+    "visual_actual": "../visual-snapshots/hero-actual-ok.json",
+    "visual_require_images": true
+  }
+]

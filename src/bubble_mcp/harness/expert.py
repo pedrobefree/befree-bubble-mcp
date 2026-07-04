@@ -100,6 +100,87 @@ def _tool_hint(change: dict[str, Any], family: str) -> str | None:
     return None
 
 
+def _context_from_change(change: dict[str, Any]) -> str | None:
+    path = change.get("path_array") or change.get("path") or []
+    if not isinstance(path, list):
+        return None
+    parts = [str(part) for part in path]
+    if len(parts) >= 2 and parts[0] == "%p3":
+        return parts[1]
+    return None
+
+
+def _visual_expected_args(change: dict[str, Any], tool_hint: str) -> dict[str, Any]:
+    body = change.get("body")
+    if not isinstance(body, dict):
+        return {}
+    props = body.get("%p")
+    props = props if isinstance(props, dict) else {}
+    args: dict[str, Any] = {}
+    context = _context_from_change(change)
+    if context:
+        args["context"] = context
+    name = props.get("%nm") or props.get("name") or body.get("name")
+    if name:
+        args["name"] = str(name)
+    content = props.get("%3") or props.get("content") or body.get("content")
+    if content and tool_hint == "create_text":
+        args["content"] = str(content)
+    if content and tool_hint in {"create_button", "create_link", "create_checkbox", "create_alert"}:
+        args["label" if tool_hint != "create_alert" else "content"] = str(content)
+    source = props.get("%img") or props.get("image") or props.get("source") or body.get("source")
+    if source and tool_hint == "create_image":
+        args["source"] = str(source)
+    for key, source_key in {
+        "width": "%w",
+        "height": "%h",
+        "min_width": "min_width",
+        "min_height": "min_height",
+        "max_width": "max_width",
+    }.items():
+        value = props.get(source_key)
+        if isinstance(value, int | float):
+            args[key] = value
+    return args
+
+
+def _visual_snapshot_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    nodes: list[dict[str, Any]] = []
+    changes = payload.get("changes")
+    if not isinstance(changes, list):
+        return {"nodes": nodes}
+    for change in changes:
+        if not isinstance(change, dict) or _change_family(change) != "visual_element":
+            continue
+        body = change.get("body")
+        if not isinstance(body, dict):
+            continue
+        props = body.get("%p")
+        props = props if isinstance(props, dict) else {}
+        text = props.get("%3") or props.get("content") or props.get("label")
+        node: dict[str, Any] = {
+            "id": str(body.get("id") or ""),
+            "type": str(body.get("%x") or body.get("type") or ""),
+            "name": str(props.get("%nm") or ""),
+            "bbox": {
+                "x": props.get("%x", props.get("x")),
+                "y": props.get("%y", props.get("y")),
+                "width": props.get("%w", props.get("width")),
+                "height": props.get("%h", props.get("height")),
+            },
+            "style": {
+                "fontSize": props.get("%fs") or props.get("font_size"),
+                "fontFamily": props.get("%ff") or props.get("font_face"),
+                "fontWeight": props.get("%fw") or props.get("font_weight"),
+                "maxWidth": props.get("max_width"),
+            },
+        }
+        if text:
+            node["text"] = str(text)
+        nodes.append(node)
+    return {"nodes": nodes}
+
+
 def classify_editor_payload(payload: dict[str, Any]) -> dict[str, Any]:
     changes = payload.get("changes")
     if not isinstance(changes, list):
@@ -171,6 +252,19 @@ def export_expert_eval_cases(input_path: Path, output_path: Path, *, limit: int 
         }
         if expected_tool:
             case["expectedTool"] = expected_tool
+            changes = payload.get("changes")
+            if isinstance(changes, list):
+                for change in changes:
+                    if not isinstance(change, dict):
+                        continue
+                    if _tool_hint(change, _change_family(change)) == expected_tool:
+                        expected_args = _visual_expected_args(change, expected_tool)
+                        if expected_args:
+                            case["expectedArgs"] = expected_args
+                        break
+        visual_snapshot = _visual_snapshot_from_payload(payload)
+        if visual_snapshot.get("nodes"):
+            case["visualReference"] = visual_snapshot
         cases.append(case)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

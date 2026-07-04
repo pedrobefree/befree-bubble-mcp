@@ -368,13 +368,27 @@ bubble-mcp eval run --dataset tests/fixtures/evals/basic-routing.json --failed-f
 ## `bubble-mcp eval export-expert`
 
 Exports local captured Bubble editor writes into redacted eval cases with family
-classification and tool hints. Use it to grow the eval corpus from known-good
-examples without committing sessions, cookies, or raw secrets.
+classification, tool hints, basic expected arguments, and visual references
+when supported. Use it to grow the eval corpus from known-good examples without
+committing sessions, cookies, or raw secrets.
 
 ```bash
 bubble-mcp eval export-expert \
   --input /tmp/captured-writes.json \
   --output /tmp/bubble-expert-evals.json
+```
+
+## `bubble-mcp eval visual`
+
+Compares two structured visual snapshots for layout, text, image, typography,
+max-width, and gradient drift. This is a lightweight visual/perceptual harness
+for conversion regressions and does not contact Bubble.
+
+```bash
+bubble-mcp eval visual \
+  --reference tests/fixtures/visual-snapshots/hero-reference.json \
+  --actual tests/fixtures/visual-snapshots/hero-actual-ok.json \
+  --require-images
 ```
 
 ## `bubble-mcp validate-plan`
@@ -622,6 +636,7 @@ Implemented tools:
 - `bubble_compile_plan`
 - `bubble_eval_run`
 - `bubble_eval_export_expert`
+- `bubble_visual_compare`
 - `bubble_session_list`
 - `bubble_session_import`
 - `bubble_editor_write`

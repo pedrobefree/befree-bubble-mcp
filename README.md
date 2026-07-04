@@ -51,6 +51,7 @@ python scripts/install_local.py --repair --extras browser,dev
 - Compiler for supported visual/schema/workflow/style plan steps into executable Bubble write payloads.
 - Browser-assisted session login through optional Playwright support.
 - Eval harness with focused reruns, parser/fallback diagnostics, token estimates, and redacted expert-capture export.
+- Lightweight visual snapshot comparison for HTML/Figma/Bubble conversion regression gates.
 - Local Figma bridge for the Befree Figma plugin. Figma-side integration code is intentionally outside this repository.
 
 ## Planned Capabilities
@@ -333,6 +334,15 @@ Add `--verify-context` when you want the smoke to refresh the Bubble context
 after the write and fail if the temporary page/elements are not present with
 the expected defaults. If `--cleanup` is also set, verification runs before the
 temporary page is deleted, then the context is refreshed again after cleanup.
+
+For conversion fidelity checks, use structured visual snapshots:
+
+```bash
+bubble-mcp eval visual \
+  --reference tests/fixtures/visual-snapshots/hero-reference.json \
+  --actual tests/fixtures/visual-snapshots/hero-actual-ok.json \
+  --require-images
+```
 
 ## Codex MCP Setup
 

@@ -138,6 +138,39 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Path to a prior eval JSON report; only failed case ids are rerun.",
         examples=["reports/basic-compiled.json"],
     ),
+    "reference": _prop(
+        "string",
+        "Local visual reference snapshot JSON path for structured visual/perceptual comparison.",
+        examples=["tests/fixtures/visual-snapshots/reference.json"],
+    ),
+    "actual": _prop(
+        "string",
+        "Local actual visual snapshot JSON path to compare against the reference snapshot.",
+        examples=["/tmp/bubble-actual-snapshot.json"],
+    ),
+    "tolerance_px": _prop(
+        "number",
+        "Absolute pixel tolerance for visual snapshot geometry comparisons.",
+        default=4,
+        minimum=0,
+    ),
+    "tolerance_ratio": _prop(
+        "number",
+        "Relative tolerance for visual snapshot geometry comparisons. A value of 0.08 allows an 8 percent drift.",
+        default=0.08,
+        minimum=0,
+        maximum=1,
+    ),
+    "require_text": _prop(
+        "boolean",
+        "Require every text string in the reference snapshot to appear in the actual snapshot.",
+        default=True,
+    ),
+    "require_images": _prop(
+        "boolean",
+        "Require image nodes and image dimensions from the reference snapshot to be present in the actual snapshot.",
+        default=False,
+    ),
     "offset": _prop(
         "integer",
         "Number of eval cases to skip after filtering.",
@@ -736,6 +769,12 @@ def planning_execution_tools() -> list[ToolSchema]:
             "Export redacted captured Bubble editor write artifacts into eval cases with family classification and tool hints. This is read-only and does not contact Bubble.",
             ["input", "output", "limit"],
             required=["input", "output"],
+        ),
+        tool_schema(
+            "bubble_visual_compare",
+            "Compare two structured visual snapshots and report layout, text, image, typography, max-width, and gradient drift. Use this as the lightweight perceptual harness before screenshot automation is available.",
+            ["reference", "actual", "tolerance_px", "tolerance_ratio", "require_text", "require_images"],
+            required=["reference", "actual"],
         ),
         tool_schema(
             "bubble_compile_plan",

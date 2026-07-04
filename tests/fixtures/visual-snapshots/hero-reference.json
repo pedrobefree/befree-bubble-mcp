@@ -1,0 +1,44 @@
+{
+  "root": {
+    "id": "hero",
+    "bbox": {
+      "x": 0,
+      "y": 0,
+      "width": 1298,
+      "height": 760
+    },
+    "style": {
+      "background": "linear-gradient(110deg, #5533ff, #25b6f0)",
+      "maxWidth": 1298
+    }
+  },
+  "nodes": [
+    {
+      "id": "headline",
+      "type": "text",
+      "text": "The best landing page for your digital product.",
+      "bbox": {
+        "x": 80,
+        "y": 300,
+        "width": 500,
+        "height": 190
+      },
+      "style": {
+        "fontFamily": "Josefin Sans",
+        "fontSize": 60,
+        "fontWeight": 700
+      }
+    },
+    {
+      "id": "watch",
+      "type": "image",
+      "src": "watch.png",
+      "bbox": {
+        "x": 760,
+        "y": 270,
+        "width": 458,
+        "height": 458
+      }
+    }
+  ]
+}

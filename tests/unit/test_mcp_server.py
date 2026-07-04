@@ -46,6 +46,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_profile_status" in names
     assert "bubble_session_inspect" in names
     assert "bubble_session_login" in names
+    assert "bubble_visual_compare" in names
     assert "bubble_task_runbook" in names
     assert tools["bubble_project_bootstrap"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_project_bootstrap"]["annotations"]["idempotentHint"] is True
@@ -60,8 +61,47 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_session_login"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_session_login"]["annotations"]["openWorldHint"] is True
     assert tools["bubble_session_login"]["inputSchema"]["required"] == ["profile"]
+    assert tools["bubble_visual_compare"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_visual_compare"]["inputSchema"]["required"] == ["reference", "actual"]
+    assert tools["create_group"]["inputSchema"]["properties"]["layout"]["enum"] == [
+        "column",
+        "row",
+        "align_to_parent",
+        "fixed",
+    ]
+    assert tools["create_input"]["inputSchema"]["properties"]["content_format"]["enum"] == [
+        "text",
+        "email",
+        "password",
+        "integer",
+        "decimal",
+        "date",
+    ]
     assert "exact" in tools["bubble_context_find"]["inputSchema"]["properties"]
     assert "include_metadata" in tools["bubble_context_find"]["inputSchema"]["properties"]
+
+
+def test_visual_compare_tool_returns_structured_report() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 44,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_visual_compare",
+                "arguments": {
+                    "reference": "tests/fixtures/visual-snapshots/hero-reference.json",
+                    "actual": "tests/fixtures/visual-snapshots/hero-actual-ok.json",
+                    "require_images": True,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["summary"]["comparisons"] > 0
 
 
 def test_ping_returns_empty_success() -> None:
