@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import sys
+import subprocess
 
 import pytest
 
@@ -60,7 +61,41 @@ def test_write_console_bootstrap_injects_source_before_import(tmp_path: Path) ->
     assert str(python) in text
     assert f"sys.path.insert(0, {str(source_dir)!r})" in text
     assert "from bubble_mcp.cli.main import main" in text
+    assert "#!/bin/sh" not in text
     assert script_path.stat().st_mode & 0o111
+
+
+def test_write_console_bootstrap_runs_directly(tmp_path: Path) -> None:
+    script_path = tmp_path / "bin" / "bubble-mcp"
+    source_dir = tmp_path / "checkout" / "src"
+    module_dir = source_dir / "bubble_mcp" / "cli"
+    module_dir.mkdir(parents=True)
+    (source_dir / "bubble_mcp" / "__init__.py").write_text("", encoding="utf-8")
+    (module_dir / "__init__.py").write_text("", encoding="utf-8")
+    (module_dir / "main.py").write_text(
+        "import sys\n"
+        "def main():\n"
+        "    print(sys.argv[0])\n"
+        "    print('|'.join(sys.argv[1:]))\n"
+        "    return 0\n",
+        encoding="utf-8",
+    )
+
+    _write_console_bootstrap(script_path, Path(sys.executable), source_dir, "bubble_mcp.cli.main:main")
+
+    result = subprocess.run(
+        [str(script_path), "tools", "search", "--query", "html selector import"],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "bubble-mcp",
+        "tools|search|--query|html selector import",
+    ]
 
 
 def test_repair_native_extension_policy_targets_only_native_files(
