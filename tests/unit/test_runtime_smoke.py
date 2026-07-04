@@ -1,7 +1,81 @@
 import json
+from pathlib import Path
 
 from bubble_mcp.server.tools import call_tool
 from bubble_mcp.runtime_smoke import build_runtime_smoke_cases, run_runtime_smoke
+
+
+def _write_execute_context(context_file: Path, run_id: str) -> None:
+    page_name = f"mcp_smoke_{run_id}"
+    context_file.write_text(
+        json.dumps(
+            {
+                "app_id": "synthetic-app",
+                "source": "test",
+                "nodes": [
+                    {
+                        "id": f"page:{page_name}",
+                        "label": page_name,
+                        "type": "page",
+                        "metadata": {"children": ["gp1", "tx1", "bt1", "in1"]},
+                    },
+                    {
+                        "id": "element:gp1",
+                        "label": "gp1",
+                        "type": "element",
+                        "metadata": {
+                            "bubble_id": "gp1",
+                            "context": f"page:{page_name}",
+                            "element_type": "Group",
+                            "properties": {"container_layout": "column", "fit_height": True},
+                        },
+                    },
+                    {
+                        "id": "element:tx1",
+                        "label": "tx1",
+                        "type": "element",
+                        "metadata": {
+                            "bubble_id": "tx1",
+                            "context": f"page:{page_name}",
+                            "element_type": "Text",
+                            "properties": {"fit_height": True, "text": {"entries": {"0": f"Runtime smoke {run_id}"}}},
+                        },
+                    },
+                    {
+                        "id": "element:bt1",
+                        "label": "bt1",
+                        "type": "element",
+                        "metadata": {
+                            "bubble_id": "bt1",
+                            "context": f"page:{page_name}",
+                            "element_type": "Button",
+                            "properties": {
+                                "fit_width": True,
+                                "fit_height": True,
+                                "text": {"entries": {"0": "Runtime smoke"}},
+                            },
+                        },
+                    },
+                    {
+                        "id": "element:in1",
+                        "label": "in1",
+                        "type": "element",
+                        "metadata": {
+                            "bubble_id": "in1",
+                            "context": f"page:{page_name}",
+                            "element_type": "Input",
+                            "properties": {
+                                "fixed_height": True,
+                                "placeholder": {"entries": {"0": "Runtime smoke"}},
+                            },
+                        },
+                    },
+                ],
+                "edges": [],
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_execute_write_requires_explicit_execute() -> None:
@@ -194,75 +268,7 @@ def test_execute_write_runs_call_sequence() -> None:
 
 def test_execute_write_can_verify_refreshed_context(tmp_path) -> None:  # type: ignore[no-untyped-def]
     context_file = tmp_path / "context.json"
-    context_file.write_text(
-        json.dumps(
-            {
-                "app_id": "synthetic-app",
-                "source": "test",
-                "nodes": [
-                    {
-                        "id": "page:mcp_smoke_verify",
-                        "label": "mcp_smoke_verify",
-                        "type": "page",
-                        "metadata": {"children": ["gp1", "tx1", "bt1", "in1"]},
-                    },
-                    {
-                        "id": "element:gp1",
-                        "label": "gp1",
-                        "type": "element",
-                        "metadata": {
-                            "bubble_id": "gp1",
-                            "context": "page:mcp_smoke_verify",
-                            "element_type": "Group",
-                            "properties": {"container_layout": "column", "fit_height": True},
-                        },
-                    },
-                    {
-                        "id": "element:tx1",
-                        "label": "tx1",
-                        "type": "element",
-                        "metadata": {
-                            "bubble_id": "tx1",
-                            "context": "page:mcp_smoke_verify",
-                            "element_type": "Text",
-                            "properties": {"fit_height": True, "text": {"entries": {"0": "Runtime smoke verify"}}},
-                        },
-                    },
-                    {
-                        "id": "element:bt1",
-                        "label": "bt1",
-                        "type": "element",
-                        "metadata": {
-                            "bubble_id": "bt1",
-                            "context": "page:mcp_smoke_verify",
-                            "element_type": "Button",
-                            "properties": {
-                                "fit_width": True,
-                                "fit_height": True,
-                                "text": {"entries": {"0": "Runtime smoke"}},
-                            },
-                        },
-                    },
-                    {
-                        "id": "element:in1",
-                        "label": "in1",
-                        "type": "element",
-                        "metadata": {
-                            "bubble_id": "in1",
-                            "context": "page:mcp_smoke_verify",
-                            "element_type": "Input",
-                            "properties": {
-                                "fixed_height": True,
-                                "placeholder": {"entries": {"0": "Runtime smoke"}},
-                            },
-                        },
-                    },
-                ],
-                "edges": [],
-            }
-        ),
-        encoding="utf-8",
-    )
+    _write_execute_context(context_file, "verify")
     calls: list[tuple[str, dict[str, object]]] = []
 
     def fake_tool(tool: str, args: dict[str, object]) -> dict[str, object]:
@@ -295,4 +301,45 @@ def test_execute_write_can_verify_refreshed_context(tmp_path) -> None:  # type: 
         },
     )
     assert report["results"][-1]["suite"] == "post-write-verify"
+    assert report["results"][-1]["status"] == "passed"
+
+
+def test_execute_write_verifies_before_cleanup(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    context_file = tmp_path / "context.json"
+    _write_execute_context(context_file, "verify_cleanup")
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_tool(tool: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((tool, args))
+        if tool == "bubble_context_detect":
+            return {"ok": True, "context_path": str(context_file)}
+        if tool == "bubble_profile_status":
+            return {"ok": True, "ready": True}
+        return {"ok": True, "executed": args.get("execute"), "write_count": 1}
+
+    report = run_runtime_smoke(
+        fake_tool,
+        suite="execute-write",
+        profile="cliente2",
+        execute=True,
+        cleanup=True,
+        run_id="verify cleanup",
+        verify_context=True,
+    )
+
+    assert report["ok"] is True
+    assert report["summary"]["failed"] == 0
+    assert [result["tool"] for result in report["results"][-3:]] == [
+        "bubble_context_detect",
+        "delete_page",
+        "bubble_context_detect",
+    ]
+    assert [result["suite"] for result in report["results"][-3:]] == [
+        "post-write-verify",
+        "execute-write",
+        "post-cleanup-refresh",
+    ]
+    assert [tool for tool, _args in calls[-3:]] == ["bubble_context_detect", "delete_page", "bubble_context_detect"]
+    assert calls[-2][1]["name"] == "mcp_smoke_verify_cleanup"
+    assert calls[-2][1]["confirm"] is True
     assert report["results"][-1]["status"] == "passed"

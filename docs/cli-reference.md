@@ -468,7 +468,9 @@ Suites:
   page and representative elements. This suite requires `--execute`.
   Add `--verify-context` to refresh the `.bubble` context after the writes and
   assert that the temporary page, group, text, button, and input materialized
-  with required defaults.
+  with required defaults. When combined with `--cleanup`, verification runs
+  before the temporary page is deleted, then the context is refreshed again
+  after cleanup.
 
 Optional report file:
 
@@ -480,6 +482,7 @@ Optional real-write cleanup:
 
 ```bash
 bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --cleanup
+bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --verify-context --cleanup
 ```
 
 ## `bubble-mcp-server`

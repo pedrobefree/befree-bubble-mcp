@@ -311,7 +311,8 @@ bubble-mcp smoke runtime --suite execute-write --profile my-app --execute --repo
 
 Add `--verify-context` when you want the smoke to refresh the Bubble context
 after the write and fail if the temporary page/elements are not present with
-the expected defaults.
+the expected defaults. If `--cleanup` is also set, verification runs before the
+temporary page is deleted, then the context is refreshed again after cleanup.
 
 ## Codex MCP Setup
 

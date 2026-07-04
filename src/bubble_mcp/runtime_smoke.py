@@ -567,6 +567,10 @@ def run_runtime_smoke(
     )
     if limit > 0:
         cases = cases[:limit]
+    cleanup_cases: list[SmokeCase] = []
+    if suite == "execute-write" and cleanup:
+        cleanup_cases = [case for case in cases if case.tool == "delete_page" and case.suite == "execute-write"]
+        cases = [case for case in cases if case not in cleanup_cases]
 
     results: list[dict[str, Any]] = []
     for index, case in enumerate(cases, start=1):
@@ -627,6 +631,41 @@ def run_runtime_smoke(
             verification_output=verification_output,
         )
         results.append(verification)
+    for cleanup_case in cleanup_cases:
+        try:
+            result = tool_caller(cleanup_case.tool, dict(cleanup_case.arguments))
+            case_ok = bool(result.get("ok"))
+            results.append(
+                {
+                    "index": len(results) + 1,
+                    "tool": cleanup_case.tool,
+                    "suite": cleanup_case.suite,
+                    "status": "passed" if case_ok else "failed",
+                    "ok": case_ok,
+                    "description": cleanup_case.description,
+                    "result": _compact_result(result, include_details=include_details),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - smoke cleanup must report failures.
+            results.append(
+                {
+                    "index": len(results) + 1,
+                    "tool": cleanup_case.tool,
+                    "suite": cleanup_case.suite,
+                    "status": "failed",
+                    "ok": False,
+                    "description": cleanup_case.description,
+                    "error": str(exc),
+                }
+            )
+    if suite == "execute-write" and cleanup and profile:
+        cleanup_refresh = _run_post_cleanup_refresh(
+            tool_caller,
+            profile=profile,
+            app_id=app_id,
+            app_version=app_version,
+        )
+        results.append(cleanup_refresh)
 
     summary = {
         "cases": len(results),
@@ -787,16 +826,7 @@ def _run_execute_write_verification(
             "reason": "execute_write_required",
             "description": "Post-write context verification applies only to execute-write.",
         }
-    if cleanup:
-        return {
-            "index": 0,
-            "tool": "bubble_context_detect",
-            "suite": "post-write-verify",
-            "status": "skipped",
-            "ok": True,
-            "reason": "cleanup_enabled",
-            "description": "Post-write context verification skipped because cleanup deletes the temporary page.",
-        }
+
     if prior_failed:
         return {
             "index": 0,
@@ -853,5 +883,44 @@ def _run_execute_write_verification(
             "status": "failed",
             "ok": False,
             "description": "Refresh Bubble context and verify temporary smoke objects.",
+            "error": str(exc),
+        }
+
+
+def _run_post_cleanup_refresh(
+    tool_caller: ToolCaller,
+    *,
+    profile: str,
+    app_id: str,
+    app_version: str,
+) -> dict[str, Any]:
+    try:
+        args: dict[str, Any] = {
+            "profile": profile,
+            "app_version": app_version,
+            "force": True,
+        }
+        if app_id:
+            args["app_id"] = app_id
+        detection = tool_caller("bubble_context_detect", args)
+        context_path = str(detection.get("context_path") or "").strip()
+        return {
+            "index": 0,
+            "tool": "bubble_context_detect",
+            "suite": "post-cleanup-refresh",
+            "status": "passed" if detection.get("ok") and context_path else "failed",
+            "ok": bool(detection.get("ok") and context_path),
+            "description": "Refresh Bubble context after temporary smoke cleanup.",
+            "result": _compact_result(detection, include_details=True),
+            **({} if context_path else {"error": "context detection did not return a usable context_path."}),
+        }
+    except Exception as exc:  # noqa: BLE001 - cleanup refresh must report failures.
+        return {
+            "index": 0,
+            "tool": "bubble_context_detect",
+            "suite": "post-cleanup-refresh",
+            "status": "failed",
+            "ok": False,
+            "description": "Refresh Bubble context after temporary smoke cleanup.",
             "error": str(exc),
         }
