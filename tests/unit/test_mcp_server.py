@@ -453,6 +453,38 @@ def test_task_recipe_returns_ordered_html_import_steps() -> None:
     assert payload["steps"][1]["args"]["execute"] is False
 
 
+def test_task_recipe_quality_gate_uses_consolidated_coverage_smoke() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 50,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_recipe",
+                "arguments": {
+                    "task": "validate MCP catalog coverage and quality",
+                    "profile": "cliente2",
+                    "context": "index",
+                    "parent": "root",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["recipe"] == "quality_gate"
+    assert payload["matched"]["tools"] == [
+        "bubble_health_check",
+        "bubble_runtime_smoke",
+        "bubble_tool_coverage",
+        "bubble_catalog_quality",
+    ]
+    assert payload["steps"][1]["tool"] == "bubble_runtime_smoke"
+    assert payload["steps"][1]["args"]["suite"] == "coverage"
+
+
 def test_agent_routing_understands_portuguese_page_creation() -> None:
     guide_response = handle_request(
         {

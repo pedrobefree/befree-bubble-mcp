@@ -47,7 +47,8 @@ When adding or refining a family, update tests in
 - source-selection fields use `anyOf` when there are alternative input sources;
 - numeric fields include realistic min/max bounds;
 - `tools/list` still exposes the full catalog.
-- `bubble_tool_coverage` reports zero uncovered tools for the Aria catalog.
+- `bubble-mcp smoke runtime --suite coverage` passes both the execution
+  coverage case and the catalog-quality case.
 
 ## Agent Efficiency Rules
 
@@ -83,5 +84,5 @@ Every runtime-routed mutation must preserve the same safety contract:
 
 When a catalog name differs from the packaged runtime method name, add an
 explicit alias in `src/bubble_mcp/aria_dispatch.py` and keep
-`bubble_tool_coverage` green. Do not rely on agents discovering CLI subcommand
-spellings at runtime.
+`bubble-mcp smoke runtime --suite coverage` green. Do not rely on agents
+discovering CLI subcommand spellings at runtime.

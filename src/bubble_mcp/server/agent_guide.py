@@ -10,8 +10,8 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "check_server_or_catalog",
         "when": "The user asks whether the MCP is installed, healthy, covered, or ready.",
-        "tools": ["bubble_health_check", "bubble_tool_coverage", "bubble_runtime_smoke"],
-        "notes": "Use coverage first for catalog integrity, agent-routing for tool-selection quality, and safe-read or family-preview for runtime confidence.",
+        "tools": ["bubble_health_check", "bubble_runtime_smoke", "bubble_tool_coverage", "bubble_catalog_quality"],
+        "notes": "Use bubble_runtime_smoke suite=coverage first for catalog integrity and schema quality, agent-routing for tool-selection quality, and safe-read or family-preview for runtime confidence.",
     },
     {
         "intent": "find_profile_session_or_context",
@@ -319,7 +319,7 @@ RECIPES: dict[str, dict[str, Any]] = {
     },
     "quality_gate": {
         "when": "Verify install health, catalog coverage, runtime behavior, or safe profile integration.",
-        "tools": ["bubble_health_check", "bubble_tool_coverage", "bubble_runtime_smoke"],
+        "tools": ["bubble_health_check", "bubble_runtime_smoke", "bubble_tool_coverage", "bubble_catalog_quality"],
         "steps": [
             {
                 "tool": "bubble_health_check",
@@ -327,8 +327,9 @@ RECIPES: dict[str, dict[str, Any]] = {
                 "required_before_execute": False,
             },
             {
-                "tool": "bubble_tool_coverage",
-                "purpose": "Verify the exposed catalog has no uncovered Aria tools.",
+                "tool": "bubble_runtime_smoke",
+                "purpose": "Run the compact coverage gate: execution coverage plus agent-facing catalog quality.",
+                "args": {"suite": "coverage"},
                 "required_before_execute": False,
             },
             {
