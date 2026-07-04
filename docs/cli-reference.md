@@ -472,6 +472,9 @@ Implemented completions:
 - `bubble://recipes/{recipe_id}`: recipe ids such as `html_import`.
 - Prompt arguments: `profile`, `context`, `parent`, and `execute` where
   applicable.
+- Tool arguments: `profile`, `context`, `parent`, `execute`,
+  `bubble_runtime_smoke.suite`, and `bubble_task_recipe.recipe` where
+  applicable.
 
 Implemented tools:
 

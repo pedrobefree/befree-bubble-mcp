@@ -171,6 +171,55 @@ def test_completion_suggests_prompt_profiles(monkeypatch) -> None:  # type: igno
     assert response["result"]["completion"]["values"] == ["smoke"]
 
 
+def test_completion_suggests_tool_arguments(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        completion_module,
+        "load_settings",
+        lambda: SimpleNamespace(profiles={"smoke": object(), "cliente2": object()}),
+    )
+
+    suite_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 47,
+            "method": "completion/complete",
+            "params": {
+                "ref": {"type": "ref/tool", "name": "bubble_runtime_smoke"},
+                "argument": {"name": "suite", "value": "agent"},
+            },
+        }
+    )
+    recipe_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 48,
+            "method": "completion/complete",
+            "params": {
+                "ref": {"type": "ref/tool", "name": "bubble_task_recipe"},
+                "argument": {"name": "recipe", "value": "html"},
+            },
+        }
+    )
+    profile_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 49,
+            "method": "completion/complete",
+            "params": {
+                "ref": {"type": "ref/tool", "name": "create_page"},
+                "argument": {"name": "profile", "value": "c"},
+            },
+        }
+    )
+
+    assert suite_response is not None
+    assert recipe_response is not None
+    assert profile_response is not None
+    assert suite_response["result"]["completion"]["values"] == ["agent-routing"]
+    assert recipe_response["result"]["completion"]["values"] == ["html_import"]
+    assert profile_response["result"]["completion"]["values"] == ["cliente2"]
+
+
 def test_prompts_list_and_get_task_runbook() -> None:
     listed = handle_request({"jsonrpc": "2.0", "id": 33, "method": "prompts/list"})
 

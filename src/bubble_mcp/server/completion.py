@@ -12,6 +12,14 @@ from bubble_mcp.server.prompts import PROMPTS
 DEFAULT_CONTEXT_SUGGESTIONS = ["index", "root"]
 DEFAULT_PARENT_SUGGESTIONS = ["root"]
 BOOLEAN_SUGGESTIONS = ["false", "true"]
+RUNTIME_SMOKE_SUITE_SUGGESTIONS = [
+    "coverage",
+    "agent-routing",
+    "safe-read",
+    "preview-write",
+    "family-preview",
+    "execute-write",
+]
 
 
 def _completion(values: list[str], prefix: str) -> dict[str, Any]:
@@ -72,5 +80,19 @@ def complete(params: dict[str, Any]) -> dict[str, Any]:
             return _completion(DEFAULT_PARENT_SUGGESTIONS, value)
         if argument_name == "execute":
             return _completion(BOOLEAN_SUGGESTIONS, value)
+
+    if ref_type.endswith("tool"):
+        if argument_name == "profile":
+            return _completion(_profile_names(), value)
+        if argument_name == "context":
+            return _completion(DEFAULT_CONTEXT_SUGGESTIONS, value)
+        if argument_name == "parent":
+            return _completion(DEFAULT_PARENT_SUGGESTIONS, value)
+        if argument_name == "execute":
+            return _completion(BOOLEAN_SUGGESTIONS, value)
+        if ref_name == "bubble_runtime_smoke" and argument_name == "suite":
+            return _completion(RUNTIME_SMOKE_SUITE_SUGGESTIONS, value)
+        if ref_name == "bubble_task_recipe" and argument_name == "recipe":
+            return _completion(sorted(RECIPES), value)
 
     return _completion([], value)

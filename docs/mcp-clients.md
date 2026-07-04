@@ -106,6 +106,9 @@ when the client supports them.
 Clients that support `completion/complete` can autocomplete recipe resource
 template variables, such as `recipe_id` for `bubble://recipes/{recipe_id}`, and
 common prompt arguments such as `profile`, `context`, `parent`, and `execute`.
+Tool argument completion is also available for common routing values: `profile`,
+`context`, `parent`, `execute`, `bubble_runtime_smoke.suite`, and
+`bubble_task_recipe.recipe`.
 
 ## Available tools
 
