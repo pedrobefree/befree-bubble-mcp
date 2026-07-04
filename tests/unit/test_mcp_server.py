@@ -716,6 +716,26 @@ def test_task_recipe_quality_gate_uses_consolidated_coverage_smoke() -> None:
     assert payload["steps"][1]["args"]["suite"] == "family-preview"
 
 
+def test_agent_routing_does_not_treat_bubble_version_test_as_quality_gate() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 51,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_agent_guide",
+                "arguments": {"task": "liste as branches e busque o changelog da versão test"},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    intents = {route["intent"] for route in payload["recommended_routes"]}
+    assert "branches_or_changelog" in intents
+    assert "check_server_or_catalog" not in intents
+
+
 def test_agent_routing_understands_portuguese_page_creation() -> None:
     guide_response = handle_request(
         {

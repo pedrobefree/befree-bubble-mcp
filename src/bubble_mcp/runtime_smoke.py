@@ -81,6 +81,7 @@ AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
         search_query="branches changelog",
         expected_search_tool="bubble_changelog_fetch",
         description="Route branch and changelog requests to editor version-control tools.",
+        forbidden_intents=("check_server_or_catalog",),
     ),
     AgentRoutingCase(
         task="faça login da sessão e detecte o contexto atualizado do projeto",
