@@ -73,6 +73,8 @@ def test_resources_list_and_read_agent_runtime() -> None:
     assert content["mimeType"] == "text/markdown"
     assert "bubble_task_recipe" in content["text"]
     assert "Preview first" in content["text"]
+    assert "bubble_context_find" in content["text"]
+    assert "include_metadata=false" in content["text"]
 
 
 def test_resources_read_agent_quickstart() -> None:
@@ -91,6 +93,7 @@ def test_resources_read_agent_quickstart() -> None:
     assert "Default call sequence" in content["text"]
     assert "bubble_agent_guide" in content["text"]
     assert "Do not inspect repository code" in content["text"]
+    assert "exact=true" in content["text"]
 
 
 def test_resources_read_catalog_summary_json() -> None:
@@ -113,6 +116,8 @@ def test_resources_read_catalog_summary_json() -> None:
     assert "bubble_readiness_check" in payload["native_agent_tools"]
     assert "bubble_task_recipe" in payload["native_agent_tools"]
     assert "bubble_catalog_quality" in payload["native_agent_tools"]
+    assert "bubble_context_find" in payload["native_agent_tools"]
+    assert "bubble_context_detect" in payload["native_agent_tools"]
 
 
 def test_resource_templates_list_and_read_recipe_detail() -> None:

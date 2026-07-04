@@ -39,6 +39,8 @@ def _agent_runtime_markdown() -> str:
             "- Preview first unless the user explicitly asked to apply the change.",
             "- Use profile-based calls so the server can use stored session, context, and mutation overlay.",
             "- Refresh context with `bubble_context_detect` when targets may be stale.",
+            "- Use `bubble_context_find` with `exact=true` and `include_metadata=false` for low-token target",
+            "  existence/absence checks; inspect `count`, `truncated`, `match_field`, and `match_value`.",
             "- Destructive operations require explicit confirmation arguments.",
             "- After real writes, verify with context refresh, changelog, or a smoke suite when materialization matters.",
             "",
@@ -71,7 +73,9 @@ def _agent_quickstart_markdown() -> str:
             "4. Call `bubble_task_recipe` with `task`, `profile`, `context`, `parent`, and `execute`.",
             "5. Execute the recipe's MCP tools in order. Use `execute=false` for preview unless the user",
             "   explicitly asked to apply the change.",
-            "6. After real writes, verify with `bubble_context_detect`, changelog tools, or `bubble_runtime_smoke`.",
+            "6. When resolving or verifying a known page/element/context ref, prefer `bubble_context_find`",
+            "   with `exact=true` and `include_metadata=false` before using broader searches.",
+            "7. After real writes, verify with `bubble_context_detect`, changelog tools, or `bubble_runtime_smoke`.",
             "",
             "Setup assumptions:",
             "",
@@ -101,6 +105,8 @@ def _catalog_summary() -> dict[str, Any]:
         "bubble_tool_coverage",
         "bubble_catalog_quality",
         "bubble_runtime_smoke",
+        "bubble_context_find",
+        "bubble_context_detect",
     ]
     return {
         "ok": True,
