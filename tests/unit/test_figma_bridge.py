@@ -2,7 +2,7 @@ import json
 from types import SimpleNamespace
 
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
-from bubble_mcp.figma_bridge import _prune_stale_style_cache_for_bubble_file, sync_bridge_payload_file
+from bubble_mcp.figma_bridge import _harden_figma_write_payload, _prune_stale_style_cache_for_bubble_file, sync_bridge_payload_file
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
 
@@ -315,3 +315,45 @@ def test_figma_bridge_prunes_stale_style_cli_cache(tmp_path) -> None:
     assert removed == ["Ghost"]
     assert "Existing" in cache["styles"]
     assert "Ghost" not in cache["styles"]
+
+
+def test_figma_bridge_hardens_text_and_image_visual_constraints() -> None:
+    payload = {
+        "v": 1,
+        "appname": "synthetic-app",
+        "app_version": "test",
+        "changes": [
+            {
+                "body": {"%x": "Text", "%p": {"%3": "Heading"}, "id": "tx1"},
+                "path_array": ["%ed", "reusable", "%el", "slot_tx"],
+                "intent": {"name": "CreateElement"},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+                "session_id": "1x1",
+            },
+            {
+                "body": {"%x": "Image", "%p": {"%w": 458, "%h": 458}, "id": "im1"},
+                "path_array": ["%ed", "reusable", "%el", "slot_im"],
+                "intent": {"name": "CreateElement"},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+                "session_id": "1x1",
+            },
+        ],
+    }
+
+    hardened = _harden_figma_write_payload(payload)
+
+    text_props = hardened["changes"][0]["body"]["%p"]
+    image_props = hardened["changes"][1]["body"]["%p"]
+    assert text_props["fit_height"] is True
+    assert text_props["single_height"] is False
+    assert image_props["fixed_width"] is True
+    assert image_props["single_width"] is True
+    assert image_props["min_width_css"] == "458px"
+    assert image_props["max_width_css"] == "458px"
+    assert image_props["fixed_height"] is True
+    assert image_props["min_height_css"] == "458px"
+    set_data_paths = [change["path_array"][-2:] for change in hardened["changes"][2:]]
+    assert ["%p", "fit_height"] in set_data_paths
+    assert ["%p", "max_width_css"] in set_data_paths

@@ -12,6 +12,7 @@ import importlib
 import json
 import sys
 from contextlib import redirect_stderr, redirect_stdout
+from copy import deepcopy
 from io import StringIO
 from pathlib import Path
 from typing import Any
@@ -213,6 +214,95 @@ def _execute_payloads(
     return [{"index": index, **result} for index, result in enumerate(results, start=1)]
 
 
+def _css_px(value: Any) -> str | None:
+    try:
+        number = int(round(float(value)))
+    except Exception:
+        return None
+    if number < 0:
+        return None
+    return f"{number}px"
+
+
+def _figma_parity_set_data_change(create_change_item: dict[str, Any], key: str, value: Any) -> dict[str, Any] | None:
+    path_array = create_change_item.get("path_array")
+    if not isinstance(path_array, list) or not path_array:
+        return None
+    return {
+        "body": value,
+        "path_array": [*path_array, "%p", key],
+        "intent": {
+            "name": "SetData",
+            "id": 977,
+            "source_appname": "",
+        },
+        "version_control_api_version": create_change_item.get("version_control_api_version", 4),
+        "changelog_data": create_change_item.get("changelog_data", []),
+        "session_id": create_change_item.get("session_id"),
+    }
+
+
+def _harden_figma_write_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Preserve Figma visual constraints that Bubble can otherwise relax.
+
+    The packaged Aria runtime remains the source of truth for Figma conversion.
+    This pass only reinforces high-signal defaults that have proven brittle in
+    Bubble writes: text height must fit content, and imported image dimensions
+    must keep their explicit Figma width/height as min/max CSS bounds.
+    """
+
+    hardened = deepcopy(payload)
+    changes = hardened.get("changes")
+    if not isinstance(changes, list):
+        return hardened
+
+    extra_changes: list[dict[str, Any]] = []
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        body = change.get("body")
+        if not isinstance(body, dict):
+            continue
+        element_type = str(body.get("%x") or body.get("type") or "").strip()
+        props = body.get("%p")
+        if not isinstance(props, dict):
+            props = {}
+            body["%p"] = props
+
+        parity_updates: dict[str, Any] = {}
+        if element_type == "Text":
+            parity_updates = {"fit_height": True, "single_height": False}
+        elif element_type == "Image":
+            width = props.get("width", props.get("%w"))
+            height = props.get("height", props.get("%h"))
+            width_css = _css_px(width)
+            height_css = _css_px(height)
+            parity_updates = {
+                "fixed_width": True,
+                "single_width": True,
+            }
+            if width_css:
+                parity_updates["min_width_css"] = width_css
+                parity_updates["max_width_css"] = width_css
+            if height_css:
+                parity_updates["fixed_height"] = True
+                parity_updates["single_height"] = True
+                parity_updates["min_height_css"] = height_css
+                parity_updates["max_height_css"] = height_css
+
+        for key, value in parity_updates.items():
+            if props.get(key) == value:
+                continue
+            props[key] = value
+            set_data = _figma_parity_set_data_change(change, key, value)
+            if set_data is not None:
+                extra_changes.append(set_data)
+
+    if extra_changes:
+        changes.extend(extra_changes)
+    return hardened
+
+
 class _FakeInquirer:
     class List:
         def __init__(self, *_args: Any, **_kwargs: Any) -> None:
@@ -275,7 +365,7 @@ def _sync_component_with_aria_runtime(
     original_send = bubble_sdk.PayloadBuilder.send_to_webhook
 
     def send_to_local_bubble(builder: Any, _url: str = "") -> Any:
-        write_payload = builder.build()
+        write_payload = _harden_figma_write_payload(builder.build())
         captured_payloads.append(write_payload)
         if not execute:
             captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
