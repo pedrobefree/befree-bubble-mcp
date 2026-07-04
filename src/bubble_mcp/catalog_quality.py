@@ -213,6 +213,16 @@ def _check_tool_schemas(tools: list[dict[str, Any]]) -> tuple[list[dict[str, Any
                 field="annotations",
                 message="A destructive tool cannot also be marked read-only.",
             )
+        description = str(tool.get("description") or "").lower()
+        if ("read-only" in description or "read only" in description) and annotations.get("readOnlyHint") is not True:
+            _add_issue(
+                issues,
+                check="tool_annotations",
+                scope="tool",
+                name=name,
+                field="annotations.readOnlyHint",
+                message="Tools described as read-only must set readOnlyHint=true.",
+            )
     _record_check(checks, "tool_annotations", before, issues)
 
     return checks, issues

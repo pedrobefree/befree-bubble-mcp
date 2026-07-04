@@ -1,4 +1,4 @@
-from bubble_mcp.catalog_quality import catalog_quality_report
+from bubble_mcp.catalog_quality import _check_tool_schemas, catalog_quality_report
 
 
 def test_catalog_quality_report_passes_current_catalog() -> None:
@@ -21,3 +21,29 @@ def test_catalog_quality_report_passes_current_catalog() -> None:
         "prompts",
         "runtime_coverage",
     }
+
+
+def test_catalog_quality_rejects_read_only_description_without_annotation() -> None:
+    _, issues = _check_tool_schemas(
+        [
+            {
+                "name": "unsafe_status",
+                "description": "Return status metadata. Read-only.",
+                "inputSchema": {"type": "object", "properties": {}, "required": []},
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                    "openWorldHint": False,
+                },
+            }
+        ]
+    )
+
+    assert {
+        "check": "tool_annotations",
+        "scope": "tool",
+        "name": "unsafe_status",
+        "field": "annotations.readOnlyHint",
+        "message": "Tools described as read-only must set readOnlyHint=true.",
+    } in issues
