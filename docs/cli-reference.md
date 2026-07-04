@@ -439,6 +439,7 @@ Implemented MCP methods:
 - `resources/read`
 - `prompts/list`
 - `prompts/get`
+- `completion/complete`
 
 `tools/call` responses include JSON text content and matching
 `structuredContent` for clients that can consume structured tool results. Tool
@@ -457,6 +458,12 @@ Implemented prompts:
 - `bubble-task-runbook`
 - `bubble-html-import`
 - `bubble-quality-gate`
+
+Implemented completions:
+
+- `bubble://recipes/{recipe_id}`: recipe ids such as `html_import`.
+- Prompt arguments: `profile`, `context`, `parent`, and `execute` where
+  applicable.
 
 Implemented tools:
 

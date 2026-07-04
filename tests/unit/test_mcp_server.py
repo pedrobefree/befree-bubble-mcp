@@ -1,6 +1,8 @@
 import json
+from types import SimpleNamespace
 
 from bubble_mcp.runtime_coverage import catalog_coverage_report
+import bubble_mcp.server.completion as completion_module
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.store import BubbleSessionData, save_session
@@ -16,7 +18,12 @@ def test_initialize_returns_server_info() -> None:
     assert response is not None
     assert response["id"] == 1
     assert response["result"]["serverInfo"]["name"] == "befree-bubble-mcp"
-    assert response["result"]["capabilities"] == {"tools": {}, "resources": {"templates": True}, "prompts": {}}
+    assert response["result"]["capabilities"] == {
+        "tools": {},
+        "resources": {"templates": True},
+        "prompts": {},
+        "completions": {},
+    }
 
 
 def test_tools_list_includes_profile_list() -> None:
@@ -94,6 +101,49 @@ def test_resource_templates_list_and_read_recipe_detail() -> None:
     assert payload["ok"] is True
     assert payload["id"] == "html_import"
     assert payload["steps"][1]["tool"] == "create_from_html"
+
+
+def test_completion_suggests_recipe_ids() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 39,
+            "method": "completion/complete",
+            "params": {
+                "ref": {"type": "ref/resource", "uri": "bubble://recipes/{recipe_id}"},
+                "argument": {"name": "recipe_id", "value": "html"},
+            },
+        }
+    )
+
+    assert response is not None
+    completion = response["result"]["completion"]
+    assert "html_import" in completion["values"]
+    assert completion["total"] >= 1
+    assert completion["hasMore"] is False
+
+
+def test_completion_suggests_prompt_profiles(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        completion_module,
+        "load_settings",
+        lambda: SimpleNamespace(profiles={"smoke": object(), "cliente2": object()}),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 40,
+            "method": "completion/complete",
+            "params": {
+                "ref": {"type": "ref/prompt", "name": "bubble-task-runbook"},
+                "argument": {"name": "profile", "value": "s"},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["completion"]["values"] == ["smoke"]
 
 
 def test_prompts_list_and_get_task_runbook() -> None:

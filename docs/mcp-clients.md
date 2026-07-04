@@ -97,6 +97,10 @@ The server also exposes reusable prompts through `prompts/list` and
 Agents should prefer these resources/prompts over inspecting repository docs
 when the client supports them.
 
+Clients that support `completion/complete` can autocomplete recipe resource
+template variables, such as `recipe_id` for `bubble://recipes/{recipe_id}`, and
+common prompt arguments such as `profile`, `context`, `parent`, and `execute`.
+
 ## Available tools
 
 The server exposes the complete 196-tool Aria Bubble MCP catalog, plus native
