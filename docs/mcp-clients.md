@@ -149,6 +149,10 @@ For lower-level standalone execution, pass `app_id` for compiler-supported
 families or `write_payload` for exact Bubble editor writes.
 
 - `bubble_health_check`: reports local server capabilities.
+- `bubble_profile_add`: adds or updates a local Bubble profile from MCP. It
+  writes only local MCP settings and does not contact Bubble. Use it when the
+  user provided a profile name and Bubble app id, then continue with session
+  login/import and `bubble_context_detect`.
 - `bubble_profile_status`: reports whether a configured profile has matching
   session metadata and loadable/fresh context, plus next actions when session
   login or context detection is still needed.

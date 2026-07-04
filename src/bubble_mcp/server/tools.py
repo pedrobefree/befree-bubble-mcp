@@ -15,7 +15,7 @@ from bubble_mcp.context.mutation_overlay import record_mutation_overlay
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
-from bubble_mcp.core.config import load_settings, resolve_profile
+from bubble_mcp.core.config import BubbleProfile, load_settings, resolve_profile, save_settings, with_profile
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
 from bubble_mcp.execution.editor_api import (
@@ -131,6 +131,31 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             verify_context=bool(args.get("verify_context")),
             verification_output=str(args.get("verification_output") or ""),
         )
+    if name == "bubble_profile_add":
+        args = arguments or {}
+        profile_name = str(args.get("name") or args.get("profile") or "").strip()
+        app_id = str(args.get("app_id") or "").strip()
+        if not profile_name:
+            raise ValueError("bubble_profile_add requires name.")
+        if not app_id:
+            raise ValueError("bubble_profile_add requires app_id.")
+        settings = load_settings()
+        new_profile = BubbleProfile(
+            name=profile_name,
+            app_id=app_id,
+            appname=str(args.get("appname") or app_id).strip() or app_id,
+            editor_url=str(args.get("editor_url") or "").strip() or None,
+            app_version=str(args.get("app_version") or "test").strip() or None,
+            app_json_path=str(args.get("app_json_path") or "").strip() or None,
+            consolelog_json_path=str(args.get("consolelog_json_path") or "").strip() or None,
+        )
+        save_settings(with_profile(settings, new_profile))
+        return {
+            "ok": True,
+            "profile": new_profile.name,
+            "app_id": new_profile.app_id,
+            "settings": str(settings.config_dir / "settings.json"),
+        }
     if name == "bubble_profile_list":
         settings = load_settings()
         return {
@@ -138,12 +163,12 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             "default_profile": settings.default_profile,
             "profiles": [
                 {
-                    "name": profile.name,
-                    "app_id": profile.app_id,
-                    "appname": profile.appname,
-                    "editor_url": profile.editor_url,
+                    "name": profile_item.name,
+                    "app_id": profile_item.app_id,
+                    "appname": profile_item.appname,
+                    "editor_url": profile_item.editor_url,
                 }
-                for profile in settings.profiles.values()
+                for profile_item in settings.profiles.values()
             ],
         }
     if name == "bubble_profile_status":

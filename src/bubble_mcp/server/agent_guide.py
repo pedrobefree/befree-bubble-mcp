@@ -26,7 +26,7 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "find_profile_session_or_context",
         "when": "The user names a project/profile, asks what projects are available, or a target cannot be resolved.",
-        "tools": ["bubble_profile_status", "bubble_profile_list", "bubble_session_list", "bubble_context_detect", "bubble_context_find"],
+        "tools": ["bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
         "notes": "Call bubble_profile_status first when a profile is known. For known page/element refs, use bubble_context_find with profile, exact=true, and include_metadata=false before broader searches.",
     },
     {
@@ -149,7 +149,7 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 RECIPES: dict[str, dict[str, Any]] = {
     "setup_or_refresh_context": {
         "when": "A profile, session, page, element, or context target must be confirmed before mutation.",
-        "tools": ["bubble_profile_status", "bubble_profile_list", "bubble_session_list", "bubble_context_detect", "bubble_context_find"],
+        "tools": ["bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
         "steps": [
             {
                 "tool": "bubble_profile_status",
@@ -160,6 +160,18 @@ RECIPES: dict[str, dict[str, Any]] = {
             {
                 "tool": "bubble_profile_list",
                 "purpose": "Use only when the requested profile is unclear or bubble_profile_status reports it missing.",
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_profile_add",
+                "purpose": "Create the local profile when the user provided a profile name and Bubble app id but profile_status reports it missing.",
+                "args": {"name": "$profile", "app_id": "$app_id", "app_version": "$app_version"},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_session_inspect",
+                "purpose": "Use when a stored session exists but the agent needs to confirm redacted captured headers and computed write headers.",
+                "args": {"profile": "$profile"},
                 "required_before_execute": False,
             },
             {

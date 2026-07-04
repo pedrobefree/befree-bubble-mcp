@@ -66,11 +66,32 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Bubble app id/appname. Omit when the selected profile already targets the correct Bubble app.",
         examples=["my-bubble-app"],
     ),
+    "appname": _prop(
+        "string",
+        "Optional Bubble appname override. Defaults to app_id when omitted.",
+        examples=["my-bubble-app"],
+    ),
+    "editor_url": _prop(
+        "string",
+        "Optional Bubble editor/page URL associated with the profile.",
+        fmt="uri",
+        examples=["https://bubble.io/page?id=my-bubble-app"],
+    ),
     "app_version": _prop(
         "string",
         "Bubble branch/version id. Use test/version-test by default; pass a specific branch id when operating outside test.",
         default="test",
         examples=["test", "version-test", "feature-checkout"],
+    ),
+    "app_json_path": _prop(
+        "string",
+        "Optional local .bubble export path associated with the profile for context detection.",
+        examples=["/Users/me/Downloads/app.bubble"],
+    ),
+    "consolelog_json_path": _prop(
+        "string",
+        "Optional local console.log(app) JSON/text capture path associated with the profile for context fallback.",
+        examples=["/tmp/bubble-console-app.json"],
     ),
     "file": _prop(
         "string",
@@ -500,6 +521,20 @@ def _empty_tool(name: str, description: str) -> ToolSchema:
 
 def profile_session_context_tools() -> list[ToolSchema]:
     return [
+        tool_schema(
+            "bubble_profile_add",
+            "Add or update a local Bubble MCP profile. This writes only local MCP settings; it does not contact or mutate Bubble. After adding a profile, run session login/import and context detect before app mutations.",
+            [
+                "name",
+                "app_id",
+                "appname",
+                "editor_url",
+                "app_version",
+                "app_json_path",
+                "consolelog_json_path",
+            ],
+            required=["name", "app_id"],
+        ),
         _empty_tool("bubble_profile_list", "List local Bubble MCP profiles. This is read-only."),
         tool_schema(
             "bubble_profile_status",

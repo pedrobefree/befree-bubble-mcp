@@ -39,10 +39,14 @@ def test_tools_list_includes_profile_list() -> None:
     assert response is not None
     tools = {tool["name"]: tool for tool in response["result"]["tools"]}
     names = list(tools)
+    assert "bubble_profile_add" in names
     assert "bubble_profile_list" in names
     assert "bubble_profile_status" in names
     assert "bubble_session_inspect" in names
     assert "bubble_task_runbook" in names
+    assert tools["bubble_profile_add"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_profile_add"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_profile_add"]["inputSchema"]["required"] == ["name", "app_id"]
     assert tools["bubble_session_list"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_session_list"]["annotations"]["destructiveHint"] is False
     assert tools["bubble_session_inspect"]["annotations"]["readOnlyHint"] is True
@@ -180,6 +184,50 @@ def test_resource_templates_read_tool_schema_detail() -> None:
     assert "profile" in payload["tool"]["inputSchema"]["properties"]
     assert "selector" in payload["tool"]["inputSchema"]["properties"]
     assert payload["tool"]["annotations"]["readOnlyHint"] is False
+
+
+def test_profile_add_tool_writes_local_settings(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 38,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_profile_add",
+                "arguments": {
+                    "name": "client",
+                    "app_id": "client-app",
+                    "appname": "client-appname",
+                    "app_version": "test",
+                    "editor_url": "https://bubble.io/page?id=client-app",
+                    "app_json_path": "contexts/client/app.bubble",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["profile"] == "client"
+    assert payload["app_id"] == "client-app"
+    assert response["result"]["structuredContent"] == payload
+
+    listed = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 39,
+            "method": "tools/call",
+            "params": {"name": "bubble_profile_list"},
+        }
+    )
+    assert listed is not None
+    list_payload = json.loads(listed["result"]["content"][0]["text"])
+    assert list_payload["default_profile"] == "client"
+    assert list_payload["profiles"][0]["name"] == "client"
+    assert list_payload["profiles"][0]["app_id"] == "client-app"
 
 
 def test_profile_status_tool_and_resource(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -934,6 +982,39 @@ def test_task_recipe_returns_ordered_html_import_steps() -> None:
         "include_metadata": False,
     }
     assert payload["steps"][2]["args"]["execute"] is False
+
+
+def test_task_recipe_setup_context_includes_profile_add_and_session_inspect() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 49,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_recipe",
+                "arguments": {
+                    "task": "setup profile cliente2 for app courselaunch and refresh context",
+                    "profile": "cliente2",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["recipe"] == "setup_or_refresh_context"
+    assert payload["inputs"]["profile"] == "cliente2"
+    tools = [step["tool"] for step in payload["steps"]]
+    assert tools[:4] == [
+        "bubble_profile_status",
+        "bubble_profile_list",
+        "bubble_profile_add",
+        "bubble_session_inspect",
+    ]
+    assert payload["steps"][2]["args"]["name"] == "$profile"
+    assert payload["steps"][2]["args"]["app_id"] == "$app_id"
+    assert payload["steps"][3]["args"] == {"profile": "$profile"}
 
 
 def test_task_recipe_quality_gate_uses_consolidated_coverage_smoke() -> None:

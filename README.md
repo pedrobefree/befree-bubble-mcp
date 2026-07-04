@@ -105,6 +105,10 @@ Confirm the profile exists:
 bubble-mcp profile list
 ```
 
+MCP clients can do the same setup without shelling out by calling
+`bubble_profile_add` with `name`, `app_id`, and optional `app_version`,
+`appname`, `editor_url`, `app_json_path`, or `consolelog_json_path`.
+
 ### 3. Capture A Bubble Editor Session
 
 Install the browser extra if it is not already installed:
