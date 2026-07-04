@@ -39,6 +39,7 @@ from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
+from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
@@ -324,6 +325,56 @@ def command_eval_visual(args: argparse.Namespace) -> int:
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_eval_visual_audit(args: argparse.Namespace) -> int:
+    arguments = {
+        "reference": args.reference,
+        "actual": args.actual,
+        "reference_source": args.reference_source,
+        "actual_source": args.actual_source,
+        "actual_profile": args.actual_profile,
+        "actual_app_id": args.actual_app_id,
+        "actual_app_version": args.actual_app_version,
+        "actual_page": args.actual_page,
+        "actual_url": args.actual_url,
+        "actual_public_base_url": args.actual_public_base_url,
+        "selector": args.selector,
+        "reference_selector": args.reference_selector,
+        "actual_selector": args.actual_selector,
+        "profile": args.profile,
+        "context": args.context,
+        "parent": args.parent,
+        "app_id": args.app_id,
+        "app_version": args.app_version,
+        "execute": args.execute,
+        "tolerance_px": args.tolerance_px,
+        "tolerance_ratio": args.tolerance_ratio,
+        "require_text": not args.no_require_text,
+        "require_images": args.require_images,
+        "reference_screenshot": args.reference_screenshot,
+        "actual_screenshot": args.actual_screenshot,
+        "screenshot_task": args.screenshot_task,
+        "rendered_html": args.rendered_html,
+        "viewport_width": args.viewport_width,
+        "viewport_height": args.viewport_height,
+        "wait_ms": args.wait_ms,
+        "selector_timeout_ms": args.selector_timeout_ms,
+        "max_nodes": args.max_nodes,
+        "allow_raw_fallback": args.allow_raw_fallback,
+    }
+    result = audit_visual_from_inputs(arguments)
+    if args.report:
+        report_path = Path(args.report)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.output_plan:
+        plan_path = Path(args.output_plan)
+        plan_path.parent.mkdir(parents=True, exist_ok=True)
+        plan = result.get("repair_plan", {}).get("plan") if isinstance(result.get("repair_plan"), dict) else {}
+        plan_path.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     emit_json(result)
     return 0 if result.get("ok") else 1
 
@@ -840,6 +891,49 @@ def build_parser() -> argparse.ArgumentParser:
     visual_parser.add_argument("--no-require-text", action="store_true")
     visual_parser.add_argument("--require-images", action="store_true")
     visual_parser.set_defaults(func=command_eval_visual)
+
+    visual_audit_parser = eval_subparsers.add_parser(
+        "visual-audit",
+        help="Audit visual drift, generate a Bubble repair plan, and optionally execute the repairs.",
+    )
+    visual_audit_parser.add_argument("--reference", default="", help="Reference visual snapshot JSON path.")
+    visual_audit_parser.add_argument("--actual", default="", help="Actual visual snapshot JSON path.")
+    visual_audit_parser.add_argument("--reference-source", default="", help="URL, file, or raw HTML to capture as reference.")
+    visual_audit_parser.add_argument("--actual-source", default="", help="URL, file, or raw HTML to capture as actual.")
+    visual_audit_parser.add_argument("--actual-profile", default="", help="Profile used to capture rendered Bubble actual output.")
+    visual_audit_parser.add_argument("--actual-app-id", default="", help="App id used to capture rendered Bubble actual output.")
+    visual_audit_parser.add_argument("--actual-app-version", default="test")
+    visual_audit_parser.add_argument("--actual-page", default="", help="Bubble page/reusable path for actual capture.")
+    visual_audit_parser.add_argument("--actual-url", default="", help="Explicit actual URL override.")
+    visual_audit_parser.add_argument("--actual-public-base-url", default="")
+    visual_audit_parser.add_argument("--selector", default="", help="Shared selector for reference/actual capture.")
+    visual_audit_parser.add_argument("--reference-selector", default="", help="Reference selector override.")
+    visual_audit_parser.add_argument("--actual-selector", default="", help="Actual selector override.")
+    visual_audit_parser.add_argument("--profile", default="", help="Profile used when execute=true.")
+    visual_audit_parser.add_argument("--context", default="index", help="Bubble page/reusable context for repair steps.")
+    visual_audit_parser.add_argument("--parent", default="root", help="Bubble parent fallback for repair steps.")
+    visual_audit_parser.add_argument("--app-id", default="", help="Bubble app id used when compiling repair steps.")
+    visual_audit_parser.add_argument("--app-version", default="test")
+    visual_audit_parser.add_argument("--execute", action="store_true", help="Execute generated repair steps through Bubble.")
+    visual_audit_parser.add_argument("--report", default="", help="Optional output path for the full audit report.")
+    visual_audit_parser.add_argument("--output-plan", default="", help="Optional output path for just the generated repair plan.")
+    visual_audit_parser.add_argument("--tolerance-px", type=float, default=4)
+    visual_audit_parser.add_argument("--tolerance-ratio", type=float, default=0.08)
+    visual_audit_parser.add_argument("--no-require-text", action="store_true")
+    visual_audit_parser.add_argument("--require-images", action="store_true")
+    visual_audit_parser.add_argument("--reference-screenshot", default="", help="Reference screenshot path for LLM review payload.")
+    visual_audit_parser.add_argument("--actual-screenshot", default="", help="Actual screenshot path for LLM review payload.")
+    visual_audit_parser.add_argument("--screenshot-task", default="", help="Extra instruction for screenshot LLM review.")
+    visual_audit_parser.add_argument("--rendered-html", dest="rendered_html", action="store_true")
+    visual_audit_parser.add_argument("--no-rendered-html", dest="rendered_html", action="store_false")
+    visual_audit_parser.set_defaults(rendered_html=True)
+    visual_audit_parser.add_argument("--viewport-width", type=int, default=1365)
+    visual_audit_parser.add_argument("--viewport-height", type=int, default=768)
+    visual_audit_parser.add_argument("--wait-ms", type=int, default=0)
+    visual_audit_parser.add_argument("--selector-timeout-ms", type=int, default=5000)
+    visual_audit_parser.add_argument("--max-nodes", type=int, default=250)
+    visual_audit_parser.add_argument("--allow-raw-fallback", action=argparse.BooleanOptionalAction, default=True)
+    visual_audit_parser.set_defaults(func=command_eval_visual_audit)
 
     capture_visual_parser = eval_subparsers.add_parser(
         "capture-visual",

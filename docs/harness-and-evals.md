@@ -103,6 +103,35 @@ bubble-mcp eval visual \
   --require-images
 ```
 
+Use `bubble-mcp eval visual-audit` or MCP tool `bubble_visual_audit` when the
+agent must move from detection into a correction plan. The audit wraps the same
+structured comparison but also emits:
+
+- `issues`: actionable visual issues with severity, expected/actual values, and
+  the Bubble node target when available.
+- `repair_plan`: ordered MCP plan steps for supported fixes such as typography,
+  image dimensions/max-width, container max-width, gaps, and gradient settings.
+- `execution`: present only when `execute=true`; it runs the repair plan through
+  the normal compile/validate/write path.
+- `llm_screenshot_review`: a multimodal-ready prompt and base64 screenshots
+  when `reference_screenshot` and `actual_screenshot` are supplied.
+
+```bash
+bubble-mcp eval visual-audit \
+  --reference /tmp/hero-reference.json \
+  --actual /tmp/hero-actual.json \
+  --profile my-app \
+  --context mcp-01 \
+  --parent gp_home \
+  --app-id my-bubble-app \
+  --require-images
+```
+
+Structured snapshots are required for executable repair steps because they can
+carry stable element ids/names. Screenshot-only audits are still useful for LLM
+review of issues that snapshots cannot infer, such as pseudo-elements or
+visual nuance, but they intentionally do not auto-mutate Bubble.
+
 Eval cases can also include `visual_reference` / `visual_actual` paths or
 `visualReference` / `visualActual` objects. They can also include
 `visual_reference_source` / `visual_actual_source` or camelCase equivalents to

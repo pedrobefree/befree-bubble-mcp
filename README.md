@@ -355,6 +355,35 @@ bubble-mcp eval visual \
   --require-images
 ```
 
+When the agent should diagnose and fix supported visual drift, use the
+actionable audit instead of plain comparison:
+
+```bash
+bubble-mcp eval visual-audit \
+  --reference /tmp/hero-reference.json \
+  --actual /tmp/hero-actual.json \
+  --profile my-app \
+  --context mcp-01 \
+  --parent gp_home \
+  --app-id my-bubble-app \
+  --require-images \
+  --output-plan /tmp/hero-repair-plan.json
+```
+
+Add `--execute` only when you want the generated repair plan to be compiled and
+written to Bubble through the stored session. The audit can also include
+screenshots for multimodal LLM review:
+
+```bash
+bubble-mcp eval visual-audit \
+  --reference-screenshot /tmp/source.png \
+  --actual-screenshot /tmp/bubble.png \
+  --screenshot-task "Check typography, image sizing, gradient direction, and max-width."
+```
+
+Screenshot-only input produces an LLM-ready comparison payload and does not
+mutate Bubble. Use structured snapshots when you want executable repair steps.
+
 ## Codex MCP Setup
 
 Use the virtualenv Python module path in your MCP config:

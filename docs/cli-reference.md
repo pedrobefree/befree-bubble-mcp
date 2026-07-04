@@ -391,6 +391,55 @@ bubble-mcp eval visual \
   --require-images
 ```
 
+## `bubble-mcp eval visual-audit`
+
+Audits visual drift and turns supported issues into an executable Bubble repair
+plan. It accepts saved snapshots, URL/HTML sources, rendered Bubble actual
+captures, and optional screenshots for LLM-based comparison review.
+
+Preview the repair plan from saved snapshots:
+
+```bash
+bubble-mcp eval visual-audit \
+  --reference /tmp/hero-reference.json \
+  --actual /tmp/hero-actual.json \
+  --profile my-app \
+  --context mcp-01 \
+  --parent gp_home \
+  --app-id my-bubble-app \
+  --require-images \
+  --output-plan /tmp/hero-repair-plan.json
+```
+
+Capture the reference from a URL and the actual output from Bubble, then audit:
+
+```bash
+bubble-mcp eval visual-audit \
+  --reference-source https://example.com/page.html \
+  --actual-profile my-app \
+  --actual-page mcp-01 \
+  --selector '#hero' \
+  --profile my-app \
+  --context mcp-01 \
+  --app-id my-bubble-app
+```
+
+Add `--execute` only after reviewing the returned `repair_plan`; execution uses
+the stored Bubble session and the normal compiler/structural validation path.
+Screenshot inputs are also accepted:
+
+```bash
+bubble-mcp eval visual-audit \
+  --reference-screenshot /tmp/reference.png \
+  --actual-screenshot /tmp/actual.png \
+  --screenshot-task "Focus on typography, image sizing, gradient direction, and max-width."
+```
+
+Screenshot-only audits return `llm_screenshot_review` with base64 image content
+and a strict JSON prompt for a multimodal LLM client. They do not mutate Bubble
+by themselves because screenshots alone do not carry stable Bubble element
+targets.
+
 ## `bubble-mcp eval capture-visual`
 
 Captures a structured visual snapshot from a URL, local HTML file, or raw HTML

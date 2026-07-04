@@ -31,6 +31,7 @@ from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
+from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
@@ -381,6 +382,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             require_text=bool(args.get("require_text", True)),
             require_images=bool(args.get("require_images")),
         )
+    if name == "bubble_visual_audit":
+        return audit_visual_from_inputs(arguments or {})
     if name == "bubble_visual_capture":
         args = arguments or {}
         output_value = str(args.get("output") or "").strip()

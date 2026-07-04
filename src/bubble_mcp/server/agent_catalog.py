@@ -393,6 +393,12 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Use this lightweight perceptual harness to validate HTML/Figma/Bubble conversion quality from saved "
         "snapshots without reading project code or performing Bubble writes. Read-only."
     ),
+    "bubble_visual_audit": (
+        "Audit visual drift and return actionable issues plus an executable Bubble repair plan. Use after "
+        "HTML/Figma/Bubble conversion when the user wants the MCP to identify visual defects and, with execute=true, "
+        "apply supported fixes through stored Bubble session/context. Accepts structured snapshots, URL/HTML captures, "
+        "rendered Bubble actual captures, and optional screenshots for LLM multimodal comparison."
+    ),
     "bubble_visual_capture": (
         "Capture a structured visual snapshot from a URL, local HTML file, or raw HTML source. Use this before "
         "bubble_visual_compare when the agent needs a reference or actual snapshot from source material without "
@@ -902,6 +908,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_execute_plan",
             "bubble_visual_capture",
             "bubble_visual_capture_actual",
+            "bubble_visual_audit",
             "bubble_branch_list",
             "bubble_branch_contributors",
             "bubble_changelog_fetch",

@@ -188,6 +188,7 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_visual_capture`: captures a structured visual reference snapshot from a URL, local HTML file, or raw HTML.
 - `bubble_visual_capture_actual`: captures the actual rendered Bubble app/preview output for a profile, app, page, or explicit URL after a write/import.
 - `bubble_visual_compare`: compares structured visual snapshots for layout, required text, image dimensions, typography, max-width, and gradient drift.
+- `bubble_visual_audit`: diagnoses visual drift, returns actionable issues, builds a repair plan, and can execute supported fixes when `execute=true`. Use snapshots or URL/Bubble captures for executable repairs; pass `reference_screenshot` and `actual_screenshot` when a multimodal LLM should review screenshots.
 - `bubble_profile_list`: lists configured local Bubble profiles.
 - `bubble_context_summary`: summarizes a compact context JSON file.
 - `bubble_context_find`: searches the active compact context for a profile, or a local context JSON file for diagnostics. Prefer `profile` plus `exact=true` and `include_metadata=false` when validating that a specific node id, label, Bubble id, or context reference exists or is absent; responses include `count`, `truncated`, `match_field`, and `match_value`.

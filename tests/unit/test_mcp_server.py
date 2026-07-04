@@ -48,6 +48,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_session_inspect" in names
     assert "bubble_session_login" in names
     assert "bubble_visual_compare" in names
+    assert "bubble_visual_audit" in names
     assert "bubble_visual_capture" in names
     assert "bubble_visual_capture_actual" in names
     assert "bubble_task_runbook" in names
@@ -66,6 +67,9 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_session_login"]["inputSchema"]["required"] == ["profile"]
     assert tools["bubble_visual_compare"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_visual_compare"]["inputSchema"]["required"] == ["reference", "actual"]
+    assert tools["bubble_visual_audit"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_visual_audit"]["annotations"]["openWorldHint"] is True
+    assert "anyOf" in tools["bubble_visual_audit"]["inputSchema"]
     assert tools["bubble_visual_capture"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_visual_capture"]["annotations"]["openWorldHint"] is True
     assert tools["bubble_visual_capture"]["inputSchema"]["required"] == ["source"]
@@ -110,6 +114,35 @@ def test_visual_compare_tool_returns_structured_report() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["ok"] is True
     assert payload["summary"]["comparisons"] > 0
+
+
+def test_visual_audit_tool_returns_repair_plan() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 47,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_visual_audit",
+                "arguments": {
+                    "reference": "tests/fixtures/visual-snapshots/hero-reference.json",
+                    "actual": "tests/fixtures/visual-snapshots/hero-actual-bad.json",
+                    "profile": "smoke",
+                    "context": "mcp-01",
+                    "parent": "gp_home",
+                    "app_id": "demo-app",
+                    "require_images": True,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is False
+    assert payload["summary"]["repairable_count"] > 0
+    assert payload["repair_plan"]["executable"] is True
+    assert any(step["tool_name"] == "update_image_element" for step in payload["repair_plan"]["plan"]["steps"])
 
 
 def test_visual_capture_tool_returns_structured_snapshot() -> None:
