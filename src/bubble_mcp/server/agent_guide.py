@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 import unicodedata
 
@@ -128,13 +129,6 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     ),
     (
         (
-            "create",
-            "criar",
-            "crie",
-            "update",
-            "atualizar",
-            "delete",
-            "deletar",
             "element",
             "elemento",
             "text",
@@ -401,9 +395,13 @@ RECIPES: dict[str, dict[str, Any]] = {
 RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("html", "selector", "seletor", "url", "convert", "converter", "converta", "import", "importar"), "html_import"),
     (("workflow", "fluxo", "event", "evento", "action", "acao", "condition", "condicao", "page load", "click", "clique"), "workflow"),
+    (("style", "estilo", "color", "cor", "font", "fonte", "token", "figma", "design system", "hover", "hovered"), "style_or_tokens"),
+    (
+        ("element", "elemento", "text", "texto", "button", "botao", "group", "grupo", "input", "image", "imagem"),
+        "visual_edit",
+    ),
     (("page", "pagina", "paginas", "reusable", "reutilizavel", "reutilizaveis"), "page_or_reusable"),
     (("data type", "tipo de dado", "field", "campo", "option set", "option value", "opcao", "schema"), "data_schema"),
-    (("style", "estilo", "color", "cor", "font", "fonte", "token", "figma", "design system", "hover", "hovered"), "style_or_tokens"),
     (("branch", "sub-branch", "version", "versao", "changelog", "history", "historico", "contributors"), "branch_or_changelog"),
     (
         (
@@ -426,10 +424,6 @@ RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
         "quality_gate",
     ),
     (("context", "contexto", "profile", "perfil", "session", "sessao", "login", "cache", "resolve", "resolver", "find"), "setup_or_refresh_context"),
-    (
-        ("create", "criar", "crie", "update", "atualizar", "delete", "deletar", "element", "elemento", "text", "texto", "button", "botao", "group", "grupo", "input", "image", "imagem"),
-        "visual_edit",
-    ),
 )
 
 
@@ -483,7 +477,7 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
 def _normalize_text(value: str) -> str:
     normalized = unicodedata.normalize("NFKD", value)
     ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
-    return ascii_text.lower().replace("_", " ").replace("-", " ")
+    return re.sub(r"[^a-z0-9]+", " ", ascii_text.lower()).strip()
 
 
 def _query_terms(query: str) -> list[str]:
@@ -495,6 +489,15 @@ def _query_terms(query: str) -> list[str]:
     return list(dict.fromkeys(expanded))
 
 
+def _has_keyword(normalized_text: str, keyword: str) -> bool:
+    normalized_keyword = _normalize_text(keyword)
+    if not normalized_keyword:
+        return False
+    if " " in normalized_keyword:
+        return normalized_keyword in normalized_text
+    return normalized_keyword in normalized_text.split()
+
+
 def agent_guide(task: str = "") -> dict[str, Any]:
     """Return compact tool-routing guidance for MCP clients."""
 
@@ -502,7 +505,7 @@ def agent_guide(task: str = "") -> dict[str, Any]:
     matched_intents: list[str] = []
     if normalized:
         for keywords, intents in KEYWORDS:
-            if any(keyword in normalized for keyword in keywords):
+            if any(_has_keyword(normalized, keyword) for keyword in keywords):
                 matched_intents.extend(intents)
 
     unique_intents = list(dict.fromkeys(matched_intents))
@@ -553,7 +556,7 @@ def task_recipe(
     recipe_id = requested_recipe if requested_recipe in RECIPES else ""
     if not recipe_id:
         for keywords, candidate in RECIPE_KEYWORDS:
-            if any(keyword in normalized for keyword in keywords):
+            if any(_has_keyword(normalized, keyword) for keyword in keywords):
                 recipe_id = candidate
                 break
     if not recipe_id:

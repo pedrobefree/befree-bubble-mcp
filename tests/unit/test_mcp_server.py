@@ -736,6 +736,43 @@ def test_agent_routing_does_not_treat_bubble_version_test_as_quality_gate() -> N
     assert "check_server_or_catalog" not in intents
 
 
+def test_task_recipe_prioritizes_visual_element_over_page_target() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 52,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_recipe",
+                "arguments": {"task": "crie um texto na página index", "context": "index"},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["recipe"] == "visual_edit"
+
+
+def test_agent_routing_uses_token_keywords_not_substrings() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 53,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_agent_guide",
+                "arguments": {"task": "faça login da sessão e detecte o contexto atualizado do projeto"},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    intents = {route["intent"] for route in payload["recommended_routes"]}
+    assert intents == {"find_profile_session_or_context"}
+
+
 def test_agent_routing_understands_portuguese_page_creation() -> None:
     guide_response = handle_request(
         {
