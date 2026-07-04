@@ -144,6 +144,15 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Natural language Bubble edit request to turn into a deterministic plan.",
         examples=["Create a text element saying Hello on the index page."],
     ),
+    "task": _prop(
+        "string",
+        "Optional user request or task summary used to recommend the most relevant Bubble MCP tools.",
+        examples=[
+            "Convert #home-area from a URL into page mcp-01",
+            "Create a page and add a text element",
+            "Fetch changelog entries for the current branch",
+        ],
+    ),
     "parent": _prop(
         "string",
         "Target parent element/container. Use root for page-level insertion or a known Bubble element id/name for nested insertion.",
@@ -448,6 +457,11 @@ def profile_session_context_tools() -> list[ToolSchema]:
         _empty_tool(
             "bubble_health_check",
             "Return local Bubble MCP server health and capability metadata.",
+        ),
+        tool_schema(
+            "bubble_agent_guide",
+            "Return compact agent-facing routing guidance for the Bubble MCP catalog. Call this when a client needs to choose the correct tool family without inspecting CLI help or repository code.",
+            ["task"],
         ),
         _empty_tool(
             "bubble_tool_coverage",

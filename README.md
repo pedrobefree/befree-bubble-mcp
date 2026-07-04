@@ -204,6 +204,11 @@ MCP clients should call the exposed MCP tools directly. They do not need to
 discover shell commands, inspect the repository, or reconstruct Bubble payloads
 manually for normal Bubble editor work.
 
+When the client is unsure which tool family matches the user request, call
+`bubble_agent_guide` with the task text. It returns a compact read-only routing
+map for common flows such as context refresh, visual edits, HTML import,
+workflows, data schema, branches, changelog, evals, and exact payload writes.
+
 When a catalog tool is called with a `profile`, the server resolves the stored
 profile, session, context, and local mutation overlay, then tries to execute the
 matching packaged Aria-compatible runtime method. This keeps element creation,

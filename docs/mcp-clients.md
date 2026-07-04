@@ -85,6 +85,9 @@ For lower-level standalone execution, pass `app_id` for compiler-supported
 families or `write_payload` for exact Bubble editor writes.
 
 - `bubble_health_check`: reports local server capabilities.
+- `bubble_agent_guide`: returns a compact routing guide for agents. Call it
+  with the user task when the client is unsure which Bubble MCP tool family to
+  use; it is read-only and avoids CLI/repository discovery.
 - `bubble_tool_coverage`: reports whether each exposed tool is handled by standalone native code, direct Aria-runtime dispatch, runtime alias dispatch, a custom runtime adapter, compiler fallback, or is uncovered.
 - `bubble_runtime_smoke`: runs an operational smoke suite. `coverage` is local-only, `safe-read` performs read-only checks, `preview-write` compiles representative mutations with `execute=false`, `family-preview` exercises representative visual/container/input/schema/workflow/style/HTML/branch/changelog paths without writes, and `execute-write` performs authenticated temporary writes only when `execute=true`. Use `verify_context=true` for real-write smokes that must refresh the Bubble context and confirm the temporary objects materialized.
 - `bubble_profile_list`: lists configured local Bubble profiles.
@@ -113,6 +116,8 @@ return a preview instead of posting to Bubble.
 
 - If the user names a profile and asks for Bubble app work, call the MCP tool
   that matches the requested capability.
+- If the correct tool family is unclear, call `bubble_agent_guide` with the
+  user's task and use its recommended route before inspecting CLI help.
 - Do not ask the user to memorize internal tool names; infer the right tool
   from the intent, then pass the visible app/page/element names as arguments.
 - Do not shell out to inspect CLI help unless a required capability is missing

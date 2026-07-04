@@ -44,6 +44,7 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "confirm": "Required true for destructive operations such as deleting or clearing Bubble resources.",
     "plan": "Structured Bubble MCP plan object containing ordered steps and tool arguments.",
     "message": "Natural language instruction to convert into a deterministic Bubble plan.",
+    "task": "Optional user request or task summary used to recommend the most relevant Bubble MCP tools.",
     "query": "Search text used to find matching pages, elements, styles, data types, or context entries.",
     "limit": "Maximum number of results or eval cases to return.",
     "kind": "Input artifact type. Use auto unless the artifact type is known.",
@@ -285,6 +286,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_health_check": (
         "Report server version and capability flags for profiles, session capture, context, planning, mutations, "
         "HTML import, evals, and Figma bridge support. Read-only."
+    ),
+    "bubble_agent_guide": (
+        "Return compact routing guidance for MCP clients and agents. Use this when deciding which Bubble MCP tool "
+        "family matches a user request, especially to avoid shelling out to CLI help or inspecting repository code. "
+        "Read-only."
     ),
     "bubble_tool_coverage": (
         "Report execution coverage for every exposed MCP tool. Use this to audit whether tools are handled by "
@@ -751,12 +757,12 @@ def legacy_description(name: str) -> str:
 
 
 def tool_annotations(name: str) -> dict[str, bool]:
-    read_only = _is_read_only(name)
+    read_only = _is_read_only(name) or name == "bubble_agent_guide"
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}
     return {
         "readOnlyHint": read_only,
         "destructiveHint": destructive,
-        "idempotentHint": read_only or name in {"bubble_health_check", "bubble_profile_list"},
+        "idempotentHint": read_only or name in {"bubble_health_check", "bubble_profile_list", "bubble_agent_guide"},
         "openWorldHint": name
         in {
             "bubble_context_detect",

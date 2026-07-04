@@ -71,6 +71,33 @@ def test_tool_coverage_tool_is_exposed() -> None:
     assert payload["aria_catalog"]["uncovered_count"] == 0
 
 
+def test_agent_guide_routes_user_tasks_without_cli_discovery() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 25,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_agent_guide",
+                "arguments": {
+                    "task": "Convert #home-area from a URL into page mcp-01, then inspect changelog for the branch."
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["direct_tool_policy"]["use_mcp_tools_directly"] is True
+    assert payload["direct_tool_policy"]["avoid_shell_cli_discovery"] is True
+    intents = {route["intent"] for route in payload["recommended_routes"]}
+    assert "import_html_component" in intents
+    assert "branches_or_changelog" in intents
+    html_route = next(route for route in payload["recommended_routes"] if route["intent"] == "import_html_component")
+    assert html_route["tools"] == ["create_from_html"]
+
+
 def test_runtime_smoke_tool_runs_coverage_suite() -> None:
     response = handle_request(
         {
@@ -110,6 +137,10 @@ def test_runtime_smoke_schema_exposes_execute_write_controls() -> None:
     assert response is not None
     tools = response["result"]["tools"]
     smoke = next(tool for tool in tools if tool["name"] == "bubble_runtime_smoke")
+    guide = next(tool for tool in tools if tool["name"] == "bubble_agent_guide")
+    assert guide["annotations"]["readOnlyHint"] is True
+    assert guide["annotations"]["idempotentHint"] is True
+    assert "task" in guide["inputSchema"]["properties"]
     properties = smoke["inputSchema"]["properties"]
     assert "execute-write" in properties["suite"]["enum"]
     assert "family-preview" in properties["suite"]["enum"]

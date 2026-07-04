@@ -401,6 +401,7 @@ Implemented MCP methods:
 Implemented tools:
 
 - `bubble_health_check`
+- `bubble_agent_guide`
 - `bubble_tool_coverage`
 - `bubble_runtime_smoke`
 - `bubble_profile_list`
