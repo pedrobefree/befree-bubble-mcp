@@ -158,6 +158,27 @@ def test_tool_call_returns_structured_content_matching_redacted_text() -> None:
     assert result["structuredContent"]["ok"] is True
 
 
+def test_tool_call_errors_are_tool_results_not_protocol_errors() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 38,
+            "method": "tools/call",
+            "params": {"name": "bubble_context_detect", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    assert "error" not in response
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["isError"] is True
+    assert result["structuredContent"] == payload
+    assert payload["ok"] is False
+    assert payload["tool"] == "bubble_context_detect"
+    assert "requires a profile" in payload["error"]
+
+
 def test_tool_coverage_reports_no_uncovered_aria_catalog_tools() -> None:
     report = catalog_coverage_report()
 

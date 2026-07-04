@@ -37,6 +37,22 @@ def tool_result(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def tool_error_result(name: str, exc: Exception) -> dict[str, Any]:
+    payload = redact_sensitive(
+        {
+            "ok": False,
+            "tool": name,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+        }
+    )
+    return {
+        "isError": True,
+        "content": [{"type": "text", "text": json.dumps(payload)}],
+        "structuredContent": payload,
+    }
+
+
 def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
     """Handle a JSON-RPC request."""
 
@@ -61,7 +77,10 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             name = str(params.get("name") or "")
             raw_arguments = params.get("arguments")
             arguments: dict[str, Any] = raw_arguments if isinstance(raw_arguments, dict) else {}
-            result = call_tool(name, arguments)
+            try:
+                result = call_tool(name, arguments)
+            except Exception as exc:
+                return success_response(request_id, tool_error_result(name, exc))
             return success_response(request_id, tool_result(result))
         if method == "resources/list":
             return success_response(request_id, {"resources": list_resources()})

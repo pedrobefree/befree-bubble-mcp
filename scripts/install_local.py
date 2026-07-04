@@ -267,6 +267,42 @@ def _remove_stale_console_script_duplicates(venv: Path) -> None:
             _remove_path(path)
 
 
+def _verify_console_scripts(venv: Path, root: Path) -> int:
+    expected_help = {
+        "bubble-mcp": "Manage Bubble app profiles.",
+        "bubble-mcp-figma-bridge": "Saved Figma bridge payload JSON.",
+    }
+    for script_name, expected_text in expected_help.items():
+        console_script = _venv_script(venv, script_name)
+        if not console_script.exists():
+            print(f"{script_name} console script is missing.")
+            return 1
+        help_output = _capture_result([str(console_script), "--help"], cwd=root)
+        if help_output.returncode != 0 or expected_text not in help_output.stdout_text:
+            print(help_output.stdout_text)
+            return help_output.returncode or 1
+        print(f"{script_name} console script is runnable.")
+    server_script = _venv_script(venv, "bubble-mcp-server")
+    if not server_script.exists():
+        print("bubble-mcp-server console script is missing.")
+        return 1
+    server_check = subprocess.run(
+        [str(server_script)],
+        cwd=root,
+        input='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n',
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    server_output = (server_check.stdout + server_check.stderr).strip()
+    if server_check.returncode != 0 or '"serverInfo"' not in server_output or "befree-bubble-mcp" not in server_output:
+        print(server_output)
+        return server_check.returncode or 1
+    print("bubble-mcp-server console script is runnable.")
+    return 0
+
+
 def _ensure_venv(venv: Path) -> Path:
     python = _venv_python(venv)
     if not python.exists():
@@ -313,13 +349,9 @@ def install_local(*, root: Path, venv: Path, extras: str, repair: bool) -> int:
         return import_check.returncode
     print("Bubble MCP local install is importable.")
 
-    console_script = _venv_script(venv, "bubble-mcp")
-    if console_script.exists():
-        help_output = _capture_result([str(console_script), "--help"], cwd=root)
-        if help_output.returncode != 0 or "Manage Bubble app profiles." not in help_output.stdout_text:
-            print(help_output.stdout_text)
-            return help_output.returncode or 1
-        print("bubble-mcp console script is runnable.")
+    console_check = _verify_console_scripts(venv, root)
+    if console_check != 0:
+        return console_check
     if "browser" in {extra.strip() for extra in extras.split(",")}:
         browser_check = _capture_result(
             [str(python), "-c", "from playwright.sync_api import sync_playwright; print(sync_playwright)"],

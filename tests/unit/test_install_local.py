@@ -11,6 +11,7 @@ from scripts.install_local import (
     _repair_native_extension_policy,
     _remove_stale_console_script_duplicates,
     _stale_install_paths,
+    _verify_console_scripts,
     _write_console_bootstrap,
     _write_local_editable_pth,
 )
@@ -118,6 +119,29 @@ def test_remove_stale_console_script_duplicates(tmp_path: Path) -> None:
     assert not duplicate.exists()
     assert not server_duplicate.exists()
     assert unrelated.exists()
+
+
+def test_verify_console_scripts_checks_all_entrypoints(tmp_path: Path) -> None:
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    scripts = {
+        "bubble-mcp": "Manage Bubble app profiles.",
+        "bubble-mcp-figma-bridge": "Saved Figma bridge payload JSON.",
+    }
+    for name, output in scripts.items():
+        path = bindir / name
+        path.write_text(f"#!/bin/sh\nprintf '%s\\n' '{output}'\n", encoding="utf-8")
+        path.chmod(0o755)
+    server = bindir / "bubble-mcp-server"
+    server.write_text(
+        "#!/bin/sh\n"
+        "cat >/dev/null\n"
+        "printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"serverInfo\":{\"name\":\"befree-bubble-mcp\"}}}'\n",
+        encoding="utf-8",
+    )
+    server.chmod(0o755)
+
+    assert _verify_console_scripts(tmp_path, tmp_path) == 0
 
 
 def test_clear_macos_execution_metadata_removes_quarantine_and_provenance(

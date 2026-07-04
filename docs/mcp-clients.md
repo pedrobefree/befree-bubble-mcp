@@ -68,7 +68,9 @@ resources, and prompts.
 
 Tool call responses include both a JSON text fallback and `structuredContent`
 with the same redacted payload for clients that can consume structured MCP
-results directly.
+results directly. Tool execution failures are returned as MCP tool results with
+`isError: true` and `structuredContent.ok: false`; protocol errors are reserved
+for invalid JSON-RPC requests or unsupported MCP methods.
 
 ## Resources and Prompts
 

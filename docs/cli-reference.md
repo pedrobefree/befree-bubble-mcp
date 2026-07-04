@@ -441,7 +441,9 @@ Implemented MCP methods:
 - `prompts/get`
 
 `tools/call` responses include JSON text content and matching
-`structuredContent` for clients that can consume structured tool results.
+`structuredContent` for clients that can consume structured tool results. Tool
+execution failures return `isError: true` tool results instead of JSON-RPC
+errors.
 
 Implemented resources:
 
