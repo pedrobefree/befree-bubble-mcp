@@ -1,0 +1,16 @@
+[
+  {
+    "id": "visual_capture_hero_ok",
+    "message": "Create a text saying \"Hello\"",
+    "expected_tool": "create_text",
+    "expected_args": {
+      "context": "index",
+      "content": "Hello"
+    },
+    "visual_reference_source": "../html/hero.html",
+    "visual_actual_source": "../html/hero.html",
+    "visual_selector": "#hero",
+    "visual_rendered_html": false,
+    "visual_require_images": true
+  }
+]

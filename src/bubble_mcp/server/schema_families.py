@@ -103,6 +103,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Optional local output path for generated context or diagnostic artifacts.",
         examples=["/tmp/bubble-context.json"],
     ),
+    "source": _prop(
+        "string",
+        "URL, local HTML file path, or raw HTML source to capture into a structured visual snapshot.",
+        examples=["https://example.com/page.html", "/tmp/component.html", "<section id='hero'>...</section>"],
+    ),
     "input": _prop(
         "string",
         "Local input artifact path.",
@@ -362,6 +367,35 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     "rendered_html": _prop(
         "boolean",
         "Use browser-rendered DOM/computed styles instead of raw HTML when importing from a URL.",
+        default=True,
+    ),
+    "viewport_width": _prop(
+        "integer",
+        "Browser viewport width in pixels for rendered visual capture.",
+        default=1365,
+        minimum=1,
+    ),
+    "viewport_height": _prop(
+        "integer",
+        "Browser viewport height in pixels for rendered visual capture.",
+        default=768,
+        minimum=1,
+    ),
+    "wait_ms": _prop(
+        "integer",
+        "Optional milliseconds to wait after page load before capturing the visual snapshot.",
+        default=0,
+        minimum=0,
+    ),
+    "max_nodes": _prop(
+        "integer",
+        "Maximum DOM nodes to include in the captured visual snapshot.",
+        default=250,
+        minimum=1,
+    ),
+    "allow_raw_fallback": _prop(
+        "boolean",
+        "When rendered capture is unavailable, fall back to raw HTML extraction instead of failing.",
         default=True,
     ),
     "translate_to_existing_styles": _prop(
@@ -775,6 +809,22 @@ def planning_execution_tools() -> list[ToolSchema]:
             "Compare two structured visual snapshots and report layout, text, image, typography, max-width, and gradient drift. Use this as the lightweight perceptual harness before screenshot automation is available.",
             ["reference", "actual", "tolerance_px", "tolerance_ratio", "require_text", "require_images"],
             required=["reference", "actual"],
+        ),
+        tool_schema(
+            "bubble_visual_capture",
+            "Capture a structured visual snapshot from a URL, local HTML file, or raw HTML. Use this before bubble_visual_compare when the agent needs a reference/actual snapshot from source material instead of hand-authored JSON.",
+            [
+                "source",
+                "selector",
+                "output",
+                "rendered_html",
+                "viewport_width",
+                "viewport_height",
+                "wait_ms",
+                "max_nodes",
+                "allow_raw_fallback",
+            ],
+            required=["source"],
         ),
         tool_schema(
             "bubble_compile_plan",

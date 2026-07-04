@@ -120,6 +120,7 @@ def _catalog_summary() -> dict[str, Any]:
         "bubble_catalog_quality",
         "bubble_runtime_smoke",
         "bubble_visual_compare",
+        "bubble_visual_capture",
         "bubble_context_find",
         "bubble_context_detect",
     ]

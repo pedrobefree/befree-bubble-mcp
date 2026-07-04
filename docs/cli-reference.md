@@ -391,6 +391,22 @@ bubble-mcp eval visual \
   --require-images
 ```
 
+## `bubble-mcp eval capture-visual`
+
+Captures a structured visual snapshot from a URL, local HTML file, or raw HTML
+string. Use this before `eval visual` when the reference or actual snapshot
+should come from rendered source material instead of hand-authored JSON.
+
+```bash
+bubble-mcp eval capture-visual \
+  --source https://example.com/page.html \
+  --selector '#hero' \
+  --output /tmp/hero-reference.json
+```
+
+For deterministic local corpus tests, use `--no-rendered-html` with a fixture
+file. For URL fidelity checks, keep the default rendered browser capture.
+
 ## `bubble-mcp validate-plan`
 
 Validates a plan JSON file.
@@ -637,6 +653,7 @@ Implemented tools:
 - `bubble_eval_run`
 - `bubble_eval_export_expert`
 - `bubble_visual_compare`
+- `bubble_visual_capture`
 - `bubble_session_list`
 - `bubble_session_import`
 - `bubble_editor_write`

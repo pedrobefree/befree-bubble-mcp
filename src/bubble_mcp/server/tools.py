@@ -31,6 +31,7 @@ from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
+from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
@@ -378,6 +379,20 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             tolerance_ratio=float(args.get("tolerance_ratio") or 0.08),
             require_text=bool(args.get("require_text", True)),
             require_images=bool(args.get("require_images")),
+        )
+    if name == "bubble_visual_capture":
+        args = arguments or {}
+        output_value = str(args.get("output") or "").strip()
+        return capture_visual_snapshot(
+            str(args.get("source") or ""),
+            selector=str(args.get("selector") or ""),
+            rendered_html=bool(args.get("rendered_html", True)),
+            viewport_width=int(args.get("viewport_width") or 1365),
+            viewport_height=int(args.get("viewport_height") or 768),
+            wait_ms=int(args.get("wait_ms") or 0),
+            max_nodes=int(args.get("max_nodes") or 250),
+            allow_raw_fallback=bool(args.get("allow_raw_fallback", True)),
+            output=Path(output_value) if output_value else None,
         )
     if name == "bubble_compile_plan":
         args = arguments or {}

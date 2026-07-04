@@ -34,7 +34,7 @@ For each tool family:
 ## Current Native Families
 
 - `profile_session_context_tools`: profiles, session import/list, tool coverage, context summary/search/import/detect.
-- `planning_execution_tools`: plan, eval, visual compare, compile, direct editor write, execute plan.
+- `planning_execution_tools`: plan, eval, visual capture/compare, compile, direct editor write, execute plan.
 - `bubble_eval_export_expert`: local redacted expert-capture export for eval growth.
 - `html_import_tools`: advanced HTML-to-Bubble runtime import.
 - `branch_changelog_tools`: branch list/create/delete, contributors, changelog fetch.

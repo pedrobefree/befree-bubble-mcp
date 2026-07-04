@@ -112,3 +112,13 @@ def test_run_eval_can_include_visual_snapshot_comparison() -> None:
     assert report["summary"]["visual_cases"] == 1
     assert report["summary"]["visual_ok"] == 1
     assert report["results"][0]["visual_report"]["ok"] is True
+
+
+def test_run_eval_can_capture_visual_sources_before_comparison() -> None:
+    report = run_eval(Path("tests/fixtures/evals/visual-capture-routing.json"))
+
+    assert report["summary"]["cases"] == 1
+    assert report["summary"]["passed"] == 1
+    assert report["summary"]["visual_cases"] == 1
+    assert report["summary"]["visual_ok"] == 1
+    assert report["results"][0]["visual_report"]["summary"]["reference_image_count"] == 1

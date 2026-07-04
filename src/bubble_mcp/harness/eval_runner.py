@@ -9,6 +9,7 @@ from typing import Any
 
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.harness.visual import compare_visual_snapshots, load_visual_snapshot
+from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.validators.semantic import validate_plan
 
@@ -96,6 +97,45 @@ def _visual_snapshot_field(case: dict[str, Any], dataset_dir: Path, *keys: str) 
             path = dataset_dir / path
         return load_visual_snapshot(path)
     return None
+
+
+def _visual_source_value(case: dict[str, Any], dataset_dir: Path, *keys: str) -> str:
+    value = _first_present(case, *keys, default="")
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    source = value.strip()
+    path = Path(source)
+    if not path.is_absolute():
+        candidate = dataset_dir / path
+        if candidate.exists():
+            return str(candidate)
+    return source
+
+
+def _visual_snapshot_or_capture(
+    case: dict[str, Any],
+    dataset_dir: Path,
+    *,
+    snapshot_keys: tuple[str, str],
+    source_keys: tuple[str, str],
+    selector_keys: tuple[str, ...],
+) -> dict[str, Any] | None:
+    snapshot = _visual_snapshot_field(case, dataset_dir, *snapshot_keys)
+    if snapshot is not None:
+        return snapshot
+    source = _visual_source_value(case, dataset_dir, *source_keys)
+    if not source:
+        return None
+    return capture_visual_snapshot(
+        source,
+        selector=str(_first_present(case, *selector_keys, default="") or ""),
+        rendered_html=bool(_first_present(case, "visual_rendered_html", "visualRenderedHtml", default=True)),
+        viewport_width=int(_first_present(case, "visual_viewport_width", "visualViewportWidth", default=1365)),
+        viewport_height=int(_first_present(case, "visual_viewport_height", "visualViewportHeight", default=768)),
+        wait_ms=int(_first_present(case, "visual_wait_ms", "visualWaitMs", default=0)),
+        max_nodes=int(_first_present(case, "visual_max_nodes", "visualMaxNodes", default=250)),
+        allow_raw_fallback=bool(_first_present(case, "visual_allow_raw_fallback", "visualAllowRawFallback", default=True)),
+    )
 
 
 def _expected_tool(case: dict[str, Any]) -> str:
@@ -219,8 +259,20 @@ def run_eval(
         warnings_ok = _warnings_match(warnings, expected_warnings)
         validation_ok = bool(validation["ok"])
         missing_ok = _missing_ok(validation)
-        visual_reference = _visual_snapshot_field(case, dataset_dir, "visual_reference", "visualReference")
-        visual_actual = _visual_snapshot_field(case, dataset_dir, "visual_actual", "visualActual")
+        visual_reference = _visual_snapshot_or_capture(
+            case,
+            dataset_dir,
+            snapshot_keys=("visual_reference", "visualReference"),
+            source_keys=("visual_reference_source", "visualReferenceSource"),
+            selector_keys=("visual_reference_selector", "visualReferenceSelector", "visual_selector", "visualSelector"),
+        )
+        visual_actual = _visual_snapshot_or_capture(
+            case,
+            dataset_dir,
+            snapshot_keys=("visual_actual", "visualActual"),
+            source_keys=("visual_actual_source", "visualActualSource"),
+            selector_keys=("visual_actual_selector", "visualActualSelector", "visual_selector", "visualSelector"),
+        )
         visual_report: dict[str, Any] | None = None
         visual_ok = True
         if visual_reference is not None or visual_actual is not None:

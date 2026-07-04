@@ -39,6 +39,7 @@ from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
+from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
@@ -322,6 +323,22 @@ def command_eval_visual(args: argparse.Namespace) -> int:
         report_path = Path(args.report)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_eval_capture_visual(args: argparse.Namespace) -> int:
+    result = capture_visual_snapshot(
+        str(args.source),
+        selector=args.selector or "",
+        rendered_html=args.rendered_html,
+        viewport_width=args.viewport_width,
+        viewport_height=args.viewport_height,
+        wait_ms=args.wait_ms,
+        max_nodes=args.max_nodes,
+        allow_raw_fallback=args.allow_raw_fallback,
+        output=Path(args.output) if args.output else None,
+    )
     emit_json(result)
     return 0 if result.get("ok") else 1
 
@@ -799,6 +816,23 @@ def build_parser() -> argparse.ArgumentParser:
     visual_parser.add_argument("--no-require-text", action="store_true")
     visual_parser.add_argument("--require-images", action="store_true")
     visual_parser.set_defaults(func=command_eval_visual)
+
+    capture_visual_parser = eval_subparsers.add_parser(
+        "capture-visual",
+        help="Capture a structured visual snapshot from a URL, HTML file, or HTML string.",
+    )
+    capture_visual_parser.add_argument("--source", required=True, help="URL, local HTML file path, or raw HTML source.")
+    capture_visual_parser.add_argument("--selector", default="", help="Optional CSS selector to capture.")
+    capture_visual_parser.add_argument("--output", default="", help="Optional output JSON snapshot path.")
+    capture_visual_parser.add_argument("--rendered-html", dest="rendered_html", action="store_true")
+    capture_visual_parser.add_argument("--no-rendered-html", dest="rendered_html", action="store_false")
+    capture_visual_parser.set_defaults(rendered_html=True)
+    capture_visual_parser.add_argument("--viewport-width", type=int, default=1365)
+    capture_visual_parser.add_argument("--viewport-height", type=int, default=768)
+    capture_visual_parser.add_argument("--wait-ms", type=int, default=0)
+    capture_visual_parser.add_argument("--max-nodes", type=int, default=250)
+    capture_visual_parser.add_argument("--allow-raw-fallback", action=argparse.BooleanOptionalAction, default=True)
+    capture_visual_parser.set_defaults(func=command_eval_capture_visual)
 
     session_parser = subparsers.add_parser("session", help="Manage local Bubble editor sessions.")
     session_subparsers = session_parser.add_subparsers(dest="session_command", required=True)

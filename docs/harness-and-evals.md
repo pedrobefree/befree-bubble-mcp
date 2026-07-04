@@ -75,21 +75,32 @@ regression triage.
 
 ## Visual Snapshot Harness
 
-Use `bubble-mcp eval visual` or MCP tool `bubble_visual_compare` to compare two
-structured visual snapshots. This is the first lightweight perceptual gate for
-HTML/Figma/Bubble conversion quality before a full authenticated screenshot
-diff is available.
+Use `bubble-mcp eval capture-visual` or MCP tool `bubble_visual_capture` to
+capture a structured snapshot from a URL, HTML file, or raw HTML snippet. Then
+use `bubble-mcp eval visual` or MCP tool `bubble_visual_compare` to compare two
+snapshots. This is the first lightweight perceptual gate for HTML/Figma/Bubble
+conversion quality before a full authenticated screenshot diff is available.
 
 ```bash
+bubble-mcp eval capture-visual \
+  --source tests/fixtures/html/hero.html \
+  --selector '#hero' \
+  --no-rendered-html \
+  --output /tmp/hero-reference.json
+
 bubble-mcp eval visual \
-  --reference tests/fixtures/visual-snapshots/hero-reference.json \
+  --reference /tmp/hero-reference.json \
   --actual tests/fixtures/visual-snapshots/hero-actual-ok.json \
   --require-images
 ```
 
 Eval cases can also include `visual_reference` / `visual_actual` paths or
-`visualReference` / `visualActual` objects. Visual comparison checks layout
-geometry, required text, image dimensions, typography, max-width, and gradient
+`visualReference` / `visualActual` objects. They can also include
+`visual_reference_source` / `visual_actual_source` or camelCase equivalents to
+capture snapshots during the eval run. Use `visual_selector`,
+`visual_rendered_html`, `visual_viewport_width`, `visual_viewport_height`, and
+`visual_wait_ms` to control capture. Visual comparison checks layout geometry,
+required text, image dimensions, typography, max-width, and gradient
 direction/color order with configurable `visual_tolerance_px` and
 `visual_tolerance_ratio`.
 

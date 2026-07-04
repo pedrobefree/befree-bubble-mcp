@@ -338,8 +338,13 @@ temporary page is deleted, then the context is refreshed again after cleanup.
 For conversion fidelity checks, use structured visual snapshots:
 
 ```bash
+bubble-mcp eval capture-visual \
+  --source https://example.com/page.html \
+  --selector '#hero' \
+  --output /tmp/hero-reference.json
+
 bubble-mcp eval visual \
-  --reference tests/fixtures/visual-snapshots/hero-reference.json \
+  --reference /tmp/hero-reference.json \
   --actual tests/fixtures/visual-snapshots/hero-actual-ok.json \
   --require-images
 ```

@@ -47,6 +47,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_session_inspect" in names
     assert "bubble_session_login" in names
     assert "bubble_visual_compare" in names
+    assert "bubble_visual_capture" in names
     assert "bubble_task_runbook" in names
     assert tools["bubble_project_bootstrap"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_project_bootstrap"]["annotations"]["idempotentHint"] is True
@@ -63,6 +64,9 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_session_login"]["inputSchema"]["required"] == ["profile"]
     assert tools["bubble_visual_compare"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_visual_compare"]["inputSchema"]["required"] == ["reference", "actual"]
+    assert tools["bubble_visual_capture"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_visual_capture"]["annotations"]["openWorldHint"] is True
+    assert tools["bubble_visual_capture"]["inputSchema"]["required"] == ["source"]
     assert tools["create_group"]["inputSchema"]["properties"]["layout"]["enum"] == [
         "column",
         "row",
@@ -102,6 +106,30 @@ def test_visual_compare_tool_returns_structured_report() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["ok"] is True
     assert payload["summary"]["comparisons"] > 0
+
+
+def test_visual_capture_tool_returns_structured_snapshot() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 45,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_visual_capture",
+                "arguments": {
+                    "source": "tests/fixtures/html/hero.html",
+                    "selector": "#hero",
+                    "rendered_html": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["root"]["id"] == "hero"
+    assert payload["rendered"] is False
 
 
 def test_ping_returns_empty_success() -> None:
