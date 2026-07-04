@@ -42,6 +42,22 @@ def test_search_context_exact_matches_only_identifiers_or_labels() -> None:
     ]
 
 
+def test_search_context_can_omit_metadata_for_compact_agent_checks() -> None:
+    context = load_context(FIXTURE)
+
+    results = search_context(context, "datatype:user", exact=True, include_metadata=False)
+
+    assert results == [
+        {
+            "id": "datatype:user",
+            "label": "User",
+            "type": "data_type",
+            "score": 1,
+            "match": "exact",
+        }
+    ]
+
+
 def test_context_neighbors_returns_related_nodes() -> None:
     context = load_context(FIXTURE)
 

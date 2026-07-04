@@ -40,6 +40,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_session_list"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_session_list"]["annotations"]["destructiveHint"] is False
     assert "exact" in tools["bubble_context_find"]["inputSchema"]["properties"]
+    assert "include_metadata" in tools["bubble_context_find"]["inputSchema"]["properties"]
 
 
 def test_ping_returns_empty_success() -> None:

@@ -30,12 +30,13 @@ def test_cli_context_find_exact_avoids_fuzzy_matches(capsys) -> None:  # type: i
     assert payload["ok"] is True
     assert payload["results"] == []
 
-    assert main(["context", "find", "page:index", "--file", str(FIXTURE), "--exact"]) == 0
+    assert main(["context", "find", "page:index", "--file", str(FIXTURE), "--exact", "--no-include-metadata"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
 
     assert payload["results"][0]["id"] == "page:index"
     assert payload["results"][0]["match"] == "exact"
+    assert "metadata" not in payload["results"][0]
 
 
 def test_cli_profile_status_reports_existing_profile(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]

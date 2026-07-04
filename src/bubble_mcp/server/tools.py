@@ -154,6 +154,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                 str(args.get("query") or ""),
                 int(args.get("limit") or 10),
                 exact=bool(args.get("exact")),
+                include_metadata=bool(args.get("include_metadata", True)),
             ),
         }
     if name == "bubble_context_import":

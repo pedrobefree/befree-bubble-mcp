@@ -27,7 +27,28 @@ def _exact_values(node: BubbleContextNode) -> set[str]:
     return {value.strip().lower() for value in values if value and value.strip()}
 
 
-def search_context(context: BubbleProjectContext, query: str, limit: int = 10, *, exact: bool = False) -> list[dict[str, Any]]:
+def _result_payload(node: BubbleContextNode, *, score: int, match: str | None, include_metadata: bool) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": node.id,
+        "label": node.label,
+        "type": node.type,
+        "score": score,
+    }
+    if match:
+        payload["match"] = match
+    if include_metadata:
+        payload["metadata"] = node.metadata
+    return payload
+
+
+def search_context(
+    context: BubbleProjectContext,
+    query: str,
+    limit: int = 10,
+    *,
+    exact: bool = False,
+    include_metadata: bool = True,
+) -> list[dict[str, Any]]:
     """Return simple lexical matches from the context graph."""
 
     normalized_query = query.strip().lower()
@@ -36,14 +57,7 @@ def search_context(context: BubbleProjectContext, query: str, limit: int = 10, *
             return []
         matches = [node for node in context.nodes if normalized_query in _exact_values(node)]
         return [
-            {
-                "id": node.id,
-                "label": node.label,
-                "type": node.type,
-                "score": 1,
-                "match": "exact",
-                "metadata": node.metadata,
-            }
+            _result_payload(node, score=1, match="exact", include_metadata=include_metadata)
             for node in matches[:limit]
         ]
 
@@ -67,13 +81,7 @@ def search_context(context: BubbleProjectContext, query: str, limit: int = 10, *
 
     scored.sort(key=lambda item: (-item[0], item[1].type, item[1].label))
     return [
-        {
-            "id": node.id,
-            "label": node.label,
-            "type": node.type,
-            "score": score,
-            "metadata": node.metadata,
-        }
+        _result_payload(node, score=score, match=None, include_metadata=include_metadata)
         for score, node in scored[:limit]
     ]
 

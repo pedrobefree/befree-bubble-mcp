@@ -104,11 +104,12 @@ Searches a compact Bubble context JSON file.
 
 ```bash
 bubble-mcp context find "button" --file /path/to/context.json --limit 10
-bubble-mcp context find "page:index" --file /path/to/context.json --exact
+bubble-mcp context find "page:index" --file /path/to/context.json --exact --no-include-metadata
 ```
 
 Use `--exact` for verification checks that must match a specific node id,
-label, Bubble id, or context reference without fuzzy token matches.
+label, Bubble id, or context reference without fuzzy token matches. Add
+`--no-include-metadata` for compact existence/absence checks.
 
 ## `bubble-mcp plan`
 

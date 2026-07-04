@@ -97,6 +97,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "When true, match only exact node ids, labels, Bubble ids, or context refs. Use for verification and absence checks.",
         default=False,
     ),
+    "include_metadata": _prop(
+        "boolean",
+        "When false, omit full node metadata for compact search results. Prefer false for simple existence or absence checks.",
+        default=True,
+    ),
     "limit": _prop(
         "integer",
         "Maximum number of search results or eval cases to return.",
@@ -566,7 +571,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
         tool_schema(
             "bubble_context_find",
             "Search a compact Bubble context JSON file.",
-            ["file", "query", "limit", "exact"],
+            ["file", "query", "limit", "exact", "include_metadata"],
             required=["file", "query"],
         ),
         tool_schema(
