@@ -198,6 +198,46 @@ def test_cli_tools_search_returns_compact_matches(capsys) -> None:  # type: igno
     assert match["required"] == ["profile", "context", "parent"]
 
 
+def test_cli_tools_recipe_returns_operational_sequence(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert (
+        main(
+            [
+                "tools",
+                "recipe",
+                "--task",
+                "Convert #home-area from a URL into page mcp-01",
+                "--profile",
+                "smoke",
+                "--context",
+                "mcp-01",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["recipe"] == "html_import"
+    assert payload["inputs"]["profile"] == "smoke"
+    assert payload["inputs"]["context"] == "mcp-01"
+    assert [step["tool"] for step in payload["steps"]] == [
+        "bubble_context_detect",
+        "create_from_html",
+        "create_from_html",
+    ]
+
+
+def test_cli_tools_recipe_routes_page_creation_before_generic_create(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["tools", "recipe", "--task", "Create a new page called mcp-02", "--profile", "smoke"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["recipe"] == "page_or_reusable"
+    assert "create_page" in payload["matched"]["tools"]
+    intents = {route["intent"] for route in payload["recommended_routes"]}
+    assert "manage_pages_or_reusables" in intents
+
+
 def test_cli_session_import_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     session_path = tmp_path / "session.json"

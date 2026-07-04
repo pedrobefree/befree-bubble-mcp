@@ -124,6 +124,36 @@ def test_tool_search_returns_compact_relevant_catalog_matches() -> None:
     assert create_from_html["annotations"]["readOnlyHint"] is False
 
 
+def test_task_recipe_returns_ordered_html_import_steps() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 27,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_recipe",
+                "arguments": {
+                    "task": "Convert #home-area from a URL into page mcp-01",
+                    "profile": "smoke",
+                    "context": "mcp-01",
+                    "parent": "root",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["recipe"] == "html_import"
+    assert payload["inputs"]["profile"] == "smoke"
+    assert payload["inputs"]["context"] == "mcp-01"
+    assert payload["matched"]["tools"] == ["create_from_html", "bubble_context_detect"]
+    tools = [step["tool"] for step in payload["steps"]]
+    assert tools == ["bubble_context_detect", "create_from_html", "create_from_html"]
+    assert payload["steps"][1]["args"]["execute"] is False
+
+
 def test_runtime_smoke_tool_runs_coverage_suite() -> None:
     response = handle_request(
         {
@@ -165,12 +195,17 @@ def test_runtime_smoke_schema_exposes_execute_write_controls() -> None:
     smoke = next(tool for tool in tools if tool["name"] == "bubble_runtime_smoke")
     guide = next(tool for tool in tools if tool["name"] == "bubble_agent_guide")
     search = next(tool for tool in tools if tool["name"] == "bubble_tool_search")
+    recipe = next(tool for tool in tools if tool["name"] == "bubble_task_recipe")
     assert guide["annotations"]["readOnlyHint"] is True
     assert guide["annotations"]["idempotentHint"] is True
     assert "task" in guide["inputSchema"]["properties"]
     assert search["annotations"]["readOnlyHint"] is True
     assert search["annotations"]["idempotentHint"] is True
     assert search["inputSchema"]["required"] == ["query"]
+    assert recipe["annotations"]["readOnlyHint"] is True
+    assert recipe["annotations"]["idempotentHint"] is True
+    assert recipe["inputSchema"]["required"] == ["task"]
+    assert "recipe" in recipe["inputSchema"]["properties"]
     properties = smoke["inputSchema"]["properties"]
     assert "execute-write" in properties["suite"]["enum"]
     assert "family-preview" in properties["suite"]["enum"]

@@ -17,6 +17,7 @@ from bubble_mcp.server.schemas import list_tool_schemas
 NATIVE_SPECIAL_TOOLS = {
     "bubble_health_check",
     "bubble_profile_list",
+    "bubble_task_recipe",
     "bubble_context_summary",
     "bubble_context_find",
     "bubble_context_import",

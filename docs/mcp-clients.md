@@ -91,6 +91,10 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_tool_search`: searches the exposed MCP tool catalog and returns
   compact matching metadata. Use it for narrow discovery such as `html selector`,
   `workflow action`, or `branch changelog` instead of loading the full catalog.
+- `bubble_task_recipe`: returns a compact ordered recipe for a task, including
+  preflight checks, tool sequence, arguments to fill, safeguards, and
+  verification guidance. Use it when the agent knows the intent but needs the
+  execution sequence.
 - `bubble_tool_coverage`: reports whether each exposed tool is handled by standalone native code, direct Aria-runtime dispatch, runtime alias dispatch, a custom runtime adapter, compiler fallback, or is uncovered.
 - `bubble_runtime_smoke`: runs an operational smoke suite. `coverage` is local-only, `safe-read` performs read-only checks, `preview-write` compiles representative mutations with `execute=false`, `family-preview` exercises representative visual/container/input/schema/workflow/style/HTML/branch/changelog paths without writes, and `execute-write` performs authenticated temporary writes only when `execute=true`. Use `verify_context=true` for real-write smokes that must refresh the Bubble context and confirm the temporary objects materialized.
 - `bubble_profile_list`: lists configured local Bubble profiles.
@@ -124,6 +128,9 @@ return a preview instead of posting to Bubble.
 - If the client only needs candidate tools for a narrow capability, call
   `bubble_tool_search` with a short query instead of reasoning over the full
   `tools/list` payload.
+- If the client knows the capability but not the order of operations, call
+  `bubble_task_recipe` with the user task, profile, and context before
+  executing mutating tools.
 - Do not ask the user to memorize internal tool names; infer the right tool
   from the intent, then pass the visible app/page/element names as arguments.
 - Do not shell out to inspect CLI help unless a required capability is missing

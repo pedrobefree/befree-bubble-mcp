@@ -45,6 +45,7 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "plan": "Structured Bubble MCP plan object containing ordered steps and tool arguments.",
     "message": "Natural language instruction to convert into a deterministic Bubble plan.",
     "task": "Optional user request or task summary used to recommend the most relevant Bubble MCP tools.",
+    "recipe": "Optional operational recipe id to force. Omit it so the MCP infers the right recipe from the task.",
     "query": "Search text used to find matching pages, elements, styles, data types, or context entries.",
     "limit": "Maximum number of results or eval cases to return.",
     "kind": "Input artifact type. Use auto unless the artifact type is known.",
@@ -296,6 +297,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Search the exposed Bubble MCP catalog and return compact tool metadata for a query. Use this when the agent "
         "needs to choose between related Bubble tool families without loading or reasoning over the full tools/list "
         "response. Read-only."
+    ),
+    "bubble_task_recipe": (
+        "Return a compact operational recipe for a Bubble task, including preflight checks, ordered tool calls, "
+        "arguments to fill, safeguards, and verification guidance. Use this when a client knows the user intent but "
+        "needs the correct execution sequence without trial-and-error. Read-only."
     ),
     "bubble_tool_coverage": (
         "Report execution coverage for every exposed MCP tool. Use this to audit whether tools are handled by "
@@ -762,13 +768,14 @@ def legacy_description(name: str) -> str:
 
 
 def tool_annotations(name: str) -> dict[str, bool]:
-    read_only = _is_read_only(name) or name in {"bubble_agent_guide", "bubble_tool_search"}
+    agent_read_only = {"bubble_agent_guide", "bubble_tool_search", "bubble_task_recipe"}
+    read_only = _is_read_only(name) or name in agent_read_only
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}
     return {
         "readOnlyHint": read_only,
         "destructiveHint": destructive,
         "idempotentHint": read_only
-        or name in {"bubble_health_check", "bubble_profile_list", "bubble_agent_guide", "bubble_tool_search"},
+        or name in {"bubble_health_check", "bubble_profile_list", *agent_read_only},
         "openWorldHint": name
         in {
             "bubble_context_detect",

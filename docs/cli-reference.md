@@ -363,6 +363,19 @@ bubble-mcp tools search --query "workflow page load action"
 Use this instead of dumping `tools/list` when an agent only needs a small,
 relevant subset of names, required fields, properties, and annotations.
 
+## `bubble-mcp tools recipe`
+
+Returns an ordered MCP execution recipe for a natural-language Bubble task.
+
+```bash
+bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index
+bubble-mcp tools recipe --task "create a page-load workflow action" --recipe workflow
+```
+
+Use this when the caller already understands the user intent but needs the
+right preflight checks, tool sequence, arguments to fill, safeguards, and
+verification path. It is read-only and does not mutate Bubble.
+
 ## `bubble-mcp smoke runtime`
 
 Runs safe runtime smoke suites through the same tool handlers used by MCP
@@ -427,6 +440,7 @@ Implemented tools:
 - `bubble_health_check`
 - `bubble_agent_guide`
 - `bubble_tool_search`
+- `bubble_task_recipe`
 - `bubble_tool_coverage`
 - `bubble_runtime_smoke`
 - `bubble_profile_list`

@@ -25,6 +25,12 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "notes": "Call the specific create_*/update_*/delete_* tool matching the requested element type; pass profile, context, parent, and execute.",
     },
     {
+        "intent": "manage_pages_or_reusables",
+        "when": "The user asks to create, delete, clone, or inspect Bubble pages or reusable elements.",
+        "tools": ["create_page", "delete_page", "create_reusable", "delete_reusable", "bubble_context_detect"],
+        "notes": "Refresh context before and after real page/reusable mutations so agents can verify materialization.",
+    },
+    {
         "intent": "import_html_component",
         "when": "The user asks to convert/import/copy an HTML section, URL, selector, or snippet into Bubble.",
         "tools": ["create_from_html"],
@@ -67,12 +73,244 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (("html", "selector", "url", "convert", "import"), ("import_html_component",)),
     (("branch", "sub-branch", "version", "changelog", "history", "contributors"), ("branches_or_changelog",)),
     (("workflow", "event", "action", "condition", "page load", "click"), ("manage_workflows",)),
+    (("page", "reusable"), ("manage_pages_or_reusables",)),
     (("style", "color", "font", "token", "figma", "design system"), ("manage_styles_tokens_design_system",)),
     (("data type", "field", "option set", "option value", "schema"), ("manage_data_schema",)),
     (("context", "profile", "session", "cache", "resolve", "find"), ("find_profile_session_or_context",)),
     (("payload", "plan", "execute", "write"), ("execute_exact_payload_or_plan",)),
     (("smoke", "coverage", "health", "ready", "catalog"), ("check_server_or_catalog",)),
     (("create", "update", "delete", "element", "text", "button", "group", "input", "image"), ("create_or_update_visual_editor_elements",)),
+)
+
+
+RECIPES: dict[str, dict[str, Any]] = {
+    "setup_or_refresh_context": {
+        "when": "A profile, session, page, element, or context target must be confirmed before mutation.",
+        "tools": ["bubble_profile_list", "bubble_session_list", "bubble_context_detect", "bubble_context_find"],
+        "steps": [
+            {
+                "tool": "bubble_profile_list",
+                "purpose": "Confirm the requested profile exists and maps to the expected Bubble app.",
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_session_list",
+                "purpose": "Confirm a captured editor session exists for the profile before any real write.",
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_context_detect",
+                "purpose": "Refresh the .bubble-backed project context when targets may be stale.",
+                "args": {"profile": "$profile", "force": True},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_context_find",
+                "purpose": "Resolve page, reusable, parent, or element names only when the target is ambiguous.",
+                "required_before_execute": False,
+            },
+        ],
+    },
+    "html_import": {
+        "when": "Convert/import/copy a URL, HTML file/snippet, or CSS selector into Bubble.",
+        "tools": ["create_from_html", "bubble_context_detect"],
+        "steps": [
+            {
+                "tool": "bubble_context_detect",
+                "purpose": "Refresh context if the target page/reusable was recently changed or created.",
+                "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "create_from_html",
+                "purpose": "Run the advanced HTML importer in preview mode first.",
+                "args": {
+                    "profile": "$profile",
+                    "context": "$context",
+                    "parent": "$parent",
+                    "url": "$url",
+                    "selector": "$selector",
+                    "rendered_html": True,
+                    "refresh_context": True,
+                    "execute": False,
+                },
+                "required_before_execute": True,
+            },
+            {
+                "tool": "create_from_html",
+                "purpose": "Repeat with execute=true only after the preview is valid and the user asked to apply it.",
+                "args": {"execute": "$execute"},
+                "required_before_execute": False,
+            },
+        ],
+    },
+    "visual_edit": {
+        "when": "Create, update, rename, move, style, or delete Bubble visual elements.",
+        "tools": ["bubble_context_detect", "bubble_tool_search", "create_text", "create_group", "update_text", "delete_group"],
+        "steps": [
+            {
+                "tool": "bubble_tool_search",
+                "purpose": "Find the specific create_*, update_*, or delete_* tool for the requested element type.",
+                "args": {"query": "$task", "limit": 6},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_context_detect",
+                "purpose": "Refresh context when the target parent or element may not be in the local overlay.",
+                "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "<specific visual tool>",
+                "purpose": "Call the exact visual tool with profile, context, parent/element_name, and execute.",
+                "args": {"profile": "$profile", "context": "$context", "parent": "$parent", "execute": "$execute"},
+                "required_before_execute": True,
+            },
+        ],
+    },
+    "page_or_reusable": {
+        "when": "Create, delete, clone, or inspect Bubble pages and reusable elements.",
+        "tools": ["create_page", "delete_page", "create_reusable", "delete_reusable", "bubble_context_detect"],
+        "steps": [
+            {
+                "tool": "bubble_context_detect",
+                "purpose": "Refresh context first so page/reusable name collisions are visible.",
+                "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "<specific page/reusable tool>",
+                "purpose": "Call create_page, create_reusable, delete_page, or delete_reusable with explicit names and execute.",
+                "args": {"profile": "$profile", "name": "$name", "execute": "$execute"},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_context_detect",
+                "purpose": "After execute=true, refresh context to verify the page or reusable exists or was removed.",
+                "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+        ],
+    },
+    "workflow": {
+        "when": "Create events, add actions, wire button/page workflows, or update workflow conditions.",
+        "tools": ["create_workflow", "create_event", "add_action", "resolve_refs", "map_workflow_ref"],
+        "steps": [
+            {
+                "tool": "bubble_context_detect",
+                "purpose": "Refresh context before resolving page or element workflow targets.",
+                "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "create_workflow",
+                "purpose": "Create or locate the workflow event. Use element_name='Page' for page-load workflows.",
+                "args": {"profile": "$profile", "context": "$context", "element_name": "$element_or_Page", "execute": "$execute"},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "add_action",
+                "purpose": "Add the requested workflow action after the event reference is known or inferred.",
+                "args": {"profile": "$profile", "context": "$context", "action_type": "$action_type", "execute": "$execute"},
+                "required_before_execute": True,
+            },
+        ],
+    },
+    "data_schema": {
+        "when": "Create or update data types, fields, option sets, or option values.",
+        "tools": ["list_data_types", "create_data_type", "create_data_field", "create_option_set", "create_option_value"],
+        "steps": [
+            {
+                "tool": "list_data_types",
+                "purpose": "Inspect existing schema before creating duplicates.",
+                "args": {"profile": "$profile"},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "<specific schema tool>",
+                "purpose": "Preview the schema mutation first; execute only after the requested names/types are explicit.",
+                "args": {"profile": "$profile", "context": "$context", "execute": "$execute"},
+                "required_before_execute": True,
+            },
+        ],
+    },
+    "style_or_tokens": {
+        "when": "List, create, sync, or apply styles, colors, fonts, or design-system tokens.",
+        "tools": ["list_styles", "list_colors", "create_style", "add_style_condition", "sync_figma_style", "sync_figma_tokens"],
+        "steps": [
+            {
+                "tool": "list_styles",
+                "purpose": "Inspect existing styles before creating or applying new ones.",
+                "args": {"profile": "$profile"},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_tool_search",
+                "purpose": "Choose the exact style/color/token tool based on requested outcome.",
+                "args": {"query": "$task", "limit": 6},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "<specific style/token tool>",
+                "purpose": "Preview or execute the selected style/token operation.",
+                "args": {"profile": "$profile", "context": "$context", "execute": "$execute"},
+                "required_before_execute": True,
+            },
+        ],
+    },
+    "branch_or_changelog": {
+        "when": "List/create/delete branches or fetch changelog/audit entries.",
+        "tools": ["bubble_branch_list", "bubble_branch_create", "bubble_branch_delete", "bubble_branch_contributors", "bubble_changelog_fetch"],
+        "steps": [
+            {
+                "tool": "bubble_branch_list",
+                "purpose": "Inspect available branches before creating sub-branches or fetching branch-specific history.",
+                "args": {"profile": "$profile"},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "<specific branch/changelog tool>",
+                "purpose": "Run the requested branch or changelog operation. Delete requires confirm=true.",
+                "args": {"profile": "$profile", "execute": "$execute"},
+                "required_before_execute": True,
+            },
+        ],
+    },
+    "quality_gate": {
+        "when": "Verify install health, catalog coverage, runtime behavior, or safe profile integration.",
+        "tools": ["bubble_health_check", "bubble_tool_coverage", "bubble_runtime_smoke"],
+        "steps": [
+            {
+                "tool": "bubble_health_check",
+                "purpose": "Check server capabilities.",
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_tool_coverage",
+                "purpose": "Verify the exposed catalog has no uncovered Aria tools.",
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_runtime_smoke",
+                "purpose": "Run coverage, safe-read, preview-write, family-preview, or execute-write depending on risk.",
+                "args": {"suite": "family-preview", "profile": "$profile", "context": "$context", "parent": "$parent"},
+                "required_before_execute": False,
+            },
+        ],
+    },
+}
+
+
+RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("html", "selector", "url", "convert", "import"), "html_import"),
+    (("page", "reusable"), "page_or_reusable"),
+    (("workflow", "event", "action", "condition", "page load", "click"), "workflow"),
+    (("data type", "field", "option set", "option value", "schema"), "data_schema"),
+    (("style", "color", "font", "token", "figma", "design system"), "style_or_tokens"),
+    (("branch", "sub-branch", "version", "changelog", "history", "contributors"), "branch_or_changelog"),
+    (("smoke", "coverage", "health", "ready", "catalog", "test", "validate"), "quality_gate"),
+    (("context", "profile", "session", "cache", "resolve", "find"), "setup_or_refresh_context"),
+    (("create", "update", "delete", "element", "text", "button", "group", "input", "image"), "visual_edit"),
 )
 
 
@@ -115,6 +353,62 @@ def agent_guide(task: str = "") -> dict[str, Any]:
         ],
         "recommended_routes": recommended,
         "all_routes": list(ROUTES),
+    }
+
+
+def task_recipe(
+    task: str = "",
+    *,
+    recipe: str = "",
+    profile: str = "",
+    context: str = "",
+    parent: str = "root",
+    execute: bool = False,
+) -> dict[str, Any]:
+    """Return a compact operational recipe for a Bubble task."""
+
+    normalized = str(task or "").strip().lower()
+    requested_recipe = str(recipe or "").strip()
+    recipe_id = requested_recipe if requested_recipe in RECIPES else ""
+    if not recipe_id:
+        for keywords, candidate in RECIPE_KEYWORDS:
+            if any(keyword in normalized for keyword in keywords):
+                recipe_id = candidate
+                break
+    if not recipe_id:
+        recipe_id = "visual_edit"
+
+    selected = RECIPES[recipe_id]
+    guide = agent_guide(task)
+    return {
+        "ok": True,
+        "task": task or None,
+        "recipe": recipe_id,
+        "matched": {
+            "when": selected["when"],
+            "tools": selected["tools"],
+        },
+        "inputs": {
+            "profile": profile or "$profile",
+            "context": context or "$context",
+            "parent": parent or "root",
+            "execute": bool(execute),
+        },
+        "preflight": [
+            "Use profile-based calls whenever possible.",
+            "Run a preview first unless the user explicitly asked to execute.",
+            "Refresh context when targets may have changed outside this MCP session.",
+            "Never ask the user to name internal tools; infer from the task and use search/recipe when uncertain.",
+        ],
+        "steps": selected["steps"],
+        "recommended_routes": guide["recommended_routes"],
+        "safeguards": {
+            "default_execute": False,
+            "destructive_operations_need_confirm": True,
+            "mutations_need_session": True,
+            "real_write_verification": "After execute=true, refresh context or use changelog/smoke verification when materialization matters.",
+        },
+        "cli_equivalent": f"bubble-mcp tools recipe --task {task!r}" if task else "bubble-mcp tools recipe --task '<task>'",
     }
 
 

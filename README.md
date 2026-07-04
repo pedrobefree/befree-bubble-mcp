@@ -211,6 +211,9 @@ workflows, data schema, branches, changelog, evals, and exact payload writes.
 For narrower discovery, call `bubble_tool_search` with a query such as
 `html selector`, `workflow action`, or `branch changelog`; it returns compact
 tool metadata instead of the full catalog.
+When the client knows the task but needs the ordered execution sequence, call
+`bubble_task_recipe`; it returns preflight checks, ordered tool calls, arguments
+to fill, safeguards, and verification guidance.
 
 The CLI exposes the same compact discovery layer for terminals and agents that
 only have shell access:
@@ -218,6 +221,7 @@ only have shell access:
 ```bash
 bubble-mcp tools guide --task "convert an HTML selector from a URL into a Bubble page"
 bubble-mcp tools search --query "html selector import" --limit 5
+bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index
 ```
 
 When a catalog tool is called with a `profile`, the server resolves the stored

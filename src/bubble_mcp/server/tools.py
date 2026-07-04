@@ -32,7 +32,7 @@ from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
-from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog
+from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
@@ -68,6 +68,16 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_tool_search":
         args = arguments or {}
         return search_tool_catalog(str(args.get("query") or ""), limit=int(args.get("limit") or 8))
+    if name == "bubble_task_recipe":
+        args = arguments or {}
+        return task_recipe(
+            str(args.get("task") or args.get("message") or ""),
+            recipe=str(args.get("recipe") or ""),
+            profile=str(args.get("profile") or ""),
+            context=str(args.get("context") or ""),
+            parent=str(args.get("parent") or "root"),
+            execute=bool(args.get("execute")),
+        )
     if name == "bubble_runtime_smoke":
         args = arguments or {}
         return run_runtime_smoke(

@@ -153,6 +153,21 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
             "Fetch changelog entries for the current branch",
         ],
     ),
+    "recipe": _prop(
+        "string",
+        "Optional recipe id to force. Omit this so the MCP infers the recipe from the task.",
+        enum=[
+            "setup_or_refresh_context",
+            "html_import",
+            "visual_edit",
+            "page_or_reusable",
+            "workflow",
+            "data_schema",
+            "style_or_tokens",
+            "branch_or_changelog",
+            "quality_gate",
+        ],
+    ),
     "parent": _prop(
         "string",
         "Target parent element/container. Use root for page-level insertion or a known Bubble element id/name for nested insertion.",
@@ -468,6 +483,12 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "Search the exposed Bubble MCP tool catalog and return compact matching tool metadata. Use this instead of reading the full tools/list response when the task only needs a small set of relevant tools.",
             ["query", "limit"],
             required=["query"],
+        ),
+        tool_schema(
+            "bubble_task_recipe",
+            "Return a compact operational recipe for a Bubble task: preflight checks, ordered MCP tool calls, arguments to fill, safeguards, and verification guidance. Use this after bubble_agent_guide or bubble_tool_search when the agent needs the execution sequence, not just candidate tools.",
+            ["task", "recipe", "profile", "context", "parent", "execute"],
+            required=["task"],
         ),
         _empty_tool(
             "bubble_tool_coverage",
