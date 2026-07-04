@@ -308,6 +308,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "standalone native code, direct Aria-runtime methods, Aria-runtime aliases, custom runtime adapters, compiler "
         "fallback, or are uncovered. Read-only."
     ),
+    "bubble_catalog_quality": (
+        "Audit the exposed MCP catalog for agent usability. Checks tool/resource/prompt identifiers, descriptions, "
+        "input schemas, property descriptions, annotations, resource metadata, prompt arguments, and runtime coverage "
+        "so clients can detect catalog regressions before agents waste tokens on discovery. Read-only."
+    ),
     "bubble_runtime_smoke": (
         "Run an operational runtime smoke suite. Use coverage for local catalog coverage, agent-routing to validate "
         "natural-language tool selection without writes, safe-read for read-only profile/session/context checks, "
@@ -769,7 +774,7 @@ def legacy_description(name: str) -> str:
 
 
 def tool_annotations(name: str) -> dict[str, bool]:
-    agent_read_only = {"bubble_agent_guide", "bubble_tool_search", "bubble_task_recipe"}
+    agent_read_only = {"bubble_agent_guide", "bubble_tool_search", "bubble_task_recipe", "bubble_catalog_quality"}
     read_only = _is_read_only(name) or name in agent_read_only
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}
     return {

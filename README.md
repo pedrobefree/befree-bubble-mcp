@@ -34,6 +34,8 @@ python scripts/install_local.py --repair --extras browser,dev
   runtime command exists.
 - Built-in MCP tool coverage report showing native, direct runtime, runtime
   alias, custom adapter, compiler fallback, and uncovered categories.
+- Built-in MCP catalog quality gate for agent-facing descriptions, schemas,
+  annotations, resources, prompts, and coverage.
 - Safe runtime smoke suites for local catalog coverage, read-only profile
   checks, and representative `execute=false` mutation previews.
 - Local profile management.
@@ -223,6 +225,7 @@ bubble-mcp tools guide --task "convert an HTML selector from a URL into a Bubble
 bubble-mcp tools search --query "html selector import" --limit 5
 bubble-mcp tools recipe --task "convert an HTML selector from a URL into a Bubble page" --profile my-app --context index
 bubble-mcp tools coverage
+bubble-mcp tools quality
 ```
 
 MCP clients that support resources and prompts can also read
@@ -244,8 +247,13 @@ a preview. Calls with `execute=true` use the captured local Bubble session and
 write to `/appeditor/write`.
 
 Use `bubble_tool_coverage` from an MCP client, or `bubble-mcp tools coverage`
-from the CLI, to verify current catalog coverage. The Aria catalog is expected
-to report `uncovered_count: 0`.
+from the CLI, to verify current catalog coverage. The full exposed catalog and
+the Aria-compatible subset are expected to report `uncovered_count: 0`.
+
+Use `bubble_catalog_quality` from an MCP client, or `bubble-mcp tools quality`
+from the CLI, to verify that the catalog remains efficient for agents: no
+missing descriptions, undocumented input fields, invalid annotations, broken
+resources/prompts, or uncovered exposed tools.
 
 Use `bubble_runtime_smoke` or `bubble-mcp smoke runtime` for operational checks.
 The `agent-routing` suite validates representative natural-language Bubble

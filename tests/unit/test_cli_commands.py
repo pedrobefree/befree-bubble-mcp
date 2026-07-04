@@ -236,6 +236,19 @@ def test_cli_tools_coverage_reports_runtime_paths(capsys) -> None:  # type: igno
     assert payload["tool_count"] >= payload["aria_catalog_count"]
 
 
+def test_cli_tools_quality_reports_catalog_gate(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert main(["tools", "quality"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["summary"]["issue_count"] == 0
+    checks = {check["name"]: check for check in payload["checks"]}
+    assert checks["tool_descriptions"]["ok"] is True
+    assert checks["tool_annotations"]["ok"] is True
+    assert checks["runtime_coverage"]["aria_uncovered_count"] == 0
+    assert checks["runtime_coverage"]["uncovered_count"] == 0
+
+
 def test_cli_tools_recipe_routes_page_creation_before_generic_create(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["tools", "recipe", "--task", "Create a new page called mcp-02", "--profile", "smoke"]) == 0
 

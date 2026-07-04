@@ -494,6 +494,10 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "bubble_tool_coverage",
             "Report runtime coverage for every exposed Bubble MCP tool, including native, Aria-runtime, alias, custom, compiler fallback, and uncovered categories. Read-only.",
         ),
+        _empty_tool(
+            "bubble_catalog_quality",
+            "Audit the exposed MCP catalog for agent usability: unique tool/resource/prompt ids, clear descriptions, documented input fields, complete annotations, resource metadata, prompt arguments, and runtime coverage. Read-only.",
+        ),
         tool_schema(
             "bubble_runtime_smoke",
             "Run an operational smoke suite for the MCP runtime. coverage is local-only, agent-routing validates natural-language tool selection without writes, safe-read performs read-only calls, preview-write compiles representative Bubble mutations with execute=false, and execute-write creates temporary Bubble objects only when execute=true.",

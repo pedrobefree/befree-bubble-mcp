@@ -101,6 +101,7 @@ def test_resources_read_catalog_summary_json() -> None:
     assert payload["ok"] is True
     assert payload["tool_count"] >= 220
     assert "bubble_task_recipe" in payload["native_agent_tools"]
+    assert "bubble_catalog_quality" in payload["native_agent_tools"]
 
 
 def test_resource_templates_list_and_read_recipe_detail() -> None:
@@ -311,6 +312,8 @@ def test_tool_coverage_reports_no_uncovered_aria_catalog_tools() -> None:
     assert report["aria_catalog"]["count"] == len(ARIA_BUBBLE_TOOL_NAMES)
     assert report["aria_catalog"]["uncovered_count"] == 0
     assert report["aria_catalog"]["uncovered"] == []
+    assert report["uncovered_count"] == 0
+    assert report["uncovered"] == []
     assert report["by_coverage"]["runtime_direct"] >= 180
     assert report["by_coverage"]["runtime_alias"] >= 10
 
@@ -329,6 +332,24 @@ def test_tool_coverage_tool_is_exposed() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["ok"] is True
     assert payload["aria_catalog"]["uncovered_count"] == 0
+
+
+def test_catalog_quality_tool_is_exposed() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 22,
+            "method": "tools/call",
+            "params": {"name": "bubble_catalog_quality", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["summary"]["issue_count"] == 0
+    assert result["structuredContent"] == payload
 
 
 def test_agent_guide_routes_user_tasks_without_cli_discovery() -> None:

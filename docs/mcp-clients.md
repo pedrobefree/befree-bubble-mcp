@@ -116,6 +116,9 @@ The server exposes the complete 196-tool Aria Bubble MCP catalog, plus native
 standalone helper tools. Catalog tools accept their original arguments. Agents
 should call these tools directly instead of discovering equivalent CLI commands.
 Use `bubble_tool_coverage` to audit how every exposed tool is handled.
+Use `bubble_catalog_quality` to audit whether the catalog is efficient for
+agents: clear descriptions, documented fields, valid annotations, readable
+resources/prompts, and complete runtime coverage.
 Use `bubble_runtime_smoke` when the user asks whether the MCP is operational
 against a local install or profile.
 
@@ -140,6 +143,7 @@ families or `write_payload` for exact Bubble editor writes.
   verification guidance. Use it when the agent knows the intent but needs the
   execution sequence.
 - `bubble_tool_coverage`: reports whether each exposed tool is handled by standalone native code, direct Aria-runtime dispatch, runtime alias dispatch, a custom runtime adapter, compiler fallback, or is uncovered.
+- `bubble_catalog_quality`: audits tool/resource/prompt identifiers, descriptions, input schemas, property descriptions, annotations, resource metadata, prompt arguments, and runtime coverage. Use it as the catalog quality gate before claiming MCP/harness work is complete.
 - `bubble_runtime_smoke`: runs an operational smoke suite. `coverage` is local-only, `agent-routing` validates natural-language tool selection without writes, `safe-read` performs read-only checks, `preview-write` compiles representative mutations with `execute=false`, `family-preview` exercises representative visual/container/input/schema/workflow/style/HTML/branch/changelog paths without writes, and `execute-write` performs authenticated temporary writes only when `execute=true`. Use `verify_context=true` for real-write smokes that must refresh the Bubble context and confirm the temporary objects materialized.
 - `bubble_profile_list`: lists configured local Bubble profiles.
 - `bubble_context_summary`: summarizes a compact context JSON file.
@@ -181,6 +185,8 @@ return a preview instead of posting to Bubble.
 - If the client knows the capability but not the order of operations, call
   `bubble_task_recipe` with the user task, profile, and context before
   executing mutating tools.
+- Before relying on a modified catalog or harness, call `bubble_catalog_quality`
+  and require `ok=true`.
 - Do not ask the user to memorize internal tool names; infer the right tool
   from the intent, then pass the visible app/page/element names as arguments.
 - Do not shell out to inspect CLI help unless a required capability is missing

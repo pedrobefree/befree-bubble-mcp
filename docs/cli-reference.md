@@ -386,8 +386,21 @@ fallback, or uncovered.
 bubble-mcp tools coverage
 ```
 
-Use this as a fast local parity check. The Aria catalog is expected to report
-`uncovered_count: 0`.
+Use this as a fast local parity check. The full exposed catalog and the
+Aria-compatible subset are expected to report `uncovered_count: 0`.
+
+## `bubble-mcp tools quality`
+
+Audits the exposed MCP catalog for agent usability.
+
+```bash
+bubble-mcp tools quality
+```
+
+The report checks tool/resource/prompt identifiers, tool descriptions, input
+schemas, property descriptions, annotations, resource metadata, prompt
+arguments, and runtime coverage. Use it as a CI-friendly gate before claiming
+catalog or harness work is complete.
 
 ## `bubble-mcp smoke runtime`
 
@@ -496,6 +509,7 @@ Implemented tools:
 - `bubble_tool_search`
 - `bubble_task_recipe`
 - `bubble_tool_coverage`
+- `bubble_catalog_quality`
 - `bubble_runtime_smoke`
 - `bubble_profile_list`
 - `bubble_context_summary`

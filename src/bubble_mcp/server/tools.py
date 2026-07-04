@@ -7,6 +7,7 @@ from pathlib import Path
 
 from bubble_mcp import __version__
 from bubble_mcp.aria_dispatch import dispatch_aria_runtime_tool
+from bubble_mcp.catalog_quality import catalog_quality_report
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import detect_project_context
@@ -63,6 +64,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         }
     if name == "bubble_tool_coverage":
         return catalog_coverage_report()
+    if name == "bubble_catalog_quality":
+        return catalog_quality_report()
     if name == "bubble_agent_guide":
         return agent_guide(str((arguments or {}).get("task") or (arguments or {}).get("message") or ""))
     if name == "bubble_tool_search":

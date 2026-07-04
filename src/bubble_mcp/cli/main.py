@@ -7,6 +7,7 @@ import json
 import sys
 from pathlib import Path
 
+from bubble_mcp.catalog_quality import catalog_quality_report
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
@@ -475,6 +476,12 @@ def command_tools_coverage(_args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 1
 
 
+def command_tools_quality(_args: argparse.Namespace) -> int:
+    report = catalog_quality_report()
+    emit_json(report)
+    return 0 if report.get("ok") else 1
+
+
 def command_smoke_runtime(args: argparse.Namespace) -> int:
     result = run_runtime_smoke(
         call_tool,
@@ -777,6 +784,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Report how exposed MCP tools are executed by runtime, compiler, or native handlers.",
     )
     tools_coverage_parser.set_defaults(func=command_tools_coverage)
+
+    tools_quality_parser = tools_subparsers.add_parser(
+        "quality",
+        help="Audit MCP catalog usability for agents, including schemas, descriptions, annotations, prompts, resources, and coverage.",
+    )
+    tools_quality_parser.set_defaults(func=command_tools_quality)
 
     smoke_parser = subparsers.add_parser("smoke", help="Run safe runtime smoke checks.")
     smoke_subparsers = smoke_parser.add_subparsers(dest="smoke_command", required=True)

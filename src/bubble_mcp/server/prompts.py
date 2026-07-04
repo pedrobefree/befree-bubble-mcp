@@ -93,10 +93,11 @@ def get_prompt(name: str, arguments: dict[str, Any] | None = None) -> dict[str, 
             "Run or call these checks:\n"
             "1. `bubble_health_check`.\n"
             "2. `bubble_tool_coverage` and confirm no Aria catalog tools are uncovered.\n"
-            "3. `bubble_runtime_smoke` with suite=coverage.\n"
-            "4. `bubble_runtime_smoke` with suite=agent-routing.\n"
-            f"5. `bubble_runtime_smoke` with suite=family-preview, profile={profile}, context={context}, parent=root.\n"
-            "6. For real writes, use execute-write only when explicitly allowed and verify context afterward."
+            "3. `bubble_catalog_quality` and confirm issue_count=0.\n"
+            "4. `bubble_runtime_smoke` with suite=coverage.\n"
+            "5. `bubble_runtime_smoke` with suite=agent-routing.\n"
+            f"6. `bubble_runtime_smoke` with suite=family-preview, profile={profile}, context={context}, parent=root.\n"
+            "7. For real writes, use execute-write only when explicitly allowed and verify context afterward."
         )
     else:
         raise ValueError(f"Unknown Bubble MCP prompt: {name}")

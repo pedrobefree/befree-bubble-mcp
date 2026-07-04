@@ -44,6 +44,7 @@ def _agent_runtime_markdown() -> str:
             "Operational checks:",
             "",
             "- `bubble_tool_coverage` verifies catalog handling.",
+            "- `bubble_catalog_quality` verifies schema, description, annotation, resource, prompt, and coverage quality.",
             "- `bubble_runtime_smoke` with `coverage` is local-only.",
             "- `bubble_runtime_smoke` with `agent-routing` validates natural-language tool selection without writes.",
             "- `bubble_runtime_smoke` with `family-preview` exercises major families without real writes.",
@@ -93,6 +94,7 @@ def _catalog_summary() -> dict[str, Any]:
         "bubble_task_recipe",
         "bubble_tool_search",
         "bubble_tool_coverage",
+        "bubble_catalog_quality",
         "bubble_runtime_smoke",
     ]
     return {
@@ -106,6 +108,7 @@ def _catalog_summary() -> dict[str, Any]:
             "bubble_agent_guide",
             "bubble_task_recipe",
             "bubble_tool_search",
+            "bubble_catalog_quality",
             "bubble_runtime_smoke",
         ],
     }
