@@ -474,6 +474,100 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
 }
 
 
+GENERIC_SEARCH_TERMS = {
+    "acao",
+    "add",
+    "atualizar",
+    "busque",
+    "create",
+    "criar",
+    "crie",
+    "delete",
+    "deletar",
+    "execute",
+    "executar",
+    "fetch",
+    "list",
+    "listar",
+    "liste",
+    "replace",
+    "search",
+    "update",
+    "validar",
+    "validate",
+}
+
+
+VISUAL_ELEMENT_SEARCH_TERMS = {
+    "alert",
+    "botao",
+    "button",
+    "checkbox",
+    "datepicker",
+    "dropdown",
+    "group",
+    "grupo",
+    "html",
+    "icon",
+    "icone",
+    "image",
+    "imagem",
+    "input",
+    "link",
+    "map",
+    "radio",
+    "repeating",
+    "searchbox",
+    "shape",
+    "slider",
+    "text",
+    "texto",
+    "video",
+}
+
+
+LOCATION_CONTEXT_SEARCH_TERMS = {
+    "context",
+    "em",
+    "group",
+    "grupo",
+    "index",
+    "na",
+    "no",
+    "page",
+    "pagina",
+    "paginas",
+    "parent",
+    "root",
+}
+
+
+TOOL_TARGET_SEARCH_TERMS = {
+    "alert",
+    "button",
+    "checkbox",
+    "datepicker",
+    "dropdown",
+    "group",
+    "html",
+    "icon",
+    "image",
+    "input",
+    "link",
+    "map",
+    "radio",
+    "repeating_group",
+    "searchbox",
+    "shape",
+    "slider",
+    "text",
+    "video",
+}
+
+
+RUNBOOK_FALLBACK_MIN_SCORE = 15
+
+
 RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
     "branch_or_changelog": "branch changelog contributors version",
     "data_schema": "data type field option set option value schema",
@@ -493,13 +587,22 @@ def _normalize_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", ascii_text.lower()).strip()
 
 
-def _query_terms(query: str) -> list[str]:
+def _query_terms(query: str, *, prune_generic_actions: bool = True) -> list[str]:
     base_terms = [term for term in _normalize_text(query).split() if term]
     expanded: list[str] = []
     for term in base_terms:
         expanded.append(term)
         expanded.extend(SEARCH_SYNONYMS.get(term, ()))
-    return list(dict.fromkeys(expanded))
+    unique_terms = list(dict.fromkeys(expanded))
+    if not prune_generic_actions:
+        return unique_terms
+    specific_terms = [term for term in unique_terms if term not in GENERIC_SEARCH_TERMS]
+    pruned_terms = specific_terms or unique_terms
+    target_terms = set(pruned_terms).intersection(VISUAL_ELEMENT_SEARCH_TERMS)
+    if target_terms.difference({"group", "grupo"}):
+        contextual = LOCATION_CONTEXT_SEARCH_TERMS.difference({"html"})
+        pruned_terms = [term for term in pruned_terms if term not in contextual]
+    return pruned_terms
 
 
 def _has_keyword(normalized_text: str, keyword: str) -> bool:
@@ -623,6 +726,38 @@ def _compact_tool_schema(tool: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _action_prefixes(terms: list[str]) -> set[str]:
+    prefixes: set[str] = set()
+    if {"create", "criar", "crie"}.intersection(terms):
+        prefixes.add("create")
+    if {"delete", "deletar"}.intersection(terms):
+        prefixes.add("delete")
+    if {"update", "atualizar"}.intersection(terms):
+        prefixes.add("update")
+    if {"list", "listar", "liste"}.intersection(terms):
+        prefixes.add("list")
+    if {"add", "acao"}.intersection(terms):
+        prefixes.add("add")
+    if "replace" in terms:
+        prefixes.add("replace")
+    return prefixes
+
+
+def _tool_target_terms(terms: list[str]) -> set[str]:
+    targets = set(terms).intersection(TOOL_TARGET_SEARCH_TERMS)
+    if {"texto"}.intersection(terms):
+        targets.add("text")
+    if {"botao"}.intersection(terms):
+        targets.add("button")
+    if {"grupo"}.intersection(terms):
+        targets.add("group")
+    if {"imagem"}.intersection(terms):
+        targets.add("image")
+    if "repeating" in terms and "group" in terms:
+        targets.add("repeating_group")
+    return targets
+
+
 def _runbook_tool_search(recipe: dict[str, Any], query: str, *, limit: int) -> dict[str, Any]:
     from bubble_mcp.server.schemas import list_tool_schemas
 
@@ -643,6 +778,8 @@ def _runbook_tool_search(recipe: dict[str, Any], query: str, *, limit: int) -> d
         for item in lexical["matches"]:
             name = str(item.get("name") or "")
             if name in seen:
+                continue
+            if int(item.get("score") or 0) < RUNBOOK_FALLBACK_MIN_SCORE:
                 continue
             matches.append({"source": "search", **item})
             seen.add(name)
@@ -722,7 +859,10 @@ def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
     from bubble_mcp.server.schemas import list_tool_schemas
 
     normalized_query = _normalize_text(str(query or "").strip())
+    raw_terms = _query_terms(normalized_query, prune_generic_actions=False)
     terms = _query_terms(normalized_query)
+    action_prefixes = _action_prefixes(raw_terms)
+    target_terms = _tool_target_terms(terms)
     max_results = min(max(int(limit or 8), 1), 25)
     tools = list_tool_schemas()
     scored: list[tuple[int, dict[str, Any]]] = []
@@ -754,6 +894,15 @@ def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
                     score += 1
         if score <= 0:
             continue
+        for prefix in action_prefixes:
+            if normalized_name.startswith(f"{prefix} "):
+                score += 6
+            for target in target_terms:
+                normalized_target = target.replace("_", " ")
+                if normalized_name == f"{prefix} {normalized_target}":
+                    score += 24
+                elif normalized_name.startswith(f"{prefix} {normalized_target} "):
+                    score += 16
         compact = _compact_tool_schema(tool)
         scored.append((score, compact))
 

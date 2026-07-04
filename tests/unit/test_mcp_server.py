@@ -679,6 +679,86 @@ def test_tool_search_returns_compact_relevant_catalog_matches() -> None:
     assert create_from_html["annotations"]["readOnlyHint"] is False
 
 
+def test_tool_search_ignores_generic_action_noise_when_specific_terms_exist() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 260,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_search",
+                "arguments": {"query": "criar página", "limit": 5},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    names = [match["name"] for match in payload["matches"]]
+    assert names[0] == "create_page"
+    assert "create_page" in names
+    assert "create_api_token" not in names
+    assert "create_301_redirect" not in names
+
+
+def test_tool_search_prioritizes_visual_target_over_location_context() -> None:
+    text_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 262,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_search",
+                "arguments": {"query": "crie texto na página index", "limit": 5},
+            },
+        }
+    )
+    button_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 263,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_search",
+                "arguments": {"query": "create button in a group", "limit": 5},
+            },
+        }
+    )
+
+    assert text_response is not None
+    assert button_response is not None
+    text_payload = json.loads(text_response["result"]["content"][0]["text"])
+    button_payload = json.loads(button_response["result"]["content"][0]["text"])
+    assert [match["name"] for match in text_payload["matches"]][0] == "create_text"
+    assert [match["name"] for match in button_payload["matches"]][0] == "create_button"
+
+
+def test_task_runbook_html_fallback_avoids_generic_create_tools() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 261,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_runbook",
+                "arguments": {
+                    "task": "converta o seletor #home-area da URL https://example.com/page.html para a página mcp-01",
+                    "profile": "smoke",
+                    "context": "mcp-01",
+                    "search_limit": 8,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    names = [match["name"] for match in payload["tool_search"]["matches"]]
+    assert names[:2] == ["create_from_html", "bubble_context_detect"]
+    assert "create_api_token" not in names
+    assert "create_301_redirect" not in names
+
+
 def test_task_recipe_returns_ordered_html_import_steps() -> None:
     response = handle_request(
         {
