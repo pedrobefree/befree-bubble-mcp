@@ -403,7 +403,9 @@ def test_agent_routing_understands_portuguese_page_creation() -> None:
     guide = json.loads(guide_response["result"]["content"][0]["text"])
     recipe = json.loads(recipe_response["result"]["content"][0]["text"])
     search = json.loads(search_response["result"]["content"][0]["text"])
-    assert "manage_pages_or_reusables" in {route["intent"] for route in guide["recommended_routes"]}
+    route_intents = {route["intent"] for route in guide["recommended_routes"]}
+    assert "manage_pages_or_reusables" in route_intents
+    assert "check_server_or_catalog" not in route_intents
     assert recipe["recipe"] == "page_or_reusable"
     assert "create_page" in [match["name"] for match in search["matches"]]
 

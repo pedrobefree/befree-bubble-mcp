@@ -36,6 +36,7 @@ class AgentRoutingCase:
     search_query: str
     expected_search_tool: str
     description: str
+    forbidden_intents: tuple[str, ...] = ()
 
 
 AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
@@ -51,6 +52,7 @@ AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
         search_query="converter seletor html url",
         expected_search_tool="create_from_html",
         description="Route Portuguese HTML selector import requests to the advanced HTML importer.",
+        forbidden_intents=("check_server_or_catalog",),
     ),
     AgentRoutingCase(
         task="crie uma nova página chamada mcp-02 no app profile smoke via MCP befree_bubble_mcp",
@@ -60,6 +62,7 @@ AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
         search_query="criar página",
         expected_search_tool="create_page",
         description="Route Portuguese page creation requests without asking for internal tool names.",
+        forbidden_intents=("check_server_or_catalog",),
     ),
     AgentRoutingCase(
         task="sincronize o estilo hovered de um botão vindo do Figma para o Bubble",
@@ -696,6 +699,12 @@ def _run_agent_routing_suite(
                         "name": "expected_intents",
                         "ok": set(case.expected_intents).issubset(route_intents),
                         "expected": list(case.expected_intents),
+                        "actual": sorted(route_intents),
+                    },
+                    {
+                        "name": "forbidden_intents",
+                        "ok": not set(case.forbidden_intents).intersection(route_intents),
+                        "forbidden": list(case.forbidden_intents),
                         "actual": sorted(route_intents),
                     },
                     {

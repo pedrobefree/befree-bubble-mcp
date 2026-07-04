@@ -97,7 +97,7 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
         ("find_profile_session_or_context",),
     ),
     (("payload", "plan", "plano", "execute", "executar", "write", "escrever"), ("execute_exact_payload_or_plan",)),
-    (("smoke", "coverage", "cobertura", "health", "saude", "ready", "pronto", "catalog", "catalogo", "test", "teste"), ("check_server_or_catalog",)),
+    (("coverage", "cobertura", "health", "saude", "ready", "pronto", "catalog", "catalogo", "test", "teste", "validate", "validar"), ("check_server_or_catalog",)),
     (
         (
             "create",
@@ -349,7 +349,7 @@ RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("data type", "tipo de dado", "field", "campo", "option set", "option value", "opcao", "schema"), "data_schema"),
     (("style", "estilo", "color", "cor", "font", "fonte", "token", "figma", "design system", "hover", "hovered"), "style_or_tokens"),
     (("branch", "sub-branch", "version", "versao", "changelog", "history", "historico", "contributors"), "branch_or_changelog"),
-    (("smoke", "coverage", "cobertura", "health", "saude", "ready", "pronto", "catalog", "catalogo", "test", "teste", "validate", "validar"), "quality_gate"),
+    (("coverage", "cobertura", "health", "saude", "ready", "pronto", "catalog", "catalogo", "test", "teste", "validate", "validar"), "quality_gate"),
     (("context", "contexto", "profile", "perfil", "session", "sessao", "login", "cache", "resolve", "resolver", "find"), "setup_or_refresh_context"),
     (
         ("create", "criar", "crie", "update", "atualizar", "delete", "deletar", "element", "elemento", "text", "texto", "button", "botao", "group", "grupo", "input", "image", "imagem"),
