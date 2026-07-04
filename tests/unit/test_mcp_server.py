@@ -34,6 +34,12 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_profile_list" in names
 
 
+def test_ping_returns_empty_success() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 41, "method": "ping"})
+
+    assert response == {"jsonrpc": "2.0", "id": 41, "result": {}}
+
+
 def test_resources_list_and_read_agent_runtime() -> None:
     listed = handle_request({"jsonrpc": "2.0", "id": 30, "method": "resources/list"})
 

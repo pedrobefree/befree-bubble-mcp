@@ -9,7 +9,6 @@ installs, then installs the checkout into the selected virtual environment.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import shlex
 import shutil
@@ -170,59 +169,6 @@ def _write_python_console_payload(payload_path: Path, python: Path, source_dir: 
     payload_path.chmod(0o755)
 
 
-def _write_macos_native_launcher(script_path: Path, python: Path, payload_path: Path) -> bool:
-    if sys.platform != "darwin":
-        return False
-    compiler = shutil.which("cc") or shutil.which("clang")
-    if not compiler:
-        return False
-    source = "\n".join(
-        [
-            "#include <stdlib.h>",
-            "#include <unistd.h>",
-            "int main(int argc, char **argv) {",
-            f"  const char *python = {json.dumps(str(python))};",
-            f"  const char *payload = {json.dumps(str(payload_path))};",
-            "  char **args = calloc((size_t)argc + 2, sizeof(char *));",
-            "  if (!args) return 127;",
-            "  args[0] = (char *)python;",
-            "  args[1] = (char *)payload;",
-            "  for (int i = 1; i < argc; i++) args[i + 1] = argv[i];",
-            "  args[argc + 1] = NULL;",
-            "  execv(python, args);",
-            "  return 127;",
-            "}",
-            "",
-        ]
-    )
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".c", delete=False) as source_file:
-        source_file.write(source)
-        source_path = Path(source_file.name)
-    try:
-        result = subprocess.run(
-            [compiler, str(source_path), "-o", str(script_path)],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    finally:
-        source_path.unlink(missing_ok=True)
-    if result.returncode != 0:
-        return False
-    script_path.chmod(0o755)
-    codesign = shutil.which("codesign")
-    if codesign:
-        sign_result = subprocess.run(
-            [codesign, "--force", "--sign", "-", str(script_path)],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        if sign_result.returncode != 0:
-            return False
-    return True
-
-
 def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, target: str) -> None:
     script_path.parent.mkdir(parents=True, exist_ok=True)
     payload_path = _console_payload_path(script_path)
@@ -233,8 +179,6 @@ def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, 
     _write_python_console_payload(payload_path, python, source_dir, target, executable_name)
     if os.name == "nt":
         script_path = payload_path
-    elif _write_macos_native_launcher(script_path, python, payload_path):
-        pass
     else:
         wrapper = "\n".join(
             [
@@ -268,38 +212,67 @@ def _remove_stale_console_script_duplicates(venv: Path) -> None:
 
 
 def _verify_console_scripts(venv: Path, root: Path) -> int:
+    python = _venv_python(venv)
     expected_help = {
-        "bubble-mcp": "Manage Bubble app profiles.",
-        "bubble-mcp-figma-bridge": "Saved Figma bridge payload JSON.",
+        "bubble-mcp": (
+            "Manage Bubble app profiles.",
+            [str(python), "-m", "bubble_mcp.cli.main", "--help"],
+        ),
+        "bubble-mcp-figma-bridge": (
+            "Saved Figma bridge payload JSON.",
+            [str(python), "-m", "bubble_mcp.figma_bridge", "--help"],
+        ),
     }
-    for script_name, expected_text in expected_help.items():
+    for script_name, (expected_text, fallback_command) in expected_help.items():
         console_script = _venv_script(venv, script_name)
         if not console_script.exists():
             print(f"{script_name} console script is missing.")
             return 1
         help_output = _capture_result([str(console_script), "--help"], cwd=root)
-        if help_output.returncode != 0 or expected_text not in help_output.stdout_text:
-            print(help_output.stdout_text)
-            return help_output.returncode or 1
-        print(f"{script_name} console script is runnable.")
+        if help_output.returncode == 0 and expected_text in help_output.stdout_text:
+            print(f"{script_name} console script is runnable.")
+            continue
+        fallback_output = _capture_result(fallback_command, cwd=root)
+        if fallback_output.returncode != 0 or expected_text not in fallback_output.stdout_text:
+            print(help_output.stdout_text or fallback_output.stdout_text)
+            return help_output.returncode or fallback_output.returncode or 1
+        print(f"{script_name} Python module fallback is runnable.")
     server_script = _venv_script(venv, "bubble-mcp-server")
     if not server_script.exists():
         print("bubble-mcp-server console script is missing.")
         return 1
+    server_request = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n'
     server_check = subprocess.run(
         [str(server_script)],
         cwd=root,
-        input='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n',
+        input=server_request,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         check=False,
     )
     server_output = (server_check.stdout + server_check.stderr).strip()
-    if server_check.returncode != 0 or '"serverInfo"' not in server_output or "befree-bubble-mcp" not in server_output:
-        print(server_output)
+    if server_check.returncode == 0 and '"serverInfo"' in server_output and "befree-bubble-mcp" in server_output:
+        print("bubble-mcp-server console script is runnable.")
+        return 0
+    server_fallback = subprocess.run(
+        [str(python), "-m", "bubble_mcp.server.stdio"],
+        cwd=root,
+        input=server_request,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    server_fallback_output = (server_fallback.stdout + server_fallback.stderr).strip()
+    if (
+        server_fallback.returncode != 0
+        or '"serverInfo"' not in server_fallback_output
+        or "befree-bubble-mcp" not in server_fallback_output
+    ):
+        print(server_output or server_fallback_output)
         return server_check.returncode or 1
-    print("bubble-mcp-server console script is runnable.")
+    print("bubble-mcp-server Python module fallback is runnable.")
     return 0
 
 

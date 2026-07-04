@@ -108,22 +108,27 @@ committed by this repository.
 
 ## 6. Connect an MCP client
 
-For Codex or another MCP client, add a stdio server entry that runs
-`bubble-mcp-server`:
+For Codex or another MCP client, add a stdio server entry that runs the MCP
+server module with the virtualenv Python:
 
 ```json
 {
   "mcpServers": {
     "befree-bubble-mcp": {
-      "command": "bubble-mcp-server",
-      "args": []
+      "command": "/absolute/path/to/befree-bubble-mcp/.venv/bin/python",
+      "args": ["-m", "bubble_mcp.server.stdio"],
+      "env": {
+        "BUBBLE_MCP_CONFIG_DIR": "/Users/me/.config/bubble-mcp"
+      }
     }
   }
 }
 ```
 
-If you installed the package in a virtual environment and the client cannot find
-`bubble-mcp-server`, point the command at the virtualenv script:
+The `bubble-mcp-server` console script is also installed, but the Python module
+form is more reliable for desktop clients that do not inherit your activated
+shell or are affected by local macOS execution policy. If you choose the console
+script form anyway, use:
 
 ```json
 {

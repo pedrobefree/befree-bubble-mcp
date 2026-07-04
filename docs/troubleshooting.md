@@ -13,6 +13,20 @@ bubble-mcp --help
 For `pipx`, install from the local checkout with `pipx install .` or from the
 published package with `pipx install befree-bubble-mcp`.
 
+## `bubble-mcp` or `bubble-mcp-server` exits with `killed` on macOS
+
+Local editable installs can occasionally be blocked by macOS execution policy
+for generated console scripts. The Python modules are the stable fallback:
+
+```bash
+python -m bubble_mcp.cli.main --help
+printf '{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}\n' | python -m bubble_mcp.server.stdio
+```
+
+For MCP client configuration, use the virtualenv Python command with
+`args: ["-m", "bubble_mcp.server.stdio"]` instead of launching the generated
+`bubble-mcp-server` script directly.
+
 ## `No module named playwright` after installing browser extras
 
 Your shell may be using a global or Conda `pip` instead of the virtual
@@ -24,26 +38,28 @@ python -m pip install -e ".[browser]"
 python -m playwright install chromium
 ```
 
-## MCP client cannot find `bubble-mcp-server`
+## MCP client cannot find or run `bubble-mcp-server`
 
 Many desktop MCP clients do not inherit your shell's activated virtual
-environment. Use the absolute path to the console script in the client config:
+environment. Local macOS execution policy can also block generated console
+scripts in editable installs. Prefer running the server module with the
+virtualenv Python:
 
 ```json
 {
   "mcpServers": {
     "befree-bubble-mcp": {
-      "command": "/absolute/path/to/befree-bubble-mcp/.venv/bin/bubble-mcp-server",
-      "args": []
+      "command": "/absolute/path/to/befree-bubble-mcp/.venv/bin/python",
+      "args": ["-m", "bubble_mcp.server.stdio"]
     }
   }
 }
 ```
 
-You can find the path from an activated virtual environment:
+You can find the Python path from an activated virtual environment:
 
 ```bash
-command -v bubble-mcp-server
+command -v python
 ```
 
 ## No profiles returned
@@ -75,7 +91,7 @@ newline-delimited JSON-RPC input.
 To verify it responds:
 
 ```bash
-printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' | bubble-mcp-server
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' | python -m bubble_mcp.server.stdio
 ```
 
 ## MCP server starts but writes do not execute

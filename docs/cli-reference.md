@@ -427,11 +427,14 @@ bubble-mcp-server
 
 This command waits for newline-delimited JSON-RPC messages on standard input and
 writes JSON-RPC responses to standard output. MCP clients usually launch it for
-you.
+you. For desktop MCP client configuration from a local editable checkout, the
+equivalent `python -m bubble_mcp.server.stdio` module command is often the most
+reliable launch form.
 
 Implemented MCP methods:
 
 - `initialize`
+- `ping`
 - `tools/list`
 - `tools/call`
 - `resources/list`

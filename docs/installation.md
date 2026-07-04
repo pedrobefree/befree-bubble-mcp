@@ -57,7 +57,8 @@ python scripts/install_local.py --repair --extras browser,dev
 ```
 
 On macOS, the repair command also clears hidden filesystem flags on the virtual
-environment, refreshes local console entrypoints, signs native extension modules
+environment, refreshes local console entrypoints, validates Python-module
+fallbacks for local execution policy edge cases, signs native extension modules
 with an ad-hoc local signature, and validates the Playwright browser dependency
 when the `browser` extra is installed.
 
@@ -137,6 +138,13 @@ bubble-mcp-server
 
 The command does not open an HTTP port. It is a stdio server that waits for an
 MCP client to send JSON-RPC messages over standard input.
+
+For desktop MCP clients, especially on macOS editable installs, prefer the
+equivalent module command:
+
+```bash
+python -m bubble_mcp.server.stdio
+```
 
 ## Current implementation status
 

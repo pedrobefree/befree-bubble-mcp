@@ -266,14 +266,14 @@ the expected defaults.
 
 ## Codex MCP Setup
 
-Use the installed stdio server in your MCP config:
+Use the virtualenv Python module path in your MCP config:
 
 ```json
 {
   "mcpServers": {
     "befree-bubble-mcp": {
-      "command": "bubble-mcp-server",
-      "args": [],
+      "command": "/absolute/path/to/befree-bubble-mcp/.venv/bin/python",
+      "args": ["-m", "bubble_mcp.server.stdio"],
       "env": {
         "BUBBLE_MCP_CONFIG_DIR": "/Users/me/.config/bubble-mcp"
       }
@@ -282,7 +282,9 @@ Use the installed stdio server in your MCP config:
 }
 ```
 
-If the client does not inherit your shell path, point `command` to the absolute `bubble-mcp-server` path.
+The `bubble-mcp-server` console script is also installed, but the Python module
+form is the most reliable option for desktop MCP clients that do not inherit an
+activated virtual environment or are affected by local macOS execution policy.
 
 ## Figma Bridge
 

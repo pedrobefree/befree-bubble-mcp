@@ -77,6 +77,8 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
                     },
                 },
             )
+        if method == "ping":
+            return success_response(request_id, {})
         if method == "tools/list":
             return success_response(request_id, {"tools": list_tool_schemas()})
         if method == "tools/call":

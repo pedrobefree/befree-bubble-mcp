@@ -144,6 +144,37 @@ def test_verify_console_scripts_checks_all_entrypoints(tmp_path: Path) -> None:
     assert _verify_console_scripts(tmp_path, tmp_path) == 0
 
 
+def test_verify_console_scripts_accepts_python_module_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    for name in ["bubble-mcp", "bubble-mcp-figma-bridge", "bubble-mcp-server", "python"]:
+        path = bindir / name
+        path.write_text("#!/bin/sh\nexit 137\n", encoding="utf-8")
+        path.chmod(0o755)
+
+    def fake_capture(command: list[str], *, cwd: Path) -> install_local.CapturedProcess:
+        joined = " ".join(command)
+        if "-m bubble_mcp.cli.main --help" in joined:
+            return install_local.CapturedProcess(0, "Manage Bubble app profiles.")
+        if "-m bubble_mcp.figma_bridge --help" in joined:
+            return install_local.CapturedProcess(0, "Saved Figma bridge payload JSON.")
+        return install_local.CapturedProcess(137, "")
+
+    def fake_run(command, **_kwargs):  # type: ignore[no-untyped-def]
+        joined = " ".join(command)
+        if "-m bubble_mcp.server.stdio" in joined:
+            return subprocess.CompletedProcess(command, 0, '{"serverInfo":{"name":"befree-bubble-mcp"}}', "")
+        return subprocess.CompletedProcess(command, 137, "", "")
+
+    monkeypatch.setattr(install_local, "_capture_result", fake_capture)
+    monkeypatch.setattr(install_local.subprocess, "run", fake_run)
+
+    assert _verify_console_scripts(tmp_path, tmp_path) == 0
+
+
 def test_clear_macos_execution_metadata_removes_quarantine_and_provenance(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

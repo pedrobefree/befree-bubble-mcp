@@ -19,14 +19,15 @@ bubble-mcp profile list
 
 ## Codex or other stdio MCP clients
 
-Use `bubble-mcp-server` as the command:
+Use the virtualenv Python executable as the command and run the MCP server
+module:
 
 ```json
 {
   "mcpServers": {
     "befree-bubble-mcp": {
-      "command": "bubble-mcp-server",
-      "args": [],
+      "command": "/absolute/path/to/befree-bubble-mcp/.venv/bin/python",
+      "args": ["-m", "bubble_mcp.server.stdio"],
       "env": {
         "BUBBLE_MCP_CONFIG_DIR": "/Users/me/.config/bubble-mcp"
       }
@@ -35,8 +36,8 @@ Use `bubble-mcp-server` as the command:
 }
 ```
 
-If your MCP client does not inherit the activated virtual environment, use the
-absolute path to the installed console script:
+The `bubble-mcp-server` console script is also installed and works in normal
+shell environments:
 
 ```json
 {
@@ -52,6 +53,10 @@ absolute path to the installed console script:
 }
 ```
 
+Prefer the Python module form for desktop clients that do not inherit your
+activated shell or when local macOS execution policy blocks generated console
+scripts.
+
 Keep `BUBBLE_MCP_CONFIG_DIR` consistent with the directory used when you ran
 `bubble-mcp init` and `bubble-mcp profile add`.
 
@@ -60,7 +65,7 @@ Keep `BUBBLE_MCP_CONFIG_DIR` consistent with the directory used when you ran
 You can verify the server responds before adding it to a client:
 
 ```bash
-printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | bubble-mcp-server
+printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n' | python -m bubble_mcp.server.stdio
 ```
 
 The response should include server info for `befree-bubble-mcp`, tools,
