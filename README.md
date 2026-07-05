@@ -60,10 +60,19 @@ python scripts/install_local.py --repair --extras browser,dev
 ## Planned Capabilities
 
 - Broader public eval corpus across Bubble editor families.
-- Contributor-friendly tool-family extension scaffolding.
+- Contributor-friendly tool-family extension scaffolding beyond the current local declarative foundation.
 - More visual parity validators for HTML and design bridge conversions.
 - Remote Bubble manual refresh through a sanitized GitBook MCP fallback behind
   the existing knowledge-source interface.
+
+## Extension Kernel Documentation
+
+The extension kernel is documented in focused guides:
+
+- [Extension packs](docs/extension-packs.md): local pack layout, manifest contracts, validation, enable/disable state, and preview/execute boundaries.
+- [Learning](docs/learning.md): append-only consultative learning records, scopes, CLI/MCP usage, and safety limits.
+- [Knowledge sources](docs/knowledge-sources.md): local Bubble manual cache v1, sanitization, search/fetch/guidance tools, and remote-doc fallback boundaries.
+- [Tool authoring](docs/tool-authoring.md): guided tool-authoring sessions, captured write classification, payload examples, and safe test workflow.
 
 ## Required Setup For Each Bubble Project
 

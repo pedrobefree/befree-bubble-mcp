@@ -20,12 +20,17 @@ Befree Bubble MCP is organized around standalone, headless modules:
 - `bubble_mcp.tool_authoring`: local sessions that classify captured Bubble
   editor writes for future tool-authoring flows.
 
+These modules form the extension kernel. See
+[extension packs](extension-packs.md), [learning](learning.md),
+[knowledge sources](knowledge-sources.md), and
+[tool authoring](tool-authoring.md) for operational details.
+
 Aria should consume this project as a downstream adapter. The open source package must not depend on Electron, Aria IPC, Aria databases, or Aria UI components.
 
 ## Extension Kernel Boundary
 
-The extension kernel foundation keeps the standalone package local-first and
-declarative:
+The extension kernel foundation keeps the standalone package local-first,
+declarative, and additive:
 
 - Extension packs are JSON contracts. v1 does not execute arbitrary Python,
   Node, shell, or bundled extension code.
@@ -36,18 +41,19 @@ declarative:
   collisions with built-in/native tools, duplicate tool names inside a pack, and
   likely secrets.
 - Enabled extension schemas are loaded additively into the MCP catalog only when
-  the local pack still validates.
+  the local pack still validates; importing or enabling a pack never replays a
+  captured write by itself.
 - Mutating extension tools must keep the native preview-first behavior: default
   `execute=false`, require explicit `execute=true` for writes, and remain
   subject to existing profile/session/context validation.
 - All extension, learning, knowledge, and tool-authoring state lives under
   `BUBBLE_MCP_CONFIG_DIR` or the default `~/.config/bubble-mcp`.
 
-The Chrome extension companion is outside this MCP repository/package. It is a
-local-only companion surface, not an Aria extension. It must not use Aria
-email/password auth, must not depend on an Aria remote relay or auth server, and
-should expose only local service status, event summary, and a local
-enable/disable key.
+The Chrome extension companion is outside this MCP GitHub repository and
+Python/npm package. It is a separate browser integration surface, not an Aria
+extension. It must not use Aria email/password auth, must not depend on an Aria
+remote relay or auth server, and should expose only local service status, event
+summary, and a local enable/disable key.
 
 ## Knowledge And Learning
 

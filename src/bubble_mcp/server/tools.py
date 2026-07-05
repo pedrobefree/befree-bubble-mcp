@@ -100,11 +100,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_extension_list":
         return {"ok": True, "extensions": [item.to_dict() for item in list_extensions()]}
     if name == "bubble_extension_validate":
-        path = _required_string_arg(arguments, "path", name)
-        return validate_extension_pack(Path(path)).to_dict()
+        extension_path = _required_string_arg(arguments, "path", name)
+        return validate_extension_pack(Path(extension_path)).to_dict()
     if name == "bubble_extension_import":
-        path = _required_string_arg(arguments, "path", name)
-        return import_extension(Path(path)).to_dict()
+        extension_path = _required_string_arg(arguments, "path", name)
+        return import_extension(Path(extension_path)).to_dict()
     if name == "bubble_extension_enable":
         extension_id = _required_string_arg(arguments, "extension_id", name)
         return enable_extension(extension_id).to_dict()
@@ -112,11 +112,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         extension_id = _required_string_arg(arguments, "extension_id", name)
         return disable_extension(extension_id).to_dict()
     if name == "bubble_skill_validate":
-        path = _required_string_arg(arguments, "path", name)
-        return validate_skill_file(Path(path))
+        skill_path = _required_string_arg(arguments, "path", name)
+        return validate_skill_file(Path(skill_path))
     if name == "bubble_skill_describe":
-        path = _required_string_arg(arguments, "path", name)
-        return describe_skill_file(Path(path))
+        skill_path = _required_string_arg(arguments, "path", name)
+        return describe_skill_file(Path(skill_path))
     if name == "bubble_tool_wizard_start":
         args = arguments or {}
         session = create_authoring_session(
@@ -386,9 +386,13 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             max_age_hours=int(args.get("max_age_hours") or 24),
         )
     if name == "bubble_context_summary":
-        path = Path(str((arguments or {}).get("file") or ""))
-        context = load_context(path)
-        return {"ok": True, "summary": context.summary(), "freshness": context_freshness(context, path=path)}
+        summary_path = Path(str((arguments or {}).get("file") or ""))
+        context = load_context(summary_path)
+        return {
+            "ok": True,
+            "summary": context.summary(),
+            "freshness": context_freshness(context, path=summary_path),
+        }
     if name == "bubble_context_find":
         args = arguments or {}
         profile_name = str(args.get("profile") or "").strip()
@@ -445,7 +449,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         profile = str(args.get("profile") or "").strip()
         if not profile:
             raise ValueError(f"{name} requires a profile.")
-        result = detect_project_context(
+        detection_result = detect_project_context(
             profile=profile,
             app_id=str(args.get("app_id") or "") or None,
             app_version=str(args.get("app_version") or "test"),
@@ -457,7 +461,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             else None,
             include_id_to_path=not bool(args.get("skip_id_to_path")),
         )
-        return result.to_dict()
+        return detection_result.to_dict()
     if name in {"bubble_plan", "bubble_plan_dry_run"}:
         args = arguments or {}
         plan = plan_message(
@@ -535,7 +539,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         args = arguments or {}
         output_value = str(args.get("output") or "").strip()
         raw_query = args.get("url_query") or args.get("query")
-        query = {str(key): str(value) for key, value in raw_query.items()} if isinstance(raw_query, dict) else {}
+        visual_query = {str(key): str(value) for key, value in raw_query.items()} if isinstance(raw_query, dict) else {}
         return capture_bubble_visual_snapshot(
             profile=str(args.get("profile") or ""),
             app_id=str(args.get("app_id") or ""),
@@ -544,7 +548,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             selector=str(args.get("selector") or ""),
             public_base_url=str(args.get("public_base_url") or ""),
             url=str(args.get("url") or ""),
-            query=query,
+            query=visual_query,
             viewport_width=int(args.get("viewport_width") or 1365),
             viewport_height=int(args.get("viewport_height") or 768),
             wait_ms=int(args.get("wait_ms") or 1000),
@@ -622,7 +626,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         def collect_progress(message: str) -> None:
             progress_messages.append(message)
 
-        session = capture_session_with_playwright(
+        captured_session = capture_session_with_playwright(
             app_id=app_id,
             editor_url=str(args.get("editor_url") or "").strip() or None,
             headless=bool(args.get("headless")),
@@ -631,13 +635,13 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             app_version=app_version,
             progress=collect_progress,
         )
-        path = save_session(profile, session)
+        session_path = save_session(profile, captured_session)
         return {
             "ok": True,
             "profile": profile,
-            "path": str(path),
+            "path": str(session_path),
             "progress": progress_messages,
-            "session": session.to_dict(redact=True),
+            "session": captured_session.to_dict(redact=True),
         }
     if name == "bubble_session_import":
         args = arguments or {}
@@ -651,11 +655,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             raw_session,
             default_app_id=str(args.get("app_id") or "") or None,
         )
-        path = save_session(profile, imported_session)
+        session_path = save_session(profile, imported_session)
         return {
             "ok": True,
             "profile": profile,
-            "path": str(path),
+            "path": str(session_path),
             "session": imported_session.to_dict(redact=True),
         }
     if name == "bubble_editor_write":
