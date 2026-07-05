@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from bubble_mcp.extensions.models import ExtensionValidationReport
-from bubble_mcp.extensions.store import _validate_pack_tree, load_extension_manifest
+from bubble_mcp.extensions.store import _validate_extension_id, _validate_pack_tree, load_extension_manifest
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.server.schema_families import native_tool_schemas
 
@@ -55,6 +55,52 @@ def _load_tool_payload(tool_path: Path, relative: str) -> dict[str, Any]:
     return payload
 
 
+def _validate_tool_input_schema(relative: str, payload: dict[str, Any], errors: list[str]) -> None:
+    raw_schema = payload.get("inputSchema")
+    if not isinstance(raw_schema, dict):
+        errors.append(f"{relative} requires object inputSchema")
+        return
+    if raw_schema.get("type") != "object":
+        errors.append(f"{relative} inputSchema.type must be object")
+    raw_properties = raw_schema.get("properties", {})
+    if not isinstance(raw_properties, dict):
+        errors.append(f"{relative} inputSchema.properties must be an object")
+        raw_properties = {}
+    for property_name, property_schema in raw_properties.items():
+        if not isinstance(property_name, str) or not property_name.strip():
+            errors.append(f"{relative} inputSchema property names must be non-empty strings")
+        if not isinstance(property_schema, dict):
+            errors.append(f"{relative} inputSchema property {property_name} must be an object")
+    raw_required = raw_schema.get("required", [])
+    if raw_required is None:
+        raw_required = []
+    if not isinstance(raw_required, list):
+        errors.append(f"{relative} inputSchema.required must be a list")
+        raw_required = []
+    for required_name in raw_required:
+        if not isinstance(required_name, str) or not required_name.strip():
+            errors.append(f"{relative} inputSchema.required entries must be non-empty strings")
+            continue
+        if raw_properties and required_name not in raw_properties:
+            errors.append(f"{relative} requires unknown inputSchema property: {required_name}")
+
+    risk = str(payload.get("risk") or "").strip()
+    annotations = payload.get("annotations")
+    is_mutating = risk in {"mutating", "destructive"}
+    if isinstance(annotations, dict) and annotations.get("readOnlyHint") is False:
+        is_mutating = True
+    if not is_mutating:
+        return
+    execute_schema = raw_properties.get("execute")
+    if not isinstance(execute_schema, dict):
+        errors.append(f"{relative} mutating tools require boolean execute input")
+        return
+    if execute_schema.get("type") != "boolean":
+        errors.append(f"{relative} execute input must be boolean")
+    if execute_schema.get("default") is not False:
+        errors.append(f"{relative} execute input default must be false")
+
+
 def validate_extension_pack(path: Path) -> ExtensionValidationReport:
     extension_id = ""
     errors: list[str] = []
@@ -68,6 +114,11 @@ def validate_extension_pack(path: Path) -> ExtensionValidationReport:
 
     if not manifest.id:
         errors.append("manifest.id is required")
+    else:
+        try:
+            _validate_extension_id(manifest.id)
+        except ValueError as exc:
+            errors.append(str(exc))
     if manifest.risk not in {"read_only", "mutating", "destructive"}:
         errors.append(f"unsupported risk: {manifest.risk}")
 
@@ -97,7 +148,10 @@ def validate_extension_pack(path: Path) -> ExtensionValidationReport:
             errors.append(f"{relative} collides with existing tool: {name}")
         if name in seen_names:
             errors.append(f"{relative} duplicates extension tool: {name}")
-        seen_names.add(name)
+        if name:
+            seen_names.add(name)
+
+        _validate_tool_input_schema(relative, payload, errors)
 
         for text in _walk_strings(payload):
             if SECRET_PATTERN.search(text):

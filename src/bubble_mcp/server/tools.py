@@ -34,6 +34,7 @@ from bubble_mcp.extensions.store import (
     import_extension,
     list_extensions,
 )
+from bubble_mcp.extensions.tools import enabled_extension_tool_schemas
 from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
@@ -760,6 +761,17 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             execute=bool(args.get("execute")),
             confirm=bool(args.get("confirm")),
         )
+    enabled_extension_tools = {str(tool.get("name") or "") for tool in enabled_extension_tool_schemas()}
+    if name in enabled_extension_tools:
+        return {
+            "ok": False,
+            "error": "extension_tool_execution_not_implemented",
+            "tool": name,
+            "message": (
+                "Declarative extension tool schemas can be validated and exposed in v1, "
+                "but execution requires a future recipe/template runner."
+            ),
+        }
     if name in ARIA_BUBBLE_TOOL_NAMES:
         return call_legacy_catalog_tool(name, arguments or {})
     raise ValueError(f"Unknown Bubble MCP tool: {name}")

@@ -142,11 +142,13 @@ MCP tools:
 - `bubble_extension_enable`
 - `bubble_extension_disable`
 
-Import is idempotent for the same extension id: the local copy is replaced and returned to `pending`. Enable and disable are local state changes only.
+Import is idempotent for the same extension id: the local copy is replaced and returned to `pending`. Enable validates the installed pack before changing state; invalid packs remain pending or disabled and return validation errors.
 
 ## Preview And Execute Boundary
 
-Extension packs can add schemas to the tool catalog, but they do not bypass the Bubble MCP execution model. Mutating operations must keep an explicit `execute` input with `false` as the safe default. A tool proposal should preview the normalized write first, then require explicit `execute=true` only after semantic and structural validation.
+Extension packs can add validated schemas to the tool catalog, but v1 does not execute those declarative tools yet. If an enabled extension tool is called, the MCP returns an explicit `extension_tool_execution_not_implemented` result instead of treating it as an unknown tool.
+
+Future declarative execution must not bypass the Bubble MCP execution model. Mutating operations must keep an explicit `execute` input with `false` as the safe default. A tool proposal should preview the normalized write first, then require explicit `execute=true` only after semantic and structural validation.
 
 Extension pack validation does not execute Bubble writes. Enabling a pack only exposes schemas; it does not replay captured writes, create elements, or modify a Bubble app.
 

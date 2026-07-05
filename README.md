@@ -448,11 +448,14 @@ revalidated before they are exposed through the MCP tool catalog. Validation
 rejects tool name collisions with built-in/native tools, duplicate names inside
 the pack, symlinks or path escapes, and likely secrets. Extension packs are JSON
 contracts only; v1 does not execute arbitrary Python, Node, shell, or bundled
-code from a pack.
+code from a pack. Declarative extension tool schemas are catalog-visible in v1,
+but their recipe/template execution runner is intentionally not implemented yet;
+calling one returns `extension_tool_execution_not_implemented`.
 
-Mutating extension tools must inherit the same preview-first contract as the
-native Bubble MCP catalog. They should default to `execute=false`; callers must
-explicitly opt in to `execute=true` before any Bubble write.
+When declarative execution is added, mutating extension tools must inherit the
+same preview-first contract as the native Bubble MCP catalog. They should
+default to `execute=false`; callers must explicitly opt in to `execute=true`
+before any Bubble write.
 
 Local learning records are consultative only. They can inform planning, ranking,
 warnings, and documentation, but they cannot execute writes, bypass validation,

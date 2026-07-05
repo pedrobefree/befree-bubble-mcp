@@ -47,6 +47,20 @@ def test_enable_disable_extension_updates_state(
     assert list_extensions()[0].state == "disabled"
 
 
+def test_enable_extension_rejects_invalid_installed_pack(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    import_extension(Path("tests/fixtures/extensions/secret-pack"))
+
+    report = enable_extension("local.secret-pack")
+
+    assert report.ok is False
+    assert report.state == "pending"
+    assert any("possible secret" in error for error in report.errors)
+    assert list_extensions()[0].state == "pending"
+
+
 def test_export_extension_writes_archive_payload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

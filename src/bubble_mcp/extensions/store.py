@@ -146,6 +146,17 @@ def get_installed_extension(extension_id: str) -> InstalledExtension:
 
 def enable_extension(extension_id: str) -> ExtensionOperationReport:
     installed = get_installed_extension(extension_id)
+    from bubble_mcp.extensions.validator import validate_extension_pack
+
+    report = validate_extension_pack(installed.path)
+    if not report.ok:
+        return ExtensionOperationReport(
+            ok=False,
+            extension_id=extension_id,
+            state=installed.state,
+            path=installed.path,
+            errors=report.errors,
+        )
     _write_state(extension_id, "enabled")
     return ExtensionOperationReport(ok=True, extension_id=extension_id, state="enabled", path=installed.path)
 

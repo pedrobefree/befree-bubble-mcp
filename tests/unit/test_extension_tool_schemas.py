@@ -6,6 +6,7 @@ from bubble_mcp.extensions.store import enable_extension, import_extension
 from bubble_mcp.extensions.tools import enabled_extension_tool_schemas
 from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.server.schemas import list_tool_schemas
+from bubble_mcp.server.tools import call_tool
 
 
 SIMPLE_PACK = Path("tests/fixtures/extensions/simple-pack")
@@ -37,6 +38,18 @@ def test_server_tool_list_includes_enabled_extension_tool(tmp_path, monkeypatch)
     assert "create_text" in names
 
 
+def test_enabled_extension_tool_call_reports_unimplemented_runner(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    import_extension(SIMPLE_PACK)
+    enable_extension("local.simple-pack")
+
+    result = call_tool("local.simple-pack.create_plugin_widget", {"execute": False})
+
+    assert result["ok"] is False
+    assert result["error"] == "extension_tool_execution_not_implemented"
+    assert result["tool"] == "local.simple-pack.create_plugin_widget"
+
+
 def test_extension_collision_is_rejected(tmp_path) -> None:
     report = validate_extension_pack(Path("tests/fixtures/extensions/collision-pack"))
 
@@ -49,6 +62,48 @@ def test_extension_secret_is_rejected() -> None:
 
     assert report.ok is False
     assert any("possible secret" in error for error in report.errors)
+
+
+def test_extension_validate_rejects_unsafe_manifest_id(tmp_path) -> None:
+    unsafe_pack = tmp_path / "unsafe-id-pack"
+    shutil.copytree(SIMPLE_PACK, unsafe_pack)
+    manifest = json.loads((unsafe_pack / "extension.json").read_text(encoding="utf-8"))
+    manifest["id"] = "../unsafe-pack"
+    (unsafe_pack / "extension.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    report = validate_extension_pack(unsafe_pack)
+
+    assert report.ok is False
+    assert any("safe path segment" in error for error in report.errors)
+
+
+def test_extension_validate_rejects_malformed_tool_input_schema(tmp_path) -> None:
+    malformed_pack = tmp_path / "malformed-schema-pack"
+    shutil.copytree(SIMPLE_PACK, malformed_pack)
+    tool_path = malformed_pack / "tools" / "create-plugin-widget.tool.json"
+    tool = json.loads(tool_path.read_text(encoding="utf-8"))
+    tool["inputSchema"] = {"type": "string", "properties": [], "required": ["label"]}
+    tool_path.write_text(json.dumps(tool), encoding="utf-8")
+
+    report = validate_extension_pack(malformed_pack)
+
+    assert report.ok is False
+    assert any("inputSchema.type must be object" in error for error in report.errors)
+    assert any("inputSchema.properties must be an object" in error for error in report.errors)
+
+
+def test_extension_validate_rejects_mutating_tool_without_execute_default_false(tmp_path) -> None:
+    malformed_pack = tmp_path / "unsafe-execute-pack"
+    shutil.copytree(SIMPLE_PACK, malformed_pack)
+    tool_path = malformed_pack / "tools" / "create-plugin-widget.tool.json"
+    tool = json.loads(tool_path.read_text(encoding="utf-8"))
+    del tool["inputSchema"]["properties"]["execute"]
+    tool_path.write_text(json.dumps(tool), encoding="utf-8")
+
+    report = validate_extension_pack(malformed_pack)
+
+    assert report.ok is False
+    assert any("mutating tools require boolean execute input" in error for error in report.errors)
 
 
 def test_malformed_installed_extension_does_not_crash_tool_list(tmp_path, monkeypatch) -> None:
