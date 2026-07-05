@@ -110,3 +110,19 @@ class ExtensionOperationReport:
             "path": str(self.path) if self.path else None,
             "errors": self.errors,
         }
+
+
+@dataclass(frozen=True)
+class ExtensionValidationReport:
+    ok: bool
+    extension_id: str
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "ok": self.ok,
+            "extension_id": self.extension_id,
+            "errors": self.errors,
+            "warnings": self.warnings,
+        }
