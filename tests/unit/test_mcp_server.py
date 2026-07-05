@@ -2302,6 +2302,134 @@ def test_knowledge_tools_are_listed_with_annotations() -> None:
     assert tools["bubble_knowledge_refresh_source"]["inputSchema"]["required"] == ["source", "file"]
 
 
+def test_tool_wizard_tools_are_listed_with_annotations() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 120, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    assert tools["bubble_tool_wizard_start"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_tool_wizard_start"]["annotations"]["idempotentHint"] is False
+    assert tools["bubble_tool_wizard_add_capture"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_tool_wizard_add_capture"]["annotations"]["idempotentHint"] is False
+    assert tools["bubble_tool_wizard_describe"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_tool_wizard_describe"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_tool_wizard_start"]["inputSchema"]["required"] == ["intent", "target", "profile"]
+    assert tools["bubble_tool_wizard_add_capture"]["inputSchema"]["required"] == ["session_id", "file"]
+    assert tools["bubble_tool_wizard_describe"]["inputSchema"]["required"] == ["session_id"]
+
+
+def test_tool_wizard_tools_start_add_capture_and_describe(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    start_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 121,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_start",
+                "arguments": {
+                    "intent": "Create an API Connector call",
+                    "target": "api_connector",
+                    "profile": "client",
+                },
+            },
+        }
+    )
+
+    assert start_response is not None
+    start_payload = json.loads(start_response["result"]["content"][0]["text"])
+    assert start_payload["ok"] is True
+    session_id = start_payload["session"]["id"]
+
+    add_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 122,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_add_capture",
+                "arguments": {
+                    "session_id": session_id,
+                    "file": "tests/fixtures/tool-authoring/api-connector-write-capture.json",
+                },
+            },
+        }
+    )
+
+    assert add_response is not None
+    add_payload = json.loads(add_response["result"]["content"][0]["text"])
+    assert add_payload["ok"] is True
+    assert add_payload["classification"]["families"] == ["editor_write"]
+    assert add_payload["classification"]["change_count"] == 1
+
+    describe_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 123,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_describe",
+                "arguments": {"session_id": session_id},
+            },
+        }
+    )
+
+    assert describe_response is not None
+    describe_payload = json.loads(describe_response["result"]["content"][0]["text"])
+    assert describe_payload["session"]["intent"] == "Create an API Connector call"
+    assert describe_payload["classification"]["app_id"] == "synthetic-app"
+    assert describe_payload["classification"]["change_count"] == 1
+
+
+def test_tool_wizard_add_capture_returns_structured_mcp_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    no_payload = tmp_path / "no-payload.json"
+    no_payload.write_text("{}", encoding="utf-8")
+
+    start_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 124,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_start",
+                "arguments": {
+                    "intent": "Create an API Connector call",
+                    "target": "api_connector",
+                    "profile": "client",
+                },
+            },
+        }
+    )
+    assert start_response is not None
+    session_id = json.loads(start_response["result"]["content"][0]["text"])["session"]["id"]
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 125,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_add_capture",
+                "arguments": {
+                    "session_id": session_id,
+                    "file": str(no_payload),
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["isError"] is True
+    assert payload["ok"] is False
+    assert payload["tool"] == "bubble_tool_wizard_add_capture"
+    assert payload["error_class"] == "ValueError"
+    assert "does not contain a Bubble editor write body" in payload["error"]
+
+
 def test_knowledge_tools_import_search_and_fetch_local_cache(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 

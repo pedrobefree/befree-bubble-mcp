@@ -376,6 +376,20 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "input schemas, property descriptions, annotations, resource metadata, prompt arguments, and runtime coverage "
         "so clients can detect catalog regressions before agents waste tokens on discovery. Read-only."
     ),
+    "bubble_tool_wizard_start": (
+        "Start a local tool-authoring session that groups captured Bubble editor writes for a future extension tool. "
+        "This only creates local session metadata; it does not generate tools, activate extensions, replay captures, "
+        "or execute Bubble writes."
+    ),
+    "bubble_tool_wizard_add_capture": (
+        "Copy a captured Bubble editor write JSON file into a local tool-authoring session and classify the captured "
+        "write with the expert payload classifier. Use this only for session/capture classification; it does not "
+        "replay the write or mutate Bubble."
+    ),
+    "bubble_tool_wizard_describe": (
+        "Describe a local tool-authoring session and aggregate classification for captured writes. Read-only; it does "
+        "not generate, activate, or execute extension tools."
+    ),
     "bubble_runtime_smoke": (
         "Run an operational runtime smoke suite. Use coverage for local catalog execution coverage plus "
         "agent-facing catalog quality, agent-routing to validate natural-language tool selection without writes, "
@@ -1193,6 +1207,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_extension_validate",
         "bubble_skill_validate",
         "bubble_skill_describe",
+        "bubble_tool_wizard_describe",
         "bubble_learning_list",
         "bubble_knowledge_search",
         "bubble_knowledge_fetch",

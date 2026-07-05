@@ -108,6 +108,16 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Installed Bubble MCP extension id.",
         examples=["local.simple-pack"],
     ),
+    "session_id": _prop(
+        "string",
+        "Local tool-authoring session id.",
+        examples=["toolwiz_20260704_api_connector_1a2b3c4d"],
+    ),
+    "target": _prop(
+        "string",
+        "Bubble authoring target or capability family being captured.",
+        examples=["api_connector", "workflow_action", "data_schema"],
+    ),
     "output": _prop(
         "string",
         "Optional local output path for generated context or diagnostic artifacts.",
@@ -330,6 +340,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
             "Create a page and add a text element",
             "Fetch changelog entries for the current branch",
         ],
+    ),
+    "intent": _prop(
+        "string",
+        "Natural-language description of the candidate tool-authoring session intent.",
+        examples=["Create an API Connector call", "Create a reusable workflow action"],
     ),
     "recipe": _prop(
         "string",
@@ -1164,6 +1179,24 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "Describe a declarative Bubble MCP skill contract JSON file after validation. This is validation/description only and does not execute skill steps.",
             ["path"],
             required=["path"],
+        ),
+        tool_schema(
+            "bubble_tool_wizard_start",
+            "Start a local tool-authoring session for captured Bubble editor writes. This only creates local session metadata and does not generate, activate, or execute extension tools.",
+            ["intent", "target", "profile"],
+            required=["intent", "target", "profile"],
+        ),
+        tool_schema(
+            "bubble_tool_wizard_add_capture",
+            "Add a captured Bubble editor write JSON file to a local tool-authoring session and classify it with the expert payload classifier. This does not replay writes.",
+            ["session_id", "file"],
+            required=["session_id", "file"],
+        ),
+        tool_schema(
+            "bubble_tool_wizard_describe",
+            "Describe a local tool-authoring session and its aggregate captured-write classification. Read-only and does not generate or activate tools.",
+            ["session_id"],
+            required=["session_id"],
         ),
         {
             "name": "bubble_learning_record",

@@ -57,6 +57,11 @@ from bubble_mcp.server.tools import call_tool
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
+from bubble_mcp.tool_authoring.sessions import (
+    append_capture_to_authoring_session,
+    create_authoring_session,
+    describe_authoring_session,
+)
 from bubble_mcp.validators.semantic import validate_plan
 
 
@@ -718,6 +723,52 @@ def command_skill_describe(args: argparse.Namespace) -> int:
     return 0 if report.get("ok") else 1
 
 
+def emit_tool_wizard_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_tool_wizard_start(args: argparse.Namespace) -> int:
+    try:
+        session = create_authoring_session(
+            intent=args.intent,
+            target=args.target,
+            profile=args.profile,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("start", exc)
+        return 1
+    emit_json({"ok": True, "session": session.to_dict()})
+    return 0
+
+
+def command_tool_wizard_add_capture(args: argparse.Namespace) -> int:
+    try:
+        result = append_capture_to_authoring_session(args.session_id, Path(args.file))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("add-capture", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_tool_wizard_describe(args: argparse.Namespace) -> int:
+    try:
+        result = describe_authoring_session(args.session_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("describe", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def emit_learning_error(action: str, exc: Exception) -> None:
     emit_json(
         {
@@ -1314,6 +1365,36 @@ def build_parser() -> argparse.ArgumentParser:
     skill_describe_parser = skill_subparsers.add_parser("describe", help="Describe a validated skill contract JSON file.")
     skill_describe_parser.add_argument("--path", required=True)
     skill_describe_parser.set_defaults(func=command_skill_describe)
+
+    tool_wizard_parser = subparsers.add_parser(
+        "tool-wizard",
+        help="Manage local tool-authoring sessions from captured Bubble writes.",
+    )
+    tool_wizard_subparsers = tool_wizard_parser.add_subparsers(dest="tool_wizard_command", required=True)
+
+    tool_wizard_start_parser = tool_wizard_subparsers.add_parser(
+        "start",
+        help="Start a local tool-authoring session.",
+    )
+    tool_wizard_start_parser.add_argument("--intent", required=True)
+    tool_wizard_start_parser.add_argument("--target", required=True)
+    tool_wizard_start_parser.add_argument("--profile", required=True)
+    tool_wizard_start_parser.set_defaults(func=command_tool_wizard_start)
+
+    tool_wizard_add_parser = tool_wizard_subparsers.add_parser(
+        "add-capture",
+        help="Add and classify a captured Bubble editor write JSON file.",
+    )
+    tool_wizard_add_parser.add_argument("session_id")
+    tool_wizard_add_parser.add_argument("--file", required=True)
+    tool_wizard_add_parser.set_defaults(func=command_tool_wizard_add_capture)
+
+    tool_wizard_describe_parser = tool_wizard_subparsers.add_parser(
+        "describe",
+        help="Describe a local tool-authoring session and aggregate classification.",
+    )
+    tool_wizard_describe_parser.add_argument("session_id")
+    tool_wizard_describe_parser.set_defaults(func=command_tool_wizard_describe)
 
     learning_parser = subparsers.add_parser("learning", help="Manage local consultative learning records.")
     learning_subparsers = learning_parser.add_subparsers(dest="learning_command", required=True)

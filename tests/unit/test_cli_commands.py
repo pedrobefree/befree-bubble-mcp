@@ -864,6 +864,89 @@ def test_cli_extension_invalid_inputs_return_json_errors(tmp_path, monkeypatch, 
     assert disabled["error"] == "Unknown extension: local.missing-pack"
 
 
+def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert (
+        main(
+            [
+                "tool-wizard",
+                "start",
+                "--intent",
+                "Create an API Connector call",
+                "--target",
+                "api_connector",
+                "--profile",
+                "client",
+            ]
+        )
+        == 0
+    )
+    started = json.loads(capsys.readouterr().out)
+    assert started["ok"] is True
+    session_id = started["session"]["id"]
+
+    assert (
+        main(
+            [
+                "tool-wizard",
+                "add-capture",
+                session_id,
+                "--file",
+                "tests/fixtures/tool-authoring/api-connector-write-capture.json",
+            ]
+        )
+        == 0
+    )
+    captured = json.loads(capsys.readouterr().out)
+    assert captured["classification"]["families"] == ["editor_write"]
+    assert captured["classification"]["change_count"] == 1
+
+    assert main(["tool-wizard", "describe", session_id]) == 0
+    described = json.loads(capsys.readouterr().out)
+    assert described["session"]["profile"] == "client"
+    assert described["classification"]["app_id"] == "synthetic-app"
+
+
+def test_cli_tool_wizard_add_capture_returns_structured_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+
+    assert (
+        main(
+            [
+                "tool-wizard",
+                "start",
+                "--intent",
+                "Create an API Connector call",
+                "--target",
+                "api_connector",
+                "--profile",
+                "client",
+            ]
+        )
+        == 0
+    )
+    session_id = json.loads(capsys.readouterr().out)["session"]["id"]
+
+    no_payload = tmp_path / "no-payload.json"
+    no_payload.write_text("{}", encoding="utf-8")
+    assert main(["tool-wizard", "add-capture", session_id, "--file", str(no_payload)]) == 1
+    missing_payload = json.loads(capsys.readouterr().out)
+    assert missing_payload["ok"] is False
+    assert missing_payload["action"] == "add-capture"
+    assert missing_payload["error_class"] == "ValueError"
+    assert "does not contain a Bubble editor write body" in missing_payload["error"]
+
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{", encoding="utf-8")
+    assert main(["tool-wizard", "add-capture", session_id, "--file", str(malformed)]) == 1
+    malformed_payload = json.loads(capsys.readouterr().out)
+    assert malformed_payload["ok"] is False
+    assert malformed_payload["action"] == "add-capture"
+    assert malformed_payload["error_class"] == "JSONDecodeError"
+    assert "Expecting property name" in malformed_payload["error"]
+
+
 def test_cli_learning_record_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 

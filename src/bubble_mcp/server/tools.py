@@ -54,6 +54,11 @@ from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
+from bubble_mcp.tool_authoring.sessions import (
+    append_capture_to_authoring_session,
+    create_authoring_session,
+    describe_authoring_session,
+)
 from bubble_mcp.validators.semantic import validate_plan
 
 
@@ -112,6 +117,23 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_skill_describe":
         path = _required_string_arg(arguments, "path", name)
         return describe_skill_file(Path(path))
+    if name == "bubble_tool_wizard_start":
+        args = arguments or {}
+        session = create_authoring_session(
+            intent=_required_string_arg(args, "intent", name),
+            target=_required_string_arg(args, "target", name),
+            profile=_required_string_arg(args, "profile", name),
+        )
+        return {"ok": True, "session": session.to_dict()}
+    if name == "bubble_tool_wizard_add_capture":
+        args = arguments or {}
+        session_id = _required_string_arg(args, "session_id", name)
+        file_path = _required_string_arg(args, "file", name)
+        return append_capture_to_authoring_session(session_id, Path(file_path))
+    if name == "bubble_tool_wizard_describe":
+        args = arguments or {}
+        session_id = _required_string_arg(args, "session_id", name)
+        return describe_authoring_session(session_id)
     if name == "bubble_learning_record":
         args = arguments or {}
         value = args.get("value")
