@@ -42,6 +42,7 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.learning.store import append_learning_record, list_learning_records
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
 from bubble_mcp.readiness import run_readiness_check
@@ -103,6 +104,36 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_extension_disable":
         extension_id = _required_string_arg(arguments, "extension_id", name)
         return disable_extension(extension_id).to_dict()
+    if name == "bubble_learning_record":
+        args = arguments or {}
+        value = args.get("value")
+        if value is not None and not isinstance(value, dict):
+            raise ValueError("bubble_learning_record requires value to be a JSON object.")
+        record = append_learning_record(
+            scope=str(args.get("scope") or ""),
+            key=str(args.get("key") or ""),
+            value=value,
+            source=str(args.get("source") or ""),
+            confidence=str(args.get("confidence") or ""),
+            profile=str(args.get("profile") or "") or None,
+            project=str(args.get("project") or "") or None,
+            extension_id=str(args.get("extension_id") or "") or None,
+        )
+        return {"ok": True, "record": record.to_dict()}
+    if name == "bubble_learning_list":
+        args = arguments or {}
+        return {
+            "ok": True,
+            "records": [
+                record.to_dict()
+                for record in list_learning_records(
+                    scope=str(args.get("scope") or "") or None,
+                    profile=str(args.get("profile") or "") or None,
+                    project=str(args.get("project") or "") or None,
+                    extension_id=str(args.get("extension_id") or "") or None,
+                )
+            ],
+        }
     if name == "bubble_readiness_check":
         args = arguments or {}
         return run_readiness_check(

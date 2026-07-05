@@ -491,6 +491,15 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Soft-delete a Bubble branch/version using the stored editor session. Use only when the user asks to remove a "
         "branch; execute=true also requires confirm=true because this is destructive."
     ),
+    "bubble_learning_record": (
+        "Append one local consultative learning record with scope metadata, provenance, and confidence. Use only when "
+        "the user explicitly declares or confirms durable guidance. Records are advisory storage and do not influence "
+        "planner behavior in this release."
+    ),
+    "bubble_learning_list": (
+        "List local consultative learning records by optional scope, profile, project, or extension id. Use to inspect "
+        "previously recorded advisory guidance. Read-only and does not influence planner behavior."
+    ),
 }
 
 
@@ -1149,6 +1158,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_changelog_fetch",
         "bubble_extension_list",
         "bubble_extension_validate",
+        "bubble_learning_list",
         "refresh_profile_cache",
         "sync_cache",
         "sync_event_cache",

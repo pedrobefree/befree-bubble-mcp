@@ -2262,3 +2262,150 @@ def test_extension_management_tools_validate_required_arguments() -> None:
         assert payload["ok"] is False
         assert payload["tool"] == tool_name
         assert payload["error"] == f"{tool_name} requires {required_arg}."
+
+
+def test_learning_tools_are_listed_with_annotations() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 103, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    assert tools["bubble_learning_record"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_learning_record"]["annotations"]["idempotentHint"] is False
+    assert tools["bubble_learning_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_learning_list"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_learning_record"]["inputSchema"]["required"] == [
+        "scope",
+        "key",
+        "source",
+        "confidence",
+    ]
+
+
+def test_learning_tools_append_and_list_records(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    record_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 104,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_learning_record",
+                "arguments": {
+                    "scope": "project",
+                    "key": "naming.page_language",
+                    "value": {"language": "pt-BR"},
+                    "source": "user_declared",
+                    "confidence": "confirmed",
+                    "project": "client-app",
+                },
+            },
+        }
+    )
+
+    assert record_response is not None
+    record_payload = json.loads(record_response["result"]["content"][0]["text"])
+    assert record_payload["ok"] is True
+    assert record_payload["record"]["scope"] == "project"
+    assert record_payload["record"]["project"] == "client-app"
+
+    list_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 105,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_learning_list",
+                "arguments": {"scope": "project", "project": "client-app"},
+            },
+        }
+    )
+
+    assert list_response is not None
+    list_payload = json.loads(list_response["result"]["content"][0]["text"])
+    assert list_payload["ok"] is True
+    assert [record["key"] for record in list_payload["records"]] == ["naming.page_language"]
+
+
+def test_learning_record_tool_rejects_missing_scope_discriminator_without_append(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 106,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_learning_record",
+                "arguments": {
+                    "scope": "project",
+                    "key": "naming.page_language",
+                    "value": {"language": "pt-BR"},
+                    "source": "user_declared",
+                    "confidence": "confirmed",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["isError"] is True
+    assert payload["ok"] is False
+    assert payload["tool"] == "bubble_learning_record"
+    assert payload["error"] == "Learning record scope 'project' requires project."
+
+    list_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 107,
+            "method": "tools/call",
+            "params": {"name": "bubble_learning_list", "arguments": {}},
+        }
+    )
+    assert list_response is not None
+    list_payload = json.loads(list_response["result"]["content"][0]["text"])
+    assert list_payload["records"] == []
+
+
+def test_learning_record_tool_rejects_non_object_value_without_append(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 108,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_learning_record",
+                "arguments": {
+                    "scope": "global",
+                    "key": "workflow.preview_required",
+                    "value": True,
+                    "source": "user_declared",
+                    "confidence": "confirmed",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["isError"] is True
+    assert payload["ok"] is False
+    assert payload["tool"] == "bubble_learning_record"
+    assert payload["error"] == "bubble_learning_record requires value to be a JSON object."
+
+    list_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 109,
+            "method": "tools/call",
+            "params": {"name": "bubble_learning_list", "arguments": {}},
+        }
+    )
+    assert list_response is not None
+    list_payload = json.loads(list_response["result"]["content"][0]["text"])
+    assert list_payload["records"] == []

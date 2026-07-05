@@ -58,6 +58,8 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_extension_import",
     "bubble_extension_enable",
     "bubble_extension_disable",
+    "bubble_learning_record",
+    "bubble_learning_list",
     "create_from_html",
 }
 

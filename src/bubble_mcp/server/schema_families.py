@@ -1153,6 +1153,75 @@ def extension_kernel_tools() -> list[ToolSchema]:
             ["extension_id"],
             required=["extension_id"],
         ),
+        {
+            "name": "bubble_learning_record",
+            "description": (
+                "Append one local consultative learning record. Records are stored as append-only JSONL and are not "
+                "used by planner behavior in this release."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "scope": _prop(
+                        "string",
+                        "Learning scope for this record.",
+                        enum=["global", "profile", "project", "extension"],
+                    ),
+                    "key": _prop(
+                        "string",
+                        "Stable learning key such as naming.page_language or workflow.preview_required.",
+                        examples=["naming.page_language", "workflow.preview_required"],
+                    ),
+                    "value": _prop(
+                        "object",
+                        "JSON object containing the consultative learning value.",
+                        additional_properties=True,
+                        default={},
+                        examples=[{"language": "pt-BR"}],
+                    ),
+                    "source": _prop(
+                        "string",
+                        "Provenance for the learning record.",
+                        examples=["user_declared", "operator_reviewed"],
+                    ),
+                    "confidence": _prop(
+                        "string",
+                        "Confidence label for the learning record.",
+                        examples=["confirmed", "tentative"],
+                    ),
+                    "profile": field("profile"),
+                    "project": _prop(
+                        "string",
+                        "Optional Bubble app/project identifier used when scope is project.",
+                        examples=["client-app"],
+                    ),
+                    "extension_id": field("extension_id"),
+                },
+                required=["scope", "key", "source", "confidence"],
+            ),
+        },
+        {
+            "name": "bubble_learning_list",
+            "description": (
+                "List local consultative learning records with optional scope/profile/project/extension filters. "
+                "Read-only and does not affect planner behavior."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "scope": _prop(
+                        "string",
+                        "Optional learning scope filter.",
+                        enum=["global", "profile", "project", "extension"],
+                    ),
+                    "profile": field("profile"),
+                    "project": _prop(
+                        "string",
+                        "Optional Bubble app/project identifier filter.",
+                        examples=["client-app"],
+                    ),
+                    "extension_id": field("extension_id"),
+                }
+            ),
+        },
     ]
 
 

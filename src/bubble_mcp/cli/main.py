@@ -45,6 +45,7 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.learning.store import append_learning_record, list_learning_records
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
 from bubble_mcp.readiness import run_readiness_check
@@ -683,6 +684,53 @@ def command_extension_disable(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def emit_learning_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_learning_record(args: argparse.Namespace) -> int:
+    try:
+        value = _load_optional_json_object(args.value)
+        record = append_learning_record(
+            scope=args.scope,
+            key=args.key,
+            value=value,
+            source=args.source,
+            confidence=args.confidence,
+            profile=args.profile or None,
+            project=args.project or None,
+            extension_id=args.extension_id or None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_learning_error("record", exc)
+        return 1
+    emit_json({"ok": True, "record": record.to_dict()})
+    return 0
+
+
+def command_learning_list(args: argparse.Namespace) -> int:
+    try:
+        records = list_learning_records(
+            scope=args.scope or None,
+            profile=args.profile or None,
+            project=args.project or None,
+            extension_id=args.extension_id or None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_learning_error("list", exc)
+        return 1
+    emit_json({"ok": True, "records": [record.to_dict() for record in records]})
+    return 0
+
+
 def command_tools_guide(args: argparse.Namespace) -> int:
     emit_json(agent_guide(task=args.task or ""))
     return 0
@@ -1162,6 +1210,37 @@ def build_parser() -> argparse.ArgumentParser:
     extension_disable_parser = extension_subparsers.add_parser("disable", help="Disable an installed extension pack.")
     extension_disable_parser.add_argument("extension_id")
     extension_disable_parser.set_defaults(func=command_extension_disable)
+
+    learning_parser = subparsers.add_parser("learning", help="Manage local consultative learning records.")
+    learning_subparsers = learning_parser.add_subparsers(dest="learning_command", required=True)
+
+    learning_record_parser = learning_subparsers.add_parser(
+        "record",
+        help="Append one scoped consultative learning record.",
+    )
+    learning_record_parser.add_argument(
+        "--scope",
+        choices=["global", "profile", "project", "extension"],
+        required=True,
+    )
+    learning_record_parser.add_argument("--key", required=True)
+    learning_record_parser.add_argument("--value", required=True, help="JSON object text or a path to a JSON object.")
+    learning_record_parser.add_argument("--source", required=True)
+    learning_record_parser.add_argument("--confidence", required=True)
+    learning_record_parser.add_argument("--profile", default="")
+    learning_record_parser.add_argument("--project", default="")
+    learning_record_parser.add_argument("--extension-id", default="")
+    learning_record_parser.set_defaults(func=command_learning_record)
+
+    learning_list_parser = learning_subparsers.add_parser(
+        "list",
+        help="List consultative learning records with optional filters.",
+    )
+    learning_list_parser.add_argument("--scope", choices=["global", "profile", "project", "extension"], default="")
+    learning_list_parser.add_argument("--profile", default="")
+    learning_list_parser.add_argument("--project", default="")
+    learning_list_parser.add_argument("--extension-id", default="")
+    learning_list_parser.set_defaults(func=command_learning_list)
 
     tools_parser = subparsers.add_parser("tools", help="Discover the MCP tool catalog without opening the full schema.")
     tools_subparsers = tools_parser.add_subparsers(dest="tools_command", required=True)

@@ -785,3 +785,103 @@ def test_cli_extension_invalid_inputs_return_json_errors(tmp_path, monkeypatch, 
     assert disabled["action"] == "disable"
     assert disabled["error_class"] == "ValueError"
     assert disabled["error"] == "Unknown extension: local.missing-pack"
+
+
+def test_cli_learning_record_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert (
+        main(
+            [
+                "learning",
+                "record",
+                "--scope",
+                "project",
+                "--key",
+                "naming.page_language",
+                "--value",
+                '{"language":"pt-BR"}',
+                "--source",
+                "user_declared",
+                "--confidence",
+                "confirmed",
+                "--project",
+                "client-app",
+            ]
+        )
+        == 0
+    )
+    recorded = json.loads(capsys.readouterr().out)
+    assert recorded["ok"] is True
+    assert recorded["record"]["key"] == "naming.page_language"
+    assert recorded["record"]["project"] == "client-app"
+
+    assert main(["learning", "list", "--scope", "project", "--project", "client-app"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert [record["key"] for record in listed["records"]] == ["naming.page_language"]
+
+
+def test_cli_learning_record_invalid_value_returns_json_error(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert (
+        main(
+            [
+                "learning",
+                "record",
+                "--scope",
+                "global",
+                "--key",
+                "workflow.preview_required",
+                "--value",
+                "true",
+                "--source",
+                "user_declared",
+                "--confidence",
+                "confirmed",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["action"] == "record"
+    assert payload["error_class"] == "ValueError"
+    assert payload["error"] == "Expected a JSON object."
+
+
+def test_cli_learning_record_missing_scope_discriminator_returns_json_error(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert (
+        main(
+            [
+                "learning",
+                "record",
+                "--scope",
+                "project",
+                "--key",
+                "naming.page_language",
+                "--value",
+                '{"language":"pt-BR"}',
+                "--source",
+                "user_declared",
+                "--confidence",
+                "confirmed",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["action"] == "record"
+    assert payload["error_class"] == "ValueError"
+    assert payload["error"] == "Learning record scope 'project' requires project."
+
+    assert main(["learning", "list"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["records"] == []
