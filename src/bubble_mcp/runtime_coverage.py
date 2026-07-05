@@ -53,6 +53,11 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_changelog_fetch",
     "bubble_branch_create",
     "bubble_branch_delete",
+    "bubble_extension_list",
+    "bubble_extension_validate",
+    "bubble_extension_import",
+    "bubble_extension_enable",
+    "bubble_extension_disable",
     "create_from_html",
 }
 

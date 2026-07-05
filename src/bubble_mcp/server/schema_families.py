@@ -98,6 +98,16 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Local file path for the input artifact.",
         examples=["/Users/me/project/app.bubble", "/tmp/bubble-context.json"],
     ),
+    "path": _prop(
+        "string",
+        "Local filesystem path.",
+        examples=["/Users/me/project/extension-pack"],
+    ),
+    "extension_id": _prop(
+        "string",
+        "Installed Bubble MCP extension id.",
+        examples=["local.simple-pack"],
+    ),
     "output": _prop(
         "string",
         "Optional local output path for generated context or diagnostic artifacts.",
@@ -1113,6 +1123,39 @@ def branch_changelog_tools() -> list[ToolSchema]:
     ]
 
 
+def extension_kernel_tools() -> list[ToolSchema]:
+    return [
+        _empty_tool(
+            "bubble_extension_list",
+            "List local Bubble MCP extension packs and their enabled state.",
+        ),
+        tool_schema(
+            "bubble_extension_validate",
+            "Validate a local Bubble MCP extension pack directory without importing it.",
+            ["path"],
+            required=["path"],
+        ),
+        tool_schema(
+            "bubble_extension_import",
+            "Import a local Bubble MCP extension pack directory into local extension storage. The import is idempotent for the same extension id.",
+            ["path"],
+            required=["path"],
+        ),
+        tool_schema(
+            "bubble_extension_enable",
+            "Enable an installed Bubble MCP extension pack by extension id. Re-enabling an enabled extension is idempotent.",
+            ["extension_id"],
+            required=["extension_id"],
+        ),
+        tool_schema(
+            "bubble_extension_disable",
+            "Disable an installed Bubble MCP extension pack by extension id. Re-disabling a disabled extension is idempotent.",
+            ["extension_id"],
+            required=["extension_id"],
+        ),
+    ]
+
+
 def native_tool_schemas() -> list[ToolSchema]:
     """Return native tool schemas grouped by capability family."""
 
@@ -1121,4 +1164,5 @@ def native_tool_schemas() -> list[ToolSchema]:
         *planning_execution_tools(),
         *html_import_tools(),
         *branch_changelog_tools(),
+        *extension_kernel_tools(),
     ]

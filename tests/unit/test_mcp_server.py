@@ -2203,3 +2203,62 @@ def test_compile_plan_tool_returns_write_payload() -> None:
     assert response is not None
     payload = json.loads(response["result"]["content"][0]["text"])
     assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Text"
+
+
+def test_extension_management_tools_are_listed() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 100, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    assert tools["bubble_extension_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_extension_list"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_import"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_extension_import"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_enable"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_extension_enable"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_disable"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_extension_disable"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_validate"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_extension_validate"]["annotations"]["idempotentHint"] is True
+
+
+def test_extension_list_tool_returns_installed_extensions(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 101,
+            "method": "tools/call",
+            "params": {"name": "bubble_extension_list", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload == {"ok": True, "extensions": []}
+
+
+def test_extension_management_tools_validate_required_arguments() -> None:
+    for tool_name, required_arg in (
+        ("bubble_extension_validate", "path"),
+        ("bubble_extension_import", "path"),
+        ("bubble_extension_enable", "extension_id"),
+        ("bubble_extension_disable", "extension_id"),
+    ):
+        response = handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 102,
+                "method": "tools/call",
+                "params": {"name": tool_name, "arguments": {}},
+            }
+        )
+
+        assert response is not None
+        result = response["result"]
+        payload = json.loads(result["content"][0]["text"])
+        assert result["isError"] is True
+        assert payload["ok"] is False
+        assert payload["tool"] == tool_name
+        assert payload["error"] == f"{tool_name} requires {required_arg}."

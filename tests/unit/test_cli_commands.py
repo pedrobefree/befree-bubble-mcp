@@ -738,3 +738,50 @@ def test_cli_execute_plan_compile_uses_context_file_in_preview(tmp_path, capsys)
     write_payload = payload["results"][0]["payload"]
     create_change = first_change(write_payload, "CreateElement")
     assert create_change["path_array"][:2] == ["%p3", "pgIndex"]
+
+
+def test_cli_extension_import_list_enable_disable(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert main(["extension", "import", "--path", "tests/fixtures/extensions/simple-pack"]) == 0
+    imported = json.loads(capsys.readouterr().out)
+    assert imported["ok"] is True
+    assert imported["state"] == "pending"
+
+    assert main(["extension", "enable", "local.simple-pack"]) == 0
+    enabled = json.loads(capsys.readouterr().out)
+    assert enabled["state"] == "enabled"
+
+    assert main(["extension", "list"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["extensions"][0]["extension_id"] == "local.simple-pack"
+    assert listed["extensions"][0]["state"] == "enabled"
+
+    assert main(["extension", "disable", "local.simple-pack"]) == 0
+    disabled = json.loads(capsys.readouterr().out)
+    assert disabled["state"] == "disabled"
+
+
+def test_cli_extension_invalid_inputs_return_json_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert main(["extension", "import", "--path", "tests/fixtures/extensions/missing-pack"]) == 1
+    imported = json.loads(capsys.readouterr().out)
+    assert imported["ok"] is False
+    assert imported["action"] == "import"
+    assert imported["error_class"] == "ValueError"
+    assert "Extension pack source must be a directory" in imported["error"]
+
+    assert main(["extension", "enable", "local.missing-pack"]) == 1
+    enabled = json.loads(capsys.readouterr().out)
+    assert enabled["ok"] is False
+    assert enabled["action"] == "enable"
+    assert enabled["error_class"] == "ValueError"
+    assert enabled["error"] == "Unknown extension: local.missing-pack"
+
+    assert main(["extension", "disable", "local.missing-pack"]) == 1
+    disabled = json.loads(capsys.readouterr().out)
+    assert disabled["ok"] is False
+    assert disabled["action"] == "disable"
+    assert disabled["error_class"] == "ValueError"
+    assert disabled["error"] == "Unknown extension: local.missing-pack"

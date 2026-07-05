@@ -36,6 +36,8 @@ from bubble_mcp.execution.editor_api import (
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
+from bubble_mcp.extensions.store import disable_extension, enable_extension, import_extension, list_extensions
+from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -628,6 +630,59 @@ def command_changelog_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_extension_list(_args: argparse.Namespace) -> int:
+    emit_json({"ok": True, "extensions": [item.to_dict() for item in list_extensions()]})
+    return 0
+
+
+def emit_extension_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_extension_validate(args: argparse.Namespace) -> int:
+    report = validate_extension_pack(Path(args.path))
+    emit_json(report.to_dict())
+    return 0 if report.ok else 1
+
+
+def command_extension_import(args: argparse.Namespace) -> int:
+    try:
+        report = import_extension(Path(args.path))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_extension_error("import", exc)
+        return 1
+    emit_json(report.to_dict())
+    return 0 if report.ok else 1
+
+
+def command_extension_enable(args: argparse.Namespace) -> int:
+    try:
+        report = enable_extension(args.extension_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_extension_error("enable", exc)
+        return 1
+    emit_json(report.to_dict())
+    return 0 if report.ok else 1
+
+
+def command_extension_disable(args: argparse.Namespace) -> int:
+    try:
+        report = disable_extension(args.extension_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_extension_error("disable", exc)
+        return 1
+    emit_json(report.to_dict())
+    return 0 if report.ok else 1
+
+
 def command_tools_guide(args: argparse.Namespace) -> int:
     emit_json(agent_guide(task=args.task or ""))
     return 0
@@ -1085,6 +1140,28 @@ def build_parser() -> argparse.ArgumentParser:
     changelog_fetch_parser.add_argument("--change-path", default="")
     changelog_fetch_parser.add_argument("--user-id", action="append", default=[])
     changelog_fetch_parser.set_defaults(func=command_changelog_fetch)
+
+    extension_parser = subparsers.add_parser("extension", help="Manage local Bubble MCP extension packs.")
+    extension_subparsers = extension_parser.add_subparsers(dest="extension_command", required=True)
+
+    extension_list_parser = extension_subparsers.add_parser("list", help="List installed extension packs.")
+    extension_list_parser.set_defaults(func=command_extension_list)
+
+    extension_validate_parser = extension_subparsers.add_parser("validate", help="Validate an extension pack directory.")
+    extension_validate_parser.add_argument("--path", required=True)
+    extension_validate_parser.set_defaults(func=command_extension_validate)
+
+    extension_import_parser = extension_subparsers.add_parser("import", help="Import an extension pack directory.")
+    extension_import_parser.add_argument("--path", required=True)
+    extension_import_parser.set_defaults(func=command_extension_import)
+
+    extension_enable_parser = extension_subparsers.add_parser("enable", help="Enable an installed extension pack.")
+    extension_enable_parser.add_argument("extension_id")
+    extension_enable_parser.set_defaults(func=command_extension_enable)
+
+    extension_disable_parser = extension_subparsers.add_parser("disable", help="Disable an installed extension pack.")
+    extension_disable_parser.add_argument("extension_id")
+    extension_disable_parser.set_defaults(func=command_extension_disable)
 
     tools_parser = subparsers.add_parser("tools", help="Discover the MCP tool catalog without opening the full schema.")
     tools_subparsers = tools_parser.add_subparsers(dest="tools_command", required=True)

@@ -28,6 +28,13 @@ from bubble_mcp.execution.editor_api import (
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
+from bubble_mcp.extensions.store import (
+    disable_extension,
+    enable_extension,
+    import_extension,
+    list_extensions,
+)
+from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -45,6 +52,13 @@ from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
+
+
+def _required_string_arg(arguments: dict[str, Any] | None, key: str, tool_name: str) -> str:
+    value = str((arguments or {}).get(key) or "").strip()
+    if not value:
+        raise ValueError(f"{tool_name} requires {key}.")
+    return value
 
 
 def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -75,6 +89,20 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return catalog_coverage_report(include_tools=bool(args.get("include_tools") or args.get("include_details")))
     if name == "bubble_catalog_quality":
         return catalog_quality_report()
+    if name == "bubble_extension_list":
+        return {"ok": True, "extensions": [item.to_dict() for item in list_extensions()]}
+    if name == "bubble_extension_validate":
+        path = _required_string_arg(arguments, "path", name)
+        return validate_extension_pack(Path(path)).to_dict()
+    if name == "bubble_extension_import":
+        path = _required_string_arg(arguments, "path", name)
+        return import_extension(Path(path)).to_dict()
+    if name == "bubble_extension_enable":
+        extension_id = _required_string_arg(arguments, "extension_id", name)
+        return enable_extension(extension_id).to_dict()
+    if name == "bubble_extension_disable":
+        extension_id = _required_string_arg(arguments, "extension_id", name)
+        return disable_extension(extension_id).to_dict()
     if name == "bubble_readiness_check":
         args = arguments or {}
         return run_readiness_check(

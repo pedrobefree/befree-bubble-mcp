@@ -1012,7 +1012,16 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "destructiveHint": destructive,
         "idempotentHint": read_only
         or name
-        in {"bubble_health_check", "bubble_project_bootstrap", "bubble_profile_add", "bubble_profile_list", *agent_read_only},
+        in {
+            "bubble_health_check",
+            "bubble_project_bootstrap",
+            "bubble_profile_add",
+            "bubble_profile_list",
+            "bubble_extension_import",
+            "bubble_extension_enable",
+            "bubble_extension_disable",
+            *agent_read_only,
+        },
         "openWorldHint": name
         in {
             "bubble_project_bootstrap",
@@ -1138,6 +1147,8 @@ def _is_read_only(name: str) -> bool:
         "bubble_branch_list",
         "bubble_branch_contributors",
         "bubble_changelog_fetch",
+        "bubble_extension_list",
+        "bubble_extension_validate",
         "refresh_profile_cache",
         "sync_cache",
         "sync_event_cache",
