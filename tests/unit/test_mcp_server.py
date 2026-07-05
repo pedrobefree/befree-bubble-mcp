@@ -2281,6 +2281,87 @@ def test_learning_tools_are_listed_with_annotations() -> None:
     ]
 
 
+def test_knowledge_tools_are_listed_with_annotations() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 110, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    for name in (
+        "bubble_knowledge_search",
+        "bubble_knowledge_fetch",
+        "bubble_manual_guidance",
+        "bubble_manual_context_for_tool_authoring",
+        "bubble_manual_context_for_validation",
+    ):
+        assert tools[name]["annotations"]["readOnlyHint"] is True
+        assert tools[name]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_knowledge_refresh_source"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_knowledge_refresh_source"]["annotations"]["idempotentHint"] is False
+    assert tools["bubble_knowledge_search"]["inputSchema"]["required"] == ["query"]
+    assert tools["bubble_knowledge_fetch"]["inputSchema"]["required"] == ["record_id"]
+    assert tools["bubble_knowledge_refresh_source"]["inputSchema"]["required"] == ["source", "file"]
+
+
+def test_knowledge_tools_import_search_and_fetch_local_cache(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    refresh_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 111,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_knowledge_refresh_source",
+                "arguments": {
+                    "source": "bubble_manual_gitbook",
+                    "file": "tests/fixtures/knowledge/bubble-manual-records.jsonl",
+                },
+            },
+        }
+    )
+
+    assert refresh_response is not None
+    refresh_payload = json.loads(refresh_response["result"]["content"][0]["text"])
+    assert refresh_payload["ok"] is True
+    assert refresh_payload["imported"] == 2
+
+    search_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 112,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_manual_guidance",
+                "arguments": {"query": "privacy rules migration", "limit": 3},
+            },
+        }
+    )
+
+    assert search_response is not None
+    search_payload = json.loads(search_response["result"]["content"][0]["text"])
+    assert search_payload["ok"] is True
+    assert search_payload["purpose"] == "manual_guidance"
+    assert search_payload["cache_only"] is True
+    assert search_payload["results"][0]["id"] == "bubble-manual:data-types:privacy"
+
+    fetch_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 113,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_knowledge_fetch",
+                "arguments": {"record_id": "bubble-manual:data-types:privacy"},
+            },
+        }
+    )
+
+    assert fetch_response is not None
+    fetch_payload = json.loads(fetch_response["result"]["content"][0]["text"])
+    assert fetch_payload["ok"] is True
+    assert fetch_payload["record"]["source_url"].startswith("https://manual.bubble.io/")
+
+
 def test_learning_tools_append_and_list_records(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 

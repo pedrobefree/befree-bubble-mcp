@@ -500,6 +500,30 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "List local consultative learning records by optional scope, profile, project, or extension id. Use to inspect "
         "previously recorded advisory guidance. Read-only and does not influence planner behavior."
     ),
+    "bubble_knowledge_refresh_source": (
+        "Import normalized Bubble manual records from a user-supplied local JSONL file into the local knowledge cache. "
+        "Use this to seed or refresh cached manual guidance without calling remote GitBook or Bubble docs services."
+    ),
+    "bubble_knowledge_search": (
+        "Search the local normalized knowledge cache and return source-attributed Bubble manual matches. Use for "
+        "consultative docs context when cached records are available. Read-only and cache-only."
+    ),
+    "bubble_knowledge_fetch": (
+        "Fetch a single local knowledge record by id, including provenance, source URL, hash, TTL, license note, and "
+        "confidence. Read-only and cache-only."
+    ),
+    "bubble_manual_guidance": (
+        "Return source-attributed Bubble manual guidance from the local cache only. Use for advisory product or "
+        "implementation context; it never calls remote docs and does not automatically influence execution."
+    ),
+    "bubble_manual_context_for_tool_authoring": (
+        "Return cached Bubble manual context shaped for declarative tool authoring decisions. Consultative, "
+        "source-attributed, read-only, and cache-only."
+    ),
+    "bubble_manual_context_for_validation": (
+        "Return cached Bubble manual context shaped for validation, migration, and risk-review decisions. "
+        "Consultative, source-attributed, read-only, and cache-only."
+    ),
 }
 
 
@@ -1159,6 +1183,11 @@ def _is_read_only(name: str) -> bool:
         "bubble_extension_list",
         "bubble_extension_validate",
         "bubble_learning_list",
+        "bubble_knowledge_search",
+        "bubble_knowledge_fetch",
+        "bubble_manual_guidance",
+        "bubble_manual_context_for_tool_authoring",
+        "bubble_manual_context_for_validation",
         "refresh_profile_cache",
         "sync_cache",
         "sync_event_cache",

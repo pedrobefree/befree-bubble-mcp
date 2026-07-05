@@ -45,6 +45,7 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
 from bubble_mcp.learning.store import append_learning_record, list_learning_records
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
@@ -731,6 +732,65 @@ def command_learning_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def emit_knowledge_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_knowledge_refresh_source(args: argparse.Namespace) -> int:
+    try:
+        result = import_knowledge_records(Path(args.file), source=args.source)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_knowledge_error("refresh-source", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_knowledge_search(args: argparse.Namespace) -> int:
+    try:
+        result = knowledge_search(args.query, limit=args.limit)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_knowledge_error("search", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_knowledge_fetch(args: argparse.Namespace) -> int:
+    try:
+        result = fetch_knowledge_record(args.record_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_knowledge_error("fetch", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_knowledge_guidance(args: argparse.Namespace) -> int:
+    try:
+        result = knowledge_search(args.query, limit=args.limit)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_knowledge_error("guidance", exc)
+        return 1
+    emit_json(
+        {
+            **result,
+            "purpose": "manual_guidance",
+            "cache_only": True,
+            "remote_docs": "disabled",
+        }
+    )
+    return 0 if result.get("ok") else 1
+
+
 def command_tools_guide(args: argparse.Namespace) -> int:
     emit_json(agent_guide(task=args.task or ""))
     return 0
@@ -1241,6 +1301,40 @@ def build_parser() -> argparse.ArgumentParser:
     learning_list_parser.add_argument("--project", default="")
     learning_list_parser.add_argument("--extension-id", default="")
     learning_list_parser.set_defaults(func=command_learning_list)
+
+    knowledge_parser = subparsers.add_parser("knowledge", help="Manage local cached Bubble manual knowledge.")
+    knowledge_subparsers = knowledge_parser.add_subparsers(dest="knowledge_command", required=True)
+
+    knowledge_refresh_parser = knowledge_subparsers.add_parser(
+        "refresh-source",
+        help="Import normalized knowledge records from a local JSONL file.",
+    )
+    knowledge_refresh_parser.add_argument("--source", required=True, help="Safe local source id, such as bubble_manual_gitbook.")
+    knowledge_refresh_parser.add_argument("--file", required=True, help="Local JSONL file to import.")
+    knowledge_refresh_parser.set_defaults(func=command_knowledge_refresh_source)
+
+    knowledge_search_parser = knowledge_subparsers.add_parser(
+        "search",
+        help="Search the local knowledge cache.",
+    )
+    knowledge_search_parser.add_argument("query")
+    knowledge_search_parser.add_argument("--limit", type=int, default=8)
+    knowledge_search_parser.set_defaults(func=command_knowledge_search)
+
+    knowledge_fetch_parser = knowledge_subparsers.add_parser(
+        "fetch",
+        help="Fetch one local knowledge record by id.",
+    )
+    knowledge_fetch_parser.add_argument("record_id")
+    knowledge_fetch_parser.set_defaults(func=command_knowledge_fetch)
+
+    knowledge_guidance_parser = knowledge_subparsers.add_parser(
+        "guidance",
+        help="Return Bubble manual guidance from the local cache only.",
+    )
+    knowledge_guidance_parser.add_argument("query")
+    knowledge_guidance_parser.add_argument("--limit", type=int, default=5)
+    knowledge_guidance_parser.set_defaults(func=command_knowledge_guidance)
 
     tools_parser = subparsers.add_parser("tools", help="Discover the MCP tool catalog without opening the full schema.")
     tools_subparsers = tools_parser.add_subparsers(dest="tools_command", required=True)

@@ -1222,6 +1222,114 @@ def extension_kernel_tools() -> list[ToolSchema]:
                 }
             ),
         },
+        {
+            "name": "bubble_knowledge_refresh_source",
+            "description": (
+                "Import normalized Bubble manual records from a local JSONL file into the local knowledge cache. "
+                "This never calls remote documentation services and only mutates local MCP cache storage."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "source": _prop(
+                        "string",
+                        "Safe local knowledge source id. Use bubble_manual_gitbook for cached Bubble manual records.",
+                        examples=["bubble_manual_gitbook"],
+                    ),
+                    "file": _prop(
+                        "string",
+                        "Local JSONL file containing normalized knowledge records to append to the cache.",
+                        examples=["tests/fixtures/knowledge/bubble-manual-records.jsonl"],
+                    ),
+                },
+                required=["source", "file"],
+            ),
+        },
+        {
+            "name": "bubble_knowledge_search",
+            "description": (
+                "Search the local normalized knowledge cache. Results are source-attributed and cache-only; remote "
+                "GitBook or manual lookups are disabled in this release."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "query": _prop(
+                        "string",
+                        "Documentation topic to search in the local cache.",
+                        examples=["API Connector authentication", "privacy rules migration"],
+                    ),
+                    "limit": field("limit"),
+                },
+                required=["query"],
+            ),
+        },
+        {
+            "name": "bubble_knowledge_fetch",
+            "description": "Fetch one local knowledge record by id with full provenance and license metadata.",
+            "inputSchema": object_schema(
+                {
+                    "record_id": _prop(
+                        "string",
+                        "Knowledge record id returned by bubble_knowledge_search.",
+                        examples=["bubble-manual:data-types:privacy"],
+                    ),
+                },
+                required=["record_id"],
+            ),
+        },
+        {
+            "name": "bubble_manual_guidance",
+            "description": (
+                "Return source-attributed Bubble manual guidance from the local cache only. Use for consultative "
+                "manual context; it does not call remote docs or automatically influence execution."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "query": _prop(
+                        "string",
+                        "Bubble manual topic or question to answer from cached records.",
+                        examples=["How should API Connector authentication be handled?"],
+                    ),
+                    "limit": field("limit"),
+                },
+                required=["query"],
+            ),
+        },
+        {
+            "name": "bubble_manual_context_for_tool_authoring",
+            "description": (
+                "Return local cached Bubble manual context shaped for declarative tool authoring decisions. "
+                "Consultative only and cache-only."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "query": _prop(
+                        "string",
+                        "Tool-authoring topic to search in cached Bubble manual records.",
+                        examples=["API Connector authentication reusable calls"],
+                    ),
+                    "limit": field("limit"),
+                },
+                required=["query"],
+            ),
+        },
+        {
+            "name": "bubble_manual_context_for_validation",
+            "description": (
+                "Return local cached Bubble manual context shaped for validation and migration risk review. "
+                "Consultative only and cache-only."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "query": _prop(
+                        "string",
+                        "Validation topic to search in cached Bubble manual records.",
+                        examples=["privacy rules migration risk"],
+                    ),
+                    "limit": field("limit"),
+                },
+                required=["query"],
+            ),
+        },
     ]
 
 

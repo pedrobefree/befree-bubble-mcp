@@ -60,6 +60,12 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_extension_disable",
     "bubble_learning_record",
     "bubble_learning_list",
+    "bubble_knowledge_refresh_source",
+    "bubble_knowledge_search",
+    "bubble_knowledge_fetch",
+    "bubble_manual_guidance",
+    "bubble_manual_context_for_tool_authoring",
+    "bubble_manual_context_for_validation",
     "create_from_html",
 }
 

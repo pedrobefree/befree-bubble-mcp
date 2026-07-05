@@ -42,6 +42,7 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
 from bubble_mcp.learning.store import append_learning_record, list_learning_records
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
@@ -133,6 +134,49 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                     extension_id=str(args.get("extension_id") or "") or None,
                 )
             ],
+        }
+    if name == "bubble_knowledge_refresh_source":
+        args = arguments or {}
+        source = _required_string_arg(args, "source", name)
+        file_path = _required_string_arg(args, "file", name)
+        return import_knowledge_records(Path(file_path), source=source)
+    if name == "bubble_knowledge_search":
+        args = arguments or {}
+        query = _required_string_arg(args, "query", name)
+        return knowledge_search(query, limit=int(args.get("limit") or 8))
+    if name == "bubble_knowledge_fetch":
+        args = arguments or {}
+        record_id = _required_string_arg(args, "record_id", name)
+        return fetch_knowledge_record(record_id)
+    if name == "bubble_manual_guidance":
+        args = arguments or {}
+        query = _required_string_arg(args, "query", name)
+        result = knowledge_search(query, limit=int(args.get("limit") or 5))
+        return {
+            **result,
+            "purpose": "manual_guidance",
+            "cache_only": True,
+            "remote_docs": "disabled",
+        }
+    if name == "bubble_manual_context_for_tool_authoring":
+        args = arguments or {}
+        query = _required_string_arg(args, "query", name)
+        result = knowledge_search(query, limit=int(args.get("limit") or 5))
+        return {
+            **result,
+            "purpose": "tool_authoring",
+            "cache_only": True,
+            "remote_docs": "disabled",
+        }
+    if name == "bubble_manual_context_for_validation":
+        args = arguments or {}
+        query = _required_string_arg(args, "query", name)
+        result = knowledge_search(query, limit=int(args.get("limit") or 5))
+        return {
+            **result,
+            "purpose": "validation",
+            "cache_only": True,
+            "remote_docs": "disabled",
         }
     if name == "bubble_readiness_check":
         args = arguments or {}

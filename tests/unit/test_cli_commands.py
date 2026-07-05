@@ -378,6 +378,83 @@ def test_cli_tools_quality_reports_catalog_gate(capsys) -> None:  # type: ignore
     assert checks["runtime_coverage"]["uncovered_count"] == 0
 
 
+def test_cli_knowledge_refresh_search_fetch_and_guidance(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    fixture = "tests/fixtures/knowledge/bubble-manual-records.jsonl"
+
+    assert main(["knowledge", "refresh-source", "--source", "bubble_manual_gitbook", "--file", fixture]) == 0
+    refreshed = json.loads(capsys.readouterr().out)
+    assert refreshed["ok"] is True
+    assert refreshed["imported"] == 2
+
+    assert main(["knowledge", "search", "API Connector authentication", "--limit", "5"]) == 0
+    searched = json.loads(capsys.readouterr().out)
+    assert searched["ok"] is True
+    assert searched["results"][0]["id"] == "bubble-manual:api-connector:authentication"
+
+    assert main(["knowledge", "fetch", "bubble-manual:data-types:privacy"]) == 0
+    fetched = json.loads(capsys.readouterr().out)
+    assert fetched["ok"] is True
+    assert fetched["record"]["source"] == "bubble_manual_gitbook"
+
+    assert main(["knowledge", "guidance", "privacy rules migration"]) == 0
+    guided = json.loads(capsys.readouterr().out)
+    assert guided["ok"] is True
+    assert guided["purpose"] == "manual_guidance"
+    assert guided["cache_only"] is True
+
+
+def test_cli_knowledge_search_wraps_malformed_cache_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    cache_path = tmp_path / "knowledge" / "bubble_manual_gitbook" / "records.jsonl"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text('{"id":\n', encoding="utf-8")
+
+    assert main(["knowledge", "search", "API Connector"]) == 1
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["ok"] is False
+    assert payload["action"] == "search"
+    assert payload["error_class"] == "ValueError"
+    assert "records.jsonl:1" in payload["error"]
+
+
+def test_cli_knowledge_fetch_wraps_malformed_cache_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    cache_path = tmp_path / "knowledge" / "bubble_manual_gitbook" / "records.jsonl"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text('{"id":\n', encoding="utf-8")
+
+    assert main(["knowledge", "fetch", "bubble-manual:api-connector:authentication"]) == 1
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["ok"] is False
+    assert payload["action"] == "fetch"
+    assert payload["error_class"] == "ValueError"
+    assert "records.jsonl:1" in payload["error"]
+
+
+def test_cli_knowledge_guidance_wraps_malformed_cache_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    cache_path = tmp_path / "knowledge" / "bubble_manual_gitbook" / "records.jsonl"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text('{"id":\n', encoding="utf-8")
+
+    assert main(["knowledge", "guidance", "API Connector"]) == 1
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["ok"] is False
+    assert payload["action"] == "guidance"
+    assert payload["error_class"] == "ValueError"
+    assert "records.jsonl:1" in payload["error"]
+
+
 def test_cli_readiness_runs_recommended_sequence(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["readiness"]) == 0
 
