@@ -54,6 +54,7 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
 from bubble_mcp.server.tools import call_tool
+from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
@@ -685,6 +686,38 @@ def command_extension_disable(args: argparse.Namespace) -> int:
     return 0 if report.ok else 1
 
 
+def emit_skill_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_skill_validate(args: argparse.Namespace) -> int:
+    try:
+        report = validate_skill_file(Path(args.path))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("validate", exc)
+        return 1
+    emit_json(report)
+    return 0 if report.get("ok") else 1
+
+
+def command_skill_describe(args: argparse.Namespace) -> int:
+    try:
+        report = describe_skill_file(Path(args.path))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("describe", exc)
+        return 1
+    emit_json(report)
+    return 0 if report.get("ok") else 1
+
+
 def emit_learning_error(action: str, exc: Exception) -> None:
     emit_json(
         {
@@ -1270,6 +1303,17 @@ def build_parser() -> argparse.ArgumentParser:
     extension_disable_parser = extension_subparsers.add_parser("disable", help="Disable an installed extension pack.")
     extension_disable_parser.add_argument("extension_id")
     extension_disable_parser.set_defaults(func=command_extension_disable)
+
+    skill_parser = subparsers.add_parser("skill", help="Validate declarative Bubble MCP skill contracts.")
+    skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
+
+    skill_validate_parser = skill_subparsers.add_parser("validate", help="Validate a skill contract JSON file.")
+    skill_validate_parser.add_argument("--path", required=True)
+    skill_validate_parser.set_defaults(func=command_skill_validate)
+
+    skill_describe_parser = skill_subparsers.add_parser("describe", help="Describe a validated skill contract JSON file.")
+    skill_describe_parser.add_argument("--path", required=True)
+    skill_describe_parser.set_defaults(func=command_skill_describe)
 
     learning_parser = subparsers.add_parser("learning", help="Manage local consultative learning records.")
     learning_subparsers = learning_parser.add_subparsers(dest="learning_command", required=True)

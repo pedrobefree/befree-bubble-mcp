@@ -1,0 +1,23 @@
+{
+  "id": "security-review",
+  "name": "Security Review",
+  "inputs": ["profile", "app_id", "scope"],
+  "allowedTools": [
+    "bubble_context_detect",
+    "bubble_context_find",
+    "bubble_changelog_fetch",
+    "bubble_manual_context_for_validation"
+  ],
+  "steps": [
+    {"type": "refresh_context"},
+    {"type": "inspect_schema"},
+    {"type": "inspect_workflows"},
+    {"type": "inspect_privacy_rules"},
+    {"type": "generate_report"}
+  ],
+  "gates": [
+    {"type": "read_only_only"},
+    {"type": "evidence_required", "outputs": ["markdown_report", "risk_summary"]}
+  ],
+  "outputs": ["markdown_report", "risk_summary"]
+}

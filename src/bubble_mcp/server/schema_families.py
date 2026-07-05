@@ -1153,6 +1153,18 @@ def extension_kernel_tools() -> list[ToolSchema]:
             ["extension_id"],
             required=["extension_id"],
         ),
+        tool_schema(
+            "bubble_skill_validate",
+            "Validate a declarative Bubble MCP skill contract JSON file. This checks allowed tools, non-executable steps, explicit outputs, and schema shape without executing the skill.",
+            ["path"],
+            required=["path"],
+        ),
+        tool_schema(
+            "bubble_skill_describe",
+            "Describe a declarative Bubble MCP skill contract JSON file after validation. This is validation/description only and does not execute skill steps.",
+            ["path"],
+            required=["path"],
+        ),
         {
             "name": "bubble_learning_record",
             "description": (

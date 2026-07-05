@@ -491,6 +491,15 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Soft-delete a Bubble branch/version using the stored editor session. Use only when the user asks to remove a "
         "branch; execute=true also requires confirm=true because this is destructive."
     ),
+    "bubble_skill_validate": (
+        "Validate one declarative Bubble MCP skill contract JSON file. Use to check allowed tools, non-executable "
+        "steps, explicit outputs, and contract shape before a skill is imported or reviewed. Read-only and does not "
+        "execute skill steps."
+    ),
+    "bubble_skill_describe": (
+        "Describe one declarative Bubble MCP skill contract after validation. Use when an agent needs to inspect the "
+        "skill id, inputs, allowed tools, gates, steps, and outputs. Read-only and does not execute skill steps."
+    ),
     "bubble_learning_record": (
         "Append one local consultative learning record with scope metadata, provenance, and confidence. Use only when "
         "the user explicitly declares or confirms durable guidance. Records are advisory storage and do not influence "
@@ -1182,6 +1191,8 @@ def _is_read_only(name: str) -> bool:
         "bubble_changelog_fetch",
         "bubble_extension_list",
         "bubble_extension_validate",
+        "bubble_skill_validate",
+        "bubble_skill_describe",
         "bubble_learning_list",
         "bubble_knowledge_search",
         "bubble_knowledge_fetch",

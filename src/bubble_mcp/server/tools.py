@@ -51,6 +51,7 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
+from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.validators.semantic import validate_plan
@@ -105,6 +106,12 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_extension_disable":
         extension_id = _required_string_arg(arguments, "extension_id", name)
         return disable_extension(extension_id).to_dict()
+    if name == "bubble_skill_validate":
+        path = _required_string_arg(arguments, "path", name)
+        return validate_skill_file(Path(path))
+    if name == "bubble_skill_describe":
+        path = _required_string_arg(arguments, "path", name)
+        return describe_skill_file(Path(path))
     if name == "bubble_learning_record":
         args = arguments or {}
         value = args.get("value")

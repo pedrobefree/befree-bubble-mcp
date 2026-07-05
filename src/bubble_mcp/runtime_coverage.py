@@ -58,6 +58,8 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_extension_import",
     "bubble_extension_enable",
     "bubble_extension_disable",
+    "bubble_skill_validate",
+    "bubble_skill_describe",
     "bubble_learning_record",
     "bubble_learning_list",
     "bubble_knowledge_refresh_source",
