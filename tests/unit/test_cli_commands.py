@@ -378,6 +378,83 @@ def test_cli_tools_quality_reports_catalog_gate(capsys) -> None:  # type: ignore
     assert checks["runtime_coverage"]["uncovered_count"] == 0
 
 
+def test_cli_knowledge_refresh_search_fetch_and_guidance(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    fixture = "tests/fixtures/knowledge/bubble-manual-records.jsonl"
+
+    assert main(["knowledge", "refresh-source", "--source", "bubble_manual_gitbook", "--file", fixture]) == 0
+    refreshed = json.loads(capsys.readouterr().out)
+    assert refreshed["ok"] is True
+    assert refreshed["imported"] == 2
+
+    assert main(["knowledge", "search", "API Connector authentication", "--limit", "5"]) == 0
+    searched = json.loads(capsys.readouterr().out)
+    assert searched["ok"] is True
+    assert searched["results"][0]["id"] == "bubble-manual:api-connector:authentication"
+
+    assert main(["knowledge", "fetch", "bubble-manual:data-types:privacy"]) == 0
+    fetched = json.loads(capsys.readouterr().out)
+    assert fetched["ok"] is True
+    assert fetched["record"]["source"] == "bubble_manual_gitbook"
+
+    assert main(["knowledge", "guidance", "privacy rules migration"]) == 0
+    guided = json.loads(capsys.readouterr().out)
+    assert guided["ok"] is True
+    assert guided["purpose"] == "manual_guidance"
+    assert guided["cache_only"] is True
+
+
+def test_cli_knowledge_search_wraps_malformed_cache_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    cache_path = tmp_path / "knowledge" / "bubble_manual_gitbook" / "records.jsonl"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text('{"id":\n', encoding="utf-8")
+
+    assert main(["knowledge", "search", "API Connector"]) == 1
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["ok"] is False
+    assert payload["action"] == "search"
+    assert payload["error_class"] == "ValueError"
+    assert "records.jsonl:1" in payload["error"]
+
+
+def test_cli_knowledge_fetch_wraps_malformed_cache_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    cache_path = tmp_path / "knowledge" / "bubble_manual_gitbook" / "records.jsonl"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text('{"id":\n', encoding="utf-8")
+
+    assert main(["knowledge", "fetch", "bubble-manual:api-connector:authentication"]) == 1
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["ok"] is False
+    assert payload["action"] == "fetch"
+    assert payload["error_class"] == "ValueError"
+    assert "records.jsonl:1" in payload["error"]
+
+
+def test_cli_knowledge_guidance_wraps_malformed_cache_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    cache_path = tmp_path / "knowledge" / "bubble_manual_gitbook" / "records.jsonl"
+    cache_path.parent.mkdir(parents=True)
+    cache_path.write_text('{"id":\n', encoding="utf-8")
+
+    assert main(["knowledge", "guidance", "API Connector"]) == 1
+
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert captured.err == ""
+    assert payload["ok"] is False
+    assert payload["action"] == "guidance"
+    assert payload["error_class"] == "ValueError"
+    assert "records.jsonl:1" in payload["error"]
+
+
 def test_cli_readiness_runs_recommended_sequence(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["readiness"]) == 0
 
@@ -738,3 +815,233 @@ def test_cli_execute_plan_compile_uses_context_file_in_preview(tmp_path, capsys)
     write_payload = payload["results"][0]["payload"]
     create_change = first_change(write_payload, "CreateElement")
     assert create_change["path_array"][:2] == ["%p3", "pgIndex"]
+
+
+def test_cli_extension_import_list_enable_disable(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert main(["extension", "import", "--path", "tests/fixtures/extensions/simple-pack"]) == 0
+    imported = json.loads(capsys.readouterr().out)
+    assert imported["ok"] is True
+    assert imported["state"] == "pending"
+
+    assert main(["extension", "enable", "local.simple-pack"]) == 0
+    enabled = json.loads(capsys.readouterr().out)
+    assert enabled["state"] == "enabled"
+
+    assert main(["extension", "list"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["extensions"][0]["extension_id"] == "local.simple-pack"
+    assert listed["extensions"][0]["state"] == "enabled"
+
+    assert main(["extension", "disable", "local.simple-pack"]) == 0
+    disabled = json.loads(capsys.readouterr().out)
+    assert disabled["state"] == "disabled"
+
+
+def test_cli_extension_invalid_inputs_return_json_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert main(["extension", "import", "--path", "tests/fixtures/extensions/missing-pack"]) == 1
+    imported = json.loads(capsys.readouterr().out)
+    assert imported["ok"] is False
+    assert imported["action"] == "import"
+    assert imported["error_class"] == "ValueError"
+    assert "Extension pack source must be a directory" in imported["error"]
+
+    assert main(["extension", "enable", "local.missing-pack"]) == 1
+    enabled = json.loads(capsys.readouterr().out)
+    assert enabled["ok"] is False
+    assert enabled["action"] == "enable"
+    assert enabled["error_class"] == "ValueError"
+    assert enabled["error"] == "Unknown extension: local.missing-pack"
+
+    assert main(["extension", "disable", "local.missing-pack"]) == 1
+    disabled = json.loads(capsys.readouterr().out)
+    assert disabled["ok"] is False
+    assert disabled["action"] == "disable"
+    assert disabled["error_class"] == "ValueError"
+    assert disabled["error"] == "Unknown extension: local.missing-pack"
+
+
+def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert (
+        main(
+            [
+                "tool-wizard",
+                "start",
+                "--intent",
+                "Create an API Connector call",
+                "--target",
+                "api_connector",
+                "--profile",
+                "client",
+            ]
+        )
+        == 0
+    )
+    started = json.loads(capsys.readouterr().out)
+    assert started["ok"] is True
+    session_id = started["session"]["id"]
+
+    assert (
+        main(
+            [
+                "tool-wizard",
+                "add-capture",
+                session_id,
+                "--file",
+                "tests/fixtures/tool-authoring/api-connector-write-capture.json",
+            ]
+        )
+        == 0
+    )
+    captured = json.loads(capsys.readouterr().out)
+    assert captured["classification"]["families"] == ["editor_write"]
+    assert captured["classification"]["change_count"] == 1
+
+    assert main(["tool-wizard", "describe", session_id]) == 0
+    described = json.loads(capsys.readouterr().out)
+    assert described["session"]["profile"] == "client"
+    assert described["classification"]["app_id"] == "synthetic-app"
+
+
+def test_cli_tool_wizard_add_capture_returns_structured_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+
+    assert (
+        main(
+            [
+                "tool-wizard",
+                "start",
+                "--intent",
+                "Create an API Connector call",
+                "--target",
+                "api_connector",
+                "--profile",
+                "client",
+            ]
+        )
+        == 0
+    )
+    session_id = json.loads(capsys.readouterr().out)["session"]["id"]
+
+    no_payload = tmp_path / "no-payload.json"
+    no_payload.write_text("{}", encoding="utf-8")
+    assert main(["tool-wizard", "add-capture", session_id, "--file", str(no_payload)]) == 1
+    missing_payload = json.loads(capsys.readouterr().out)
+    assert missing_payload["ok"] is False
+    assert missing_payload["action"] == "add-capture"
+    assert missing_payload["error_class"] == "ValueError"
+    assert "does not contain a Bubble editor write body" in missing_payload["error"]
+
+    malformed = tmp_path / "malformed.json"
+    malformed.write_text("{", encoding="utf-8")
+    assert main(["tool-wizard", "add-capture", session_id, "--file", str(malformed)]) == 1
+    malformed_payload = json.loads(capsys.readouterr().out)
+    assert malformed_payload["ok"] is False
+    assert malformed_payload["action"] == "add-capture"
+    assert malformed_payload["error_class"] == "JSONDecodeError"
+    assert "Expecting property name" in malformed_payload["error"]
+
+
+def test_cli_learning_record_and_list(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert (
+        main(
+            [
+                "learning",
+                "record",
+                "--scope",
+                "project",
+                "--key",
+                "naming.page_language",
+                "--value",
+                '{"language":"pt-BR"}',
+                "--source",
+                "user_declared",
+                "--confidence",
+                "confirmed",
+                "--project",
+                "client-app",
+            ]
+        )
+        == 0
+    )
+    recorded = json.loads(capsys.readouterr().out)
+    assert recorded["ok"] is True
+    assert recorded["record"]["key"] == "naming.page_language"
+    assert recorded["record"]["project"] == "client-app"
+
+    assert main(["learning", "list", "--scope", "project", "--project", "client-app"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert [record["key"] for record in listed["records"]] == ["naming.page_language"]
+
+
+def test_cli_learning_record_invalid_value_returns_json_error(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert (
+        main(
+            [
+                "learning",
+                "record",
+                "--scope",
+                "global",
+                "--key",
+                "workflow.preview_required",
+                "--value",
+                "true",
+                "--source",
+                "user_declared",
+                "--confidence",
+                "confirmed",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["action"] == "record"
+    assert payload["error_class"] == "ValueError"
+    assert payload["error"] == "Expected a JSON object."
+
+
+def test_cli_learning_record_missing_scope_discriminator_returns_json_error(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert (
+        main(
+            [
+                "learning",
+                "record",
+                "--scope",
+                "project",
+                "--key",
+                "naming.page_language",
+                "--value",
+                '{"language":"pt-BR"}',
+                "--source",
+                "user_declared",
+                "--confidence",
+                "confirmed",
+            ]
+        )
+        == 1
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["action"] == "record"
+    assert payload["error_class"] == "ValueError"
+    assert payload["error"] == "Learning record scope 'project' requires project."
+
+    assert main(["learning", "list"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["records"] == []

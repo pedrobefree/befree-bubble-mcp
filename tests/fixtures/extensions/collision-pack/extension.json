@@ -1,0 +1,12 @@
+{
+  "id": "local.collision-pack",
+  "name": "Collision Pack",
+  "version": "0.1.0",
+  "bubbleMcpVersion": ">=0.1.0",
+  "capabilities": ["tools"],
+  "risk": "read_only",
+  "author": "local-user",
+  "exports": {
+    "tools": ["tools/create-text.tool.json"]
+  }
+}

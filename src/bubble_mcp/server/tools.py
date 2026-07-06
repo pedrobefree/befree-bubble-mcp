@@ -28,6 +28,14 @@ from bubble_mcp.execution.editor_api import (
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
+from bubble_mcp.extensions.store import (
+    disable_extension,
+    enable_extension,
+    import_extension,
+    list_extensions,
+)
+from bubble_mcp.extensions.tools import enabled_extension_tool_schemas
+from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -35,6 +43,8 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
+from bubble_mcp.learning.store import append_learning_record, list_learning_records
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
 from bubble_mcp.readiness import run_readiness_check
@@ -42,9 +52,22 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
+from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
+from bubble_mcp.tool_authoring.sessions import (
+    append_capture_to_authoring_session,
+    create_authoring_session,
+    describe_authoring_session,
+)
 from bubble_mcp.validators.semantic import validate_plan
+
+
+def _required_string_arg(arguments: dict[str, Any] | None, key: str, tool_name: str) -> str:
+    value = str((arguments or {}).get(key) or "").strip()
+    if not value:
+        raise ValueError(f"{tool_name} requires {key}.")
+    return value
 
 
 def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -75,6 +98,116 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return catalog_coverage_report(include_tools=bool(args.get("include_tools") or args.get("include_details")))
     if name == "bubble_catalog_quality":
         return catalog_quality_report()
+    if name == "bubble_extension_list":
+        return {"ok": True, "extensions": [item.to_dict() for item in list_extensions()]}
+    if name == "bubble_extension_validate":
+        extension_path = _required_string_arg(arguments, "path", name)
+        return validate_extension_pack(Path(extension_path)).to_dict()
+    if name == "bubble_extension_import":
+        extension_path = _required_string_arg(arguments, "path", name)
+        return import_extension(Path(extension_path)).to_dict()
+    if name == "bubble_extension_enable":
+        extension_id = _required_string_arg(arguments, "extension_id", name)
+        return enable_extension(extension_id).to_dict()
+    if name == "bubble_extension_disable":
+        extension_id = _required_string_arg(arguments, "extension_id", name)
+        return disable_extension(extension_id).to_dict()
+    if name == "bubble_skill_validate":
+        skill_path = _required_string_arg(arguments, "path", name)
+        return validate_skill_file(Path(skill_path))
+    if name == "bubble_skill_describe":
+        skill_path = _required_string_arg(arguments, "path", name)
+        return describe_skill_file(Path(skill_path))
+    if name == "bubble_tool_wizard_start":
+        args = arguments or {}
+        session = create_authoring_session(
+            intent=_required_string_arg(args, "intent", name),
+            target=_required_string_arg(args, "target", name),
+            profile=_required_string_arg(args, "profile", name),
+        )
+        return {"ok": True, "session": session.to_dict()}
+    if name == "bubble_tool_wizard_add_capture":
+        args = arguments or {}
+        session_id = _required_string_arg(args, "session_id", name)
+        file_path = _required_string_arg(args, "file", name)
+        return append_capture_to_authoring_session(session_id, Path(file_path))
+    if name == "bubble_tool_wizard_describe":
+        args = arguments or {}
+        session_id = _required_string_arg(args, "session_id", name)
+        return describe_authoring_session(session_id)
+    if name == "bubble_learning_record":
+        args = arguments or {}
+        value = args.get("value")
+        if value is not None and not isinstance(value, dict):
+            raise ValueError("bubble_learning_record requires value to be a JSON object.")
+        record = append_learning_record(
+            scope=str(args.get("scope") or ""),
+            key=str(args.get("key") or ""),
+            value=value,
+            source=str(args.get("source") or ""),
+            confidence=str(args.get("confidence") or ""),
+            profile=str(args.get("profile") or "") or None,
+            project=str(args.get("project") or "") or None,
+            extension_id=str(args.get("extension_id") or "") or None,
+        )
+        return {"ok": True, "record": record.to_dict()}
+    if name == "bubble_learning_list":
+        args = arguments or {}
+        return {
+            "ok": True,
+            "records": [
+                record.to_dict()
+                for record in list_learning_records(
+                    scope=str(args.get("scope") or "") or None,
+                    profile=str(args.get("profile") or "") or None,
+                    project=str(args.get("project") or "") or None,
+                    extension_id=str(args.get("extension_id") or "") or None,
+                )
+            ],
+        }
+    if name == "bubble_knowledge_refresh_source":
+        args = arguments or {}
+        source = _required_string_arg(args, "source", name)
+        file_path = _required_string_arg(args, "file", name)
+        return import_knowledge_records(Path(file_path), source=source)
+    if name == "bubble_knowledge_search":
+        args = arguments or {}
+        query = _required_string_arg(args, "query", name)
+        return knowledge_search(query, limit=int(args.get("limit") or 8))
+    if name == "bubble_knowledge_fetch":
+        args = arguments or {}
+        record_id = _required_string_arg(args, "record_id", name)
+        return fetch_knowledge_record(record_id)
+    if name == "bubble_manual_guidance":
+        args = arguments or {}
+        query = _required_string_arg(args, "query", name)
+        result = knowledge_search(query, limit=int(args.get("limit") or 5))
+        return {
+            **result,
+            "purpose": "manual_guidance",
+            "cache_only": True,
+            "remote_docs": "disabled",
+        }
+    if name == "bubble_manual_context_for_tool_authoring":
+        args = arguments or {}
+        query = _required_string_arg(args, "query", name)
+        result = knowledge_search(query, limit=int(args.get("limit") or 5))
+        return {
+            **result,
+            "purpose": "tool_authoring",
+            "cache_only": True,
+            "remote_docs": "disabled",
+        }
+    if name == "bubble_manual_context_for_validation":
+        args = arguments or {}
+        query = _required_string_arg(args, "query", name)
+        result = knowledge_search(query, limit=int(args.get("limit") or 5))
+        return {
+            **result,
+            "purpose": "validation",
+            "cache_only": True,
+            "remote_docs": "disabled",
+        }
     if name == "bubble_readiness_check":
         args = arguments or {}
         return run_readiness_check(
@@ -254,9 +387,13 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             max_age_hours=int(args.get("max_age_hours") or 24),
         )
     if name == "bubble_context_summary":
-        path = Path(str((arguments or {}).get("file") or ""))
-        context = load_context(path)
-        return {"ok": True, "summary": context.summary(), "freshness": context_freshness(context, path=path)}
+        summary_path = Path(str((arguments or {}).get("file") or ""))
+        context = load_context(summary_path)
+        return {
+            "ok": True,
+            "summary": context.summary(),
+            "freshness": context_freshness(context, path=summary_path),
+        }
     if name == "bubble_context_find":
         args = arguments or {}
         profile_name = str(args.get("profile") or "").strip()
@@ -313,7 +450,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         profile = str(args.get("profile") or "").strip()
         if not profile:
             raise ValueError(f"{name} requires a profile.")
-        result = detect_project_context(
+        detection_result = detect_project_context(
             profile=profile,
             app_id=str(args.get("app_id") or "") or None,
             app_version=str(args.get("app_version") or "test"),
@@ -325,7 +462,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             else None,
             include_id_to_path=not bool(args.get("skip_id_to_path")),
         )
-        return result.to_dict()
+        return detection_result.to_dict()
     if name in {"bubble_plan", "bubble_plan_dry_run"}:
         args = arguments or {}
         plan = plan_message(
@@ -403,7 +540,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         args = arguments or {}
         output_value = str(args.get("output") or "").strip()
         raw_query = args.get("url_query") or args.get("query")
-        query = {str(key): str(value) for key, value in raw_query.items()} if isinstance(raw_query, dict) else {}
+        visual_query = {str(key): str(value) for key, value in raw_query.items()} if isinstance(raw_query, dict) else {}
         return capture_bubble_visual_snapshot(
             profile=str(args.get("profile") or ""),
             app_id=str(args.get("app_id") or ""),
@@ -412,7 +549,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             selector=str(args.get("selector") or ""),
             public_base_url=str(args.get("public_base_url") or ""),
             url=str(args.get("url") or ""),
-            query=query,
+            query=visual_query,
             viewport_width=int(args.get("viewport_width") or 1365),
             viewport_height=int(args.get("viewport_height") or 768),
             wait_ms=int(args.get("wait_ms") or 1000),
@@ -490,7 +627,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         def collect_progress(message: str) -> None:
             progress_messages.append(message)
 
-        session = capture_session_with_playwright(
+        captured_session = capture_session_with_playwright(
             app_id=app_id,
             editor_url=str(args.get("editor_url") or "").strip() or None,
             headless=bool(args.get("headless")),
@@ -499,13 +636,13 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             app_version=app_version,
             progress=collect_progress,
         )
-        path = save_session(profile, session)
+        session_path = save_session(profile, captured_session)
         return {
             "ok": True,
             "profile": profile,
-            "path": str(path),
+            "path": str(session_path),
             "progress": progress_messages,
-            "session": session.to_dict(redact=True),
+            "session": captured_session.to_dict(redact=True),
         }
     if name == "bubble_session_import":
         args = arguments or {}
@@ -519,11 +656,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             raw_session,
             default_app_id=str(args.get("app_id") or "") or None,
         )
-        path = save_session(profile, imported_session)
+        session_path = save_session(profile, imported_session)
         return {
             "ok": True,
             "profile": profile,
-            "path": str(path),
+            "path": str(session_path),
             "session": imported_session.to_dict(redact=True),
         }
     if name == "bubble_editor_write":
@@ -624,6 +761,17 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             execute=bool(args.get("execute")),
             confirm=bool(args.get("confirm")),
         )
+    enabled_extension_tools = {str(tool.get("name") or "") for tool in enabled_extension_tool_schemas()}
+    if name in enabled_extension_tools:
+        return {
+            "ok": False,
+            "error": "extension_tool_execution_not_implemented",
+            "tool": name,
+            "message": (
+                "Declarative extension tool schemas can be validated and exposed in v1, "
+                "but execution requires a future recipe/template runner."
+            ),
+        }
     if name in ARIA_BUBBLE_TOOL_NAMES:
         return call_legacy_catalog_tool(name, arguments or {})
     raise ValueError(f"Unknown Bubble MCP tool: {name}")

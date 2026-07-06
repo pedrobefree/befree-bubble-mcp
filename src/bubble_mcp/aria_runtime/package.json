@@ -7,6 +7,6 @@
     "renderer:server": "node scripts/render_server.mjs"
   },
   "dependencies": {
-    "puppeteer": "^24.0.0"
+    "puppeteer": "^24.43.1"
   }
 }

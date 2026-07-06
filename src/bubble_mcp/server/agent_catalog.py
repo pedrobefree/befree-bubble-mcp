@@ -376,6 +376,20 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "input schemas, property descriptions, annotations, resource metadata, prompt arguments, and runtime coverage "
         "so clients can detect catalog regressions before agents waste tokens on discovery. Read-only."
     ),
+    "bubble_tool_wizard_start": (
+        "Start a local tool-authoring session that groups captured Bubble editor writes for a future extension tool. "
+        "This only creates local session metadata; it does not generate tools, activate extensions, replay captures, "
+        "or execute Bubble writes."
+    ),
+    "bubble_tool_wizard_add_capture": (
+        "Copy a captured Bubble editor write JSON file into a local tool-authoring session and classify the captured "
+        "write with the expert payload classifier. Use this only for session/capture classification; it does not "
+        "replay the write or mutate Bubble."
+    ),
+    "bubble_tool_wizard_describe": (
+        "Describe a local tool-authoring session and aggregate classification for captured writes. Read-only; it does "
+        "not generate, activate, or execute extension tools."
+    ),
     "bubble_runtime_smoke": (
         "Run an operational runtime smoke suite. Use coverage for local catalog execution coverage plus "
         "agent-facing catalog quality, agent-routing to validate natural-language tool selection without writes, "
@@ -490,6 +504,48 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_branch_delete": (
         "Soft-delete a Bubble branch/version using the stored editor session. Use only when the user asks to remove a "
         "branch; execute=true also requires confirm=true because this is destructive."
+    ),
+    "bubble_skill_validate": (
+        "Validate one declarative Bubble MCP skill contract JSON file. Use to check allowed tools, non-executable "
+        "steps, explicit outputs, and contract shape before a skill is imported or reviewed. Read-only and does not "
+        "execute skill steps."
+    ),
+    "bubble_skill_describe": (
+        "Describe one declarative Bubble MCP skill contract after validation. Use when an agent needs to inspect the "
+        "skill id, inputs, allowed tools, gates, steps, and outputs. Read-only and does not execute skill steps."
+    ),
+    "bubble_learning_record": (
+        "Append one local consultative learning record with scope metadata, provenance, and confidence. Use only when "
+        "the user explicitly declares or confirms durable guidance. Records are advisory storage and do not influence "
+        "planner behavior in this release."
+    ),
+    "bubble_learning_list": (
+        "List local consultative learning records by optional scope, profile, project, or extension id. Use to inspect "
+        "previously recorded advisory guidance. Read-only and does not influence planner behavior."
+    ),
+    "bubble_knowledge_refresh_source": (
+        "Import normalized Bubble manual records from a user-supplied local JSONL file into the local knowledge cache. "
+        "Use this to seed or refresh cached manual guidance without calling remote GitBook or Bubble docs services."
+    ),
+    "bubble_knowledge_search": (
+        "Search the local normalized knowledge cache and return source-attributed Bubble manual matches. Use for "
+        "consultative docs context when cached records are available. Read-only and cache-only."
+    ),
+    "bubble_knowledge_fetch": (
+        "Fetch a single local knowledge record by id, including provenance, source URL, hash, TTL, license note, and "
+        "confidence. Read-only and cache-only."
+    ),
+    "bubble_manual_guidance": (
+        "Return source-attributed Bubble manual guidance from the local cache only. Use for advisory product or "
+        "implementation context; it never calls remote docs and does not automatically influence execution."
+    ),
+    "bubble_manual_context_for_tool_authoring": (
+        "Return cached Bubble manual context shaped for declarative tool authoring decisions. Consultative, "
+        "source-attributed, read-only, and cache-only."
+    ),
+    "bubble_manual_context_for_validation": (
+        "Return cached Bubble manual context shaped for validation, migration, and risk-review decisions. "
+        "Consultative, source-attributed, read-only, and cache-only."
     ),
 }
 
@@ -1012,7 +1068,16 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "destructiveHint": destructive,
         "idempotentHint": read_only
         or name
-        in {"bubble_health_check", "bubble_project_bootstrap", "bubble_profile_add", "bubble_profile_list", *agent_read_only},
+        in {
+            "bubble_health_check",
+            "bubble_project_bootstrap",
+            "bubble_profile_add",
+            "bubble_profile_list",
+            "bubble_extension_import",
+            "bubble_extension_enable",
+            "bubble_extension_disable",
+            *agent_read_only,
+        },
         "openWorldHint": name
         in {
             "bubble_project_bootstrap",
@@ -1138,6 +1203,17 @@ def _is_read_only(name: str) -> bool:
         "bubble_branch_list",
         "bubble_branch_contributors",
         "bubble_changelog_fetch",
+        "bubble_extension_list",
+        "bubble_extension_validate",
+        "bubble_skill_validate",
+        "bubble_skill_describe",
+        "bubble_tool_wizard_describe",
+        "bubble_learning_list",
+        "bubble_knowledge_search",
+        "bubble_knowledge_fetch",
+        "bubble_manual_guidance",
+        "bubble_manual_context_for_tool_authoring",
+        "bubble_manual_context_for_validation",
         "refresh_profile_cache",
         "sync_cache",
         "sync_event_cache",

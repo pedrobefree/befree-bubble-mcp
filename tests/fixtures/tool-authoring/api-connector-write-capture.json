@@ -1,0 +1,21 @@
+{
+  "request": {
+    "endpoint": "/appeditor/write",
+    "body": {
+      "appname": "synthetic-app",
+      "app_version": "test",
+      "changes": [
+        {
+          "intent": {"name": "CreateApiConnectorCall"},
+          "path_array": ["plugins", "api_connector", "calls", "call_123"],
+          "body": {
+            "name": "Get Products",
+            "method": "GET",
+            "url": "https://api.example.invalid/products",
+            "authentication": "[REDACTED]"
+          }
+        }
+      ]
+    }
+  }
+}

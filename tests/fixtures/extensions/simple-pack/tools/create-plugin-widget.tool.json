@@ -1,0 +1,43 @@
+{
+  "name": "local.simple-pack.create_plugin_widget",
+  "description": "Create a plugin widget through a captured Bubble editor write template.",
+  "risk": "mutating",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "profile": {
+        "type": "string",
+        "description": "Local Bubble MCP profile."
+      },
+      "context": {
+        "type": "string",
+        "description": "Target page or reusable context."
+      },
+      "parent": {
+        "type": "string",
+        "description": "Target parent element id."
+      },
+      "label": {
+        "type": "string",
+        "description": "Visible widget label."
+      },
+      "execute": {
+        "type": "boolean",
+        "description": "Execute the write after preview and validation.",
+        "default": false
+      }
+    },
+    "required": ["profile", "context", "parent", "label"]
+  },
+  "annotations": {
+    "readOnlyHint": false,
+    "destructiveHint": false,
+    "idempotentHint": false,
+    "openWorldHint": true
+  },
+  "template": {
+    "kind": "appeditor_write",
+    "family": "plugin_widget",
+    "requiresValidation": true
+  }
+}

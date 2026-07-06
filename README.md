@@ -52,13 +52,27 @@ python scripts/install_local.py --repair --extras browser,dev
 - Browser-assisted session login through optional Playwright support.
 - Eval harness with focused reruns, parser/fallback diagnostics, token estimates, and redacted expert-capture export.
 - Lightweight visual snapshot comparison for HTML/Figma/Bubble conversion regression gates.
+- Extension kernel foundation with declarative extension packs, local validation,
+  consultative learning records, local Bubble manual knowledge cache, declarative
+  skill contract validation, and local tool-authoring sessions.
 - Local Figma bridge for the Befree Figma plugin. Figma-side integration code is intentionally outside this repository.
 
 ## Planned Capabilities
 
 - Broader public eval corpus across Bubble editor families.
-- Contributor-friendly tool-family extension scaffolding.
+- Contributor-friendly tool-family extension scaffolding beyond the current local declarative foundation.
 - More visual parity validators for HTML and design bridge conversions.
+- Remote Bubble manual refresh through a sanitized GitBook MCP fallback behind
+  the existing knowledge-source interface.
+
+## Extension Kernel Documentation
+
+The extension kernel is documented in focused guides:
+
+- [Extension packs](docs/extension-packs.md): local pack layout, manifest contracts, validation, enable/disable state, and preview/execute boundaries.
+- [Learning](docs/learning.md): append-only consultative learning records, scopes, CLI/MCP usage, and safety limits.
+- [Knowledge sources](docs/knowledge-sources.md): local Bubble manual cache v1, sanitization, search/fetch/guidance tools, and remote-doc fallback boundaries.
+- [Tool authoring](docs/tool-authoring.md): guided tool-authoring sessions, captured write classification, payload examples, and safe test workflow.
 
 ## Required Setup For Each Bubble Project
 
@@ -421,6 +435,48 @@ and `/sync`, saves incoming plugin payloads under `tmp/bridge_data`, and runs
 the Aria-derived Figma-to-Bubble runtime through the local Bubble session before
 returning success.
 
+## Extension Kernel Foundation
+
+The extension kernel v1 is local-first and declarative. Extension packs, learning
+records, cached knowledge records, skill contracts, and tool-authoring captures
+are stored under `BUBBLE_MCP_CONFIG_DIR` or the default
+`~/.config/bubble-mcp` directory.
+
+Extension packs are imported into a `pending` state. A pack may be enabled only
+after local validation succeeds, and enabled extension tool schemas are
+revalidated before they are exposed through the MCP tool catalog. Validation
+rejects tool name collisions with built-in/native tools, duplicate names inside
+the pack, symlinks or path escapes, and likely secrets. Extension packs are JSON
+contracts only; v1 does not execute arbitrary Python, Node, shell, or bundled
+code from a pack. Declarative extension tool schemas are catalog-visible in v1,
+but their recipe/template execution runner is intentionally not implemented yet;
+calling one returns `extension_tool_execution_not_implemented`.
+
+When declarative execution is added, mutating extension tools must inherit the
+same preview-first contract as the native Bubble MCP catalog. They should
+default to `execute=false`; callers must explicitly opt in to `execute=true`
+before any Bubble write.
+
+Local learning records are consultative only. They can inform planning, ranking,
+warnings, and documentation, but they cannot execute writes, bypass validation,
+or auto-confirm destructive actions. Local knowledge guidance is also advisory:
+official Bubble docs can explain Bubble concepts, but they never prove the
+current project state. Project state still comes from the local profile,
+captured session, detected context, and fresh Bubble reads.
+
+The Chrome extension companion is intentionally separate from this MCP
+repository and package. It must stay local-only, must not use Aria
+email/password auth, must not depend on an Aria remote relay or auth server, and
+its UI should be limited to service status, event summary, and a local
+enable/disable key.
+
+Focused docs:
+
+- [Extension packs](docs/extension-packs.md)
+- [Learning](docs/learning.md)
+- [Knowledge sources](docs/knowledge-sources.md)
+- [Tool authoring](docs/tool-authoring.md)
+
 ## Safety Defaults
 
 - No real project data is included in this repository.
@@ -429,7 +485,11 @@ returning success.
 - `bubble_execute_plan` runs structural validation before writes and returns `operation_snapshot.next_user_action` for agents.
 - Session credentials stay local.
 - Sensitive values are redacted before logs or reports.
+- Extension packs are declarative only and do not run arbitrary code in v1.
+- Imported extension packs start pending; activation requires local validation.
+- Local extension, learning, knowledge, and tool-authoring state stays under
+  `BUBBLE_MCP_CONFIG_DIR`.
 
 ## Status
 
-Early alpha. Real Bubble editor writes are supported when you provide a valid local session and an exact Bubble `/appeditor/write` payload. Generated plans that do not yet contain a `write_payload` are previewable but not automatically applied.
+Early alpha. Real Bubble editor writes are supported when you provide a valid local session and an exact Bubble `/appeditor/write` payload. Generated plans that do not yet contain a `write_payload` are previewable but not automatically applied. Extension kernel v1 is a foundation for declarative local packs, advisory records, and captured-write classification; it does not generate, activate, replay, or execute new tools automatically.

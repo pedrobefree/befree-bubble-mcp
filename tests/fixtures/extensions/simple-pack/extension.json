@@ -1,0 +1,14 @@
+{
+  "id": "local.simple-pack",
+  "name": "Local Simple Pack",
+  "version": "0.1.0",
+  "bubbleMcpVersion": ">=0.1.0",
+  "capabilities": ["tools", "recipes", "skills", "evals"],
+  "risk": "mutating",
+  "author": "local-user",
+  "exports": {
+    "tools": ["tools/create-plugin-widget.tool.json"],
+    "skills": [],
+    "evals": []
+  }
+}

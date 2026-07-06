@@ -36,6 +36,8 @@ from bubble_mcp.execution.editor_api import (
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
+from bubble_mcp.extensions.store import disable_extension, enable_extension, import_extension, list_extensions
+from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -43,6 +45,8 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
+from bubble_mcp.learning.store import append_learning_record, list_learning_records
 from bubble_mcp.planner.deterministic import plan_message
 from bubble_mcp.profile_status import profile_status
 from bubble_mcp.readiness import run_readiness_check
@@ -50,8 +54,14 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
 from bubble_mcp.server.tools import call_tool
+from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
+from bubble_mcp.tool_authoring.sessions import (
+    append_capture_to_authoring_session,
+    create_authoring_session,
+    describe_authoring_session,
+)
 from bubble_mcp.validators.semantic import validate_plan
 
 
@@ -628,6 +638,243 @@ def command_changelog_fetch(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_extension_list(_args: argparse.Namespace) -> int:
+    emit_json({"ok": True, "extensions": [item.to_dict() for item in list_extensions()]})
+    return 0
+
+
+def emit_extension_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_extension_validate(args: argparse.Namespace) -> int:
+    report = validate_extension_pack(Path(args.path))
+    emit_json(report.to_dict())
+    return 0 if report.ok else 1
+
+
+def command_extension_import(args: argparse.Namespace) -> int:
+    try:
+        report = import_extension(Path(args.path))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_extension_error("import", exc)
+        return 1
+    emit_json(report.to_dict())
+    return 0 if report.ok else 1
+
+
+def command_extension_enable(args: argparse.Namespace) -> int:
+    try:
+        report = enable_extension(args.extension_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_extension_error("enable", exc)
+        return 1
+    emit_json(report.to_dict())
+    return 0 if report.ok else 1
+
+
+def command_extension_disable(args: argparse.Namespace) -> int:
+    try:
+        report = disable_extension(args.extension_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_extension_error("disable", exc)
+        return 1
+    emit_json(report.to_dict())
+    return 0 if report.ok else 1
+
+
+def emit_skill_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_skill_validate(args: argparse.Namespace) -> int:
+    try:
+        report = validate_skill_file(Path(args.path))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("validate", exc)
+        return 1
+    emit_json(report)
+    return 0 if report.get("ok") else 1
+
+
+def command_skill_describe(args: argparse.Namespace) -> int:
+    try:
+        report = describe_skill_file(Path(args.path))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("describe", exc)
+        return 1
+    emit_json(report)
+    return 0 if report.get("ok") else 1
+
+
+def emit_tool_wizard_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_tool_wizard_start(args: argparse.Namespace) -> int:
+    try:
+        session = create_authoring_session(
+            intent=args.intent,
+            target=args.target,
+            profile=args.profile,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("start", exc)
+        return 1
+    emit_json({"ok": True, "session": session.to_dict()})
+    return 0
+
+
+def command_tool_wizard_add_capture(args: argparse.Namespace) -> int:
+    try:
+        result = append_capture_to_authoring_session(args.session_id, Path(args.file))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("add-capture", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_tool_wizard_describe(args: argparse.Namespace) -> int:
+    try:
+        result = describe_authoring_session(args.session_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("describe", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def emit_learning_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_learning_record(args: argparse.Namespace) -> int:
+    try:
+        value = _load_optional_json_object(args.value)
+        record = append_learning_record(
+            scope=args.scope,
+            key=args.key,
+            value=value,
+            source=args.source,
+            confidence=args.confidence,
+            profile=args.profile or None,
+            project=args.project or None,
+            extension_id=args.extension_id or None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_learning_error("record", exc)
+        return 1
+    emit_json({"ok": True, "record": record.to_dict()})
+    return 0
+
+
+def command_learning_list(args: argparse.Namespace) -> int:
+    try:
+        records = list_learning_records(
+            scope=args.scope or None,
+            profile=args.profile or None,
+            project=args.project or None,
+            extension_id=args.extension_id or None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_learning_error("list", exc)
+        return 1
+    emit_json({"ok": True, "records": [record.to_dict() for record in records]})
+    return 0
+
+
+def emit_knowledge_error(action: str, exc: Exception) -> None:
+    emit_json(
+        {
+            "ok": False,
+            "action": action,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "errors": [str(exc)],
+        }
+    )
+
+
+def command_knowledge_refresh_source(args: argparse.Namespace) -> int:
+    try:
+        result = import_knowledge_records(Path(args.file), source=args.source)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_knowledge_error("refresh-source", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_knowledge_search(args: argparse.Namespace) -> int:
+    try:
+        result = knowledge_search(args.query, limit=args.limit)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_knowledge_error("search", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_knowledge_fetch(args: argparse.Namespace) -> int:
+    try:
+        result = fetch_knowledge_record(args.record_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_knowledge_error("fetch", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_knowledge_guidance(args: argparse.Namespace) -> int:
+    try:
+        result = knowledge_search(args.query, limit=args.limit)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_knowledge_error("guidance", exc)
+        return 1
+    emit_json(
+        {
+            **result,
+            "purpose": "manual_guidance",
+            "cache_only": True,
+            "remote_docs": "disabled",
+        }
+    )
+    return 0 if result.get("ok") else 1
+
+
 def command_tools_guide(args: argparse.Namespace) -> int:
     emit_json(agent_guide(task=args.task or ""))
     return 0
@@ -1085,6 +1332,134 @@ def build_parser() -> argparse.ArgumentParser:
     changelog_fetch_parser.add_argument("--change-path", default="")
     changelog_fetch_parser.add_argument("--user-id", action="append", default=[])
     changelog_fetch_parser.set_defaults(func=command_changelog_fetch)
+
+    extension_parser = subparsers.add_parser("extension", help="Manage local Bubble MCP extension packs.")
+    extension_subparsers = extension_parser.add_subparsers(dest="extension_command", required=True)
+
+    extension_list_parser = extension_subparsers.add_parser("list", help="List installed extension packs.")
+    extension_list_parser.set_defaults(func=command_extension_list)
+
+    extension_validate_parser = extension_subparsers.add_parser("validate", help="Validate an extension pack directory.")
+    extension_validate_parser.add_argument("--path", required=True)
+    extension_validate_parser.set_defaults(func=command_extension_validate)
+
+    extension_import_parser = extension_subparsers.add_parser("import", help="Import an extension pack directory.")
+    extension_import_parser.add_argument("--path", required=True)
+    extension_import_parser.set_defaults(func=command_extension_import)
+
+    extension_enable_parser = extension_subparsers.add_parser("enable", help="Enable an installed extension pack.")
+    extension_enable_parser.add_argument("extension_id")
+    extension_enable_parser.set_defaults(func=command_extension_enable)
+
+    extension_disable_parser = extension_subparsers.add_parser("disable", help="Disable an installed extension pack.")
+    extension_disable_parser.add_argument("extension_id")
+    extension_disable_parser.set_defaults(func=command_extension_disable)
+
+    skill_parser = subparsers.add_parser("skill", help="Validate declarative Bubble MCP skill contracts.")
+    skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
+
+    skill_validate_parser = skill_subparsers.add_parser("validate", help="Validate a skill contract JSON file.")
+    skill_validate_parser.add_argument("--path", required=True)
+    skill_validate_parser.set_defaults(func=command_skill_validate)
+
+    skill_describe_parser = skill_subparsers.add_parser("describe", help="Describe a validated skill contract JSON file.")
+    skill_describe_parser.add_argument("--path", required=True)
+    skill_describe_parser.set_defaults(func=command_skill_describe)
+
+    tool_wizard_parser = subparsers.add_parser(
+        "tool-wizard",
+        help="Manage local tool-authoring sessions from captured Bubble writes.",
+    )
+    tool_wizard_subparsers = tool_wizard_parser.add_subparsers(dest="tool_wizard_command", required=True)
+
+    tool_wizard_start_parser = tool_wizard_subparsers.add_parser(
+        "start",
+        help="Start a local tool-authoring session.",
+    )
+    tool_wizard_start_parser.add_argument("--intent", required=True)
+    tool_wizard_start_parser.add_argument("--target", required=True)
+    tool_wizard_start_parser.add_argument("--profile", required=True)
+    tool_wizard_start_parser.set_defaults(func=command_tool_wizard_start)
+
+    tool_wizard_add_parser = tool_wizard_subparsers.add_parser(
+        "add-capture",
+        help="Add and classify a captured Bubble editor write JSON file.",
+    )
+    tool_wizard_add_parser.add_argument("session_id")
+    tool_wizard_add_parser.add_argument("--file", required=True)
+    tool_wizard_add_parser.set_defaults(func=command_tool_wizard_add_capture)
+
+    tool_wizard_describe_parser = tool_wizard_subparsers.add_parser(
+        "describe",
+        help="Describe a local tool-authoring session and aggregate classification.",
+    )
+    tool_wizard_describe_parser.add_argument("session_id")
+    tool_wizard_describe_parser.set_defaults(func=command_tool_wizard_describe)
+
+    learning_parser = subparsers.add_parser("learning", help="Manage local consultative learning records.")
+    learning_subparsers = learning_parser.add_subparsers(dest="learning_command", required=True)
+
+    learning_record_parser = learning_subparsers.add_parser(
+        "record",
+        help="Append one scoped consultative learning record.",
+    )
+    learning_record_parser.add_argument(
+        "--scope",
+        choices=["global", "profile", "project", "extension"],
+        required=True,
+    )
+    learning_record_parser.add_argument("--key", required=True)
+    learning_record_parser.add_argument("--value", required=True, help="JSON object text or a path to a JSON object.")
+    learning_record_parser.add_argument("--source", required=True)
+    learning_record_parser.add_argument("--confidence", required=True)
+    learning_record_parser.add_argument("--profile", default="")
+    learning_record_parser.add_argument("--project", default="")
+    learning_record_parser.add_argument("--extension-id", default="")
+    learning_record_parser.set_defaults(func=command_learning_record)
+
+    learning_list_parser = learning_subparsers.add_parser(
+        "list",
+        help="List consultative learning records with optional filters.",
+    )
+    learning_list_parser.add_argument("--scope", choices=["global", "profile", "project", "extension"], default="")
+    learning_list_parser.add_argument("--profile", default="")
+    learning_list_parser.add_argument("--project", default="")
+    learning_list_parser.add_argument("--extension-id", default="")
+    learning_list_parser.set_defaults(func=command_learning_list)
+
+    knowledge_parser = subparsers.add_parser("knowledge", help="Manage local cached Bubble manual knowledge.")
+    knowledge_subparsers = knowledge_parser.add_subparsers(dest="knowledge_command", required=True)
+
+    knowledge_refresh_parser = knowledge_subparsers.add_parser(
+        "refresh-source",
+        help="Import normalized knowledge records from a local JSONL file.",
+    )
+    knowledge_refresh_parser.add_argument("--source", required=True, help="Safe local source id, such as bubble_manual_gitbook.")
+    knowledge_refresh_parser.add_argument("--file", required=True, help="Local JSONL file to import.")
+    knowledge_refresh_parser.set_defaults(func=command_knowledge_refresh_source)
+
+    knowledge_search_parser = knowledge_subparsers.add_parser(
+        "search",
+        help="Search the local knowledge cache.",
+    )
+    knowledge_search_parser.add_argument("query")
+    knowledge_search_parser.add_argument("--limit", type=int, default=8)
+    knowledge_search_parser.set_defaults(func=command_knowledge_search)
+
+    knowledge_fetch_parser = knowledge_subparsers.add_parser(
+        "fetch",
+        help="Fetch one local knowledge record by id.",
+    )
+    knowledge_fetch_parser.add_argument("record_id")
+    knowledge_fetch_parser.set_defaults(func=command_knowledge_fetch)
+
+    knowledge_guidance_parser = knowledge_subparsers.add_parser(
+        "guidance",
+        help="Return Bubble manual guidance from the local cache only.",
+    )
+    knowledge_guidance_parser.add_argument("query")
+    knowledge_guidance_parser.add_argument("--limit", type=int, default=5)
+    knowledge_guidance_parser.set_defaults(func=command_knowledge_guidance)
 
     tools_parser = subparsers.add_parser("tools", help="Discover the MCP tool catalog without opening the full schema.")
     tools_subparsers = tools_parser.add_subparsers(dest="tools_command", required=True)

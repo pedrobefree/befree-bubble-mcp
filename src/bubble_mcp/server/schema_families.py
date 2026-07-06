@@ -98,6 +98,26 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Local file path for the input artifact.",
         examples=["/Users/me/project/app.bubble", "/tmp/bubble-context.json"],
     ),
+    "path": _prop(
+        "string",
+        "Local filesystem path.",
+        examples=["/Users/me/project/extension-pack"],
+    ),
+    "extension_id": _prop(
+        "string",
+        "Installed Bubble MCP extension id.",
+        examples=["local.simple-pack"],
+    ),
+    "session_id": _prop(
+        "string",
+        "Local tool-authoring session id.",
+        examples=["toolwiz_20260704_api_connector_1a2b3c4d"],
+    ),
+    "target": _prop(
+        "string",
+        "Bubble authoring target or capability family being captured.",
+        examples=["api_connector", "workflow_action", "data_schema"],
+    ),
     "output": _prop(
         "string",
         "Optional local output path for generated context or diagnostic artifacts.",
@@ -320,6 +340,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
             "Create a page and add a text element",
             "Fetch changelog entries for the current branch",
         ],
+    ),
+    "intent": _prop(
+        "string",
+        "Natural-language description of the candidate tool-authoring session intent.",
+        examples=["Create an API Connector call", "Create a reusable workflow action"],
     ),
     "recipe": _prop(
         "string",
@@ -1113,6 +1138,246 @@ def branch_changelog_tools() -> list[ToolSchema]:
     ]
 
 
+def extension_kernel_tools() -> list[ToolSchema]:
+    return [
+        _empty_tool(
+            "bubble_extension_list",
+            "List local Bubble MCP extension packs and their enabled state.",
+        ),
+        tool_schema(
+            "bubble_extension_validate",
+            "Validate a local Bubble MCP extension pack directory without importing it.",
+            ["path"],
+            required=["path"],
+        ),
+        tool_schema(
+            "bubble_extension_import",
+            "Import a local Bubble MCP extension pack directory into local extension storage. The import is idempotent for the same extension id.",
+            ["path"],
+            required=["path"],
+        ),
+        tool_schema(
+            "bubble_extension_enable",
+            "Enable an installed Bubble MCP extension pack by extension id. Re-enabling an enabled extension is idempotent.",
+            ["extension_id"],
+            required=["extension_id"],
+        ),
+        tool_schema(
+            "bubble_extension_disable",
+            "Disable an installed Bubble MCP extension pack by extension id. Re-disabling a disabled extension is idempotent.",
+            ["extension_id"],
+            required=["extension_id"],
+        ),
+        tool_schema(
+            "bubble_skill_validate",
+            "Validate a declarative Bubble MCP skill contract JSON file. This checks allowed tools, non-executable steps, explicit outputs, and schema shape without executing the skill.",
+            ["path"],
+            required=["path"],
+        ),
+        tool_schema(
+            "bubble_skill_describe",
+            "Describe a declarative Bubble MCP skill contract JSON file after validation. This is validation/description only and does not execute skill steps.",
+            ["path"],
+            required=["path"],
+        ),
+        tool_schema(
+            "bubble_tool_wizard_start",
+            "Start a local tool-authoring session for captured Bubble editor writes. This only creates local session metadata and does not generate, activate, or execute extension tools.",
+            ["intent", "target", "profile"],
+            required=["intent", "target", "profile"],
+        ),
+        tool_schema(
+            "bubble_tool_wizard_add_capture",
+            "Add a captured Bubble editor write JSON file to a local tool-authoring session and classify it with the expert payload classifier. This does not replay writes.",
+            ["session_id", "file"],
+            required=["session_id", "file"],
+        ),
+        tool_schema(
+            "bubble_tool_wizard_describe",
+            "Describe a local tool-authoring session and its aggregate captured-write classification. Read-only and does not generate or activate tools.",
+            ["session_id"],
+            required=["session_id"],
+        ),
+        {
+            "name": "bubble_learning_record",
+            "description": (
+                "Append one local consultative learning record. Records are stored as append-only JSONL and are not "
+                "used by planner behavior in this release."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "scope": _prop(
+                        "string",
+                        "Learning scope for this record.",
+                        enum=["global", "profile", "project", "extension"],
+                    ),
+                    "key": _prop(
+                        "string",
+                        "Stable learning key such as naming.page_language or workflow.preview_required.",
+                        examples=["naming.page_language", "workflow.preview_required"],
+                    ),
+                    "value": _prop(
+                        "object",
+                        "JSON object containing the consultative learning value.",
+                        additional_properties=True,
+                        default={},
+                        examples=[{"language": "pt-BR"}],
+                    ),
+                    "source": _prop(
+                        "string",
+                        "Provenance for the learning record.",
+                        examples=["user_declared", "operator_reviewed"],
+                    ),
+                    "confidence": _prop(
+                        "string",
+                        "Confidence label for the learning record.",
+                        examples=["confirmed", "tentative"],
+                    ),
+                    "profile": field("profile"),
+                    "project": _prop(
+                        "string",
+                        "Optional Bubble app/project identifier used when scope is project.",
+                        examples=["client-app"],
+                    ),
+                    "extension_id": field("extension_id"),
+                },
+                required=["scope", "key", "source", "confidence"],
+            ),
+        },
+        {
+            "name": "bubble_learning_list",
+            "description": (
+                "List local consultative learning records with optional scope/profile/project/extension filters. "
+                "Read-only and does not affect planner behavior."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "scope": _prop(
+                        "string",
+                        "Optional learning scope filter.",
+                        enum=["global", "profile", "project", "extension"],
+                    ),
+                    "profile": field("profile"),
+                    "project": _prop(
+                        "string",
+                        "Optional Bubble app/project identifier filter.",
+                        examples=["client-app"],
+                    ),
+                    "extension_id": field("extension_id"),
+                }
+            ),
+        },
+        {
+            "name": "bubble_knowledge_refresh_source",
+            "description": (
+                "Import normalized Bubble manual records from a local JSONL file into the local knowledge cache. "
+                "This never calls remote documentation services and only mutates local MCP cache storage."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "source": _prop(
+                        "string",
+                        "Safe local knowledge source id. Use bubble_manual_gitbook for cached Bubble manual records.",
+                        examples=["bubble_manual_gitbook"],
+                    ),
+                    "file": _prop(
+                        "string",
+                        "Local JSONL file containing normalized knowledge records to append to the cache.",
+                        examples=["tests/fixtures/knowledge/bubble-manual-records.jsonl"],
+                    ),
+                },
+                required=["source", "file"],
+            ),
+        },
+        {
+            "name": "bubble_knowledge_search",
+            "description": (
+                "Search the local normalized knowledge cache. Results are source-attributed and cache-only; remote "
+                "GitBook or manual lookups are disabled in this release."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "query": _prop(
+                        "string",
+                        "Documentation topic to search in the local cache.",
+                        examples=["API Connector authentication", "privacy rules migration"],
+                    ),
+                    "limit": field("limit"),
+                },
+                required=["query"],
+            ),
+        },
+        {
+            "name": "bubble_knowledge_fetch",
+            "description": "Fetch one local knowledge record by id with full provenance and license metadata.",
+            "inputSchema": object_schema(
+                {
+                    "record_id": _prop(
+                        "string",
+                        "Knowledge record id returned by bubble_knowledge_search.",
+                        examples=["bubble-manual:data-types:privacy"],
+                    ),
+                },
+                required=["record_id"],
+            ),
+        },
+        {
+            "name": "bubble_manual_guidance",
+            "description": (
+                "Return source-attributed Bubble manual guidance from the local cache only. Use for consultative "
+                "manual context; it does not call remote docs or automatically influence execution."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "query": _prop(
+                        "string",
+                        "Bubble manual topic or question to answer from cached records.",
+                        examples=["How should API Connector authentication be handled?"],
+                    ),
+                    "limit": field("limit"),
+                },
+                required=["query"],
+            ),
+        },
+        {
+            "name": "bubble_manual_context_for_tool_authoring",
+            "description": (
+                "Return local cached Bubble manual context shaped for declarative tool authoring decisions. "
+                "Consultative only and cache-only."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "query": _prop(
+                        "string",
+                        "Tool-authoring topic to search in cached Bubble manual records.",
+                        examples=["API Connector authentication reusable calls"],
+                    ),
+                    "limit": field("limit"),
+                },
+                required=["query"],
+            ),
+        },
+        {
+            "name": "bubble_manual_context_for_validation",
+            "description": (
+                "Return local cached Bubble manual context shaped for validation and migration risk review. "
+                "Consultative only and cache-only."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "query": _prop(
+                        "string",
+                        "Validation topic to search in cached Bubble manual records.",
+                        examples=["privacy rules migration risk"],
+                    ),
+                    "limit": field("limit"),
+                },
+                required=["query"],
+            ),
+        },
+    ]
+
+
 def native_tool_schemas() -> list[ToolSchema]:
     """Return native tool schemas grouped by capability family."""
 
@@ -1121,4 +1386,5 @@ def native_tool_schemas() -> list[ToolSchema]:
         *planning_execution_tools(),
         *html_import_tools(),
         *branch_changelog_tools(),
+        *extension_kernel_tools(),
     ]

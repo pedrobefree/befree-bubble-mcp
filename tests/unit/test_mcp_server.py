@@ -2203,3 +2203,418 @@ def test_compile_plan_tool_returns_write_payload() -> None:
     assert response is not None
     payload = json.loads(response["result"]["content"][0]["text"])
     assert first_change(payload["plan"]["steps"][0]["args"]["write_payload"], "CreateElement")["body"]["%x"] == "Text"
+
+
+def test_extension_management_tools_are_listed() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 100, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    assert tools["bubble_extension_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_extension_list"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_import"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_extension_import"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_enable"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_extension_enable"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_disable"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_extension_disable"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_validate"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_extension_validate"]["annotations"]["idempotentHint"] is True
+
+
+def test_extension_list_tool_returns_installed_extensions(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 101,
+            "method": "tools/call",
+            "params": {"name": "bubble_extension_list", "arguments": {}},
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload == {"ok": True, "extensions": []}
+
+
+def test_extension_management_tools_validate_required_arguments() -> None:
+    for tool_name, required_arg in (
+        ("bubble_extension_validate", "path"),
+        ("bubble_extension_import", "path"),
+        ("bubble_extension_enable", "extension_id"),
+        ("bubble_extension_disable", "extension_id"),
+    ):
+        response = handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 102,
+                "method": "tools/call",
+                "params": {"name": tool_name, "arguments": {}},
+            }
+        )
+
+        assert response is not None
+        result = response["result"]
+        payload = json.loads(result["content"][0]["text"])
+        assert result["isError"] is True
+        assert payload["ok"] is False
+        assert payload["tool"] == tool_name
+        assert payload["error"] == f"{tool_name} requires {required_arg}."
+
+
+def test_learning_tools_are_listed_with_annotations() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 103, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    assert tools["bubble_learning_record"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_learning_record"]["annotations"]["idempotentHint"] is False
+    assert tools["bubble_learning_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_learning_list"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_learning_record"]["inputSchema"]["required"] == [
+        "scope",
+        "key",
+        "source",
+        "confidence",
+    ]
+
+
+def test_knowledge_tools_are_listed_with_annotations() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 110, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    for name in (
+        "bubble_knowledge_search",
+        "bubble_knowledge_fetch",
+        "bubble_manual_guidance",
+        "bubble_manual_context_for_tool_authoring",
+        "bubble_manual_context_for_validation",
+    ):
+        assert tools[name]["annotations"]["readOnlyHint"] is True
+        assert tools[name]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_knowledge_refresh_source"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_knowledge_refresh_source"]["annotations"]["idempotentHint"] is False
+    assert tools["bubble_knowledge_search"]["inputSchema"]["required"] == ["query"]
+    assert tools["bubble_knowledge_fetch"]["inputSchema"]["required"] == ["record_id"]
+    assert tools["bubble_knowledge_refresh_source"]["inputSchema"]["required"] == ["source", "file"]
+
+
+def test_tool_wizard_tools_are_listed_with_annotations() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 120, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    assert tools["bubble_tool_wizard_start"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_tool_wizard_start"]["annotations"]["idempotentHint"] is False
+    assert tools["bubble_tool_wizard_add_capture"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_tool_wizard_add_capture"]["annotations"]["idempotentHint"] is False
+    assert tools["bubble_tool_wizard_describe"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_tool_wizard_describe"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_tool_wizard_start"]["inputSchema"]["required"] == ["intent", "target", "profile"]
+    assert tools["bubble_tool_wizard_add_capture"]["inputSchema"]["required"] == ["session_id", "file"]
+    assert tools["bubble_tool_wizard_describe"]["inputSchema"]["required"] == ["session_id"]
+
+
+def test_tool_wizard_tools_start_add_capture_and_describe(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    start_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 121,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_start",
+                "arguments": {
+                    "intent": "Create an API Connector call",
+                    "target": "api_connector",
+                    "profile": "client",
+                },
+            },
+        }
+    )
+
+    assert start_response is not None
+    start_payload = json.loads(start_response["result"]["content"][0]["text"])
+    assert start_payload["ok"] is True
+    session_id = start_payload["session"]["id"]
+
+    add_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 122,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_add_capture",
+                "arguments": {
+                    "session_id": session_id,
+                    "file": "tests/fixtures/tool-authoring/api-connector-write-capture.json",
+                },
+            },
+        }
+    )
+
+    assert add_response is not None
+    add_payload = json.loads(add_response["result"]["content"][0]["text"])
+    assert add_payload["ok"] is True
+    assert add_payload["classification"]["families"] == ["editor_write"]
+    assert add_payload["classification"]["change_count"] == 1
+
+    describe_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 123,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_describe",
+                "arguments": {"session_id": session_id},
+            },
+        }
+    )
+
+    assert describe_response is not None
+    describe_payload = json.loads(describe_response["result"]["content"][0]["text"])
+    assert describe_payload["session"]["intent"] == "Create an API Connector call"
+    assert describe_payload["classification"]["app_id"] == "synthetic-app"
+    assert describe_payload["classification"]["change_count"] == 1
+
+
+def test_tool_wizard_add_capture_returns_structured_mcp_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    no_payload = tmp_path / "no-payload.json"
+    no_payload.write_text("{}", encoding="utf-8")
+
+    start_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 124,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_start",
+                "arguments": {
+                    "intent": "Create an API Connector call",
+                    "target": "api_connector",
+                    "profile": "client",
+                },
+            },
+        }
+    )
+    assert start_response is not None
+    session_id = json.loads(start_response["result"]["content"][0]["text"])["session"]["id"]
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 125,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_add_capture",
+                "arguments": {
+                    "session_id": session_id,
+                    "file": str(no_payload),
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["isError"] is True
+    assert payload["ok"] is False
+    assert payload["tool"] == "bubble_tool_wizard_add_capture"
+    assert payload["error_class"] == "ValueError"
+    assert "does not contain a Bubble editor write body" in payload["error"]
+
+
+def test_knowledge_tools_import_search_and_fetch_local_cache(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    refresh_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 111,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_knowledge_refresh_source",
+                "arguments": {
+                    "source": "bubble_manual_gitbook",
+                    "file": "tests/fixtures/knowledge/bubble-manual-records.jsonl",
+                },
+            },
+        }
+    )
+
+    assert refresh_response is not None
+    refresh_payload = json.loads(refresh_response["result"]["content"][0]["text"])
+    assert refresh_payload["ok"] is True
+    assert refresh_payload["imported"] == 2
+
+    search_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 112,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_manual_guidance",
+                "arguments": {"query": "privacy rules migration", "limit": 3},
+            },
+        }
+    )
+
+    assert search_response is not None
+    search_payload = json.loads(search_response["result"]["content"][0]["text"])
+    assert search_payload["ok"] is True
+    assert search_payload["purpose"] == "manual_guidance"
+    assert search_payload["cache_only"] is True
+    assert search_payload["results"][0]["id"] == "bubble-manual:data-types:privacy"
+
+    fetch_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 113,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_knowledge_fetch",
+                "arguments": {"record_id": "bubble-manual:data-types:privacy"},
+            },
+        }
+    )
+
+    assert fetch_response is not None
+    fetch_payload = json.loads(fetch_response["result"]["content"][0]["text"])
+    assert fetch_payload["ok"] is True
+    assert fetch_payload["record"]["source_url"].startswith("https://manual.bubble.io/")
+
+
+def test_learning_tools_append_and_list_records(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    record_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 104,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_learning_record",
+                "arguments": {
+                    "scope": "project",
+                    "key": "naming.page_language",
+                    "value": {"language": "pt-BR"},
+                    "source": "user_declared",
+                    "confidence": "confirmed",
+                    "project": "client-app",
+                },
+            },
+        }
+    )
+
+    assert record_response is not None
+    record_payload = json.loads(record_response["result"]["content"][0]["text"])
+    assert record_payload["ok"] is True
+    assert record_payload["record"]["scope"] == "project"
+    assert record_payload["record"]["project"] == "client-app"
+
+    list_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 105,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_learning_list",
+                "arguments": {"scope": "project", "project": "client-app"},
+            },
+        }
+    )
+
+    assert list_response is not None
+    list_payload = json.loads(list_response["result"]["content"][0]["text"])
+    assert list_payload["ok"] is True
+    assert [record["key"] for record in list_payload["records"]] == ["naming.page_language"]
+
+
+def test_learning_record_tool_rejects_missing_scope_discriminator_without_append(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 106,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_learning_record",
+                "arguments": {
+                    "scope": "project",
+                    "key": "naming.page_language",
+                    "value": {"language": "pt-BR"},
+                    "source": "user_declared",
+                    "confidence": "confirmed",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["isError"] is True
+    assert payload["ok"] is False
+    assert payload["tool"] == "bubble_learning_record"
+    assert payload["error"] == "Learning record scope 'project' requires project."
+
+    list_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 107,
+            "method": "tools/call",
+            "params": {"name": "bubble_learning_list", "arguments": {}},
+        }
+    )
+    assert list_response is not None
+    list_payload = json.loads(list_response["result"]["content"][0]["text"])
+    assert list_payload["records"] == []
+
+
+def test_learning_record_tool_rejects_non_object_value_without_append(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 108,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_learning_record",
+                "arguments": {
+                    "scope": "global",
+                    "key": "workflow.preview_required",
+                    "value": True,
+                    "source": "user_declared",
+                    "confidence": "confirmed",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = response["result"]
+    payload = json.loads(result["content"][0]["text"])
+    assert result["isError"] is True
+    assert payload["ok"] is False
+    assert payload["tool"] == "bubble_learning_record"
+    assert payload["error"] == "bubble_learning_record requires value to be a JSON object."
+
+    list_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 109,
+            "method": "tools/call",
+            "params": {"name": "bubble_learning_list", "arguments": {}},
+        }
+    )
+    assert list_response is not None
+    list_payload = json.loads(list_response["result"]["content"][0]["text"])
+    assert list_payload["records"] == []

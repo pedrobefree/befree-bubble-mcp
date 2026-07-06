@@ -1,0 +1,12 @@
+{
+  "id": "local.secret-pack",
+  "name": "Secret Pack",
+  "version": "0.1.0",
+  "bubbleMcpVersion": ">=0.1.0",
+  "capabilities": ["tools"],
+  "risk": "mutating",
+  "author": "local-user",
+  "exports": {
+    "tools": ["tools/secret.tool.json"]
+  }
+}
