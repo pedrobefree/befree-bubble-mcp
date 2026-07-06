@@ -2609,10 +2609,13 @@ def test_tool_wizard_tools_are_listed_with_annotations() -> None:
     assert tools["bubble_tool_wizard_describe"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_tool_wizard_finalize"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_tool_wizard_finalize"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_tool_wizard_generate"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_tool_wizard_generate"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_tool_wizard_start"]["inputSchema"]["required"] == ["intent", "target", "profile"]
     assert tools["bubble_tool_wizard_add_capture"]["inputSchema"]["required"] == ["session_id", "file"]
     assert tools["bubble_tool_wizard_describe"]["inputSchema"]["required"] == ["session_id"]
     assert tools["bubble_tool_wizard_finalize"]["inputSchema"]["required"] == ["session_id"]
+    assert tools["bubble_tool_wizard_generate"]["inputSchema"]["required"] == ["session_id"]
 
 
 def test_tool_wizard_tools_start_add_capture_and_describe(tmp_path, monkeypatch) -> None:
@@ -2699,6 +2702,78 @@ def test_tool_wizard_tools_start_add_capture_and_describe(tmp_path, monkeypatch)
     assert finalize_payload["capture_summary"]["intents"] == ["CreateApiConnectorCall"]
     assert finalize_payload["questions"]
     assert finalize_payload["testing_guidance"]
+
+    generate_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 127,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_generate",
+                "arguments": {"session_id": session_id},
+            },
+        }
+    )
+
+    assert generate_response is not None
+    generate_payload = json.loads(generate_response["result"]["content"][0]["text"])
+    assert generate_payload["ok"] is True
+    assert generate_payload["validation"]["ok"] is True
+    assert generate_payload["pack_path"]
+
+    import_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 128,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_extension_import",
+                "arguments": {"path": generate_payload["pack_path"]},
+            },
+        }
+    )
+    assert import_response is not None
+    assert json.loads(import_response["result"]["content"][0]["text"])["ok"] is True
+
+    enable_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 129,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_extension_enable",
+                "arguments": {"extension_id": generate_payload["extension_id"]},
+            },
+        }
+    )
+    assert enable_response is not None
+    assert json.loads(enable_response["result"]["content"][0]["text"])["ok"] is True
+
+    preview_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 130,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_extension_call",
+                "arguments": {
+                    "tool": generate_payload["tool_name"],
+                    "arguments": {
+                        "profile": "client",
+                        "name": "Get Products",
+                        "method": "GET",
+                        "url": "https://api.example.invalid/products",
+                        "execute": False,
+                    },
+                },
+            },
+        }
+    )
+    assert preview_response is not None
+    preview_payload = json.loads(preview_response["result"]["content"][0]["text"])
+    assert preview_payload["ok"] is True
+    assert preview_payload["execute"] is False
+    assert preview_payload["extension_id"] == generate_payload["extension_id"]
 
 
 def test_tool_wizard_add_capture_returns_structured_mcp_error(tmp_path, monkeypatch) -> None:

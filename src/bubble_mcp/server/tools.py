@@ -71,6 +71,7 @@ from bubble_mcp.tool_authoring.sessions import (
     create_authoring_session,
     describe_authoring_session,
     finalize_authoring_session,
+    generate_authoring_extension_pack,
     set_active_authoring_session,
 )
 from bubble_mcp.validators.semantic import validate_plan
@@ -263,6 +264,16 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         args = arguments or {}
         session_id = _required_string_arg(args, "session_id", name)
         return finalize_authoring_session(session_id)
+    if name == "bubble_tool_wizard_generate":
+        args = arguments or {}
+        session_id = _required_string_arg(args, "session_id", name)
+        output_dir = str(args.get("output_dir") or "").strip()
+        return generate_authoring_extension_pack(
+            session_id,
+            extension_id=str(args.get("extension_id") or "") or None,
+            tool_name=str(args.get("tool_name") or "") or None,
+            output_dir=Path(output_dir) if output_dir else None,
+        )
     if name == "bubble_learning_record":
         args = arguments or {}
         value = args.get("value")

@@ -1071,6 +1071,13 @@ def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, c
     assert finalized["questions"]
     assert finalized["testing_guidance"]
 
+    assert main(["tool-wizard", "generate", session_id]) == 0
+    generated = json.loads(capsys.readouterr().out)
+    assert generated["ok"] is True
+    assert generated["validation"]["ok"] is True
+    assert generated["pack_path"]
+    assert generated["next_mcp_calls"][0]["tool"] == "bubble_extension_validate"
+
     assert main(["tool-wizard", "activate", session_id]) == 0
     activated = json.loads(capsys.readouterr().out)
     assert activated["session_id"] == session_id

@@ -11,7 +11,7 @@ The guided tool wizard is the local capture and classification layer for turning
 3. When the dev returns and says the capture is finished, finalize the same
    session. Finalization returns what was learned, which questions still need
    answers, and how to test the future extension tool.
-4. Use the finalization output, manual guidance, and validation output to draft a declarative extension tool and eval fixture.
+4. Generate a candidate declarative extension pack from the same session.
 5. Validate the extension pack before import.
 6. Import and enable only after preview-oriented tests pass.
 
@@ -55,6 +55,21 @@ Finalize after the dev finishes the editor actions:
 ```bash
 bubble-mcp tool-wizard finalize toolwiz_20260704_api_connector_ab12cd34
 ```
+
+Generate the candidate extension pack:
+
+```bash
+bubble-mcp tool-wizard generate toolwiz_20260704_api_connector_ab12cd34
+```
+
+By default the generated pack is written under:
+
+```text
+${BUBBLE_MCP_CONFIG_DIR:-~/.config/bubble-mcp}/tool-authoring/generated-packs/<extension-id>/
+```
+
+Use `--extension-id`, `--tool-name`, and `--output-dir` only when a stable pack id,
+tool name, or artifact location is needed.
 
 ## MCP Usage
 
@@ -111,6 +126,22 @@ Finalize:
 `bubble_tool_wizard_finalize` is the normal return point after the dev finishes
 the browser/editor capture. It does not generate or import a tool; it returns
 the learned patterns, pending questions, and testing guidance for the next step.
+
+Generate:
+
+```json
+{
+  "tool": "bubble_tool_wizard_generate",
+  "arguments": {
+    "session_id": "toolwiz_20260704_api_connector_ab12cd34"
+  }
+}
+```
+
+The response includes `pack_path`, `extension_id`, `tool_name`, validation
+results, and `next_mcp_calls` for `bubble_extension_validate`,
+`bubble_extension_import`, `bubble_extension_enable`, and preview through
+`bubble_extension_call`.
 
 ## Capture Input
 
@@ -232,8 +263,8 @@ Use this order for a new candidate tool:
 2. Redact credentials, tokens, private URLs, and client data before storing examples.
 3. Start a tool wizard session and add captures.
 4. Search local manual guidance with `bubble_manual_context_for_tool_authoring` or `bubble-mcp knowledge guidance`.
-5. Draft the declarative tool in an extension pack with `execute` defaulting to `false`.
-6. Run `bubble-mcp extension validate --path ./pack`.
+5. Generate the declarative extension pack with `bubble_tool_wizard_generate`; generated tools keep `execute` defaulting to `false`.
+6. Run `bubble-mcp extension validate --path <pack_path>` or call `bubble_extension_validate` with the returned `pack_path`.
 7. Import and enable in a temporary `BUBBLE_MCP_CONFIG_DIR`.
 8. Confirm the enabled tool appears in `tools/list` or `bubble-mcp tools coverage`.
 9. Call the enabled tool once with `execute=false`, directly when the client exposes it or through `bubble_extension_call` when it only appears in the catalog, and confirm v1 returns a preview without writing to Bubble.

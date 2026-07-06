@@ -129,6 +129,16 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Optional local tool-authoring session id that receives captured extension write events.",
         examples=["toolwiz_20260704_api_connector_1a2b3c4d"],
     ),
+    "tool_name": _prop(
+        "string",
+        "Optional exact MCP tool name to generate or expose.",
+        examples=["local.api-connector.create_api_call"],
+    ),
+    "output_dir": _prop(
+        "string",
+        "Optional local directory for generated artifacts. Omit to use the Bubble MCP config directory.",
+        examples=["/Users/me/.config/bubble-mcp/tool-authoring/generated-packs"],
+    ),
     "host": _prop(
         "string",
         "Local bind host for an auxiliary HTTP service.",
@@ -1288,6 +1298,12 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "bubble_tool_wizard_finalize",
             "Finalize a local tool-authoring session after the user finishes the Bubble editor actions. Returns what the MCP learned from captures, questions the dev must answer, and test guidance for the new extension tool. Read-only; it does not generate, import, enable, or execute tools.",
             ["session_id"],
+            required=["session_id"],
+        ),
+        tool_schema(
+            "bubble_tool_wizard_generate",
+            "Generate a candidate declarative extension pack from a finalized tool-authoring session. The generated pack is local, preview-first, and validated; it does not import, enable, or execute the tool.",
+            ["session_id", "extension_id", "tool_name", "output_dir"],
             required=["session_id"],
         ),
         {

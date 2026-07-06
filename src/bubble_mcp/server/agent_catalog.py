@@ -401,6 +401,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "learned from captured writes, lists missing decisions/questions, and returns test guidance for the future "
         "extension tool. Read-only; it does not generate, import, enable, or execute tools."
     ),
+    "bubble_tool_wizard_generate": (
+        "Generate a local candidate extension pack from a finalized tool-authoring session id. Use this after "
+        "bubble_tool_wizard_finalize when the user wants to create the tool without filesystem or shell access. "
+        "The result returns pack_path plus the exact next MCP calls for validate, import, enable, and preview."
+    ),
     "bubble_extension_call": (
         "Preview an enabled declarative extension tool by exact tool name through a stable native MCP dispatcher. "
         "Use this when a dynamic extension tool appears in the catalog but the client did not expose it as a direct "
@@ -1098,6 +1103,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_extension_companion_status",
             "bubble_extension_companion_stop",
             "bubble_tool_wizard_activate",
+            "bubble_tool_wizard_generate",
             *agent_read_only,
         },
         "openWorldHint": name

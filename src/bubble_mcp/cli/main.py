@@ -63,6 +63,7 @@ from bubble_mcp.tool_authoring.sessions import (
     create_authoring_session,
     describe_authoring_session,
     finalize_authoring_session,
+    generate_authoring_extension_pack,
     set_active_authoring_session,
 )
 from bubble_mcp.validators.semantic import validate_plan
@@ -836,6 +837,21 @@ def command_tool_wizard_finalize(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def command_tool_wizard_generate(args: argparse.Namespace) -> int:
+    try:
+        result = generate_authoring_extension_pack(
+            args.session_id,
+            extension_id=args.extension_id or None,
+            tool_name=args.tool_name or None,
+            output_dir=Path(args.output_dir) if args.output_dir else None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("generate", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def emit_learning_error(action: str, exc: Exception) -> None:
     emit_json(
         {
@@ -1517,6 +1533,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tool_wizard_finalize_parser.add_argument("session_id")
     tool_wizard_finalize_parser.set_defaults(func=command_tool_wizard_finalize)
+
+    tool_wizard_generate_parser = tool_wizard_subparsers.add_parser(
+        "generate",
+        help="Generate a candidate extension pack from a finalized tool-authoring session.",
+    )
+    tool_wizard_generate_parser.add_argument("session_id")
+    tool_wizard_generate_parser.add_argument("--extension-id", default="")
+    tool_wizard_generate_parser.add_argument("--tool-name", default="")
+    tool_wizard_generate_parser.add_argument("--output-dir", default="")
+    tool_wizard_generate_parser.set_defaults(func=command_tool_wizard_generate)
 
     learning_parser = subparsers.add_parser("learning", help="Manage local consultative learning records.")
     learning_subparsers = learning_parser.add_subparsers(dest="learning_command", required=True)

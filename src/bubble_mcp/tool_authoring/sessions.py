@@ -9,7 +9,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.core.config import get_config_dir
+from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.harness.expert import classify_editor_payload
 from bubble_mcp.tool_authoring.models import ToolAuthoringSession
 
@@ -45,6 +47,10 @@ def _sessions_dir() -> Path:
 
 def _active_session_path() -> Path:
     return get_config_dir() / "tool-authoring" / ACTIVE_SESSION_FILENAME
+
+
+def _generated_packs_dir() -> Path:
+    return get_config_dir() / "tool-authoring" / "generated-packs"
 
 
 def _ensure_under_base(path: Path, base: Path) -> Path:
@@ -129,6 +135,18 @@ def _new_session_id(target: str) -> str:
     target_slug = _slug(target, fallback="candidate")
     suffix = uuid4().hex[:8]
     return _validate_safe_segment(f"toolwiz_{date}_{target_slug}_{suffix}", label="session_id")
+
+
+def _default_extension_id(session: ToolAuthoringSession) -> str:
+    return f"local.toolwiz.{_slug(session.target, fallback='tool')}.{session.id[-8:]}"
+
+
+def _default_tool_name(session: ToolAuthoringSession, extension_id: str) -> str:
+    return f"{extension_id}.{_slug(session.intent, fallback=session.target)}"
+
+
+def _safe_tool_filename(tool_name: str) -> str:
+    return f"{_slug(tool_name.split('.')[-1], fallback='generated_tool')}.tool.json"
 
 
 def create_authoring_session(*, intent: str, target: str, profile: str) -> ToolAuthoringSession:
@@ -336,6 +354,175 @@ def _testing_guidance(session: ToolAuthoringSession) -> list[str]:
         "Atualizar o cache/contexto do profile e verificar no export .bubble se a alteracao criada pela tool aparece no local esperado.",
         "Registrar pelo menos uma fixture de sucesso e uma fixture de erro/argumento incompleto para evitar regressao.",
     ]
+
+
+def _generated_tool_input_schema(session: ToolAuthoringSession, body_keys: list[str]) -> dict[str, object]:
+    properties: dict[str, object] = {
+        "profile": {
+            "type": "string",
+            "description": "Local Bubble MCP profile to use for preview and future execution.",
+        },
+        "execute": {
+            "type": "boolean",
+            "description": "Execute the write after preview and validation. v1 generated tools must default to false.",
+            "default": False,
+        },
+    }
+    required = ["profile"]
+    normalized = f"{session.intent} {session.target}".lower()
+    if "api" in normalized:
+        api_fields = {
+            "name": "API call display name.",
+            "method": "HTTP method for the API call.",
+            "url": "API call URL.",
+            "headers": "Optional HTTP headers object.",
+            "query_params": "Optional query parameters object.",
+            "body": "Optional request body template.",
+            "authentication": "Optional API Connector authentication mode or reference.",
+        }
+        for field, description in api_fields.items():
+            if field in body_keys or field in {"name", "method", "url"}:
+                properties[field] = {
+                    "type": "string" if field not in {"headers", "query_params"} else "object",
+                    "description": description,
+                }
+        required.extend(field for field in ("name", "method", "url") if field in properties)
+    else:
+        properties["context"] = {
+            "type": "string",
+            "description": "Target page or reusable context, when the generated tool needs one.",
+        }
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": required,
+    }
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def generate_authoring_extension_pack(
+    session_id: str,
+    *,
+    extension_id: str | None = None,
+    tool_name: str | None = None,
+    output_dir: Path | None = None,
+) -> dict[str, object]:
+    finalized = finalize_authoring_session(session_id)
+    if not finalized.get("ok"):
+        return {
+            **finalized,
+            "error": "tool_authoring_session_has_no_captures",
+            "message": "Add captures to the tool-authoring session before generating an extension pack.",
+        }
+    session = _load_session(session_id)
+    requested_extension_id = str(extension_id or "").strip() or _default_extension_id(session)
+    safe_extension_id = _validate_safe_segment(requested_extension_id, label="extension_id")
+    requested_tool_name = str(tool_name or "").strip() or _default_tool_name(session, safe_extension_id)
+    if not requested_tool_name:
+        raise ValueError("tool_name is required.")
+    if "/" in requested_tool_name or "\\" in requested_tool_name:
+        raise ValueError(f"tool_name must not contain path separators: {requested_tool_name}")
+
+    base = output_dir.expanduser() if output_dir else _generated_packs_dir()
+    if base.exists() and base.is_symlink():
+        raise ValueError(f"Generated extension output directory cannot be a symlink: {base}")
+    pack_path = base / safe_extension_id
+    if pack_path.exists():
+        if pack_path.is_symlink():
+            raise ValueError(f"Generated extension pack path cannot be a symlink: {pack_path}")
+        shutil.rmtree(pack_path)
+    pack_path.mkdir(parents=True, exist_ok=True)
+
+    raw_capture_summary = finalized.get("capture_summary")
+    capture_summary: dict[str, object] = raw_capture_summary if isinstance(raw_capture_summary, dict) else {}
+    raw_body_keys = capture_summary.get("body_keys")
+    body_keys = raw_body_keys if isinstance(raw_body_keys, list) else []
+    body_key_strings = [str(key) for key in body_keys]
+    tool_relative = f"tools/{_safe_tool_filename(requested_tool_name)}"
+    evidence_relative = "evidence/tool-authoring-summary.json"
+    manifest = {
+        "id": safe_extension_id,
+        "name": f"Generated Tool Authoring Pack - {session.target}",
+        "version": "0.1.0",
+        "bubbleMcpVersion": ">=0.1.0",
+        "capabilities": ["tools", "evals"],
+        "risk": "mutating",
+        "author": "local-tool-wizard",
+        "exports": {
+            "tools": [tool_relative],
+            "skills": [],
+            "evals": [],
+        },
+    }
+    tool_payload = {
+        "name": requested_tool_name,
+        "description": (
+            f"Generated candidate tool from tool-authoring session {session.id}. "
+            "Use execute=false for preview and review the captured evidence before implementing execution."
+        ),
+        "risk": "mutating",
+        "inputSchema": _generated_tool_input_schema(session, body_key_strings),
+        "annotations": {
+            "readOnlyHint": False,
+            "destructiveHint": False,
+            "idempotentHint": False,
+            "openWorldHint": True,
+        },
+        "template": redact_sensitive(
+            {
+                "kind": "appeditor_write",
+                "family": session.target,
+                "source_session_id": session.id,
+                "intent": session.intent,
+                "requiresValidation": True,
+                "captured_intents": capture_summary.get("intents", []),
+                "captured_paths": capture_summary.get("paths", []),
+                "captured_body_keys": body_key_strings,
+                "change_count": capture_summary.get("change_count", 0),
+                "status": "candidate_requires_review",
+            }
+        ),
+    }
+    evidence = redact_sensitive(
+        {
+            "session": session.to_dict(),
+            "finalization": finalized,
+            "source": "bubble_tool_wizard_generate",
+            "generated_at": _utc_now_iso(),
+        }
+    )
+
+    _write_json(pack_path / "extension.json", manifest)
+    _write_json(pack_path / tool_relative, tool_payload)
+    _write_json(pack_path / evidence_relative, evidence)
+    validation = validate_extension_pack(pack_path)
+    return {
+        "ok": validation.ok,
+        "session_id": session.id,
+        "extension_id": safe_extension_id,
+        "tool_name": requested_tool_name,
+        "pack_path": str(pack_path),
+        "manifest_path": str(pack_path / "extension.json"),
+        "tool_path": str(pack_path / tool_relative),
+        "evidence_path": str(pack_path / evidence_relative),
+        "validation": validation.to_dict(),
+        "next_mcp_calls": [
+            {"tool": "bubble_extension_validate", "arguments": {"path": str(pack_path)}},
+            {"tool": "bubble_extension_import", "arguments": {"path": str(pack_path)}},
+            {"tool": "bubble_extension_enable", "arguments": {"extension_id": safe_extension_id}},
+            {
+                "tool": "bubble_extension_call",
+                "arguments": {
+                    "tool": requested_tool_name,
+                    "arguments": {"profile": session.profile, "execute": False},
+                },
+            },
+        ],
+    }
 
 
 def finalize_authoring_session(session_id: str) -> dict[str, object]:

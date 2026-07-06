@@ -2,12 +2,14 @@ from pathlib import Path
 
 import pytest
 
+from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.tool_authoring.sessions import (
     active_authoring_session_id,
     append_capture_to_authoring_session,
     create_authoring_session,
     describe_authoring_session,
     finalize_authoring_session,
+    generate_authoring_extension_pack,
     set_active_authoring_session,
 )
 
@@ -75,6 +77,49 @@ def test_authoring_session_finalize_without_captures_requests_capture(tmp_path, 
     assert result["status"] == "needs_captures"
     assert result["capture_summary"]["capture_count"] == 0
     assert result["understanding"]["learned"] == ["Nenhuma captura valida foi adicionada a sessao ainda."]
+
+
+def test_authoring_session_generate_creates_valid_extension_pack(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    session = create_authoring_session(
+        intent="Create an API Connector call",
+        target="api_connector",
+        profile="client",
+    )
+    append_capture_to_authoring_session(
+        session.id,
+        Path("tests/fixtures/tool-authoring/api-connector-write-capture.json"),
+    )
+
+    result = generate_authoring_extension_pack(session.id)
+
+    assert result["ok"] is True
+    assert result["extension_id"].startswith("local.toolwiz.api_connector.")
+    assert result["tool_name"].endswith(".create_an_api_connector_call")
+    pack_path = Path(str(result["pack_path"]))
+    assert (pack_path / "extension.json").exists()
+    assert Path(str(result["tool_path"])).exists()
+    assert Path(str(result["evidence_path"])).exists()
+    assert validate_extension_pack(pack_path).ok is True
+    assert result["next_mcp_calls"][0]["tool"] == "bubble_extension_validate"
+    assert result["next_mcp_calls"][3]["tool"] == "bubble_extension_call"
+
+
+def test_authoring_session_generate_without_captures_returns_guidance(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    session = create_authoring_session(
+        intent="Create an API Connector call",
+        target="api_connector",
+        profile="client",
+    )
+
+    result = generate_authoring_extension_pack(session.id)
+
+    assert result["ok"] is False
+    assert result["status"] == "needs_captures"
+    assert result["error"] == "tool_authoring_session_has_no_captures"
 
 
 def test_authoring_session_can_activate_existing_session(tmp_path, monkeypatch) -> None:
