@@ -1076,6 +1076,9 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_extension_import",
             "bubble_extension_enable",
             "bubble_extension_disable",
+            "bubble_extension_companion_start",
+            "bubble_extension_companion_status",
+            "bubble_extension_companion_stop",
             *agent_read_only,
         },
         "openWorldHint": name
@@ -1094,6 +1097,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_changelog_fetch",
             "bubble_branch_create",
             "bubble_branch_delete",
+            "bubble_extension_companion_start",
             "upload_asset",
         },
     }
@@ -1205,6 +1209,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_changelog_fetch",
         "bubble_extension_list",
         "bubble_extension_validate",
+        "bubble_extension_companion_status",
         "bubble_skill_validate",
         "bubble_skill_describe",
         "bubble_tool_wizard_describe",

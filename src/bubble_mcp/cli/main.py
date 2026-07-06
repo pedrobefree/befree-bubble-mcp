@@ -38,6 +38,7 @@ from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.extensions.store import disable_extension, enable_extension, import_extension, list_extensions
 from bubble_mcp.extensions.validator import validate_extension_pack
+from bubble_mcp.extension_companion import ExtensionCompanionConfig, serve_extension_companion
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -689,6 +690,16 @@ def command_extension_disable(args: argparse.Namespace) -> int:
         return 1
     emit_json(report.to_dict())
     return 0 if report.ok else 1
+
+
+def command_extension_companion_serve(args: argparse.Namespace) -> int:
+    config = ExtensionCompanionConfig(
+        host=args.host,
+        port=args.port,
+        capture_key=args.capture_key or "",
+        tool_session_id=args.tool_session_id or None,
+    )
+    return serve_extension_companion(config)
 
 
 def emit_skill_error(action: str, exc: Exception) -> None:
@@ -1354,6 +1365,32 @@ def build_parser() -> argparse.ArgumentParser:
     extension_disable_parser = extension_subparsers.add_parser("disable", help="Disable an installed extension pack.")
     extension_disable_parser.add_argument("extension_id")
     extension_disable_parser.set_defaults(func=command_extension_disable)
+
+    extension_companion_parser = extension_subparsers.add_parser(
+        "companion",
+        help="Run local services used by the shipped Chrome extension companion.",
+    )
+    extension_companion_subparsers = extension_companion_parser.add_subparsers(
+        dest="extension_companion_command",
+        required=True,
+    )
+    extension_companion_serve_parser = extension_companion_subparsers.add_parser(
+        "serve",
+        help="Start the local HTTP listener used by chrome-extension/.",
+    )
+    extension_companion_serve_parser.add_argument("--host", default="127.0.0.1")
+    extension_companion_serve_parser.add_argument("--port", type=int, default=3847)
+    extension_companion_serve_parser.add_argument(
+        "--capture-key",
+        default="",
+        help="Optional key required from the extension in X-Bubble-MCP-Capture-Key.",
+    )
+    extension_companion_serve_parser.add_argument(
+        "--tool-session-id",
+        default="",
+        help="Optional tool-authoring session id that receives write captures.",
+    )
+    extension_companion_serve_parser.set_defaults(func=command_extension_companion_serve)
 
     skill_parser = subparsers.add_parser("skill", help="Validate declarative Bubble MCP skill contracts.")
     skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)

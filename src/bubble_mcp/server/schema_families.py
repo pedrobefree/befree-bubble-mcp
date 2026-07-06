@@ -113,6 +113,30 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Local tool-authoring session id.",
         examples=["toolwiz_20260704_api_connector_1a2b3c4d"],
     ),
+    "tool_session_id": _prop(
+        "string",
+        "Optional local tool-authoring session id that receives captured extension write events.",
+        examples=["toolwiz_20260704_api_connector_1a2b3c4d"],
+    ),
+    "host": _prop(
+        "string",
+        "Local bind host for an auxiliary HTTP service.",
+        default="127.0.0.1",
+        examples=["127.0.0.1"],
+    ),
+    "port": _prop(
+        "integer",
+        "Local TCP port for an auxiliary HTTP service.",
+        default=3847,
+        minimum=0,
+        maximum=65534,
+        examples=[3847],
+    ),
+    "capture_key": _prop(
+        "string",
+        "Optional local key required from the Chrome extension in X-Bubble-MCP-Capture-Key.",
+        examples=["local-dev-key"],
+    ),
     "target": _prop(
         "string",
         "Bubble authoring target or capability family being captured.",
@@ -1167,6 +1191,19 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "Disable an installed Bubble MCP extension pack by extension id. Re-disabling a disabled extension is idempotent.",
             ["extension_id"],
             required=["extension_id"],
+        ),
+        tool_schema(
+            "bubble_extension_companion_start",
+            "Start the local HTTP listener used by the shipped Chrome extension companion. The listener stays in this MCP server process and receives Bubble editor captures locally.",
+            ["host", "port", "capture_key", "tool_session_id"],
+        ),
+        _empty_tool(
+            "bubble_extension_companion_status",
+            "Return whether the Chrome extension companion listener is running in this MCP server process.",
+        ),
+        _empty_tool(
+            "bubble_extension_companion_stop",
+            "Stop the Chrome extension companion listener running in this MCP server process.",
         ),
         tool_schema(
             "bubble_skill_validate",

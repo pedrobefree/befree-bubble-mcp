@@ -146,6 +146,8 @@ def _extract_write_body(payload: dict[str, object]) -> dict[str, object]:
         payload.get("payload"),
         payload.get("write_payload"),
         payload.get("body"),
+        payload.get("requestBody"),
+        payload.get("request_body"),
     ]
     request = payload.get("request")
     if isinstance(request, dict):
@@ -164,6 +166,11 @@ def _safe_capture_filename(source: Path, index: int) -> str:
     return f"{index:04d}_{stem}{suffix}"
 
 
+def _safe_capture_label_filename(label: str, index: int) -> str:
+    stem = _slug(Path(label).stem, fallback="capture")
+    return f"{index:04d}_{stem}.json"
+
+
 def _copy_capture(session: ToolAuthoringSession, source: Path) -> str:
     source_resolved = _resolve_capture_input(source)
     captures = _captures_dir(session.id)
@@ -171,6 +178,15 @@ def _copy_capture(session: ToolAuthoringSession, source: Path) -> str:
     target = captures / filename
     _ensure_under_base(target, captures)
     shutil.copy2(source_resolved, target)
+    return filename
+
+
+def _write_capture_payload(session: ToolAuthoringSession, payload: dict[str, object], source_label: str) -> str:
+    captures = _captures_dir(session.id)
+    filename = _safe_capture_label_filename(source_label, len(session.capture_files) + 1)
+    target = captures / filename
+    _ensure_under_base(target, captures)
+    target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return filename
 
 
@@ -204,6 +220,33 @@ def append_capture_to_authoring_session(session_id: str, capture_file: Path) -> 
     body = _extract_write_body(payload)
     classification = classify_editor_payload(body)
     filename = _copy_capture(session, capture_file)
+    updated_session = ToolAuthoringSession(
+        id=session.id,
+        intent=session.intent,
+        target=session.target,
+        profile=session.profile,
+        created_at=session.created_at,
+        capture_files=[*session.capture_files, filename],
+    )
+    _write_session(updated_session)
+    return {
+        "ok": True,
+        "session_id": updated_session.id,
+        "capture_file": filename,
+        "classification": classification,
+    }
+
+
+def append_capture_payload_to_authoring_session(
+    session_id: str,
+    payload: dict[str, object],
+    *,
+    source_label: str = "extension-capture",
+) -> dict[str, object]:
+    session = _load_session(session_id)
+    body = _extract_write_body(payload)
+    classification = classify_editor_payload(body)
+    filename = _write_capture_payload(session, payload, source_label)
     updated_session = ToolAuthoringSession(
         id=session.id,
         intent=session.intent,
