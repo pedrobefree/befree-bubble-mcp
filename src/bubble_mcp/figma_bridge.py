@@ -337,7 +337,9 @@ def _sync_component_with_aria_runtime(
     execute: bool,
 ) -> dict[str, Any]:
     meta = payload.get("meta") if isinstance(payload.get("meta"), dict) else {}
+    bridge_action = str(payload.get("action") or "sync_component").strip()
     sync_type = str(meta.get("sync_type") or meta.get("syncType") or "").strip().lower()
+    is_token_sync = bridge_action == "sync_tokens" or sync_type == "tokens"
     component_name = _clean_name(
         meta.get("component_name") or meta.get("componentName") or payload.get("content", {}).get("name"),
         fallback="figma_component",
@@ -348,7 +350,12 @@ def _sync_component_with_aria_runtime(
     child_parent = str(meta.get("child_parent") or meta.get("parent") or "").strip() or None
     export_images = meta.get("export_images") is True or meta.get("exportImages") is True
 
-    detected = detect_project_context(profile=profile, app_id=app_id, app_version=app_version, force=sync_type == "style")
+    detected = detect_project_context(
+        profile=profile,
+        app_id=app_id,
+        app_version=app_version,
+        force=sync_type in {"style", "tokens"},
+    )
     bubble_file = detected.context_path.with_name(f"{app_id}.bubble")
     if not bubble_file.exists():
         raise ValueError(f"Bubble export not found for Aria runtime: {bubble_file}")
@@ -389,7 +396,29 @@ def _sync_component_with_aria_runtime(
                 profile_name=profile,
             )
             bridge_file = str(_current_bridge_payload_path(payload))
-            if sync_type == "style":
+            if is_token_sync:
+                token_config_path = (
+                    meta.get("token_config_path")
+                    or meta.get("tokenConfigPath")
+                    or meta.get("config_path")
+                    or meta.get("configPath")
+                    or Path(__file__).resolve().parent / "aria_runtime" / "figma_bridge" / "token_config.json"
+                )
+                success = cli.sync_figma_tokens(
+                    bridge_file,
+                    config_path=str(token_config_path),
+                    dry_run=not execute,
+                    types=meta.get("token_types") or meta.get("tokenTypes") or meta.get("types"),
+                    color_bases=meta.get("color_bases") or meta.get("colorBases"),
+                    all_tokens=meta.get("token_all") is True
+                    or meta.get("tokenAll") is True
+                    or meta.get("all_tokens") is True
+                    or meta.get("allTokens") is True,
+                    list_options=meta.get("list_options") is True or meta.get("listOptions") is True,
+                    filter=meta.get("filter"),
+                )
+                action = "sync_tokens"
+            elif sync_type == "style":
                 style_element_type = str(
                     meta.get("style_type")
                     or meta.get("styleType")
@@ -604,7 +633,7 @@ def sync_bridge_payload_file(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Bridge payload file must contain a JSON object.")
     action = str(payload.get("action") or "sync_component")
-    if action not in {"sync_component", "component", "unknown"}:
+    if action not in {"sync_component", "component", "sync_tokens", "unknown"}:
         raise ValueError(f"Unsupported Figma bridge action: {action}")
     _BRIDGE_PAYLOAD_PATHS[id(payload)] = path
     try:

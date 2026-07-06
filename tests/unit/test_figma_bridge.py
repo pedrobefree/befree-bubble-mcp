@@ -282,6 +282,76 @@ def test_figma_bridge_routes_style_sync_to_style_runtime(tmp_path, monkeypatch) 
     assert style_call["default_style"] is True
 
 
+def test_figma_bridge_routes_token_sync_to_token_runtime(tmp_path, monkeypatch) -> None:
+    _configure_smoke_profile(tmp_path, monkeypatch)
+    calls = []
+
+    class FakePayloadBuilder:
+        def send_to_webhook(self, _url):
+            return {"ok": True}
+
+    class FakeBubbleSdk:
+        PayloadBuilder = FakePayloadBuilder
+
+    class FakeBubbleCliModule:
+        inquirer = None
+
+        class BubbleCLI:
+            def __init__(self, **kwargs):
+                calls.append(("init", kwargs))
+
+            def sync_component(self, **_kwargs):
+                raise AssertionError("token sync must not use component sync")
+
+            def sync_figma_style(self, **_kwargs):
+                raise AssertionError("token sync must not use style sync")
+
+            def sync_figma_tokens(self, *args, **kwargs):
+                calls.append(("tokens", {"args": args, **kwargs}))
+                return True
+
+    monkeypatch.setattr(
+        "bubble_mcp.figma_bridge._load_aria_runtime_modules",
+        lambda: (FakeBubbleCliModule, FakeBubbleSdk),
+    )
+    monkeypatch.setattr(
+        "bubble_mcp.figma_bridge.detect_project_context",
+        lambda **_kwargs: SimpleNamespace(context_path=tmp_path / "config" / "contexts" / "smoke" / "synthetic-app-context.json"),
+    )
+    bridge_payload = {
+        "action": "sync_tokens",
+        "meta": {
+            "profile": "smoke",
+            "dry_run": False,
+            "sync_type": "tokens",
+            "token_types": "color",
+            "color_bases": "Brand",
+            "token_all": False,
+        },
+        "content": {
+            "color": {
+                "Brand": {
+                    "Primary": {"value": "#808F2D", "type": "color"},
+                }
+            }
+        },
+    }
+    payload_path = tmp_path / "tokens-payload.json"
+    payload_path.write_text(json.dumps(bridge_payload), encoding="utf-8")
+
+    result = sync_bridge_payload_file(payload_path)
+
+    assert result["ok"] is True
+    assert result["action"] == "sync_tokens"
+    token_call = next(call for name, call in calls if name == "tokens")
+    assert token_call["args"] == (str(payload_path),)
+    assert token_call["dry_run"] is False
+    assert token_call["types"] == "color"
+    assert token_call["color_bases"] == "Brand"
+    assert token_call["all_tokens"] is False
+    assert token_call["config_path"].endswith("aria_runtime/figma_bridge/token_config.json")
+
+
 def test_figma_bridge_prunes_stale_style_cli_cache(tmp_path) -> None:
     bubble_file = tmp_path / "app.bubble"
     bubble_file.write_text(
