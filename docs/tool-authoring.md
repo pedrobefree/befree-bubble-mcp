@@ -4,12 +4,14 @@ The guided tool wizard is the local capture and classification layer for turning
 
 ## Workflow
 
-1. Start a local authoring session with an intent, target, and profile.
-2. Add one or more captured Bubble `/appeditor/write` JSON files, or leave the
-   Chrome extension companion running so it can add write captures to the active
-   session.
-3. Review per-capture and aggregate classification.
-4. Use the classification, manual guidance, and validation output to draft a declarative extension tool and eval fixture.
+1. Start a local authoring session with an intent, target, and profile. The new
+   session is automatically marked as the active Chrome extension capture target.
+2. The dev opens the Bubble editor, enables the Chrome companion, and performs
+   the actions that should teach the new tool.
+3. When the dev returns and says the capture is finished, finalize the same
+   session. Finalization returns what was learned, which questions still need
+   answers, and how to test the future extension tool.
+4. Use the finalization output, manual guidance, and validation output to draft a declarative extension tool and eval fixture.
 5. Validate the extension pack before import.
 6. Import and enable only after preview-oriented tests pass.
 
@@ -25,7 +27,10 @@ bubble-mcp tool-wizard start \
 ```
 
 Starting a session also marks it as the active Chrome extension capture target.
-To switch an existing session back to active:
+The session id returned by `start` is the same id to use when the dev returns
+after finishing the browser/editor actions.
+
+To switch an existing session back to active as a recovery action:
 
 ```bash
 bubble-mcp tool-wizard activate toolwiz_20260704_api_connector_ab12cd34
@@ -45,6 +50,12 @@ Describe the session:
 bubble-mcp tool-wizard describe toolwiz_20260704_api_connector_ab12cd34
 ```
 
+Finalize after the dev finishes the editor actions:
+
+```bash
+bubble-mcp tool-wizard finalize toolwiz_20260704_api_connector_ab12cd34
+```
+
 ## MCP Usage
 
 Start:
@@ -59,6 +70,9 @@ Start:
   }
 }
 ```
+
+The response includes the generated `session.id`; the agent should keep that id
+and use it directly when finalizing.
 
 Add capture:
 
@@ -82,6 +96,21 @@ Describe:
   }
 }
 ```
+
+Finalize:
+
+```json
+{
+  "tool": "bubble_tool_wizard_finalize",
+  "arguments": {
+    "session_id": "toolwiz_20260704_api_connector_ab12cd34"
+  }
+}
+```
+
+`bubble_tool_wizard_finalize` is the normal return point after the dev finishes
+the browser/editor capture. It does not generate or import a tool; it returns
+the learned patterns, pending questions, and testing guidance for the next step.
 
 ## Capture Input
 

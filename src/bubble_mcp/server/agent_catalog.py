@@ -383,8 +383,9 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     ),
     "bubble_tool_wizard_start": (
         "Start a local tool-authoring session that groups captured Bubble editor writes for a future extension tool. "
-        "This only creates local session metadata; it does not generate tools, activate extensions, replay captures, "
-        "or execute Bubble writes."
+        "This also marks the new session as the active Chrome extension capture target, so the user can go directly "
+        "to the Bubble editor, perform the target actions, and return for bubble_tool_wizard_finalize. It does not "
+        "generate tools, replay captures, or execute Bubble writes."
     ),
     "bubble_tool_wizard_add_capture": (
         "Copy a captured Bubble editor write JSON file into a local tool-authoring session and classify the captured "
@@ -394,6 +395,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_tool_wizard_describe": (
         "Describe a local tool-authoring session and aggregate classification for captured writes. Read-only; it does "
         "not generate, activate, or execute extension tools."
+    ),
+    "bubble_tool_wizard_finalize": (
+        "Use when the user says they finished the editor capture for a tool-authoring session. It summarizes what was "
+        "learned from captured writes, lists missing decisions/questions, and returns test guidance for the future "
+        "extension tool. Read-only; it does not generate, import, enable, or execute tools."
     ),
     "bubble_extension_call": (
         "Preview an enabled declarative extension tool by exact tool name through a stable native MCP dispatcher. "
@@ -1234,6 +1240,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_skill_validate",
         "bubble_skill_describe",
         "bubble_tool_wizard_describe",
+        "bubble_tool_wizard_finalize",
         "bubble_learning_list",
         "bubble_knowledge_search",
         "bubble_knowledge_fetch",

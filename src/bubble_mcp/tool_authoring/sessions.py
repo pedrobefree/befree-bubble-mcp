@@ -223,16 +223,11 @@ def _write_capture_payload(session: ToolAuthoringSession, payload: dict[str, obj
 
 
 def _aggregate_classification(session: ToolAuthoringSession) -> dict[str, object]:
-    captures = _captures_dir(session.id)
+    bodies = _capture_bodies(session)
     changes: list[object] = []
     app_id: object = None
     app_version: object = None
-    for filename in session.capture_files:
-        safe_filename = _validate_safe_segment(filename, label="capture filename")
-        path = captures / safe_filename
-        _ensure_under_base(path, captures)
-        payload = _load_json_object(path)
-        body = _extract_write_body(payload)
+    for body in bodies:
         body_changes = body.get("changes")
         if isinstance(body_changes, list):
             changes.extend(body_changes)
@@ -244,6 +239,181 @@ def _aggregate_classification(session: ToolAuthoringSession) -> dict[str, object
         "changes": changes,
     }
     return classify_editor_payload(classification_payload)
+
+
+def _capture_bodies(session: ToolAuthoringSession) -> list[dict[str, object]]:
+    captures = _captures_dir(session.id)
+    bodies: list[dict[str, object]] = []
+    for filename in session.capture_files:
+        safe_filename = _validate_safe_segment(filename, label="capture filename")
+        path = captures / safe_filename
+        _ensure_under_base(path, captures)
+        payload = _load_json_object(path)
+        bodies.append(_extract_write_body(payload))
+    return bodies
+
+
+def _path_parts_from_change(change: object) -> list[str]:
+    if not isinstance(change, dict):
+        return []
+    path = change.get("path_array") or change.get("path") or []
+    return [str(part) for part in path] if isinstance(path, list) else []
+
+
+def _intent_name_from_change(change: object) -> str | None:
+    if not isinstance(change, dict):
+        return None
+    intent = change.get("intent")
+    if isinstance(intent, dict):
+        name = str(intent.get("name") or "").strip()
+        return name or None
+    return None
+
+
+def _body_keys_from_change(change: object) -> list[str]:
+    if not isinstance(change, dict):
+        return []
+    body = change.get("body")
+    if not isinstance(body, dict):
+        return []
+    return sorted(str(key) for key in body)
+
+
+def _unique_limited(values: list[str], *, limit: int = 20) -> list[str]:
+    unique: list[str] = []
+    for value in values:
+        if value and value not in unique:
+            unique.append(value)
+        if len(unique) >= limit:
+            break
+    return unique
+
+
+def _api_connector_ids(paths: list[list[str]]) -> dict[str, list[str]]:
+    collections: list[str] = []
+    calls: list[str] = []
+    for path in paths:
+        for marker in ("apiconnector2", "api_connector"):
+            if marker not in path:
+                continue
+            marker_index = path.index(marker)
+            if len(path) > marker_index + 1 and path[marker_index + 1] != "calls":
+                collections.append(path[marker_index + 1])
+            if "calls" in path:
+                call_index = path.index("calls")
+                if len(path) > call_index + 1:
+                    calls.append(path[call_index + 1])
+    return {
+        "collections": _unique_limited(collections),
+        "calls": _unique_limited(calls),
+    }
+
+
+def _finalization_questions(session: ToolAuthoringSession, paths: list[list[str]]) -> list[str]:
+    normalized = f"{session.intent} {session.target}".lower()
+    questions = [
+        "Qual deve ser o nome final da tool exportada e seu namespace no extension pack?",
+        "Quais argumentos devem ser obrigatorios e quais devem ter default ou aceitar inferencia pelo contexto?",
+        "A tool deve ficar inicialmente somente em preview/dry-run ou ja pode aceitar execute=true em ambiente de teste?",
+    ]
+    if "api" in normalized or any("apiconnector2" in path or "api_connector" in path for path in paths):
+        questions.extend(
+            [
+                "A tool deve criar uma chamada nova, atualizar uma chamada existente ou suportar os dois modos?",
+                "Quais campos da chamada de API devem ser parametrizados: nome, metodo, URL, headers, query params, body, autenticacao e inicializacao da resposta?",
+                "Ha variacoes de autenticacao ou payload que devem virar fixtures separadas antes de publicar a tool?",
+            ]
+        )
+    return questions
+
+
+def _testing_guidance(session: ToolAuthoringSession) -> list[str]:
+    return [
+        "Validar o extension pack gerado com bubble_extension_validate antes de importar.",
+        "Importar e habilitar o pack em um config/profile de teste com bubble_extension_import e bubble_extension_enable.",
+        "Executar a tool exportada primeiro com execute=false para revisar o payload compilado sem escrever no Bubble.",
+        f"Executar em ambiente de teste do profile {session.profile} somente depois do preview estar correto.",
+        "Atualizar o cache/contexto do profile e verificar no export .bubble se a alteracao criada pela tool aparece no local esperado.",
+        "Registrar pelo menos uma fixture de sucesso e uma fixture de erro/argumento incompleto para evitar regressao.",
+    ]
+
+
+def finalize_authoring_session(session_id: str) -> dict[str, object]:
+    session = _load_session(session_id)
+    bodies = _capture_bodies(session)
+    classification = _aggregate_classification(session)
+    changes: list[dict[str, object]] = []
+    for body in bodies:
+        body_changes = body.get("changes")
+        if not isinstance(body_changes, list):
+            continue
+        changes.extend(change for change in body_changes if isinstance(change, dict))
+    paths = [_path_parts_from_change(change) for change in changes]
+    path_strings = ["/".join(path) for path in paths if path]
+    intents = _unique_limited([intent for change in changes if (intent := _intent_name_from_change(change))])
+    body_keys = _unique_limited([key for change in changes for key in _body_keys_from_change(change)])
+    app_ids = _unique_limited(
+        [
+            str(value)
+            for body in bodies
+            for value in [body.get("appname") or body.get("app_id") or body.get("appId")]
+            if value
+        ]
+    )
+    app_versions = _unique_limited(
+        [
+            str(value)
+            for body in bodies
+            for value in [body.get("app_version") or body.get("appVersion")]
+            if value
+        ]
+    )
+    api_ids = _api_connector_ids(paths)
+    has_captures = bool(session.capture_files)
+    learned: list[str] = []
+    if has_captures:
+        learned.append(
+            f"A sessao capturou {len(session.capture_files)} arquivo(s) com {classification.get('change_count', 0)} mudanca(s) Bubble."
+        )
+    if intents:
+        learned.append(f"Intents observados: {', '.join(intents)}.")
+    families = classification.get("families")
+    if isinstance(families, list) and families:
+        learned.append(f"Familias classificadas: {', '.join(str(item) for item in families)}.")
+    if path_strings:
+        learned.append(f"Principais caminhos Bubble: {', '.join(_unique_limited(path_strings, limit=5))}.")
+    if api_ids["collections"] or api_ids["calls"]:
+        learned.append(
+            "Foram detectados IDs do API Connector: "
+            f"collections={api_ids['collections'] or []}, calls={api_ids['calls'] or []}."
+        )
+    if not learned:
+        learned.append("Nenhuma captura valida foi adicionada a sessao ainda.")
+    return {
+        "ok": has_captures,
+        "status": "ready_for_review" if has_captures else "needs_captures",
+        "session": session.to_dict(),
+        "active": active_authoring_session_id() == session.id,
+        "classification": classification,
+        "capture_summary": {
+            "capture_count": len(session.capture_files),
+            "change_count": classification.get("change_count", 0),
+            "app_ids": app_ids,
+            "app_versions": app_versions,
+            "intents": intents,
+            "body_keys": body_keys,
+            "paths": _unique_limited(path_strings, limit=20),
+            "api_connector_ids": api_ids,
+        },
+        "understanding": {
+            "intent": session.intent,
+            "target": session.target,
+            "learned": learned,
+            "next_step": "Responder as perguntas pendentes e gerar o contrato/fixture do extension pack.",
+        },
+        "questions": _finalization_questions(session, paths),
+        "testing_guidance": _testing_guidance(session),
+    }
 
 
 def append_capture_to_authoring_session(session_id: str, capture_file: Path) -> dict[str, object]:

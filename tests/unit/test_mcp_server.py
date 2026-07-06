@@ -2607,9 +2607,12 @@ def test_tool_wizard_tools_are_listed_with_annotations() -> None:
     assert tools["bubble_tool_wizard_add_capture"]["annotations"]["idempotentHint"] is False
     assert tools["bubble_tool_wizard_describe"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_tool_wizard_describe"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_tool_wizard_finalize"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_tool_wizard_finalize"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_tool_wizard_start"]["inputSchema"]["required"] == ["intent", "target", "profile"]
     assert tools["bubble_tool_wizard_add_capture"]["inputSchema"]["required"] == ["session_id", "file"]
     assert tools["bubble_tool_wizard_describe"]["inputSchema"]["required"] == ["session_id"]
+    assert tools["bubble_tool_wizard_finalize"]["inputSchema"]["required"] == ["session_id"]
 
 
 def test_tool_wizard_tools_start_add_capture_and_describe(tmp_path, monkeypatch) -> None:
@@ -2634,6 +2637,8 @@ def test_tool_wizard_tools_start_add_capture_and_describe(tmp_path, monkeypatch)
     assert start_response is not None
     start_payload = json.loads(start_response["result"]["content"][0]["text"])
     assert start_payload["ok"] is True
+    assert start_payload["active"] is True
+    assert start_payload["workflow"]["finish_with"] == "bubble_tool_wizard_finalize"
     session_id = start_payload["session"]["id"]
 
     add_response = handle_request(
@@ -2674,6 +2679,26 @@ def test_tool_wizard_tools_start_add_capture_and_describe(tmp_path, monkeypatch)
     assert describe_payload["session"]["intent"] == "Create an API Connector call"
     assert describe_payload["classification"]["app_id"] == "synthetic-app"
     assert describe_payload["classification"]["change_count"] == 1
+
+    finalize_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 126,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_finalize",
+                "arguments": {"session_id": session_id},
+            },
+        }
+    )
+
+    assert finalize_response is not None
+    finalize_payload = json.loads(finalize_response["result"]["content"][0]["text"])
+    assert finalize_payload["ok"] is True
+    assert finalize_payload["status"] == "ready_for_review"
+    assert finalize_payload["capture_summary"]["intents"] == ["CreateApiConnectorCall"]
+    assert finalize_payload["questions"]
+    assert finalize_payload["testing_guidance"]
 
 
 def test_tool_wizard_add_capture_returns_structured_mcp_error(tmp_path, monkeypatch) -> None:

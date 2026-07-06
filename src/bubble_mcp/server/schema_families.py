@@ -1262,7 +1262,7 @@ def extension_kernel_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_tool_wizard_start",
-            "Start a local tool-authoring session for captured Bubble editor writes. This only creates local session metadata and does not generate, activate, or execute extension tools.",
+            "Start a local tool-authoring session for captured Bubble editor writes and mark it as the active Chrome extension capture target. After this, the user should perform the actions in the Bubble editor and return so the agent can call bubble_tool_wizard_finalize.",
             ["intent", "target", "profile"],
             required=["intent", "target", "profile"],
         ),
@@ -1281,6 +1281,12 @@ def extension_kernel_tools() -> list[ToolSchema]:
         tool_schema(
             "bubble_tool_wizard_describe",
             "Describe a local tool-authoring session and its aggregate captured-write classification. Read-only and does not generate or activate tools.",
+            ["session_id"],
+            required=["session_id"],
+        ),
+        tool_schema(
+            "bubble_tool_wizard_finalize",
+            "Finalize a local tool-authoring session after the user finishes the Bubble editor actions. Returns what the MCP learned from captures, questions the dev must answer, and test guidance for the new extension tool. Read-only; it does not generate, import, enable, or execute tools.",
             ["session_id"],
             required=["session_id"],
         ),

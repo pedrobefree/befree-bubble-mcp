@@ -7,6 +7,7 @@ from bubble_mcp.tool_authoring.sessions import (
     append_capture_to_authoring_session,
     create_authoring_session,
     describe_authoring_session,
+    finalize_authoring_session,
     set_active_authoring_session,
 )
 
@@ -30,6 +31,50 @@ def test_authoring_session_groups_captured_write(tmp_path, monkeypatch) -> None:
     assert described["active"] is True
     assert active_authoring_session_id() == session.id
     assert described["classification"]["change_count"] >= 1
+
+
+def test_authoring_session_finalize_returns_learned_patterns(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    session = create_authoring_session(
+        intent="Create an API Connector call",
+        target="api_connector",
+        profile="client",
+    )
+    append_capture_to_authoring_session(
+        session.id,
+        Path("tests/fixtures/tool-authoring/api-connector-write-capture.json"),
+    )
+
+    result = finalize_authoring_session(session.id)
+
+    assert result["ok"] is True
+    assert result["status"] == "ready_for_review"
+    assert result["active"] is True
+    assert result["capture_summary"]["capture_count"] == 1
+    assert result["capture_summary"]["intents"] == ["CreateApiConnectorCall"]
+    assert result["capture_summary"]["api_connector_ids"]["collections"] == []
+    assert result["capture_summary"]["api_connector_ids"]["calls"] == ["call_123"]
+    assert any("CreateApiConnectorCall" in item for item in result["understanding"]["learned"])
+    assert any("autenticacao" in question for question in result["questions"])
+    assert any("execute=false" in step for step in result["testing_guidance"])
+
+
+def test_authoring_session_finalize_without_captures_requests_capture(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    session = create_authoring_session(
+        intent="Create an API Connector call",
+        target="api_connector",
+        profile="client",
+    )
+
+    result = finalize_authoring_session(session.id)
+
+    assert result["ok"] is False
+    assert result["status"] == "needs_captures"
+    assert result["capture_summary"]["capture_count"] == 0
+    assert result["understanding"]["learned"] == ["Nenhuma captura valida foi adicionada a sessao ainda."]
 
 
 def test_authoring_session_can_activate_existing_session(tmp_path, monkeypatch) -> None:

@@ -62,6 +62,7 @@ from bubble_mcp.tool_authoring.sessions import (
     append_capture_to_authoring_session,
     create_authoring_session,
     describe_authoring_session,
+    finalize_authoring_session,
     set_active_authoring_session,
 )
 from bubble_mcp.validators.semantic import validate_plan
@@ -778,7 +779,20 @@ def command_tool_wizard_start(args: argparse.Namespace) -> int:
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         emit_tool_wizard_error("start", exc)
         return 1
-    emit_json({"ok": True, "session": session.to_dict()})
+    emit_json(
+        {
+            "ok": True,
+            "session": session.to_dict(),
+            "active": True,
+            "workflow": {
+                "next_user_action": (
+                    "Open the Bubble editor, enable the Chrome companion, perform the target actions, "
+                    "then return and finalize this same session."
+                ),
+                "finish_with": "tool-wizard finalize <session_id>",
+            },
+        }
+    )
     return 0
 
 
@@ -807,6 +821,16 @@ def command_tool_wizard_describe(args: argparse.Namespace) -> int:
         result = describe_authoring_session(args.session_id)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         emit_tool_wizard_error("describe", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_tool_wizard_finalize(args: argparse.Namespace) -> int:
+    try:
+        result = finalize_authoring_session(args.session_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("finalize", exc)
         return 1
     emit_json(result)
     return 0 if result.get("ok") else 1
@@ -1486,6 +1510,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tool_wizard_describe_parser.add_argument("session_id")
     tool_wizard_describe_parser.set_defaults(func=command_tool_wizard_describe)
+
+    tool_wizard_finalize_parser = tool_wizard_subparsers.add_parser(
+        "finalize",
+        help="Finalize a tool-authoring capture session and return learned patterns, questions, and test guidance.",
+    )
+    tool_wizard_finalize_parser.add_argument("session_id")
+    tool_wizard_finalize_parser.set_defaults(func=command_tool_wizard_finalize)
 
     learning_parser = subparsers.add_parser("learning", help="Manage local consultative learning records.")
     learning_subparsers = learning_parser.add_subparsers(dest="learning_command", required=True)

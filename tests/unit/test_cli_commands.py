@@ -1038,6 +1038,8 @@ def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, c
     )
     started = json.loads(capsys.readouterr().out)
     assert started["ok"] is True
+    assert started["active"] is True
+    assert started["workflow"]["finish_with"] == "tool-wizard finalize <session_id>"
     session_id = started["session"]["id"]
 
     assert (
@@ -1061,6 +1063,13 @@ def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, c
     assert described["session"]["profile"] == "client"
     assert described["active"] is True
     assert described["classification"]["app_id"] == "synthetic-app"
+
+    assert main(["tool-wizard", "finalize", session_id]) == 0
+    finalized = json.loads(capsys.readouterr().out)
+    assert finalized["status"] == "ready_for_review"
+    assert finalized["capture_summary"]["intents"] == ["CreateApiConnectorCall"]
+    assert finalized["questions"]
+    assert finalized["testing_guidance"]
 
     assert main(["tool-wizard", "activate", session_id]) == 0
     activated = json.loads(capsys.readouterr().out)

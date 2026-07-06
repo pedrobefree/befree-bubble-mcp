@@ -69,6 +69,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_tool_wizard_add_capture",
     "bubble_tool_wizard_activate",
     "bubble_tool_wizard_describe",
+    "bubble_tool_wizard_finalize",
     "bubble_learning_record",
     "bubble_learning_list",
     "bubble_knowledge_refresh_source",

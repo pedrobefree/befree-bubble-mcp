@@ -70,6 +70,7 @@ from bubble_mcp.tool_authoring.sessions import (
     append_capture_to_authoring_session,
     create_authoring_session,
     describe_authoring_session,
+    finalize_authoring_session,
     set_active_authoring_session,
 )
 from bubble_mcp.validators.semantic import validate_plan
@@ -233,7 +234,18 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             target=_required_string_arg(args, "target", name),
             profile=_required_string_arg(args, "profile", name),
         )
-        return {"ok": True, "session": session.to_dict()}
+        return {
+            "ok": True,
+            "session": session.to_dict(),
+            "active": True,
+            "workflow": {
+                "next_user_action": (
+                    "Open the Bubble editor, enable the Chrome companion, perform the target actions, "
+                    "then return and finalize this same session."
+                ),
+                "finish_with": "bubble_tool_wizard_finalize",
+            },
+        }
     if name == "bubble_tool_wizard_add_capture":
         args = arguments or {}
         session_id = _required_string_arg(args, "session_id", name)
@@ -247,6 +259,10 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         args = arguments or {}
         session_id = _required_string_arg(args, "session_id", name)
         return describe_authoring_session(session_id)
+    if name == "bubble_tool_wizard_finalize":
+        args = arguments or {}
+        session_id = _required_string_arg(args, "session_id", name)
+        return finalize_authoring_session(session_id)
     if name == "bubble_learning_record":
         args = arguments or {}
         value = args.get("value")

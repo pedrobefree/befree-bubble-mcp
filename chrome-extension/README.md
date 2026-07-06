@@ -40,11 +40,11 @@ Se o popup mostrar `Servico local nao encontrado`, o listener local nao esta rod
 Para capturar writes diretamente em uma sessao de aprendizado de tool:
 
 1. Crie a sessao com `bubble-mcp tool-wizard start ...`.
-2. Inicie o companion com `bubble-mcp extension companion serve --port 3847`.
+2. Inicie o companion com `bubble-mcp extension companion serve --port 3847`, se ele ainda nao estiver rodando.
 3. Execute as acoes no editor Bubble com a extensao ativa.
-4. Consulte a sessao com `bubble-mcp tool-wizard describe <session.id>`.
+4. Ao finalizar, retorne ao Codex/MCP e finalize a sessao com `bubble-mcp tool-wizard finalize <session.id>`.
 
-`tool-wizard start` marca a sessao criada como alvo ativo da extensao. Para usar uma sessao existente, rode `bubble-mcp tool-wizard activate <session.id>`. O parametro `--tool-session-id <session.id>` no companion continua disponivel como override explicito.
+`tool-wizard start` marca a sessao criada como alvo ativo da extensao. O dev nao precisa informar o id na extensao nem rodar uma etapa separada de ativacao. Para recuperar uma sessao existente, rode `bubble-mcp tool-wizard activate <session.id>`. O parametro `--tool-session-id <session.id>` no companion continua disponivel como override explicito.
 
 ## Endpoints expostos pelo listener local
 
