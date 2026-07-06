@@ -50,6 +50,87 @@ def _value_to_bubble_param(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _coerce_patch_body(value: Any, value_type: str) -> Any:
+    if value_type == "integer":
+        return int(value)
+    if value_type == "number":
+        return float(value)
+    if value_type == "boolean":
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+    if value_type == "string":
+        return str(value)
+    return value
+
+
+def _expand_path_segment(segment: object, args: dict[str, Any], metadata: dict[str, Any]) -> str:
+    text = str(segment)
+    if text == "{{collection_id}}":
+        return str(metadata.get("collection_id") or "")
+    if text == "{{call_id}}":
+        return str(metadata.get("call_id") or "")
+    if text.startswith("{{arg:") and text.endswith("}}"):
+        arg_name = text[6:-2]
+        return str(args.get(arg_name) or "")
+    return text
+
+
+def _apply_runner_patches(
+    *,
+    template: dict[str, Any],
+    args: dict[str, Any],
+    metadata: dict[str, Any],
+) -> tuple[list[dict[str, Any]], list[str]]:
+    raw_patches = template.get("runner_patches")
+    if not isinstance(raw_patches, list):
+        return [], []
+    changes: list[dict[str, Any]] = []
+    warnings: list[str] = []
+    for index, raw_patch in enumerate(raw_patches, start=1):
+        if not isinstance(raw_patch, dict):
+            warnings.append(f"runner_patches[{index}] ignored because it is not an object.")
+            continue
+        argument = str(raw_patch.get("argument") or raw_patch.get("when_argument") or "").strip()
+        if not argument:
+            warnings.append(f"runner_patches[{index}] ignored because it has no argument.")
+            continue
+        if argument not in args or args.get(argument) in (None, ""):
+            continue
+        raw_path = raw_patch.get("path_array")
+        if not isinstance(raw_path, list) or not raw_path:
+            warnings.append(f"runner_patches[{index}] ignored because it has no path_array.")
+            continue
+        path_array = [_expand_path_segment(segment, args, metadata) for segment in raw_path]
+        if any(segment == "" for segment in path_array):
+            warnings.append(
+                f"runner_patches[{index}] ignored because one path placeholder could not be resolved."
+            )
+            continue
+        body_value = args.get(argument)
+        body_type = str(raw_patch.get("body_type") or "").strip()
+        if body_type:
+            try:
+                body_value = _coerce_patch_body(body_value, body_type)
+            except (TypeError, ValueError) as exc:
+                warnings.append(f"runner_patches[{index}] ignored because {argument} could not be coerced: {exc}.")
+                continue
+        intent = raw_patch.get("intent") if isinstance(raw_patch.get("intent"), dict) else {"name": "ChangeAppSetting"}
+        change: dict[str, Any] = {
+            "intent": intent,
+            "path_array": path_array,
+            "body": body_value,
+        }
+        version_control_api_version = raw_patch.get("version_control_api_version")
+        if isinstance(version_control_api_version, int):
+            change["version_control_api_version"] = version_control_api_version
+        raw_changelog_data = raw_patch.get("changelog_data")
+        if isinstance(raw_changelog_data, list):
+            change["changelog_data"] = raw_changelog_data
+        changes.append(change)
+    return changes, warnings
+
+
 def _api_connector_param_changes(
     *,
     collection_id: str,
@@ -220,6 +301,18 @@ def _compile_api_connector_resource_v1(
                 "body": True,
             }
         )
+    metadata = {
+        "collection_id": collection_id,
+        "call_id": call_id,
+        "family": str(template.get("family") or ""),
+    }
+    patch_changes, patch_warnings = _apply_runner_patches(
+        template=template,
+        args=args,
+        metadata=metadata,
+    )
+    changes.extend(patch_changes)
+    warnings.extend(patch_warnings)
     return ExtensionRunnerCompileResult(
         ok=True,
         runner=runner,
@@ -230,11 +323,7 @@ def _compile_api_connector_resource_v1(
             "changes": changes,
         },
         warnings=warnings,
-        metadata={
-            "collection_id": collection_id,
-            "call_id": call_id,
-            "family": str(template.get("family") or ""),
-        },
+        metadata=metadata,
     )
 
 

@@ -5,6 +5,7 @@ from pathlib import Path
 from bubble_mcp.extensions.store import enable_extension, import_extension
 from bubble_mcp.extensions.tools import enabled_extension_tool_schemas
 from bubble_mcp.extensions.validator import validate_extension_pack
+from bubble_mcp.learning.store import append_learning_record
 from bubble_mcp.server.schemas import list_tool_schemas
 from bubble_mcp.server.tools import call_tool
 from bubble_mcp.sessions.store import save_session, session_from_payload
@@ -141,7 +142,43 @@ def test_generated_api_connector_extension_tool_previews_and_executes(
         session.id,
         Path("tests/fixtures/tool-authoring/api-connector-write-capture.json"),
     )
-    generated = generate_authoring_extension_pack(session.id)
+    extension_id = "local.toolwiz.api_connector.test"
+    append_learning_record(
+        scope="extension",
+        key="api_connector.initialize_call_response_time_ms",
+        value={
+            "payload": {
+                "appname": "courselaunch",
+                "app_version": "test",
+                "changes": [
+                    {
+                        "body": 906,
+                        "path_array": [
+                            "settings",
+                            "client_safe",
+                            "apiconnector2",
+                            "bYRvD",
+                            "calls",
+                            "beQUv",
+                            "response_time_ms",
+                        ],
+                        "intent": {"name": "ChangeAppSetting"},
+                        "version_control_api_version": 4,
+                        "changelog_data": [],
+                        "session_id": "1783362247423x32",
+                    }
+                ],
+            }
+        },
+        source="user_declared",
+        confidence="confirmed",
+        extension_id=extension_id,
+    )
+    generated = generate_authoring_extension_pack(
+        session.id,
+        extension_id=extension_id,
+        tool_name="local.toolwiz.api_connector.test.create_api_connector_resource",
+    )
     assert generated["ok"] is True
     import_extension(Path(str(generated["pack_path"])))
     enable_extension(str(generated["extension_id"]))
@@ -156,6 +193,7 @@ def test_generated_api_connector_extension_tool_previews_and_executes(
         "body": '{"key1": <key1>, "key2": <key2>}',
         "body_params": {"key1": "texto", "key2": 10},
         "initialize": True,
+        "response_time_ms": 906,
     }
     preview = call_tool(
         "bubble_extension_call",
@@ -166,10 +204,15 @@ def test_generated_api_connector_extension_tool_previews_and_executes(
     assert preview["mode"] == "preview"
     assert preview["execute"] is False
     assert preview["runner"] == "api_connector_resource_v1"
+    assert preview["schema"]["inputSchema"]["properties"]["response_time_ms"]["type"] == "integer"
     assert preview["compiled_payload"]["appname"] == "synthetic-app"
     preview_changes = preview["compiled_payload"]["changes"]
     assert any(change.get("intent", {}).get("name") == "CreateApiCall" for change in preview_changes)
     assert any(change.get("path_array", [])[-1:] == ["should_reinitialize"] for change in preview_changes)
+    assert any(
+        change.get("path_array", [])[-1:] == ["response_time_ms"] and change.get("body") == 906
+        for change in preview_changes
+    )
 
     write_calls: list[tuple[dict[str, object], object, bool]] = []
 
@@ -208,6 +251,10 @@ def test_generated_api_connector_extension_tool_previews_and_executes(
     )
     assert any(
         isinstance(change.get("body"), dict) and change["body"].get("%k") == "key2"
+        for change in payload_changes
+    )
+    assert any(
+        change.get("path_array", [])[-1:] == ["response_time_ms"] and change.get("body") == 906
         for change in payload_changes
     )
 

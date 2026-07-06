@@ -13,6 +13,8 @@ from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.core.config import get_config_dir
 from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.harness.expert import classify_editor_payload
+from bubble_mcp.learning.models import LearningRecord
+from bubble_mcp.learning.store import list_learning_records
 from bubble_mcp.tool_authoring.models import ToolAuthoringSession
 
 
@@ -435,6 +437,123 @@ def _generated_tool_input_schema(session: ToolAuthoringSession, body_keys: list[
     }
 
 
+def _json_schema_type(value: object) -> str:
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, int):
+        return "integer"
+    if isinstance(value, float):
+        return "number"
+    if isinstance(value, dict):
+        return "object"
+    if isinstance(value, list):
+        return "array"
+    return "string"
+
+
+def _learned_changes(record: LearningRecord) -> list[dict[str, object]]:
+    value = record.value
+    raw_changes = value.get("changes")
+    if isinstance(raw_changes, list):
+        return [change for change in raw_changes if isinstance(change, dict)]
+    raw_change = value.get("change")
+    if isinstance(raw_change, dict):
+        return [raw_change]
+    raw_payload = value.get("payload")
+    if isinstance(raw_payload, dict):
+        payload_changes = raw_payload.get("changes")
+        if isinstance(payload_changes, list):
+            return [change for change in payload_changes if isinstance(change, dict)]
+        return [raw_payload] if "path_array" in raw_payload else []
+    if "path_array" in value:
+        return [value]
+    return []
+
+
+def _learned_argument_name(record: LearningRecord, change: dict[str, object]) -> str:
+    explicit = str(record.value.get("argument") or record.value.get("argument_name") or "").strip()
+    if explicit:
+        return _slug(explicit, fallback="learned_argument")
+    path = change.get("path_array")
+    if isinstance(path, list) and path:
+        return _slug(str(path[-1]), fallback="learned_argument")
+    key_tail = record.key.rsplit(".", 1)[-1]
+    return _slug(key_tail, fallback="learned_argument")
+
+
+def _learned_path_template(path: object) -> list[str]:
+    if not isinstance(path, list):
+        return []
+    result: list[str] = []
+    for index, segment in enumerate(path):
+        text = str(segment)
+        previous = str(path[index - 1]) if index > 0 else ""
+        if previous in {"apiconnector2", "api_connector"}:
+            result.append("{{collection_id}}")
+        elif previous == "calls":
+            result.append("{{call_id}}")
+        else:
+            result.append(text)
+    return result
+
+
+def _runner_patch_from_learning(record: LearningRecord, change: dict[str, object]) -> dict[str, object] | None:
+    path_template = _learned_path_template(change.get("path_array"))
+    if not path_template:
+        return None
+    argument = _learned_argument_name(record, change)
+    body = change.get("body")
+    intent = change.get("intent") if isinstance(change.get("intent"), dict) else {"name": "ChangeAppSetting"}
+    patch: dict[str, object] = {
+        "source_learning_id": record.id,
+        "source_learning_key": record.key,
+        "argument": argument,
+        "argument_type": _json_schema_type(body),
+        "body_type": _json_schema_type(body),
+        "path_array": path_template,
+        "intent": intent,
+    }
+    version_control_api_version = change.get("version_control_api_version")
+    if isinstance(version_control_api_version, int):
+        patch["version_control_api_version"] = version_control_api_version
+    changelog_data = change.get("changelog_data")
+    if isinstance(changelog_data, list):
+        patch["changelog_data"] = changelog_data
+    return patch
+
+
+def _learned_runner_patches(extension_id: str) -> list[dict[str, object]]:
+    patches: list[dict[str, object]] = []
+    seen_arguments: set[str] = set()
+    for record in list_learning_records(scope="extension", extension_id=extension_id):
+        for change in _learned_changes(record):
+            patch = _runner_patch_from_learning(record, change)
+            if patch is None:
+                continue
+            argument = str(patch.get("argument") or "")
+            if not argument or argument in seen_arguments:
+                continue
+            seen_arguments.add(argument)
+            patches.append(patch)
+    return patches
+
+
+def _apply_runner_patch_schema(input_schema: dict[str, object], patches: list[dict[str, object]]) -> None:
+    raw_properties = input_schema.get("properties")
+    if not isinstance(raw_properties, dict):
+        return
+    properties: dict[str, object] = raw_properties
+    for patch in patches:
+        argument = str(patch.get("argument") or "").strip()
+        if not argument or argument in properties:
+            continue
+        argument_type = str(patch.get("argument_type") or "string")
+        properties[argument] = {
+            "type": argument_type,
+            "description": f"Learned runner patch argument from {patch.get('source_learning_key')}.",
+        }
+
+
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -499,6 +618,8 @@ def generate_authoring_extension_pack(
     tool_relative = f"tools/{_safe_tool_filename(requested_tool_name)}"
     evidence_relative = "evidence/tool-authoring-summary.json"
     input_schema = _generated_tool_input_schema(session, body_key_strings)
+    learned_patches = _learned_runner_patches(safe_extension_id)
+    _apply_runner_patch_schema(input_schema, learned_patches)
     input_properties = input_schema.get("properties")
     supported_arguments = sorted(input_properties) if isinstance(input_properties, dict) else []
     runner_id = _generated_runner_id(session, capture_summary)
@@ -519,6 +640,8 @@ def generate_authoring_extension_pack(
     }
     if runner_id:
         template_payload["runner"] = runner_id
+    if learned_patches:
+        template_payload["runner_patches"] = learned_patches
     manifest = {
         "id": safe_extension_id,
         "name": f"Generated Tool Authoring Pack - {session.target}",
@@ -585,7 +708,8 @@ def generate_authoring_extension_pack(
         "update_guidance": (
             "To update or complement this generated tool, start a new tool-authoring session, capture additional "
             "editor writes, then call bubble_tool_wizard_generate with this same extension_id and tool_name. "
-            "Re-importing the generated pack replaces the installed pack while preserving the predictable tool name."
+            "Re-importing the generated pack replaces the installed pack while preserving the predictable tool name. "
+            "Extension-scoped learning records with write payload examples are folded into runner_patches during generation."
         ),
         "next_mcp_calls": [
             {"tool": "bubble_extension_validate", "arguments": {"path": str(pack_path)}},

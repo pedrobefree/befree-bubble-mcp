@@ -1315,7 +1315,8 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "name": "bubble_learning_record",
             "description": (
                 "Append one local consultative learning record. Records are stored as append-only JSONL and are not "
-                "used by planner behavior in this release."
+                "used for writes directly; extension-scoped write examples can be folded into generated extension "
+                "runner patches during tool authoring."
             ),
             "inputSchema": object_schema(
                 {
@@ -1361,7 +1362,7 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "name": "bubble_learning_list",
             "description": (
                 "List local consultative learning records with optional scope/profile/project/extension filters. "
-                "Read-only and does not affect planner behavior."
+                "Read-only; extension-scoped records may inform generated extension packs."
             ),
             "inputSchema": object_schema(
                 {
