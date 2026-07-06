@@ -263,6 +263,14 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_tool_wizard_finalize":
         args = arguments or {}
         session_id = _required_string_arg(args, "session_id", name)
+        if bool(args.get("generate_pack") or args.get("generate")):
+            output_dir = str(args.get("output_dir") or "").strip()
+            return generate_authoring_extension_pack(
+                session_id,
+                extension_id=str(args.get("extension_id") or "") or None,
+                tool_name=str(args.get("tool_name") or "") or None,
+                output_dir=Path(output_dir) if output_dir else None,
+            )
         return finalize_authoring_session(session_id)
     if name == "bubble_tool_wizard_generate":
         args = arguments or {}

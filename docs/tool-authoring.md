@@ -56,6 +56,12 @@ Finalize after the dev finishes the editor actions:
 bubble-mcp tool-wizard finalize toolwiz_20260704_api_connector_ab12cd34
 ```
 
+Finalize and generate the candidate pack in the same command:
+
+```bash
+bubble-mcp tool-wizard finalize toolwiz_20260704_api_connector_ab12cd34 --generate-pack
+```
+
 Generate the candidate extension pack:
 
 ```bash
@@ -124,8 +130,22 @@ Finalize:
 ```
 
 `bubble_tool_wizard_finalize` is the normal return point after the dev finishes
-the browser/editor capture. It does not generate or import a tool; it returns
-the learned patterns, pending questions, and testing guidance for the next step.
+the browser/editor capture. By default it returns the learned patterns, pending
+questions, and testing guidance for the next step. If the user wants to proceed
+immediately, pass `generate_pack=true` to generate the candidate extension pack
+in the same MCP call.
+
+Finalize and generate:
+
+```json
+{
+  "tool": "bubble_tool_wizard_finalize",
+  "arguments": {
+    "session_id": "toolwiz_20260704_api_connector_ab12cd34",
+    "generate_pack": true
+  }
+}
+```
 
 Generate:
 

@@ -2607,14 +2607,15 @@ def test_tool_wizard_tools_are_listed_with_annotations() -> None:
     assert tools["bubble_tool_wizard_add_capture"]["annotations"]["idempotentHint"] is False
     assert tools["bubble_tool_wizard_describe"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_tool_wizard_describe"]["annotations"]["idempotentHint"] is True
-    assert tools["bubble_tool_wizard_finalize"]["annotations"]["readOnlyHint"] is True
-    assert tools["bubble_tool_wizard_finalize"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_tool_wizard_finalize"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_tool_wizard_finalize"]["annotations"]["idempotentHint"] is False
     assert tools["bubble_tool_wizard_generate"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_tool_wizard_generate"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_tool_wizard_start"]["inputSchema"]["required"] == ["intent", "target", "profile"]
     assert tools["bubble_tool_wizard_add_capture"]["inputSchema"]["required"] == ["session_id", "file"]
     assert tools["bubble_tool_wizard_describe"]["inputSchema"]["required"] == ["session_id"]
     assert tools["bubble_tool_wizard_finalize"]["inputSchema"]["required"] == ["session_id"]
+    assert "generate_pack" in tools["bubble_tool_wizard_finalize"]["inputSchema"]["properties"]
     assert tools["bubble_tool_wizard_generate"]["inputSchema"]["required"] == ["session_id"]
 
 
@@ -2702,6 +2703,24 @@ def test_tool_wizard_tools_start_add_capture_and_describe(tmp_path, monkeypatch)
     assert finalize_payload["capture_summary"]["intents"] == ["CreateApiConnectorCall"]
     assert finalize_payload["questions"]
     assert finalize_payload["testing_guidance"]
+    assert finalize_payload["next_mcp_calls"][0]["tool"] == "bubble_tool_wizard_generate"
+
+    finalize_generate_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 131,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_wizard_finalize",
+                "arguments": {"session_id": session_id, "generate_pack": True},
+            },
+        }
+    )
+    assert finalize_generate_response is not None
+    finalize_generate_payload = json.loads(finalize_generate_response["result"]["content"][0]["text"])
+    assert finalize_generate_payload["ok"] is True
+    assert finalize_generate_payload["validation"]["ok"] is True
+    assert finalize_generate_payload["next_mcp_calls"][3]["tool"] == "bubble_extension_call"
 
     generate_response = handle_request(
         {

@@ -1070,6 +1070,13 @@ def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, c
     assert finalized["capture_summary"]["intents"] == ["CreateApiConnectorCall"]
     assert finalized["questions"]
     assert finalized["testing_guidance"]
+    assert finalized["next_mcp_calls"][0]["tool"] == "bubble_tool_wizard_generate"
+
+    assert main(["tool-wizard", "finalize", session_id, "--generate-pack"]) == 0
+    finalized_generated = json.loads(capsys.readouterr().out)
+    assert finalized_generated["ok"] is True
+    assert finalized_generated["validation"]["ok"] is True
+    assert finalized_generated["next_mcp_calls"][3]["tool"] == "bubble_extension_call"
 
     assert main(["tool-wizard", "generate", session_id]) == 0
     generated = json.loads(capsys.readouterr().out)
@@ -1077,10 +1084,12 @@ def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, c
     assert generated["validation"]["ok"] is True
     assert generated["pack_path"]
     assert generated["next_mcp_calls"][0]["tool"] == "bubble_extension_validate"
+    assert generated["next_mcp_calls"][3]["tool"] == "bubble_extension_call"
 
     assert main(["tool-wizard", "activate", session_id]) == 0
     activated = json.loads(capsys.readouterr().out)
     assert activated["session_id"] == session_id
+    assert activated["next_mcp_calls"][0]["tool"] == "bubble_tool_wizard_generate"
 
 
 def test_cli_tool_wizard_add_capture_returns_structured_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]

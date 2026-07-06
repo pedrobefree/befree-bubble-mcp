@@ -829,7 +829,15 @@ def command_tool_wizard_describe(args: argparse.Namespace) -> int:
 
 def command_tool_wizard_finalize(args: argparse.Namespace) -> int:
     try:
-        result = finalize_authoring_session(args.session_id)
+        if args.generate_pack:
+            result = generate_authoring_extension_pack(
+                args.session_id,
+                extension_id=args.extension_id or None,
+                tool_name=args.tool_name or None,
+                output_dir=Path(args.output_dir) if args.output_dir else None,
+            )
+        else:
+            result = finalize_authoring_session(args.session_id)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         emit_tool_wizard_error("finalize", exc)
         return 1
@@ -1532,6 +1540,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Finalize a tool-authoring capture session and return learned patterns, questions, and test guidance.",
     )
     tool_wizard_finalize_parser.add_argument("session_id")
+    tool_wizard_finalize_parser.add_argument("--generate-pack", action="store_true")
+    tool_wizard_finalize_parser.add_argument("--extension-id", default="")
+    tool_wizard_finalize_parser.add_argument("--tool-name", default="")
+    tool_wizard_finalize_parser.add_argument("--output-dir", default="")
     tool_wizard_finalize_parser.set_defaults(func=command_tool_wizard_finalize)
 
     tool_wizard_generate_parser = tool_wizard_subparsers.add_parser(

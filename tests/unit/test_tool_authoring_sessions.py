@@ -33,6 +33,9 @@ def test_authoring_session_groups_captured_write(tmp_path, monkeypatch) -> None:
     assert described["active"] is True
     assert active_authoring_session_id() == session.id
     assert described["classification"]["change_count"] >= 1
+    assert described["next_mcp_calls"] == [
+        {"tool": "bubble_tool_wizard_generate", "arguments": {"session_id": session.id}}
+    ]
 
 
 def test_authoring_session_finalize_returns_learned_patterns(tmp_path, monkeypatch) -> None:
@@ -60,6 +63,9 @@ def test_authoring_session_finalize_returns_learned_patterns(tmp_path, monkeypat
     assert any("CreateApiConnectorCall" in item for item in result["understanding"]["learned"])
     assert any("autenticacao" in question for question in result["questions"])
     assert any("execute=false" in step for step in result["testing_guidance"])
+    assert result["next_mcp_calls"] == [
+        {"tool": "bubble_tool_wizard_generate", "arguments": {"session_id": session.id}}
+    ]
 
 
 def test_authoring_session_finalize_without_captures_requests_capture(tmp_path, monkeypatch) -> None:
@@ -77,6 +83,9 @@ def test_authoring_session_finalize_without_captures_requests_capture(tmp_path, 
     assert result["status"] == "needs_captures"
     assert result["capture_summary"]["capture_count"] == 0
     assert result["understanding"]["learned"] == ["Nenhuma captura valida foi adicionada a sessao ainda."]
+    assert result["next_mcp_calls"] == [
+        {"tool": "bubble_tool_wizard_finalize", "arguments": {"session_id": session.id}}
+    ]
 
 
 def test_authoring_session_generate_creates_valid_extension_pack(tmp_path, monkeypatch) -> None:
@@ -102,6 +111,8 @@ def test_authoring_session_generate_creates_valid_extension_pack(tmp_path, monke
     assert Path(str(result["tool_path"])).exists()
     assert Path(str(result["evidence_path"])).exists()
     assert validate_extension_pack(pack_path).ok is True
+    assert "bubble_extension_import" in result["next_user_action"]
+    assert "bubble_extension_call" in result["catalog_visibility"]
     assert result["next_mcp_calls"][0]["tool"] == "bubble_extension_validate"
     assert result["next_mcp_calls"][3]["tool"] == "bubble_extension_call"
 
@@ -132,6 +143,9 @@ def test_authoring_session_can_activate_existing_session(tmp_path, monkeypatch) 
     result = set_active_authoring_session(first.id)
 
     assert result["ok"] is True
+    assert result["next_mcp_calls"] == [
+        {"tool": "bubble_tool_wizard_finalize", "arguments": {"session_id": first.id}}
+    ]
     assert active_authoring_session_id() == first.id
     assert describe_authoring_session(first.id)["active"] is True
     assert describe_authoring_session(second.id)["active"] is False

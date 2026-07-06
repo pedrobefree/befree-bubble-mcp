@@ -104,13 +104,40 @@ def _write_session(session: ToolAuthoringSession) -> None:
     path.write_text(json.dumps(session.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def _next_authoring_action(session: ToolAuthoringSession) -> dict[str, object]:
+    if not session.capture_files:
+        return {
+            "next_user_action": (
+                "Open the Bubble editor, enable the Chrome companion, perform the target actions, "
+                "then return and call bubble_tool_wizard_finalize for this session."
+            ),
+            "next_mcp_calls": [
+                {"tool": "bubble_tool_wizard_finalize", "arguments": {"session_id": session.id}},
+            ],
+        }
+    return {
+        "next_user_action": (
+            "Generate the candidate extension pack from this reviewed capture session. "
+            "The tool will not appear in the catalog until the generated pack is imported and enabled."
+        ),
+        "next_mcp_calls": [
+            {"tool": "bubble_tool_wizard_generate", "arguments": {"session_id": session.id}},
+        ],
+    }
+
+
 def set_active_authoring_session(session_id: str) -> dict[str, object]:
     session = _load_session(session_id)
     path = _active_session_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"session_id": session.id, "activated_at": _utc_now_iso()}
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    return {"ok": True, **payload}
+    return {
+        "ok": True,
+        **payload,
+        "capture_count": len(session.capture_files),
+        **_next_authoring_action(session),
+    }
 
 
 def active_authoring_session_id() -> str | None:
@@ -510,6 +537,16 @@ def generate_authoring_extension_pack(
         "tool_path": str(pack_path / tool_relative),
         "evidence_path": str(pack_path / evidence_relative),
         "validation": validation.to_dict(),
+        "next_user_action": (
+            "Call bubble_extension_validate, bubble_extension_import, and bubble_extension_enable for the generated "
+            "extension pack. After enabling, use bubble_extension_call for immediate preview; direct catalog exposure "
+            "can require a fresh MCP client tool-list refresh."
+        ),
+        "catalog_visibility": (
+            "bubble_tool_wizard_generate creates the pack only. The generated tool becomes available after "
+            "bubble_extension_import and bubble_extension_enable. If the client does not expose dynamic tools "
+            "as direct callables in the current session, use bubble_extension_call with the returned tool_name."
+        ),
         "next_mcp_calls": [
             {"tool": "bubble_extension_validate", "arguments": {"path": str(pack_path)}},
             {"tool": "bubble_extension_import", "arguments": {"path": str(pack_path)}},
@@ -596,8 +633,9 @@ def finalize_authoring_session(session_id: str) -> dict[str, object]:
             "intent": session.intent,
             "target": session.target,
             "learned": learned,
-            "next_step": "Responder as perguntas pendentes e gerar o contrato/fixture do extension pack.",
+            "next_step": "Call bubble_tool_wizard_generate with this session_id to create the candidate extension pack.",
         },
+        **_next_authoring_action(session),
         "questions": _finalization_questions(session, paths),
         "testing_guidance": _testing_guidance(session),
     }
@@ -660,4 +698,5 @@ def describe_authoring_session(session_id: str) -> dict[str, object]:
         "session": session.to_dict(),
         "active": active_authoring_session_id() == session.id,
         "classification": _aggregate_classification(session),
+        **_next_authoring_action(session),
     }

@@ -399,7 +399,7 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_tool_wizard_finalize": (
         "Use when the user says they finished the editor capture for a tool-authoring session. It summarizes what was "
         "learned from captured writes, lists missing decisions/questions, and returns test guidance for the future "
-        "extension tool. Read-only; it does not generate, import, enable, or execute tools."
+        "extension tool. Pass generate_pack=true to generate the candidate extension pack in the same call."
     ),
     "bubble_tool_wizard_generate": (
         "Generate a local candidate extension pack from a finalized tool-authoring session id. Use this after "
@@ -1246,7 +1246,6 @@ def _is_read_only(name: str) -> bool:
         "bubble_skill_validate",
         "bubble_skill_describe",
         "bubble_tool_wizard_describe",
-        "bubble_tool_wizard_finalize",
         "bubble_learning_list",
         "bubble_knowledge_search",
         "bubble_knowledge_fetch",
