@@ -1,0 +1,58 @@
+{
+  "manifest_version": 3,
+  "name": "Befree Bubble MCP Companion",
+  "version": "0.1.0",
+  "description": "Captura eventos do editor Bubble e envia para o serviço local do Befree Bubble MCP, sem autenticação por email/senha ou relay remoto.",
+  "permissions": [
+    "storage",
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://bubble.io/*",
+    "https://*.bubble.io/*",
+    "https://*.bubbleapps.io/*",
+    "http://127.0.0.1/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://bubble.io/*",
+        "https://*.bubble.io/*",
+        "https://*.bubbleapps.io/*"
+      ],
+      "js": ["bridge.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": [
+        "https://bubble.io/*",
+        "https://*.bubble.io/*",
+        "https://*.bubbleapps.io/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Befree Bubble MCP",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

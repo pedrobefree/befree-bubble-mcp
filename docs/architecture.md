@@ -49,11 +49,11 @@ declarative, and additive:
 - All extension, learning, knowledge, and tool-authoring state lives under
   `BUBBLE_MCP_CONFIG_DIR` or the default `~/.config/bubble-mcp`.
 
-The Chrome extension companion is outside this MCP GitHub repository and
-Python/npm package. It is a separate browser integration surface, not an Aria
-extension. It must not use Aria email/password auth, must not depend on an Aria
-remote relay or auth server, and should expose only local service status, event
-summary, and a local enable/disable key.
+The Chrome extension companion is shipped in `chrome-extension/`. It is a
+separate browser integration surface from declarative extension packs, not an
+Aria extension. It must not use Aria email/password auth, must not depend on an
+Aria remote relay or auth server, and should expose only local service status,
+event summary, local port/key configuration, and a local enable/disable toggle.
 
 ## Knowledge And Learning
 

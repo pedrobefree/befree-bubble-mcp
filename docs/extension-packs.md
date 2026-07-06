@@ -154,6 +154,6 @@ Extension pack validation does not execute Bubble writes. Enabling a pack only e
 
 ## Companion Boundary
 
-The Chrome extension companion is separate from this MCP GitHub repository and Python/npm package. Do not document it as a shipped subpackage here, and do not assume it shares the MCP package release process.
+The Chrome extension companion is shipped in `chrome-extension/` as a browser integration surface for this MCP project. It is separate from declarative extension packs: it is not imported, enabled, validated, or exposed through the extension-pack kernel.
 
 The companion must not use Aria email/password authentication. Browser-side companion auth should be designed independently from Aria application login and should keep Bubble sessions, MCP profile state, and any local tokens under their own explicit security model.

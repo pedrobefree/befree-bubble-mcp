@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Befree Bubble MCP Companion</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      width: 340px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 13px;
+      color: #e4e4e7;
+      background: #0f0f11;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 14px 16px 13px;
+      background: #18181b;
+      border-bottom: 1px solid #27272a;
+    }
+
+    .header-logo {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      background: #1f1f28;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid #2e2e3a;
+      overflow: hidden;
+    }
+
+    .header-logo img {
+      width: 22px;
+      height: 22px;
+      object-fit: contain;
+    }
+
+    .header-text h1 {
+      font-size: 13px;
+      font-weight: 650;
+      color: #f4f4f5;
+    }
+
+    .header-text p {
+      font-size: 11px;
+      color: #71717a;
+      margin-top: 1px;
+    }
+
+    .section {
+      padding: 13px 16px 11px;
+      background: #18181b;
+      margin-top: 6px;
+      border-top: 1px solid #27272a;
+      border-bottom: 1px solid #27272a;
+    }
+
+    .section-title {
+      font-size: 10px;
+      font-weight: 650;
+      text-transform: uppercase;
+      letter-spacing: .6px;
+      color: #52525b;
+      margin-bottom: 10px;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: #18181b;
+      border-bottom: 1px solid #27272a;
+    }
+
+    .toggle-label {
+      font-weight: 550;
+      color: #e4e4e7;
+      font-size: 13px;
+    }
+
+    .toggle-sub {
+      font-size: 11px;
+      color: #71717a;
+      margin-top: 2px;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 38px;
+      height: 21px;
+      flex-shrink: 0;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background: #3f3f46;
+      border-radius: 21px;
+      transition: background 0.2s;
+    }
+
+    .slider:before {
+      content: "";
+      position: absolute;
+      width: 15px;
+      height: 15px;
+      left: 3px;
+      top: 3px;
+      background: #a1a1aa;
+      border-radius: 50%;
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    input:checked + .slider {
+      background: #4f46e5;
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(17px);
+      background: #fff;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #3f3f46;
+      flex-shrink: 0;
+    }
+
+    .status-dot.ok {
+      background: #22c55e;
+      box-shadow: 0 0 6px rgba(34, 197, 94, .4);
+    }
+
+    .status-dot.error {
+      background: #ef4444;
+      box-shadow: 0 0 6px rgba(239, 68, 68, .4);
+    }
+
+    .status-dot.checking {
+      background: #f59e0b;
+      animation: pulse 1.2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: .3; }
+    }
+
+    .status-text {
+      font-size: 12px;
+      color: #a1a1aa;
+      line-height: 1.35;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .stat-card {
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 7px;
+      padding: 8px 6px;
+      text-align: center;
+    }
+
+    .stat-value {
+      font-size: 17px;
+      font-weight: 750;
+      color: #f4f4f5;
+    }
+
+    .stat-label {
+      font-size: 9px;
+      color: #71717a;
+      margin-top: 2px;
+    }
+
+    .field {
+      margin-bottom: 9px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 11px;
+      font-weight: 550;
+      color: #a1a1aa;
+      margin-bottom: 4px;
+    }
+
+    .field input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #3f3f46;
+      border-radius: 6px;
+      font-size: 13px;
+      color: #f4f4f5;
+      background: #27272a;
+      outline: none;
+    }
+
+    .field input:focus {
+      border-color: #6366f1;
+      background: #2a2a35;
+    }
+
+    .field-hint {
+      font-size: 10px;
+      color: #71717a;
+      line-height: 1.35;
+      margin-top: 4px;
+    }
+
+    .port-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 7px;
+      align-items: end;
+    }
+
+    .btn-row {
+      display: flex;
+      gap: 8px;
+      padding: 12px 16px;
+      background: #18181b;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+      border: none;
+      transition: opacity .15s, transform .1s;
+    }
+
+    .btn:hover {
+      opacity: .88;
+    }
+
+    .btn:active {
+      transform: scale(.98);
+    }
+
+    .btn-primary {
+      background: #4f46e5;
+      color: #fff;
+    }
+
+    .btn-secondary {
+      background: #27272a;
+      color: #a1a1aa;
+      border: 1px solid #3f3f46;
+    }
+
+    .events {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      max-height: 180px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+
+    .event {
+      background: #27272a;
+      border: 1px solid #3f3f46;
+      border-radius: 7px;
+      padding: 8px;
+    }
+
+    .event-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 11px;
+      color: #d4d4d8;
+      margin-bottom: 3px;
+    }
+
+    .event-meta {
+      font-size: 10px;
+      color: #71717a;
+      overflow-wrap: anywhere;
+      line-height: 1.35;
+    }
+
+    .empty {
+      font-size: 11px;
+      color: #71717a;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <div class="header-logo">
+      <img src="icons/icon48.png" width="22" height="22" alt="Befree Bubble MCP" />
+    </div>
+    <div class="header-text">
+      <h1>Befree Bubble MCP</h1>
+      <p>Chrome companion</p>
+    </div>
+  </div>
+
+  <div class="toggle-row">
+    <div>
+      <div class="toggle-label">Captura ativa</div>
+      <div class="toggle-sub">Eventos do editor Bubble para o MCP local</div>
+    </div>
+    <label class="switch">
+      <input type="checkbox" id="enabledToggle" />
+      <span class="slider"></span>
+    </label>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Serviço local</div>
+    <div class="status-row">
+      <span id="statusDot" class="status-dot"></span>
+      <span id="statusText" class="status-text">Verificando...</span>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Configuração</div>
+    <div class="port-row">
+      <div class="field">
+        <label for="mcpPort">Porta local</label>
+        <input type="number" id="mcpPort" placeholder="3847" min="1025" max="65534" />
+      </div>
+      <button class="btn btn-secondary" id="btnSavePort">OK</button>
+    </div>
+    <div class="field">
+      <label for="captureKey">Capture key</label>
+      <input type="password" id="captureKey" placeholder="Opcional" autocomplete="off" />
+      <div class="field-hint">Use somente se o serviço local exigir chave para aceitar eventos da extensão.</div>
+    </div>
+    <button class="btn btn-secondary" id="btnSaveKey">Salvar chave</button>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Eventos</div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="statCaptured">0</div>
+        <div class="stat-label">capturados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statSent">0</div>
+        <div class="stat-label">enviados</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statWrites">0</div>
+        <div class="stat-label">writes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statErrors">0</div>
+        <div class="stat-label">erros</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Últimos eventos</div>
+    <div id="eventsList" class="events">
+      <div class="empty">Nenhum evento recebido ainda.</div>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="btnRefresh">Atualizar</button>
+    <button class="btn btn-secondary" id="btnClearEvents">Limpar eventos</button>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>
