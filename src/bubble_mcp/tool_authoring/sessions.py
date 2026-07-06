@@ -399,20 +399,29 @@ def _generated_tool_input_schema(session: ToolAuthoringSession, body_keys: list[
     normalized = f"{session.intent} {session.target}".lower()
     if "api" in normalized:
         api_fields = {
+            "collection_id": "Existing API Connector collection id. Omit to let a future runner create or infer one.",
+            "collection_name": "Human name for a new or existing API Connector collection.",
             "name": "API call display name.",
             "method": "HTTP method for the API call.",
             "url": "API call URL.",
-            "headers": "Optional HTTP headers object.",
+            "publish_as": "Bubble API Connector exposure mode, usually data or action.",
+            "headers": "Optional HTTP headers object keyed by header name.",
             "query_params": "Optional query parameters object.",
             "body": "Optional request body template.",
+            "body_params": "Optional API Connector body parameters object keyed by parameter name.",
             "authentication": "Optional API Connector authentication mode or reference.",
+            "initialize": "Whether a future runner should initialize the call after creating/updating it.",
+            "initialization_values": "Optional values used to initialize dynamic body/query/header parameters.",
         }
         for field, description in api_fields.items():
-            if field in body_keys or field in {"name", "method", "url"}:
-                properties[field] = {
-                    "type": "string" if field not in {"headers", "query_params"} else "object",
-                    "description": description,
-                }
+            properties[field] = {
+                "type": "boolean"
+                if field == "initialize"
+                else "object"
+                if field in {"headers", "query_params", "body_params", "initialization_values"}
+                else "string",
+                "description": description,
+            }
         required.extend(field for field in ("name", "method", "url") if field in properties)
     else:
         properties["context"] = {
@@ -471,6 +480,9 @@ def generate_authoring_extension_pack(
     body_key_strings = [str(key) for key in body_keys]
     tool_relative = f"tools/{_safe_tool_filename(requested_tool_name)}"
     evidence_relative = "evidence/tool-authoring-summary.json"
+    input_schema = _generated_tool_input_schema(session, body_key_strings)
+    input_properties = input_schema.get("properties")
+    supported_arguments = sorted(input_properties) if isinstance(input_properties, dict) else []
     manifest = {
         "id": safe_extension_id,
         "name": f"Generated Tool Authoring Pack - {session.target}",
@@ -492,7 +504,7 @@ def generate_authoring_extension_pack(
             "Use execute=false for preview and review the captured evidence before implementing execution."
         ),
         "risk": "mutating",
-        "inputSchema": _generated_tool_input_schema(session, body_key_strings),
+        "inputSchema": input_schema,
         "annotations": {
             "readOnlyHint": False,
             "destructiveHint": False,
@@ -510,6 +522,8 @@ def generate_authoring_extension_pack(
                 "captured_paths": capture_summary.get("paths", []),
                 "captured_body_keys": body_key_strings,
                 "change_count": capture_summary.get("change_count", 0),
+                "supported_arguments": supported_arguments,
+                "execution_status": "preview_only_until_api_connector_runner_is_implemented",
                 "status": "candidate_requires_review",
             }
         ),

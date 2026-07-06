@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -110,6 +111,20 @@ def test_authoring_session_generate_creates_valid_extension_pack(tmp_path, monke
     assert (pack_path / "extension.json").exists()
     assert Path(str(result["tool_path"])).exists()
     assert Path(str(result["evidence_path"])).exists()
+    tool_payload = json.loads(Path(str(result["tool_path"])).read_text(encoding="utf-8"))
+    properties = tool_payload["inputSchema"]["properties"]
+    for property_name in (
+        "collection_id",
+        "collection_name",
+        "body",
+        "body_params",
+        "headers",
+        "initialize",
+        "initialization_values",
+    ):
+        assert property_name in properties
+    assert tool_payload["inputSchema"]["required"] == ["profile", "name", "method", "url"]
+    assert tool_payload["template"]["execution_status"] == "preview_only_until_api_connector_runner_is_implemented"
     assert validate_extension_pack(pack_path).ok is True
     assert "bubble_extension_import" in result["next_user_action"]
     assert "bubble_extension_call" in result["catalog_visibility"]
