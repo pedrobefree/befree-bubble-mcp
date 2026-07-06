@@ -477,11 +477,10 @@ official Bubble docs can explain Bubble concepts, but they never prove the
 current project state. Project state still comes from the local profile,
 captured session, detected context, and fresh Bubble reads.
 
-The Chrome extension companion is intentionally separate from this MCP
-repository and package. It must stay local-only, must not use Aria
-email/password auth, must not depend on an Aria remote relay or auth server, and
-its UI should be limited to service status, event summary, and a local
-enable/disable key.
+The Chrome extension companion is shipped in `chrome-extension/`. It must stay
+local-only, must not use Aria email/password auth, must not depend on an Aria
+remote relay or auth server, and its UI should be limited to service status,
+event summary, local port/key configuration, and a local enable/disable toggle.
 
 Focused docs:
 
@@ -489,6 +488,7 @@ Focused docs:
 - [Learning](docs/learning.md)
 - [Knowledge sources](docs/knowledge-sources.md)
 - [Tool authoring](docs/tool-authoring.md)
+- [Chrome extension companion](chrome-extension/README.md)
 
 ## Safety Defaults
 
