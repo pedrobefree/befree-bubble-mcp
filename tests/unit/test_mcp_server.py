@@ -2411,6 +2411,31 @@ def test_extension_management_tools_are_listed() -> None:
     assert tools["bubble_extension_validate"]["annotations"]["idempotentHint"] is True
 
 
+def test_extension_management_tools_are_searchable() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 104,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_search",
+                "arguments": {"query": "extension pack list validate import enable disable", "limit": 10},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    matches = {match["name"] for match in payload["matches"]}
+    assert {
+        "bubble_extension_list",
+        "bubble_extension_validate",
+        "bubble_extension_import",
+        "bubble_extension_enable",
+        "bubble_extension_disable",
+    }.issubset(matches)
+
+
 def test_extension_list_tool_returns_installed_extensions(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 

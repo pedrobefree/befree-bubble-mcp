@@ -67,6 +67,20 @@ scripts.
 Keep `BUBBLE_MCP_CONFIG_DIR` consistent with the directory used when you ran
 `bubble-mcp init` and `bubble-mcp profile add`.
 
+### Refreshing client tool catalogs
+
+Some desktop MCP clients cache the discovered tool catalog per configured
+server. After upgrading the Bubble MCP package or adding tool families such as
+extension packs, restart the client and start a fresh chat/thread so it runs a
+new MCP `initialize` and `tools/list` cycle. Existing long-running or compacted
+threads may keep the old callable-tool snapshot even when the local server is
+already exposing the new tools.
+
+If a client still does not show newly added tools, run the manual protocol check
+below with the same command, `cwd`, and environment configured in the client.
+The server response is the source of truth; if `tools/list` includes the tool,
+the remaining issue is the client's cached catalog or stale thread state.
+
 ## Quick manual protocol check
 
 You can verify the server responds before adding it to a client:
@@ -126,8 +140,9 @@ Tool argument completion is also available for common routing values: `profile`,
 
 ## Available tools
 
-The server exposes the complete 196-tool Aria Bubble MCP catalog, plus native
-standalone helper tools. Catalog tools accept their original arguments. Agents
+The server exposes the Aria-compatible Bubble MCP catalog, plus native
+standalone helper tools and enabled extension-pack tools. Catalog tools accept
+their original arguments. Agents
 should call these tools directly instead of discovering equivalent CLI commands.
 Use `bubble_tool_coverage` to audit how every exposed tool is handled.
 Use `bubble_catalog_quality` to audit whether the catalog is efficient for
