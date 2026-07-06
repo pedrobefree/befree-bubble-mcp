@@ -984,6 +984,40 @@ def test_cli_extension_invalid_inputs_return_json_errors(tmp_path, monkeypatch, 
     assert disabled["error"] == "Unknown extension: local.missing-pack"
 
 
+def test_cli_extension_companion_serve_passes_listener_config(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_serve_extension_companion(config):  # type: ignore[no-untyped-def]
+        calls.append(config)
+        return 0
+
+    monkeypatch.setattr("bubble_mcp.cli.main.serve_extension_companion", fake_serve_extension_companion)
+
+    assert (
+        main(
+            [
+                "extension",
+                "companion",
+                "serve",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                "3901",
+                "--capture-key",
+                "dev-key",
+                "--tool-session-id",
+                "toolwiz_20260704_api_connector_1a2b3c4d",
+            ]
+        )
+        == 0
+    )
+
+    assert calls[0].host == "127.0.0.1"
+    assert calls[0].port == 3901
+    assert calls[0].capture_key == "dev-key"
+    assert calls[0].tool_session_id == "toolwiz_20260704_api_connector_1a2b3c4d"
+
+
 def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 

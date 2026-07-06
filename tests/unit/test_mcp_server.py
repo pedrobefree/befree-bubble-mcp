@@ -2411,6 +2411,12 @@ def test_extension_management_tools_are_listed() -> None:
     assert tools["bubble_extension_validate"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_extension_call"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_extension_call"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_companion_start"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_extension_companion_start"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_companion_start"]["annotations"]["openWorldHint"] is True
+    assert tools["bubble_extension_companion_start"]["inputSchema"]["properties"]["port"]["default"] == 3847
+    assert tools["bubble_extension_companion_status"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_extension_companion_stop"]["annotations"]["idempotentHint"] is True
 
 
 def test_extension_management_tools_are_searchable() -> None:
@@ -2421,7 +2427,7 @@ def test_extension_management_tools_are_searchable() -> None:
             "method": "tools/call",
             "params": {
                 "name": "bubble_tool_search",
-                "arguments": {"query": "extension pack list validate import enable disable", "limit": 10},
+                "arguments": {"query": "extension pack list validate import enable disable", "limit": 15},
             },
         }
     )
@@ -2437,6 +2443,26 @@ def test_extension_management_tools_are_searchable() -> None:
         "bubble_extension_disable",
         "bubble_extension_call",
     }.issubset(matches)
+
+    companion_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 105,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_search",
+                "arguments": {"query": "companion listener", "limit": 5},
+            },
+        }
+    )
+    assert companion_response is not None
+    companion_payload = json.loads(companion_response["result"]["content"][0]["text"])
+    companion_matches = {match["name"] for match in companion_payload["matches"]}
+    assert {
+        "bubble_extension_companion_start",
+        "bubble_extension_companion_status",
+        "bubble_extension_companion_stop",
+    }.issubset(companion_matches)
 
 
 def test_extension_list_tool_returns_installed_extensions(tmp_path, monkeypatch) -> None:
@@ -2454,6 +2480,54 @@ def test_extension_list_tool_returns_installed_extensions(tmp_path, monkeypatch)
     assert response is not None
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload == {"ok": True, "extensions": []}
+
+
+def test_extension_companion_mcp_tools_start_status_and_stop(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    try:
+        response = handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 102,
+                "method": "tools/call",
+                "params": {
+                    "name": "bubble_extension_companion_start",
+                    "arguments": {"port": 0},
+                },
+            }
+        )
+
+        assert response is not None
+        payload = json.loads(response["result"]["content"][0]["text"])
+        assert payload["ok"] is True
+        assert payload["running"] is True
+        assert payload["port"] > 0
+
+        status_response = handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 103,
+                "method": "tools/call",
+                "params": {"name": "bubble_extension_companion_status", "arguments": {}},
+            }
+        )
+        assert status_response is not None
+        status = json.loads(status_response["result"]["content"][0]["text"])
+        assert status["running"] is True
+        assert status["port"] == payload["port"]
+    finally:
+        stop_response = handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": 104,
+                "method": "tools/call",
+                "params": {"name": "bubble_extension_companion_stop", "arguments": {}},
+            }
+        )
+        assert stop_response is not None
+        stopped = json.loads(stop_response["result"]["content"][0]["text"])
+        assert stopped["ok"] is True
+        assert stopped["running"] is False
 
 
 def test_extension_management_tools_validate_required_arguments() -> None:

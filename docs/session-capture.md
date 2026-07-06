@@ -58,7 +58,9 @@ Provider roadmap:
 
 - `manual`: import a local session.
 - `browser`: open a local Chromium browser for Bubble login through Playwright.
-- `extension`: receive session metadata from a browser extension.
+- `extension`: receive editor context/write events from the shipped Chrome
+  extension companion through the local listener:
+  `bubble-mcp extension companion serve --port 3847`.
 - `aria-adapter`: optional private adapter outside the open source core.
 
 Rules:

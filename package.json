@@ -7,6 +7,7 @@
   "description": "Local bridge utilities for Bubble MCP integrations.",
   "scripts": {
     "test": "node --test test-node/*.test.mjs",
+    "chrome:companion": "PYTHONPATH=src python -m bubble_mcp.cli.main extension companion serve",
     "figma:bridge": "node bridge/figma/server.mjs"
   },
   "engines": {

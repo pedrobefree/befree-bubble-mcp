@@ -481,6 +481,8 @@ The Chrome extension companion is shipped in `chrome-extension/`. It must stay
 local-only, must not use Aria email/password auth, must not depend on an Aria
 remote relay or auth server, and its UI should be limited to service status,
 event summary, local port/key configuration, and a local enable/disable toggle.
+Run its local listener with `bubble-mcp extension companion serve --port 3847`
+or, from this checkout, `npm run chrome:companion`.
 
 Focused docs:
 

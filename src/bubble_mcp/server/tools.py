@@ -41,6 +41,12 @@ from bubble_mcp.extensions.store import (
 )
 from bubble_mcp.extensions.tools import enabled_extension_tool_schemas, preview_extension_tool_call
 from bubble_mcp.extensions.validator import validate_extension_pack
+from bubble_mcp.extension_companion import (
+    ExtensionCompanionConfig,
+    extension_companion_background_status,
+    start_extension_companion_background,
+    stop_extension_companion_background,
+)
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -197,6 +203,21 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         if not isinstance(raw_tool_arguments, dict):
             raise ValueError("bubble_extension_call requires arguments object.")
         return preview_extension_tool_call(tool_name, raw_tool_arguments)
+    if name == "bubble_extension_companion_start":
+        args = arguments or {}
+        port = int(args.get("port") or 3847)
+        return start_extension_companion_background(
+            ExtensionCompanionConfig(
+                host=str(args.get("host") or "127.0.0.1"),
+                port=port,
+                capture_key=str(args.get("capture_key") or ""),
+                tool_session_id=str(args.get("tool_session_id") or "") or None,
+            )
+        )
+    if name == "bubble_extension_companion_status":
+        return extension_companion_background_status()
+    if name == "bubble_extension_companion_stop":
+        return stop_extension_companion_background()
     if name == "bubble_skill_validate":
         skill_path = _required_string_arg(arguments, "path", name)
         return validate_skill_file(Path(skill_path))
