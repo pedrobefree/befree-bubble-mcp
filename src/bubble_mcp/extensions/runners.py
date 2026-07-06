@@ -1,0 +1,278 @@
+"""Execution runners for declarative extension tools."""
+
+from __future__ import annotations
+
+import json
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+from bubble_mcp.compiler.payload import bubble_element_id
+from bubble_mcp.sessions.store import BubbleSessionData
+
+
+@dataclass(frozen=True)
+class ExtensionRunnerCompileResult:
+    """Compiled runtime artifact for an extension runner."""
+
+    ok: bool
+    runner: str
+    write_payload: dict[str, Any] | None = None
+    warnings: list[str] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+ExtensionRunner = Callable[
+    [dict[str, Any], dict[str, Any], BubbleSessionData | None],
+    ExtensionRunnerCompileResult,
+]
+
+
+def _object_arg(args: dict[str, Any], key: str) -> dict[str, Any]:
+    value = args.get(key)
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _string_arg(args: dict[str, Any], key: str, default: str = "") -> str:
+    return str(args.get(key) or default).strip()
+
+
+def _value_to_bubble_param(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int | float):
+        return str(value)
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _api_connector_param_changes(
+    *,
+    collection_id: str,
+    call_id: str,
+    group: str,
+    values: dict[str, Any],
+    private: bool,
+) -> list[dict[str, Any]]:
+    changes: list[dict[str, Any]] = []
+    for key, value in values.items():
+        key_text = str(key).strip()
+        if not key_text:
+            continue
+        param_id = bubble_element_id()
+        changes.append(
+            {
+                "intent": {"name": "ChangeAppSetting"},
+                "path_array": [
+                    "settings",
+                    "secure",
+                    "apiconnector2",
+                    collection_id,
+                    "calls",
+                    call_id,
+                    group,
+                    param_id,
+                ],
+                "body": {"%k": key_text, "%v": _value_to_bubble_param(value)},
+            }
+        )
+        changes.append(
+            {
+                "intent": {"name": "ChangeAppSetting"},
+                "path_array": [
+                    "settings",
+                    "client_safe",
+                    "apiconnector2",
+                    collection_id,
+                    "calls",
+                    call_id,
+                    group,
+                    param_id,
+                ],
+                "body": {"private": private},
+            }
+        )
+    return changes
+
+
+def _compile_api_connector_resource_v1(
+    template: dict[str, Any],
+    args: dict[str, Any],
+    session: BubbleSessionData | None,
+) -> ExtensionRunnerCompileResult:
+    runner = "api_connector_resource_v1"
+    appname = _string_arg(args, "app_id") or (session.app_id if session else "") or "preview-app"
+    app_version = _string_arg(args, "app_version") or (session.app_version if session else "") or "test"
+    collection_id = _string_arg(args, "collection_id") or bubble_element_id()
+    call_id = _string_arg(args, "call_id") or bubble_element_id()
+    collection_name = _string_arg(args, "collection_name") or "Generated API Connector Collection"
+    call_name = _string_arg(args, "name")
+    method = _string_arg(args, "method", "GET").lower()
+    url = _string_arg(args, "url")
+    publish_as = _string_arg(args, "publish_as", "data")
+    body_template = _string_arg(args, "body")
+    headers = _object_arg(args, "headers")
+    body_params = _object_arg(args, "body_params") or _object_arg(args, "initialization_values")
+    query_params = _object_arg(args, "query_params")
+    initialize = bool(args.get("initialize"))
+
+    warnings: list[str] = []
+    if query_params:
+        warnings.append(
+            "query_params are accepted in the schema but not yet compiled into the API Connector write payload."
+        )
+    if _string_arg(args, "authentication"):
+        warnings.append("authentication is accepted in the schema but not yet compiled by this runner.")
+    if initialize:
+        warnings.append(
+            "initialize=true sets should_reinitialize=true; automatic response schema/full_response initialization is not implemented yet."
+        )
+
+    initial_call = {
+        "%nm": call_name or "API Call",
+        "method": method,
+        "publish_as": publish_as,
+        "rank": int(args.get("rank") or 0),
+        "url_cant_be_private": bool(args.get("url_cant_be_private", True)),
+    }
+    changes: list[dict[str, Any]] = []
+    if not _string_arg(args, "collection_id"):
+        changes.append(
+            {
+                "path_array": ["settings", "client_safe", "apiconnector2", collection_id],
+                "body": {"calls": {call_id: initial_call}, "human": collection_name},
+            }
+        )
+    changes.append(
+        {
+            "intent": {"name": "CreateApiCall"},
+            "path_array": ["settings", "client_safe", "apiconnector2", collection_id, "calls", call_id],
+            "body": initial_call,
+        }
+    )
+    if call_name:
+        changes.append(
+            {
+                "intent": {"name": "ChangeAppSetting"},
+                "path_array": ["settings", "client_safe", "apiconnector2", collection_id, "calls", call_id, "%nm"],
+                "body": call_name,
+            }
+        )
+    if url:
+        changes.append(
+            {
+                "intent": {"name": "ChangeAppSetting"},
+                "path_array": ["settings", "client_safe", "apiconnector2", collection_id, "calls", call_id, "url"],
+                "body": url,
+            }
+        )
+    if method:
+        changes.append(
+            {
+                "intent": {"name": "ChangeAppSetting"},
+                "path_array": ["settings", "client_safe", "apiconnector2", collection_id, "calls", call_id, "method"],
+                "body": method,
+            }
+        )
+    if body_template:
+        changes.append(
+            {
+                "intent": {"name": "ChangeAppSetting"},
+                "path_array": ["settings", "client_safe", "apiconnector2", collection_id, "calls", call_id, "%b3"],
+                "body": body_template,
+            }
+        )
+    changes.extend(
+        _api_connector_param_changes(
+            collection_id=collection_id,
+            call_id=call_id,
+            group="body_params",
+            values=body_params,
+            private=True,
+        )
+    )
+    changes.extend(
+        _api_connector_param_changes(
+            collection_id=collection_id,
+            call_id=call_id,
+            group="headers",
+            values=headers,
+            private=True,
+        )
+    )
+    if url or body_template or body_params or headers or initialize:
+        changes.append(
+            {
+                "intent": {"name": "ChangeAppSetting"},
+                "path_array": [
+                    "settings",
+                    "client_safe",
+                    "apiconnector2",
+                    collection_id,
+                    "calls",
+                    call_id,
+                    "should_reinitialize",
+                ],
+                "body": True,
+            }
+        )
+    return ExtensionRunnerCompileResult(
+        ok=True,
+        runner=runner,
+        write_payload={
+            "appname": appname,
+            "app_version": app_version,
+            "appVersion": app_version,
+            "changes": changes,
+        },
+        warnings=warnings,
+        metadata={
+            "collection_id": collection_id,
+            "call_id": call_id,
+            "family": str(template.get("family") or ""),
+        },
+    )
+
+
+def _template_family(template: dict[str, Any]) -> str:
+    return str(template.get("family") or "").lower().strip()
+
+
+def _runner_id(template: dict[str, Any]) -> str:
+    runner = str(template.get("runner") or "").strip()
+    if runner:
+        return runner
+    family = _template_family(template)
+    if family in {"api_connector", "api-connector"} or "api_connector" in family:
+        return "api_connector_resource_v1"
+    return ""
+
+
+RUNNERS: dict[str, ExtensionRunner] = {
+    "api_connector_resource_v1": _compile_api_connector_resource_v1,
+}
+
+
+def compile_extension_runner(
+    template: dict[str, Any],
+    args: dict[str, Any],
+    *,
+    session: BubbleSessionData | None = None,
+) -> ExtensionRunnerCompileResult | None:
+    """Compile an extension template through its declared runner."""
+
+    runner = _runner_id(template)
+    if not runner:
+        return None
+    compiler = RUNNERS.get(runner)
+    if compiler is None:
+        return ExtensionRunnerCompileResult(
+            ok=False,
+            runner=runner,
+            errors=[f"Unknown extension runner: {runner}"],
+        )
+    return compiler(template, args, session)

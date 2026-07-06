@@ -124,10 +124,12 @@ def test_authoring_session_generate_creates_valid_extension_pack(tmp_path, monke
     ):
         assert property_name in properties
     assert tool_payload["inputSchema"]["required"] == ["profile", "name", "method", "url"]
-    assert tool_payload["template"]["execution_status"] == "preview_only_until_api_connector_runner_is_implemented"
+    assert tool_payload["template"]["runner"] == "api_connector_resource_v1"
+    assert tool_payload["template"]["execution_status"] == "runner_available"
     assert validate_extension_pack(pack_path).ok is True
     assert "bubble_extension_import" in result["next_user_action"]
     assert "bubble_extension_call" in result["catalog_visibility"]
+    assert "same extension_id and tool_name" in result["update_guidance"]
     assert result["next_mcp_calls"][0]["tool"] == "bubble_extension_validate"
     assert result["next_mcp_calls"][3]["tool"] == "bubble_extension_call"
 

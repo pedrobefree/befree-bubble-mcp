@@ -7,6 +7,12 @@ from bubble_mcp.extensions.tools import enabled_extension_tool_schemas
 from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.server.schemas import list_tool_schemas
 from bubble_mcp.server.tools import call_tool
+from bubble_mcp.sessions.store import save_session, session_from_payload
+from bubble_mcp.tool_authoring.sessions import (
+    append_capture_to_authoring_session,
+    create_authoring_session,
+    generate_authoring_extension_pack,
+)
 
 
 SIMPLE_PACK = Path("tests/fixtures/extensions/simple-pack")
@@ -108,6 +114,102 @@ def test_extension_tool_execute_true_reports_unsupported_runner(tmp_path, monkey
     assert result["ok"] is False
     assert result["error"] == "extension_tool_execution_not_implemented"
     assert result["execute"] is True
+
+
+def test_generated_api_connector_extension_tool_previews_and_executes(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_session(
+        "client",
+        session_from_payload(
+            {
+                "app_id": "synthetic-app",
+                "app_version": "test",
+                "headers": {"cookie": "sid=test"},
+                "source": "unit-test",
+            }
+        ),
+    )
+    session = create_authoring_session(
+        intent="Create an API Connector call",
+        target="api_connector",
+        profile="client",
+    )
+    append_capture_to_authoring_session(
+        session.id,
+        Path("tests/fixtures/tool-authoring/api-connector-write-capture.json"),
+    )
+    generated = generate_authoring_extension_pack(session.id)
+    assert generated["ok"] is True
+    import_extension(Path(str(generated["pack_path"])))
+    enable_extension(str(generated["extension_id"]))
+
+    arguments = {
+        "profile": "client",
+        "execute": False,
+        "name": "Dry Run API Connector Test",
+        "method": "POST",
+        "url": "https://example.com/api/test",
+        "headers": {"accept": "application/json"},
+        "body": '{"key1": <key1>, "key2": <key2>}',
+        "body_params": {"key1": "texto", "key2": 10},
+        "initialize": True,
+    }
+    preview = call_tool(
+        "bubble_extension_call",
+        {"tool": str(generated["tool_name"]), "arguments": arguments},
+    )
+
+    assert preview["ok"] is True
+    assert preview["mode"] == "preview"
+    assert preview["execute"] is False
+    assert preview["runner"] == "api_connector_resource_v1"
+    assert preview["compiled_payload"]["appname"] == "synthetic-app"
+    preview_changes = preview["compiled_payload"]["changes"]
+    assert any(change.get("intent", {}).get("name") == "CreateApiCall" for change in preview_changes)
+    assert any(change.get("path_array", [])[-1:] == ["should_reinitialize"] for change in preview_changes)
+
+    write_calls: list[tuple[dict[str, object], object, bool]] = []
+
+    def fake_write(self, payload, session_data, *, dry_run=False):  # noqa: ANN001
+        write_calls.append((payload, session_data, dry_run))
+        return {
+            "ok": True,
+            "request": {"payload": payload},
+            "response": {"status": "ok", "last_change": 123},
+        }
+
+    monkeypatch.setattr("bubble_mcp.extensions.tools.BubbleEditorClient.write", fake_write)
+    executed = call_tool(
+        "bubble_extension_call",
+        {
+            "tool": str(generated["tool_name"]),
+            "arguments": {**arguments, "execute": True},
+        },
+    )
+
+    assert executed["ok"] is True
+    assert executed["mode"] == "executed"
+    assert executed["execute"] is True
+    assert executed["runner"] == "api_connector_resource_v1"
+    assert write_calls
+    payload, session_data, dry_run = write_calls[0]
+    assert dry_run is False
+    assert session_data.app_id == "synthetic-app"
+    assert payload["appname"] == "synthetic-app"
+    payload_changes = payload["changes"]
+    assert any("apiconnector2" in change.get("path_array", []) for change in payload_changes)
+    assert any(change.get("body") == '{"key1": <key1>, "key2": <key2>}' for change in payload_changes)
+    assert any(
+        isinstance(change.get("body"), dict) and change["body"].get("%k") == "accept"
+        for change in payload_changes
+    )
+    assert any(
+        isinstance(change.get("body"), dict) and change["body"].get("%k") == "key2"
+        for change in payload_changes
+    )
 
 
 def test_extension_tool_preview_validates_required_arguments(tmp_path, monkeypatch) -> None:

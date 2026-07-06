@@ -376,7 +376,7 @@ def _testing_guidance(session: ToolAuthoringSession) -> list[str]:
     return [
         "Validar o extension pack gerado com bubble_extension_validate antes de importar.",
         "Importar e habilitar o pack em um config/profile de teste com bubble_extension_import e bubble_extension_enable.",
-        "Executar a tool exportada primeiro com execute=false para revisar o payload compilado sem escrever no Bubble.",
+        "Executar a tool exportada primeiro com execute=false para revisar o payload compilado pelo runner sem escrever no Bubble.",
         f"Executar em ambiente de teste do profile {session.profile} somente depois do preview estar correto.",
         "Atualizar o cache/contexto do profile e verificar no export .bubble se a alteracao criada pela tool aparece no local esperado.",
         "Registrar pelo menos uma fixture de sucesso e uma fixture de erro/argumento incompleto para evitar regressao.",
@@ -399,7 +399,7 @@ def _generated_tool_input_schema(session: ToolAuthoringSession, body_keys: list[
     normalized = f"{session.intent} {session.target}".lower()
     if "api" in normalized:
         api_fields = {
-            "collection_id": "Existing API Connector collection id. Omit to let a future runner create or infer one.",
+            "collection_id": "Existing API Connector collection id. Omit to let the runner create or infer one.",
             "collection_name": "Human name for a new or existing API Connector collection.",
             "name": "API call display name.",
             "method": "HTTP method for the API call.",
@@ -410,7 +410,7 @@ def _generated_tool_input_schema(session: ToolAuthoringSession, body_keys: list[
             "body": "Optional request body template.",
             "body_params": "Optional API Connector body parameters object keyed by parameter name.",
             "authentication": "Optional API Connector authentication mode or reference.",
-            "initialize": "Whether a future runner should initialize the call after creating/updating it.",
+            "initialize": "Whether the runner should initialize the call after creating/updating it.",
             "initialization_values": "Optional values used to initialize dynamic body/query/header parameters.",
         }
         for field, description in api_fields.items():
@@ -438,6 +438,24 @@ def _generated_tool_input_schema(session: ToolAuthoringSession, body_keys: list[
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _generated_runner_id(session: ToolAuthoringSession, capture_summary: dict[str, object]) -> str:
+    normalized_target = f"{session.intent} {session.target}".lower()
+    paths = capture_summary.get("paths")
+    path_text = " ".join(str(path).lower() for path in paths) if isinstance(paths, list) else ""
+    intents = capture_summary.get("intents")
+    intent_text = " ".join(str(intent).lower() for intent in intents) if isinstance(intents, list) else ""
+    if (
+        "api_connector" in normalized_target
+        or "api connector" in normalized_target
+        or "apiconnector2" in path_text
+        or "api_connector" in path_text
+        or "apiconnector" in intent_text
+        or "api_connector" in intent_text
+    ):
+        return "api_connector_resource_v1"
+    return ""
 
 
 def generate_authoring_extension_pack(
@@ -483,6 +501,24 @@ def generate_authoring_extension_pack(
     input_schema = _generated_tool_input_schema(session, body_key_strings)
     input_properties = input_schema.get("properties")
     supported_arguments = sorted(input_properties) if isinstance(input_properties, dict) else []
+    runner_id = _generated_runner_id(session, capture_summary)
+    execution_status = "runner_available" if runner_id else "preview_only_until_runner_is_defined"
+    template_payload = {
+        "kind": "appeditor_write",
+        "family": session.target,
+        "source_session_id": session.id,
+        "intent": session.intent,
+        "requiresValidation": True,
+        "captured_intents": capture_summary.get("intents", []),
+        "captured_paths": capture_summary.get("paths", []),
+        "captured_body_keys": body_key_strings,
+        "change_count": capture_summary.get("change_count", 0),
+        "supported_arguments": supported_arguments,
+        "execution_status": execution_status,
+        "status": "candidate_requires_review",
+    }
+    if runner_id:
+        template_payload["runner"] = runner_id
     manifest = {
         "id": safe_extension_id,
         "name": f"Generated Tool Authoring Pack - {session.target}",
@@ -501,7 +537,7 @@ def generate_authoring_extension_pack(
         "name": requested_tool_name,
         "description": (
             f"Generated candidate tool from tool-authoring session {session.id}. "
-            "Use execute=false for preview and review the captured evidence before implementing execution."
+            "Use execute=false for preview and review the captured evidence before enabling execute=true."
         ),
         "risk": "mutating",
         "inputSchema": input_schema,
@@ -511,22 +547,7 @@ def generate_authoring_extension_pack(
             "idempotentHint": False,
             "openWorldHint": True,
         },
-        "template": redact_sensitive(
-            {
-                "kind": "appeditor_write",
-                "family": session.target,
-                "source_session_id": session.id,
-                "intent": session.intent,
-                "requiresValidation": True,
-                "captured_intents": capture_summary.get("intents", []),
-                "captured_paths": capture_summary.get("paths", []),
-                "captured_body_keys": body_key_strings,
-                "change_count": capture_summary.get("change_count", 0),
-                "supported_arguments": supported_arguments,
-                "execution_status": "preview_only_until_api_connector_runner_is_implemented",
-                "status": "candidate_requires_review",
-            }
-        ),
+        "template": redact_sensitive(template_payload),
     }
     evidence = redact_sensitive(
         {
@@ -560,6 +581,11 @@ def generate_authoring_extension_pack(
             "bubble_tool_wizard_generate creates the pack only. The generated tool becomes available after "
             "bubble_extension_import and bubble_extension_enable. If the client does not expose dynamic tools "
             "as direct callables in the current session, use bubble_extension_call with the returned tool_name."
+        ),
+        "update_guidance": (
+            "To update or complement this generated tool, start a new tool-authoring session, capture additional "
+            "editor writes, then call bubble_tool_wizard_generate with this same extension_id and tool_name. "
+            "Re-importing the generated pack replaces the installed pack while preserving the predictable tool name."
         ),
         "next_mcp_calls": [
             {"tool": "bubble_extension_validate", "arguments": {"path": str(pack_path)}},
