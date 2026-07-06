@@ -220,6 +220,14 @@ Refresh context after creating pages/elements outside this MCP, after importing
 from another tool, or when an agent cannot resolve a page, reusable element,
 style, workflow, data type, or path.
 
+For routine profile cache refreshes, prefer the higher-level command. It maps to
+the `bubble_profile_cache_refresh` MCP tool and avoids making agents discover
+local context paths or lower-level CLI internals:
+
+```bash
+bubble-mcp profile refresh-cache --profile my-app
+```
+
 ### 5. Verify Profile Readiness
 
 Confirm profile, session, and context readiness before using the profile from an
@@ -430,10 +438,15 @@ Start the local bridge from the repository clone when using the Befree Figma plu
 BUBBLE_MCP_CONFIG_DIR=/Users/me/.config/bubble-mcp npm run figma:bridge
 ```
 
-The bridge listens on `http://localhost:3333`, exposes `/health`, `/profiles`,
-and `/sync`, saves incoming plugin payloads under `tmp/bridge_data`, and runs
-the Aria-derived Figma-to-Bubble runtime through the local Bubble session before
-returning success.
+If `BUBBLE_MCP_CONFIG_DIR` is omitted, the bridge uses the same default as the
+Python CLI/MCP server: `~/.config/bubble-mcp`. Use a real local path such as
+`/Users/pedroduarte/.config/bubble-mcp` or `~/.config/bubble-mcp`; the example
+`/Users/me/...` is only a placeholder. The bridge listens on
+`http://localhost:3333`, exposes `/health`, `/profiles`, and `/sync`, saves
+incoming plugin payloads under `tmp/bridge_data`, and runs the Aria-derived
+Figma-to-Bubble runtime through the local Bubble session before returning
+success. The `/profiles` response includes `config_dir` and `settings_path` so
+plugin logs can show exactly which settings file was read.
 
 ## Extension Kernel Foundation
 

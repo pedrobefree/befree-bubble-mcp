@@ -123,6 +123,27 @@ def command_profile_status(args: argparse.Namespace) -> int:
     return 0 if status.get("ok") else 1
 
 
+def command_profile_refresh_cache(args: argparse.Namespace) -> int:
+    from bubble_mcp.server.tools import call_tool
+
+    result = call_tool(
+        "bubble_profile_cache_refresh",
+        {
+            "profile": args.profile,
+            "app_id": args.app_id,
+            "app_version": args.app_version,
+            "output": args.output,
+            "bubble_file": args.bubble_file,
+            "consolelog_file": args.consolelog_file,
+            "force": not args.no_force,
+            "skip_id_to_path": args.skip_id_to_path,
+            "max_age_hours": args.max_age_hours,
+        },
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def command_profile_bootstrap(args: argparse.Namespace) -> int:
     from bubble_mcp.server.tools import call_tool
 
@@ -1007,6 +1028,21 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--profile", default="", help="Profile to inspect. Defaults to settings.default_profile.")
     status_parser.add_argument("--max-age-hours", type=int, default=24)
     status_parser.set_defaults(func=command_profile_status)
+
+    refresh_cache_parser = profile_subparsers.add_parser(
+        "refresh-cache",
+        help="Force refresh local cache/context artifacts for one configured profile.",
+    )
+    refresh_cache_parser.add_argument("--profile", required=True)
+    refresh_cache_parser.add_argument("--app-id", default="")
+    refresh_cache_parser.add_argument("--app-version", default="")
+    refresh_cache_parser.add_argument("--output", default="")
+    refresh_cache_parser.add_argument("--bubble-file", default="")
+    refresh_cache_parser.add_argument("--consolelog-file", default="")
+    refresh_cache_parser.add_argument("--no-force", action="store_true")
+    refresh_cache_parser.add_argument("--skip-id-to-path", action="store_true")
+    refresh_cache_parser.add_argument("--max-age-hours", type=int, default=24)
+    refresh_cache_parser.set_defaults(func=command_profile_refresh_cache)
 
     bootstrap_parser = profile_subparsers.add_parser(
         "bootstrap",

@@ -92,6 +92,22 @@ bubble-mcp profile list
 
 Use the same `BUBBLE_MCP_CONFIG_DIR` in your MCP client config.
 
+For the Figma bridge, `BUBBLE_MCP_CONFIG_DIR` is optional. Without it the bridge
+uses `~/.config/bubble-mcp/settings.json`. Verify the bridge is reading the
+expected file:
+
+```bash
+curl http://localhost:3333/profiles
+```
+
+The response includes `config_dir` and `settings_path`. If those fields point to
+an empty or placeholder directory such as `/Users/me/.config/bubble-mcp`, restart
+the bridge with the real path or use `~/.config/bubble-mcp`:
+
+```bash
+BUBBLE_MCP_CONFIG_DIR=~/.config/bubble-mcp npm run figma:bridge
+```
+
 ## Server appears to hang when run manually
 
 This is expected. `bubble-mcp-server` is a stdio MCP server and waits for

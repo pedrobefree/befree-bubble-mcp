@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-import { createFigmaBridgeServer } from "../bridge/figma/server.mjs";
+import { createFigmaBridgeServer, resolveConfigDir } from "../bridge/figma/server.mjs";
 
 async function withBridge(options, callback) {
   const server = createFigmaBridgeServer(options);
@@ -87,8 +87,49 @@ test("GET /profiles reads settings.json profiles when available", async () => {
       profile_details: {
         smoke: { app_id: "bovichain-g3", appname: "bovichain-g3" },
       },
+      config_dir: configDir,
+      settings_path: path.join(configDir, "settings.json"),
     });
   });
+});
+
+test("GET /profiles reads BUBBLE_MCP_CONFIG_DIR when server option is omitted", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "figma-bridge-env-"));
+  const configDir = path.join(root, "config");
+  const previousConfigDir = process.env.BUBBLE_MCP_CONFIG_DIR;
+  await mkdir(configDir);
+  await writeFile(
+    path.join(configDir, "settings.json"),
+    JSON.stringify({
+      default_profile: "cliente2",
+      profiles: {
+        cliente2: { app_id: "courselaunch", appname: "courselaunch" },
+      },
+    }),
+    "utf8",
+  );
+
+  process.env.BUBBLE_MCP_CONFIG_DIR = configDir;
+  try {
+    await withBridge({}, async (baseUrl) => {
+      const { body } = await jsonRequest(baseUrl, "/profiles");
+
+      assert.deepEqual(body.profiles, ["cliente2"]);
+      assert.equal(body.default, "cliente2");
+      assert.equal(body.config_dir, configDir);
+    });
+  } finally {
+    if (previousConfigDir === undefined) {
+      delete process.env.BUBBLE_MCP_CONFIG_DIR;
+    } else {
+      process.env.BUBBLE_MCP_CONFIG_DIR = previousConfigDir;
+    }
+  }
+});
+
+test("resolveConfigDir defaults and expands home paths", () => {
+  assert.match(resolveConfigDir(""), /\/\.config\/bubble-mcp$/);
+  assert.match(resolveConfigDir("~/custom-bubble-mcp"), /\/custom-bubble-mcp$/);
 });
 
 test("GET /profiles returns an empty list when settings.json is missing", async () => {
@@ -98,7 +139,14 @@ test("GET /profiles returns an empty list when settings.json is missing", async 
     const { response, body } = await jsonRequest(baseUrl, "/profiles");
 
     assert.equal(response.status, 200);
-    assert.deepEqual(body, { ok: true, profiles: [], default: "", profile_details: {} });
+    assert.deepEqual(body, {
+      ok: true,
+      profiles: [],
+      default: "",
+      profile_details: {},
+      config_dir: configDir,
+      settings_path: path.join(configDir, "settings.json"),
+    });
   });
 });
 

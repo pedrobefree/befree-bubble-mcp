@@ -10,7 +10,12 @@ from bubble_mcp.aria_dispatch import dispatch_aria_runtime_tool
 from bubble_mcp.catalog_quality import catalog_quality_report
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
-from bubble_mcp.context.detector import detect_project_context
+from bubble_mcp.context.detector import (
+    default_bubble_export_path,
+    default_bubble_modules_dir,
+    default_crawler_index_path,
+    detect_project_context,
+)
 from bubble_mcp.context.mutation_overlay import record_mutation_overlay
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import context_find_payload
@@ -68,6 +73,79 @@ def _required_string_arg(arguments: dict[str, Any] | None, key: str, tool_name: 
     if not value:
         raise ValueError(f"{tool_name} requires {key}.")
     return value
+
+
+def _cache_artifact_status(path: Path) -> dict[str, Any]:
+    exists = path.exists()
+    stat = path.stat() if exists else None
+    return {
+        "path": str(path),
+        "exists": exists,
+        "mtime": stat.st_mtime if stat is not None else None,
+    }
+
+
+def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
+    args = arguments or {}
+    requested_profile = _required_string_arg(args, "profile", "bubble_profile_cache_refresh")
+    settings = load_settings()
+    resolved_profile = resolve_profile(settings, requested_profile)
+    if resolved_profile is None:
+        return {
+            "ok": False,
+            "error": "profile_not_found",
+            "requested_profile": requested_profile,
+            "available_profiles": sorted(settings.profiles),
+            "next_user_action": "Create the profile with bubble_project_bootstrap or bubble_profile_add before refreshing cache.",
+        }
+
+    app_id = str(args.get("app_id") or resolved_profile.app_id).strip()
+    app_version = str(args.get("app_version") or resolved_profile.app_version or "test").strip()
+    force = bool(args.get("force", True))
+    detection = detect_project_context(
+        profile=resolved_profile.name,
+        app_id=app_id or None,
+        app_version=app_version,
+        force=force,
+        output=Path(str(args.get("output"))) if str(args.get("output") or "").strip() else None,
+        bubble_file=Path(str(args.get("bubble_file"))) if str(args.get("bubble_file") or "").strip() else None,
+        consolelog_file=Path(str(args.get("consolelog_file")))
+        if str(args.get("consolelog_file") or "").strip()
+        else None,
+        include_id_to_path=not bool(args.get("skip_id_to_path")),
+    )
+    status = profile_status(
+        resolved_profile.name,
+        max_age_hours=int(args.get("max_age_hours") or 24),
+    )
+    bubble_file_path = default_bubble_export_path(resolved_profile.name, detection.app_id)
+    bubble_modules_path = default_bubble_modules_dir(resolved_profile.name, detection.app_id)
+    crawler_index_path = (
+        detection.crawler_index_path
+        if detection.crawler_index_path is not None
+        else default_crawler_index_path(resolved_profile.name, detection.app_id)
+    )
+    artifacts = {
+        "context": _cache_artifact_status(detection.context_path),
+        "bubble_file": _cache_artifact_status(bubble_file_path),
+        "bubble_modules": _cache_artifact_status(bubble_modules_path),
+        "crawler_index": _cache_artifact_status(crawler_index_path),
+    }
+    return {
+        "ok": bool(detection.ok),
+        "profile": resolved_profile.name,
+        "requested_profile": requested_profile,
+        "app_id": detection.app_id,
+        "app_version": app_version,
+        "force": force,
+        "source": detection.source,
+        "updated": {name: bool(item["exists"]) for name, item in artifacts.items()},
+        "artifacts": artifacts,
+        "context_detection": detection.to_dict(),
+        "ready": bool(status.get("ready")),
+        "status": status,
+        "next_user_action": "Profile cache refreshed. Use bubble_profile_status only if you need readiness details.",
+    }
 
 
 def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -386,6 +464,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             str(args.get("profile") or ""),
             max_age_hours=int(args.get("max_age_hours") or 24),
         )
+    if name == "bubble_profile_cache_refresh":
+        return _profile_cache_refresh(arguments)
     if name == "bubble_context_summary":
         summary_path = Path(str((arguments or {}).get("file") or ""))
         context = load_context(summary_path)

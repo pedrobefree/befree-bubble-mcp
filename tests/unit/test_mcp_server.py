@@ -45,6 +45,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_profile_add" in names
     assert "bubble_profile_list" in names
     assert "bubble_profile_status" in names
+    assert "bubble_profile_cache_refresh" in names
     assert "bubble_session_inspect" in names
     assert "bubble_session_login" in names
     assert "bubble_visual_compare" in names
@@ -52,12 +53,19 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_visual_capture" in names
     assert "bubble_visual_capture_actual" in names
     assert "bubble_task_runbook" in names
+    assert "batch" in names
     assert tools["bubble_project_bootstrap"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_project_bootstrap"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_project_bootstrap"]["inputSchema"]["required"] == ["profile"]
     assert tools["bubble_profile_add"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_profile_add"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_profile_add"]["inputSchema"]["required"] == ["name", "app_id"]
+    assert tools["bubble_profile_cache_refresh"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_profile_cache_refresh"]["inputSchema"]["required"] == ["profile"]
+    assert tools["bubble_profile_cache_refresh"]["inputSchema"]["properties"]["force"]["default"] is True
+    assert tools["batch"]["inputSchema"]["required"] == ["profile", "commands"]
+    assert "commands" in tools["batch"]["description"].lower()
+    assert "temporary files" in tools["batch"]["description"].lower()
     assert tools["bubble_session_list"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_session_list"]["annotations"]["destructiveHint"] is False
     assert tools["bubble_session_inspect"]["annotations"]["readOnlyHint"] is True
@@ -91,6 +99,80 @@ def test_tools_list_includes_profile_list() -> None:
     ]
     assert "exact" in tools["bubble_context_find"]["inputSchema"]["properties"]
     assert "include_metadata" in tools["bubble_context_find"]["inputSchema"]["properties"]
+
+
+def test_profile_cache_refresh_tool_forces_context_detection(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    calls: list[dict] = []
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="cliente2",
+            profiles={
+                "cliente2": BubbleProfile(
+                    name="cliente2",
+                    app_id="courselaunch",
+                    appname="courselaunch",
+                    app_version="test",
+                )
+            },
+        )
+    )
+
+    class FakeDetectionResult:
+        ok = True
+        app_id = "courselaunch"
+        source = "downloaded_bubble"
+        crawler_index_path = None
+
+        def __init__(self) -> None:
+            self.context_path = tmp_path / "contexts" / "cliente2" / "courselaunch-context.json"
+            self.summary = {"app_id": "courselaunch"}
+
+        def to_dict(self) -> dict:
+            return {
+                "ok": True,
+                "app_id": "courselaunch",
+                "source": "downloaded_bubble",
+                "context_path": str(self.context_path),
+                "crawler_index_path": None,
+                "summary": self.summary,
+                "attempts": [],
+            }
+
+    def fake_detect_project_context(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return FakeDetectionResult()
+
+    monkeypatch.setattr(tools_module, "detect_project_context", fake_detect_project_context)
+    monkeypatch.setattr(
+        tools_module,
+        "profile_status",
+        lambda profile, max_age_hours=24: {"ok": True, "ready": False, "profile": {"name": profile}},
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 601,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_profile_cache_refresh",
+                "arguments": {"profile": "cliente2"},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["profile"] == "cliente2"
+    assert payload["force"] is True
+    assert payload["source"] == "downloaded_bubble"
+    assert payload["next_user_action"] == "Profile cache refreshed. Use bubble_profile_status only if you need readiness details."
+    assert calls[0]["profile"] == "cliente2"
+    assert calls[0]["app_id"] == "courselaunch"
+    assert calls[0]["force"] is True
 
 
 def test_visual_compare_tool_returns_structured_report() -> None:
@@ -1185,6 +1267,40 @@ def test_task_runbook_html_fallback_avoids_generic_create_tools() -> None:
     assert "create_301_redirect" not in names
 
 
+def test_task_runbook_routes_multi_action_edits_to_inline_batch() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 264,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_runbook",
+                "arguments": {
+                    "task": (
+                        'Na página mcp-llm do projeto cliente2, altere o texto "Bem-vindo à Aria" '
+                        'para "Texto atualizado via MCP". Troque a cor primary para #808F2D. '
+                        "Apague o elemento notes_input."
+                    ),
+                    "profile": "cliente2",
+                    "context": "mcp-llm",
+                    "search_limit": 6,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["recipe"] == "command_batch"
+    assert payload["recommended_next_call"]["tool"] == "batch"
+    assert payload["recommended_next_call"]["args"]["commands"] == "$commands"
+    names = [match["name"] for match in payload["tool_search"]["matches"]]
+    assert names[0] == "batch"
+    assert "update_text" in names
+    assert "update_color" in names
+    assert "delete_multiline_input" in names
+
+
 def test_task_recipe_returns_ordered_html_import_steps() -> None:
     response = handle_request(
         {
@@ -1743,6 +1859,79 @@ def test_legacy_catalog_tool_dispatches_to_aria_runtime(monkeypatch) -> None:  #
     assert payload["results"][0]["payload"]["changes"][0]["body"]["%x"] == "Page"
     assert calls[0][0] == "init"
     assert calls[1] == ("create_page", {"name": "mcp-03", "dry_run": True})
+
+
+def test_batch_dispatch_accepts_inline_commands(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    class FakePayloadBuilder:
+        send_to_webhook = None
+        to_json = None
+
+    class FakeBubbleSdk:
+        PayloadBuilder = FakePayloadBuilder
+
+    class FakeBubbleCliModule:
+        inquirer = None
+
+        class BubbleCLI:
+            def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
+                calls.append(("init", kwargs))
+
+            def process_batch(self, file_path, dry_run=False):  # type: ignore[no-untyped-def]
+                calls.append(("process_batch", {"file_path": file_path, "dry_run": dry_run}))
+                return False
+
+            def execute_commands(self, commands, dry_run=False):  # type: ignore[no-untyped-def]
+                calls.append(("execute_commands", {"commands": commands, "dry_run": dry_run}))
+                return True
+
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._load_aria_runtime_modules",
+        lambda: (FakeBubbleCliModule, FakeBubbleSdk),
+    )
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._resolve_runtime_environment",
+        lambda args: __import__("bubble_mcp.aria_dispatch").aria_dispatch.AriaRuntimeEnvironment(
+            profile=args["profile"],
+            app_id=args["app_id"],
+            app_version="test",
+            app_json_path="/tmp/app.bubble",
+            consolelog_json_path=None,
+            crawler_index_path=None,
+            mutation_overlay_path=None,
+        ),
+    )
+
+    commands = [
+        {"command": "update-text", "context": "mcp-llm", "search_text": "Bem-vindo", "new_text": "Texto atualizado"},
+        {"command": "update-color", "name": "primary", "rgba": "#808F2D"},
+        {"command": "delete-multiline-input", "context": "mcp-llm", "element_name": "notes_input"},
+    ]
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 110,
+            "method": "tools/call",
+            "params": {
+                "name": "batch",
+                "arguments": {
+                    "profile": "smoke",
+                    "app_id": "synthetic-app",
+                    "commands": commands,
+                    "execute": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["engine"] == "aria_runtime"
+    assert payload["executed"] is False
+    assert calls[0][0] == "init"
+    assert calls[1] == ("execute_commands", {"commands": commands, "dry_run": True})
 
 
 def test_tools_list_includes_mutating_write_tool() -> None:

@@ -190,6 +190,7 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_visual_compare`: compares structured visual snapshots for layout, required text, image dimensions, typography, max-width, and gradient drift.
 - `bubble_visual_audit`: diagnoses visual drift, returns actionable issues, builds a repair plan, and can execute supported fixes when `execute=true`. Use snapshots or URL/Bubble captures for executable repairs; pass `reference_screenshot` and `actual_screenshot` when a multimodal LLM should review screenshots.
 - `bubble_profile_list`: lists configured local Bubble profiles.
+- `bubble_profile_cache_refresh`: refreshes a configured profile cache/context in one call. Use it directly for routine "refresh cache" requests instead of discovering local cache paths or lower-level CLI commands.
 - `bubble_context_summary`: summarizes a compact context JSON file.
 - `bubble_context_find`: searches the active compact context for a profile, or a local context JSON file for diagnostics. Prefer `profile` plus `exact=true` and `include_metadata=false` when validating that a specific node id, label, Bubble id, or context reference exists or is absent; responses include `count`, `truncated`, `match_field`, and `match_value`.
 - `bubble_context_import`: imports `.bubble`/consolelog or crawler-index JSON into compact context.
@@ -204,6 +205,7 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_session_import`: imports session headers/cookies into local storage.
 - `bubble_editor_write`: posts an exact Bubble `/appeditor/write` payload. Set `execute=true` to mutate Bubble.
 - `bubble_execute_plan`: executes plan steps. Set `compile=true` with `app_id` to compile supported abstract steps before execution. Set `execute=true` to mutate Bubble.
+- `batch`: runs multiple explicit Bubble catalog commands with inline `commands`. Use the `command_batch` recipe from `bubble_task_runbook` for requests that combine edits such as text updates, color token changes, and element deletion in one prompt.
 - `bubble_branch_list`: lists Bubble editor branches/versions for the selected profile.
 - `bubble_branch_contributors`: lists collaborators who contributed to a branch/version.
 - `bubble_changelog_fetch`: fetches editor changelog entries with optional date, user, category, root, identifier, and path filters.

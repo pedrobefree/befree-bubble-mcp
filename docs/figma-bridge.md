@@ -25,6 +25,17 @@ Start it with the same config directory used by the CLI/MCP server:
 BUBBLE_MCP_CONFIG_DIR=/Users/me/.config/bubble-mcp npm run figma:bridge
 ```
 
+`BUBBLE_MCP_CONFIG_DIR` is optional. When it is not set, the bridge reads the
+default `~/.config/bubble-mcp/settings.json`, matching the Python CLI/MCP
+server. The value supports `~` expansion. Use a real path for your machine, for
+example `~/.config/bubble-mcp`; `/Users/me/...` is only placeholder text.
+
+`GET /profiles` returns the profile names, default profile, raw profile details,
+and the resolved `config_dir` / `settings_path` used by the bridge. If the Figma
+plugin reports no profiles, check these two fields in the response or plugin log
+first; they should point to the same settings file used by `bubble-mcp profile
+list`.
+
 `POST /sync` saves the incoming plugin payload under `tmp/bridge_data` and then
 executes the Aria-derived Figma-to-Bubble runtime against the local Bubble MCP
 session. The endpoint returns success only after the Bubble writes complete. If

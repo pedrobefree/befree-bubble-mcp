@@ -95,6 +95,26 @@ Output is JSON and includes:
 - `profiles[].appname`
 - `profiles[].editor_url`
 
+## `bubble-mcp profile refresh-cache`
+
+Forces a one-call refresh of the local cache/context artifacts for a configured
+profile. This is the CLI equivalent of the `bubble_profile_cache_refresh` MCP
+tool and is the preferred path for routine requests such as "refresh cache do
+profile cliente2".
+
+```bash
+bubble-mcp profile refresh-cache --profile my-app
+bubble-mcp profile refresh-cache --profile my-app --app-id my-bubble-app
+bubble-mcp profile refresh-cache --profile my-app --no-force
+```
+
+The command resolves `app_id` and `app_version` from the profile when omitted,
+forces context detection by default, downloads or reuses the `.bubble` export
+according to the detector inputs, splits modules, and returns JSON with updated
+artifact paths and timestamps. Agents should call this command/tool directly
+instead of inspecting cache directories or probing CLI help for low-level
+context commands.
+
 ## `bubble-mcp profile status`
 
 Returns a read-only readiness snapshot for one profile.

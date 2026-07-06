@@ -300,7 +300,7 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "limit_image_size_before_upload": "Whether Bubble should limit image size before upload.",
     "prefer_last": "When multiple matches exist, prefer the last matching element.",
     "language": "Language code for app text or translation operations.",
-    "commands": "Batch command list or command text to execute through a higher-level Bubble MCP command.",
+    "commands": "Inline JSON array of Bubble catalog command objects for the batch tool, or command text for higher-level natural language dispatch.",
     "ref": "Reference id, alias, key, or name used by inspection or verification tools.",
     "values": "Option-set values, static choices, or bulk values depending on the tool.",
     "attributes": "Option-set attributes or structured metadata depending on the tool.",
@@ -333,6 +333,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "metadata, context artifact loadability/freshness, and concrete next actions when setup is incomplete. Use "
         "this before mutations when the agent needs to know whether a profile is ready without calling profile, "
         "session, and context tools separately."
+    ),
+    "bubble_profile_cache_refresh": (
+        "Force refresh local cache/context artifacts for one configured Bubble MCP profile in one call. Use this "
+        "directly for routine requests such as refresh cache, atualizar cache, recarregar profile, baixar novamente "
+        "o .bubble, or sincronizar cache do profile. Do not inspect local directories or CLI help first."
     ),
     "bubble_health_check": (
         "Report server version and capability flags for profiles, session capture, context, planning, mutations, "
@@ -951,8 +956,10 @@ def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
         return _app_text_fields(name)
     if name.startswith(("sync_figma_", "sync_component", "upload_asset")):
         return (("profile",), ("dry_run", "settings_path", "context", "parent", "name", "file", "payload", "execute", "json"))
-    if name in {"batch", "natural"}:
-        return (("profile",), ("dry_run", "settings_path", "message", "commands", "execute", "json"))
+    if name == "batch":
+        return (("profile", "commands"), ("dry_run", "settings_path", "file", "input", "execute", "json"))
+    if name == "natural":
+        return (("profile",), ("dry_run", "settings_path", "message", "query", "commands", "execute", "json"))
     return None
 
 
@@ -1087,9 +1094,10 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_editor_write",
             "bubble_execute_plan",
             "bubble_visual_capture",
-            "bubble_visual_capture_actual",
-            "bubble_visual_audit",
-            "bubble_branch_list",
+        "bubble_visual_capture_actual",
+        "bubble_visual_audit",
+        "bubble_profile_cache_refresh",
+        "bubble_branch_list",
             "bubble_branch_contributors",
             "bubble_changelog_fetch",
             "bubble_branch_create",
@@ -1131,8 +1139,14 @@ def _category_for_name(name: str) -> str:
     for prefixes, description in LEGACY_CATEGORY_DESCRIPTIONS:
         if any(name.startswith(prefix) for prefix in prefixes.split()):
             return description
-    if name in {"batch", "natural"}:
-        return "Run a higher-level Bubble MCP command that may dispatch multiple validated operations."
+    if name == "batch":
+        return (
+            "Run multiple Bubble catalog operations in one profile-scoped call. Prefer this for user prompts with "
+            "several explicit commands, such as updating text, changing a color token, and deleting an element. "
+            "Pass commands inline as a JSON array; do not inspect CLI help or create temporary files first."
+        )
+    if name == "natural":
+        return "Run a higher-level Bubble MCP command from natural language when exact catalog commands are not yet known."
     if name.startswith(("build_source_query_json", "build_data_source_json")):
         return "Build Bubble data source/query JSON for visual elements, repeating groups, and dynamic expressions."
     if name.startswith(("set_app_setting", "set_project_setting", "list_project_settings")):

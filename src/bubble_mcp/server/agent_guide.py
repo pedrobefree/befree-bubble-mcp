@@ -26,14 +26,20 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "find_profile_session_or_context",
         "when": "The user names a project/profile, asks what projects are available, or a target cannot be resolved.",
-        "tools": ["bubble_project_bootstrap", "bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_login", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
-        "notes": "Use bubble_project_bootstrap when profile/app setup is needed. Call bubble_profile_status first when a configured profile is known. For known page/element refs, use bubble_context_find with profile, exact=true, and include_metadata=false before broader searches.",
+        "tools": ["bubble_profile_cache_refresh", "bubble_project_bootstrap", "bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_login", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
+        "notes": "Use bubble_profile_cache_refresh directly when the user asks to refresh/update/reload/sync a profile cache or download the .bubble again. Use bubble_project_bootstrap when profile/app setup is needed. Call bubble_profile_status first only when the user asks for readiness/status rather than refresh.",
     },
     {
         "intent": "create_or_update_visual_editor_elements",
         "when": "The user asks to create, update, rename, move, or delete Bubble visual elements.",
         "tools": ["create_group", "create_text", "create_button", "create_input", "update_text", "delete_group"],
         "notes": "Call the specific create_*/update_*/delete_* tool matching the requested element type; pass profile, context, parent, and execute.",
+    },
+    {
+        "intent": "run_catalog_command_batch",
+        "when": "The user provides multiple explicit Bubble edit commands in one request.",
+        "tools": ["batch", "update_text", "update_color", "delete_multiline_input", "bubble_context_find"],
+        "notes": "Use batch with inline commands for multi-action requests. Do not discover CLI help, create temp command files, or manually route local://bubble-mcp.",
     },
     {
         "intent": "manage_pages_or_reusables",
@@ -187,9 +193,32 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
 
 
 RECIPES: dict[str, dict[str, Any]] = {
+    "command_batch": {
+        "when": "Execute or preview multiple explicit Bubble catalog commands from one user request.",
+        "tools": ["batch", "update_text", "update_color", "delete_multiline_input", "bubble_context_find", "bubble_profile_cache_refresh"],
+        "steps": [
+            {
+                "tool": "batch",
+                "purpose": "Preview or execute the explicit command list in one MCP call with inline commands.",
+                "args": {
+                    "profile": "$profile",
+                    "context": "$context",
+                    "commands": "$commands",
+                    "execute": "$execute",
+                },
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_profile_cache_refresh",
+                "purpose": "After execute=true, refresh the profile cache once to verify all command results against a fresh export.",
+                "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+        ],
+    },
     "setup_or_refresh_context": {
-        "when": "A profile, session, page, element, or context target must be confirmed before mutation.",
-        "tools": ["bubble_project_bootstrap", "bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_login", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
+        "when": "A profile cache/context must be refreshed, or a profile, session, page, element, or context target must be confirmed before mutation.",
+        "tools": ["bubble_profile_cache_refresh", "bubble_project_bootstrap", "bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_login", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
         "steps": [
             {
                 "tool": "bubble_project_bootstrap",
@@ -232,8 +261,14 @@ RECIPES: dict[str, dict[str, Any]] = {
                 "required_before_execute": False,
             },
             {
+                "tool": "bubble_profile_cache_refresh",
+                "purpose": "Use first only for direct user requests to refresh/update/reload/sync the cache of a known profile; otherwise use after profile/session setup.",
+                "args": {"profile": "$profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
                 "tool": "bubble_context_detect",
-                "purpose": "Refresh the .bubble-backed project context when bubble_profile_status reports missing or stale context.",
+                "purpose": "Lower-level context refresh. Use only when a specific context-detect option is needed or bubble_profile_cache_refresh is unavailable.",
                 "args": {"profile": "$profile", "force": True},
                 "required_before_execute": False,
             },
@@ -589,7 +624,30 @@ RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
         ),
         "quality_gate",
     ),
-    (("context", "contexto", "profile", "perfil", "session", "sessao", "login", "cache", "resolve", "resolver", "find"), "setup_or_refresh_context"),
+    (
+        (
+            "context",
+            "contexto",
+            "profile",
+            "perfil",
+            "session",
+            "sessao",
+            "login",
+            "cache",
+            "refresh",
+            "atualizar",
+            "recarregar",
+            "reload",
+            "sync",
+            "sincronizar",
+            "baixar novamente",
+            ".bubble",
+            "resolve",
+            "resolver",
+            "find",
+        ),
+        "setup_or_refresh_context",
+    ),
 )
 
 
@@ -746,11 +804,12 @@ RUNBOOK_FALLBACK_MIN_SCORE = 15
 
 RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
     "branch_or_changelog": "branch changelog contributors version",
+    "command_batch": "batch inline commands update_text update_color delete_multiline_input execute profile context",
     "data_schema": "data type field option set option value schema",
     "html_import": "create_from_html html selector url import visual audit compare",
     "page_or_reusable": "create page reusable clone delete context",
     "quality_gate": "readiness coverage catalog smoke health",
-    "setup_or_refresh_context": "bootstrap setup profile session context detect find status",
+    "setup_or_refresh_context": "bubble_profile_cache_refresh refresh cache atualizar recarregar sync profile context detect find status .bubble",
     "style_or_tokens": "style color font token figma condition hovered",
     "visual_quality_gate": "visual audit compare screenshot repair plan drift",
     "visual_edit": "create visual element text button group input image update delete",
@@ -859,11 +918,66 @@ def _has_keyword(normalized_text: str, keyword: str) -> bool:
     return normalized_keyword in normalized_text.split()
 
 
+def _looks_like_command_batch(normalized_text: str) -> bool:
+    if not normalized_text:
+        return False
+    action_terms = (
+        "altere",
+        "alterar",
+        "atualize",
+        "atualizar",
+        "troque",
+        "trocar",
+        "mude",
+        "mudar",
+        "apague",
+        "apagar",
+        "delete",
+        "remove",
+        "update",
+        "change",
+        "set",
+    )
+    action_count = sum(1 for term in action_terms if _has_keyword(normalized_text, term))
+    target_count = sum(
+        1
+        for term in (
+            "texto",
+            "text",
+            "cor",
+            "color",
+            "token",
+            "elemento",
+            "element",
+            "input",
+            "button",
+            "botao",
+        )
+        if _has_keyword(normalized_text, term)
+    )
+    return action_count >= 2 and target_count >= 2
+
+
+def _looks_like_direct_profile_refresh(normalized_text: str) -> bool:
+    if not normalized_text:
+        return False
+    refresh_terms = ("refresh", "atualizar", "recarregar", "reload", "sync", "sincronizar", "baixar novamente")
+    cache_terms = ("cache", "context", "contexto", "profile", "perfil", "bubble")
+    setup_terms = ("setup", "bootstrap", "configurar", "configure", "criar", "create", "add", "adicionar")
+    return (
+        any(_has_keyword(normalized_text, term) for term in refresh_terms)
+        and any(_has_keyword(normalized_text, term) for term in cache_terms)
+        and not any(_has_keyword(normalized_text, term) for term in setup_terms)
+    )
+
+
 def agent_guide(task: str = "") -> dict[str, Any]:
     """Return compact tool-routing guidance for MCP clients."""
 
     normalized = _normalize_text(str(task or "").strip())
     matched_intents: list[str] = []
+    if _looks_like_command_batch(normalized):
+        matched_intents.append("run_catalog_command_batch")
     if normalized:
         for keywords, intents in KEYWORDS:
             if any(_has_keyword(normalized, keyword) for keyword in keywords):
@@ -889,7 +1003,7 @@ def agent_guide(task: str = "") -> dict[str, Any]:
             "avoid_shell_cli_discovery": True,
             "preview_default": "Leave execute=false unless the user explicitly asked to apply the change in Bubble.",
             "profile_first": "Prefer profile-based calls so the server can use stored session, context, and mutation overlay.",
-            "refresh_context_when_stale": "Run bubble_context_detect with force=true when the Bubble editor changed outside this MCP session.",
+            "refresh_context_when_stale": "Run bubble_profile_cache_refresh with force=true for routine profile cache refresh; use bubble_context_detect only for lower-level context-specific options.",
         },
         "setup_requirements": [
             "Each Bubble project needs a profile.",
@@ -915,6 +1029,8 @@ def task_recipe(
     normalized = _normalize_text(str(task or "").strip())
     requested_recipe = str(recipe or "").strip()
     recipe_id = requested_recipe if requested_recipe in RECIPES else ""
+    if not recipe_id and _looks_like_command_batch(normalized):
+        recipe_id = "command_batch"
     if not recipe_id:
         for keywords, candidate in RECIPE_KEYWORDS:
             if any(_has_keyword(normalized, keyword) for keyword in keywords):
@@ -924,6 +1040,10 @@ def task_recipe(
         recipe_id = "visual_edit"
 
     selected = RECIPES[recipe_id]
+    if recipe_id == "setup_or_refresh_context" and _looks_like_direct_profile_refresh(normalized):
+        refresh_steps = [step for step in selected["steps"] if step.get("tool") == "bubble_profile_cache_refresh"]
+        other_steps = [step for step in selected["steps"] if step.get("tool") != "bubble_profile_cache_refresh"]
+        selected = {**selected, "steps": [*refresh_steps, *other_steps]}
     contract = RECIPE_CONTRACTS.get(
         recipe_id,
         {

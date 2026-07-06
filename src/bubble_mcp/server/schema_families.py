@@ -735,6 +735,31 @@ def _empty_tool(name: str, description: str) -> ToolSchema:
     }
 
 
+def _profile_cache_refresh_tool() -> ToolSchema:
+    schema = tool_schema(
+        "bubble_profile_cache_refresh",
+        "One-call profile cache refresh for routine requests like 'refresh cache do profile cliente2'. It forces context detection by default, updates the local .bubble-backed context/cache artifacts, and returns updated paths/timestamps so agents do not need to inspect directories, CLI help, or runtime internals.",
+        [
+            "profile",
+            "app_id",
+            "app_version",
+            "output",
+            "bubble_file",
+            "consolelog_file",
+            "force",
+            "skip_id_to_path",
+            "max_age_hours",
+        ],
+        required=["profile"],
+    )
+    schema["inputSchema"]["properties"]["force"] = _prop(
+        "boolean",
+        "Force cache/context refresh even when a previous context artifact exists. Defaults to true for this high-level refresh tool.",
+        default=True,
+    )
+    return schema
+
+
 def profile_session_context_tools() -> list[ToolSchema]:
     return [
         tool_schema(
@@ -774,6 +799,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "Return a read-only readiness snapshot for one local Bubble MCP profile: mapping, session metadata, context freshness/loadability, and next actions.",
             ["profile", "max_age_hours"],
         ),
+        _profile_cache_refresh_tool(),
         _empty_tool(
             "bubble_health_check",
             "Return local Bubble MCP server health and capability metadata.",

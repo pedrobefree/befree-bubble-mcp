@@ -350,6 +350,68 @@ def test_cli_tools_runbook_returns_one_call_agent_plan(capsys) -> None:  # type:
     assert payload["recommended_next_call"]["tool"] == "bubble_context_detect"
 
 
+def test_cli_tools_runbook_routes_profile_cache_refresh_directly(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert (
+        main(
+            [
+                "tools",
+                "runbook",
+                "--task",
+                "faça o refresh do cache do profile cliente2",
+                "--profile",
+                "cliente2",
+                "--search-limit",
+                "5",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["recipe"] == "setup_or_refresh_context"
+    assert payload["recommended_next_call"]["tool"] == "bubble_profile_cache_refresh"
+    assert payload["recommended_next_call"]["args"]["profile"] == "$profile"
+    assert payload["recommended_next_call"]["args"]["force"] is True
+    assert "bubble_profile_cache_refresh" in [match["name"] for match in payload["tool_search"]["matches"]]
+
+
+def test_cli_tools_runbook_routes_multi_action_edits_to_batch(capsys) -> None:  # type: ignore[no-untyped-def]
+    task = (
+        'Na página mcp-llm do projeto cliente2, altere o texto "Bem-vindo à Aria" '
+        'para "Texto atualizado via MCP". Troque a cor primary para #808F2D. '
+        "Apague o elemento notes_input."
+    )
+    assert (
+        main(
+            [
+                "tools",
+                "runbook",
+                "--task",
+                task,
+                "--profile",
+                "cliente2",
+                "--context",
+                "mcp-llm",
+                "--search-limit",
+                "6",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["recipe"] == "command_batch"
+    assert payload["recommended_next_call"]["tool"] == "batch"
+    assert payload["recommended_next_call"]["args"]["commands"] == "$commands"
+    names = [match["name"] for match in payload["tool_search"]["matches"]]
+    assert names[0] == "batch"
+    assert "update_text" in names
+    assert "update_color" in names
+    assert "delete_multiline_input" in names
+
+
 def test_cli_tools_coverage_reports_runtime_paths(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["tools", "coverage"]) == 0
 
@@ -528,6 +590,64 @@ def test_cli_profile_bootstrap_creates_profile(tmp_path, monkeypatch, capsys) ->
     listed = json.loads(capsys.readouterr().out)
     assert listed["profiles"][0]["name"] == "dev"
     assert listed["profiles"][0]["app_id"] == "synthetic-app"
+
+
+def test_cli_profile_refresh_cache_uses_canonical_tool(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    calls: list[dict] = []
+
+    def fake_detect_project_context(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        context_path = tmp_path / "contexts" / "dev" / "synthetic-app-context.json"
+        context_path.parent.mkdir(parents=True)
+        context_path.write_text(FIXTURE.read_text(encoding="utf-8"), encoding="utf-8")
+
+        class FakeDetectionResult:
+            ok = True
+            app_id = "synthetic-app"
+            source = "downloaded_bubble"
+            crawler_index_path = None
+
+            def __init__(self) -> None:
+                self.context_path = context_path
+                self.summary = {"app_id": "synthetic-app"}
+
+            def to_dict(self) -> dict:
+                return {
+                    "ok": True,
+                    "app_id": "synthetic-app",
+                    "source": "downloaded_bubble",
+                    "context_path": str(context_path),
+                    "crawler_index_path": None,
+                    "summary": self.summary,
+                    "attempts": [],
+                }
+
+        return FakeDetectionResult()
+
+    monkeypatch.setattr("bubble_mcp.server.tools.detect_project_context", fake_detect_project_context)
+    monkeypatch.setattr(
+        "bubble_mcp.server.tools.profile_status",
+        lambda profile, max_age_hours=24: {"ok": True, "ready": True, "profile": {"name": profile}},
+    )
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="dev",
+            profiles={"dev": BubbleProfile(name="dev", app_id="synthetic-app", appname="synthetic-app")},
+        )
+    )
+
+    assert main(["profile", "refresh-cache", "--profile", "dev"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["profile"] == "dev"
+    assert payload["force"] is True
+    assert payload["source"] == "downloaded_bubble"
+    assert calls[0]["profile"] == "dev"
+    assert calls[0]["app_id"] == "synthetic-app"
+    assert calls[0]["force"] is True
 
 
 def test_cli_session_login_reports_progress_on_stderr(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]

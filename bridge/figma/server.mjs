@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -9,6 +10,7 @@ const DEFAULT_HOST = "0.0.0.0";
 const DEFAULT_PORT = 3333;
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(MODULE_DIR, "..", "..");
+const DEFAULT_CONFIG_DIR = path.join(homedir(), ".config", "bubble-mcp");
 
 function sendJson(res, statusCode, body) {
   const payload = JSON.stringify(body);
@@ -59,13 +61,29 @@ function readRequestJson(req) {
   });
 }
 
-async function readProfiles(configDir) {
-  if (!configDir) {
-    return { names: [], defaultProfile: "", details: {} };
+export function resolveConfigDir(configDir) {
+  const raw = String(configDir ?? process.env.BUBBLE_MCP_CONFIG_DIR ?? "").trim();
+  const selected = raw || DEFAULT_CONFIG_DIR;
+  if (selected === "~") {
+    return homedir();
   }
+  if (selected.startsWith("~/")) {
+    return path.join(homedir(), selected.slice(2));
+  }
+  return path.resolve(selected);
+}
 
+async function readProfiles(configDir) {
+  const resolvedConfigDir = resolveConfigDir(configDir);
+  const settingsPath = path.join(resolvedConfigDir, "settings.json");
+  const empty = {
+    names: [],
+    defaultProfile: "",
+    details: {},
+    configDir: resolvedConfigDir,
+    settingsPath,
+  };
   try {
-    const settingsPath = path.join(configDir, "settings.json");
     const settings = JSON.parse(await readFile(settingsPath, "utf8"));
     const profiles = settings?.profiles;
 
@@ -78,6 +96,8 @@ async function readProfiles(configDir) {
         names,
         defaultProfile: String(settings?.default_profile || names[0] || ""),
         details: profiles,
+        configDir: resolvedConfigDir,
+        settingsPath,
       };
     }
 
@@ -87,13 +107,15 @@ async function readProfiles(configDir) {
         names,
         defaultProfile: String(settings?.default_profile || names[0] || ""),
         details: profiles,
+        configDir: resolvedConfigDir,
+        settingsPath,
       };
     }
 
-    return { names: [], defaultProfile: "", details: {} };
+    return empty;
   } catch (error) {
     if (error?.code === "ENOENT") {
-      return { names: [], defaultProfile: "", details: {} };
+      return empty;
     }
 
     throw error;
@@ -201,7 +223,7 @@ async function triggerStandaloneSync(filePath) {
 }
 
 export function createFigmaBridgeServer(options = {}) {
-  const configDir = options.configDir ?? process.env.BUBBLE_MCP_CONFIG_DIR;
+  const configDir = resolveConfigDir(options.configDir);
   const dataDir = options.dataDir ?? path.join(process.cwd(), "tmp", "bridge_data");
   const token = options.token ?? process.env.BUBBLE_MCP_BRIDGE_TOKEN;
   const syncHandler = options.syncHandler ?? triggerStandaloneSync;
@@ -227,6 +249,8 @@ export function createFigmaBridgeServer(options = {}) {
           profiles: profiles.names,
           default: profiles.defaultProfile,
           profile_details: profiles.details,
+          config_dir: profiles.configDir,
+          settings_path: profiles.settingsPath,
         });
         return;
       }

@@ -367,6 +367,8 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
             custom_return = _call_custom_runtime_tool(name, cli, args)
             if custom_return is not None:
                 return_value = custom_return
+            elif name == "batch" and isinstance(args.get("commands"), list):
+                return_value = cli.execute_commands(args["commands"], dry_run=not execute)
             else:
                 method = getattr(cli, method_name)
                 return_value = method(**_method_kwargs(method, args, execute=execute))
