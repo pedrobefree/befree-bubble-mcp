@@ -198,7 +198,8 @@ Use this order for a new candidate tool:
 6. Run `bubble-mcp extension validate --path ./pack`.
 7. Import and enable in a temporary `BUBBLE_MCP_CONFIG_DIR`.
 8. Confirm the enabled tool appears in `tools/list` or `bubble-mcp tools coverage`.
-9. Call the enabled tool once and confirm v1 returns `extension_tool_execution_not_implemented`.
-10. Add preview and execution smoke tests only after a future recipe/template runner exists; real `execute=true` must remain limited to an explicit smoke profile and reviewed validation evidence.
+9. Call the enabled tool once with `execute=false`, directly when the client exposes it or through `bubble_extension_call` when it only appears in the catalog, and confirm v1 returns a preview without writing to Bubble.
+10. Confirm `execute=true` returns `extension_tool_execution_not_implemented`.
+11. Add execution smoke tests only after a future recipe/template runner exists; real `execute=true` must remain limited to an explicit smoke profile and reviewed validation evidence.
 
 The wizard is intentionally conservative. It helps organize evidence; it does not convert captured writes into trusted automation without review.

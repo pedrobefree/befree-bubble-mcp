@@ -139,14 +139,34 @@ MCP tools:
 
 - `bubble_extension_import`
 - `bubble_extension_list`
+- `bubble_extension_validate`
 - `bubble_extension_enable`
 - `bubble_extension_disable`
+- `bubble_extension_call`
 
 Import is idempotent for the same extension id: the local copy is replaced and returned to `pending`. Enable validates the installed pack before changing state; invalid packs remain pending or disabled and return validation errors.
 
 ## Preview And Execute Boundary
 
-Extension packs can add validated schemas to the tool catalog, but v1 does not execute those declarative tools yet. If an enabled extension tool is called, the MCP returns an explicit `extension_tool_execution_not_implemented` result instead of treating it as an unknown tool.
+Extension packs can add validated schemas to the tool catalog. If a client exposes the dynamic extension tool as a direct callable function, call it with `execute=false` to preview. If the client lists the dynamic tool in the catalog but does not expose it as a callable function, call the stable dispatcher instead:
+
+```json
+{
+  "tool": "bubble_extension_call",
+  "arguments": {
+    "tool": "local.simple-pack.create_plugin_widget",
+    "arguments": {
+      "profile": "cliente2",
+      "context": "index",
+      "parent": "root",
+      "label": "Teste Extension Pack",
+      "execute": false
+    }
+  }
+}
+```
+
+The v1 dispatcher generates a local preview with the declarative template, schema, redacted arguments, and pack metadata. It does not execute Bubble writes. Calling a declarative extension tool with `execute=true` returns an explicit `extension_tool_execution_not_implemented` result until a reviewed recipe/template runner exists.
 
 Future declarative execution must not bypass the Bubble MCP execution model. Mutating operations must keep an explicit `execute` input with `false` as the safe default. A tool proposal should preview the normalized write first, then require explicit `execute=true` only after semantic and structural validation.
 

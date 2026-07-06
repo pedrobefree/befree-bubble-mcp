@@ -39,7 +39,7 @@ from bubble_mcp.extensions.store import (
     import_extension,
     list_extensions,
 )
-from bubble_mcp.extensions.tools import enabled_extension_tool_schemas
+from bubble_mcp.extensions.tools import enabled_extension_tool_schemas, preview_extension_tool_call
 from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
@@ -190,6 +190,13 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_extension_disable":
         extension_id = _required_string_arg(arguments, "extension_id", name)
         return disable_extension(extension_id).to_dict()
+    if name == "bubble_extension_call":
+        args = arguments or {}
+        tool_name = _required_string_arg(args, "tool", name)
+        raw_tool_arguments = args.get("arguments")
+        if not isinstance(raw_tool_arguments, dict):
+            raise ValueError("bubble_extension_call requires arguments object.")
+        return preview_extension_tool_call(tool_name, raw_tool_arguments)
     if name == "bubble_skill_validate":
         skill_path = _required_string_arg(arguments, "path", name)
         return validate_skill_file(Path(skill_path))
@@ -843,15 +850,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         )
     enabled_extension_tools = {str(tool.get("name") or "") for tool in enabled_extension_tool_schemas()}
     if name in enabled_extension_tools:
-        return {
-            "ok": False,
-            "error": "extension_tool_execution_not_implemented",
-            "tool": name,
-            "message": (
-                "Declarative extension tool schemas can be validated and exposed in v1, "
-                "but execution requires a future recipe/template runner."
-            ),
-        }
+        return preview_extension_tool_call(name, arguments or {})
     if name in ARIA_BUBBLE_TOOL_NAMES:
         return call_legacy_catalog_tool(name, arguments or {})
     raise ValueError(f"Unknown Bubble MCP tool: {name}")

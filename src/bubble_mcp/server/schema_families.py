@@ -108,6 +108,17 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Installed Bubble MCP extension id.",
         examples=["local.simple-pack"],
     ),
+    "tool": _prop(
+        "string",
+        "Exact MCP tool name to inspect, preview, or call through a stable dispatcher.",
+        examples=["local.simple-pack.create_plugin_widget", "bubble_extension_list"],
+    ),
+    "arguments": _prop(
+        "object",
+        "Arguments to pass to the target MCP tool. For extension tools, keep execute=false for preview.",
+        additional_properties=True,
+        examples=[{"profile": "cliente2", "context": "index", "parent": "root", "label": "Test", "execute": False}],
+    ),
     "session_id": _prop(
         "string",
         "Local tool-authoring session id.",
@@ -1193,6 +1204,12 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "Disable an installed Bubble MCP extension pack by extension id. Re-disabling a disabled extension is idempotent.",
             ["extension_id"],
             required=["extension_id"],
+        ),
+        tool_schema(
+            "bubble_extension_call",
+            "Preview an enabled declarative extension tool by exact tool name through a stable native MCP dispatcher. Use this when an enabled extension tool appears in the catalog but the client did not expose it as a direct callable function. v1 never writes to Bubble; execute=true returns an explicit unsupported-execution error.",
+            ["tool", "arguments"],
+            required=["tool", "arguments"],
         ),
         tool_schema(
             "bubble_skill_validate",

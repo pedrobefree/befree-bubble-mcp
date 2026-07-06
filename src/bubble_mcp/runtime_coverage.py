@@ -59,6 +59,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_extension_import",
     "bubble_extension_enable",
     "bubble_extension_disable",
+    "bubble_extension_call",
     "bubble_skill_validate",
     "bubble_skill_describe",
     "bubble_tool_wizard_start",
@@ -105,12 +106,26 @@ def _runtime_methods() -> set[str]:
     return {name for name in dir(bubble_cli.BubbleCLI) if not name.startswith("_")}
 
 
-def classify_tool(name: str, *, runtime_methods: set[str] | None = None) -> dict[str, Any]:
+def _enabled_extension_tool_names() -> set[str]:
+    from bubble_mcp.extensions.tools import enabled_extension_tool_schemas
+
+    return {str(tool.get("name") or "") for tool in enabled_extension_tool_schemas()}
+
+
+def classify_tool(
+    name: str,
+    *,
+    runtime_methods: set[str] | None = None,
+    extension_tool_names: set[str] | None = None,
+) -> dict[str, Any]:
     """Classify one MCP tool by its primary execution path."""
 
     methods = runtime_methods if runtime_methods is not None else _runtime_methods()
+    extension_names = extension_tool_names if extension_tool_names is not None else _enabled_extension_tool_names()
     if name in NATIVE_SPECIAL_TOOLS:
         return {"tool": name, "coverage": "native", "engine": "standalone_native"}
+    if name in extension_names:
+        return {"tool": name, "coverage": "extension_preview", "engine": "standalone_extension_preview"}
     if name in CUSTOM_RUNTIME_TOOLS:
         return {"tool": name, "coverage": "runtime_custom", "engine": "aria_runtime_custom"}
     alias = RUNTIME_TOOL_ALIASES.get(name)
@@ -127,9 +142,13 @@ def catalog_coverage_report(*, include_tools: bool = False) -> dict[str, Any]:
     """Return a compact machine-readable coverage report for all exposed tools."""
 
     methods = _runtime_methods()
+    extension_tool_names = _enabled_extension_tool_names()
     tool_schemas = list_tool_schemas()
     tool_names = [str(tool.get("name")) for tool in tool_schemas]
-    classifications = [classify_tool(name, runtime_methods=methods) for name in tool_names]
+    classifications = [
+        classify_tool(name, runtime_methods=methods, extension_tool_names=extension_tool_names)
+        for name in tool_names
+    ]
     aria_names = set(ARIA_BUBBLE_TOOL_NAMES)
     aria_classifications = [item for item in classifications if item["tool"] in aria_names]
     by_coverage: dict[str, int] = {}

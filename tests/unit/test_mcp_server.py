@@ -2409,6 +2409,8 @@ def test_extension_management_tools_are_listed() -> None:
     assert tools["bubble_extension_disable"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_extension_validate"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_extension_validate"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_extension_call"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_extension_call"]["annotations"]["idempotentHint"] is True
 
 
 def test_extension_management_tools_are_searchable() -> None:
@@ -2433,6 +2435,7 @@ def test_extension_management_tools_are_searchable() -> None:
         "bubble_extension_import",
         "bubble_extension_enable",
         "bubble_extension_disable",
+        "bubble_extension_call",
     }.issubset(matches)
 
 

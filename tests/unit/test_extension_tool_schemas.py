@@ -38,16 +38,94 @@ def test_server_tool_list_includes_enabled_extension_tool(tmp_path, monkeypatch)
     assert "create_text" in names
 
 
-def test_enabled_extension_tool_call_reports_unimplemented_runner(tmp_path, monkeypatch) -> None:
+def test_enabled_extension_tool_call_returns_safe_preview(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     import_extension(SIMPLE_PACK)
     enable_extension("local.simple-pack")
 
-    result = call_tool("local.simple-pack.create_plugin_widget", {"execute": False})
+    result = call_tool(
+        "local.simple-pack.create_plugin_widget",
+        {
+            "profile": "cliente2",
+            "context": "index",
+            "parent": "root",
+            "label": "Teste Extension Pack",
+            "execute": False,
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["tool"] == "local.simple-pack.create_plugin_widget"
+    assert result["extension_id"] == "local.simple-pack"
+    assert result["mode"] == "preview"
+    assert result["execute"] is False
+    assert result["template"]["kind"] == "appeditor_write"
+
+
+def test_extension_call_dispatcher_previews_enabled_tool(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    import_extension(SIMPLE_PACK)
+    enable_extension("local.simple-pack")
+
+    result = call_tool(
+        "bubble_extension_call",
+        {
+            "tool": "local.simple-pack.create_plugin_widget",
+            "arguments": {
+                "profile": "cliente2",
+                "context": "index",
+                "parent": "root",
+                "label": "Teste Extension Pack",
+                "execute": False,
+            },
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["tool"] == "local.simple-pack.create_plugin_widget"
+    assert result["arguments"]["label"] == "Teste Extension Pack"
+
+
+def test_extension_tool_execute_true_reports_unsupported_runner(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    import_extension(SIMPLE_PACK)
+    enable_extension("local.simple-pack")
+
+    result = call_tool(
+        "bubble_extension_call",
+        {
+            "tool": "local.simple-pack.create_plugin_widget",
+            "arguments": {
+                "profile": "cliente2",
+                "context": "index",
+                "parent": "root",
+                "label": "Teste Extension Pack",
+                "execute": True,
+            },
+        },
+    )
 
     assert result["ok"] is False
     assert result["error"] == "extension_tool_execution_not_implemented"
-    assert result["tool"] == "local.simple-pack.create_plugin_widget"
+    assert result["execute"] is True
+
+
+def test_extension_tool_preview_validates_required_arguments(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    import_extension(SIMPLE_PACK)
+    enable_extension("local.simple-pack")
+
+    result = call_tool(
+        "bubble_extension_call",
+        {
+            "tool": "local.simple-pack.create_plugin_widget",
+            "arguments": {"profile": "cliente2", "context": "index", "execute": False},
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "extension_tool_missing_required_arguments"
+    assert result["missing"] == ["parent", "label"]
 
 
 def test_extension_collision_is_rejected(tmp_path) -> None:

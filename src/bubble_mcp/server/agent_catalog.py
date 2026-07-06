@@ -395,6 +395,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Describe a local tool-authoring session and aggregate classification for captured writes. Read-only; it does "
         "not generate, activate, or execute extension tools."
     ),
+    "bubble_extension_call": (
+        "Preview an enabled declarative extension tool by exact tool name through a stable native MCP dispatcher. "
+        "Use this when a dynamic extension tool appears in the catalog but the client did not expose it as a direct "
+        "callable function. v1 never writes to Bubble; execute=true returns an explicit unsupported-execution error."
+    ),
     "bubble_runtime_smoke": (
         "Run an operational runtime smoke suite. Use coverage for local catalog execution coverage plus "
         "agent-facing catalog quality, agent-routing to validate natural-language tool selection without writes, "
@@ -1219,6 +1224,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_changelog_fetch",
         "bubble_extension_list",
         "bubble_extension_validate",
+        "bubble_extension_call",
         "bubble_skill_validate",
         "bubble_skill_describe",
         "bubble_tool_wizard_describe",
