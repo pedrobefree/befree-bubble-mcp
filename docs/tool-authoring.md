@@ -5,7 +5,9 @@ The guided tool wizard is the local capture and classification layer for turning
 ## Workflow
 
 1. Start a local authoring session with an intent, target, and profile.
-2. Add one or more captured Bubble `/appeditor/write` JSON files.
+2. Add one or more captured Bubble `/appeditor/write` JSON files, or leave the
+   Chrome extension companion running so it can add write captures to the active
+   session.
 3. Review per-capture and aggregate classification.
 4. Use the classification, manual guidance, and validation output to draft a declarative extension tool and eval fixture.
 5. Validate the extension pack before import.
@@ -20,6 +22,13 @@ bubble-mcp tool-wizard start \
   --intent "Create an API Connector call" \
   --target api_connector \
   --profile client
+```
+
+Starting a session also marks it as the active Chrome extension capture target.
+To switch an existing session back to active:
+
+```bash
+bubble-mcp tool-wizard activate toolwiz_20260704_api_connector_ab12cd34
 ```
 
 Add a captured write:

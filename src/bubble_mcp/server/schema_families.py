@@ -1273,6 +1273,12 @@ def extension_kernel_tools() -> list[ToolSchema]:
             required=["session_id", "file"],
         ),
         tool_schema(
+            "bubble_tool_wizard_activate",
+            "Mark an existing local tool-authoring session as the active capture target for Chrome extension write events.",
+            ["session_id"],
+            required=["session_id"],
+        ),
+        tool_schema(
             "bubble_tool_wizard_describe",
             "Describe a local tool-authoring session and its aggregate captured-write classification. Read-only and does not generate or activate tools.",
             ["session_id"],

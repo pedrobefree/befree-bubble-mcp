@@ -1091,6 +1091,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_extension_companion_start",
             "bubble_extension_companion_status",
             "bubble_extension_companion_stop",
+            "bubble_tool_wizard_activate",
             *agent_read_only,
         },
         "openWorldHint": name

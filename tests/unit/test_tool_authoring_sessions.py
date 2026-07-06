@@ -3,9 +3,11 @@ from pathlib import Path
 import pytest
 
 from bubble_mcp.tool_authoring.sessions import (
+    active_authoring_session_id,
     append_capture_to_authoring_session,
     create_authoring_session,
     describe_authoring_session,
+    set_active_authoring_session,
 )
 
 
@@ -25,7 +27,24 @@ def test_authoring_session_groups_captured_write(tmp_path, monkeypatch) -> None:
 
     assert result["ok"] is True
     assert described["session"]["intent"] == "Create an API Connector call"
+    assert described["active"] is True
+    assert active_authoring_session_id() == session.id
     assert described["classification"]["change_count"] >= 1
+
+
+def test_authoring_session_can_activate_existing_session(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    first = create_authoring_session(intent="First", target="api_connector", profile="client")
+    second = create_authoring_session(intent="Second", target="workflow", profile="client")
+
+    assert active_authoring_session_id() == second.id
+    result = set_active_authoring_session(first.id)
+
+    assert result["ok"] is True
+    assert active_authoring_session_id() == first.id
+    assert describe_authoring_session(first.id)["active"] is True
+    assert describe_authoring_session(second.id)["active"] is False
 
 
 def test_authoring_session_rejects_unsafe_session_id(tmp_path, monkeypatch) -> None:

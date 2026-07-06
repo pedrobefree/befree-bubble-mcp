@@ -70,6 +70,7 @@ from bubble_mcp.tool_authoring.sessions import (
     append_capture_to_authoring_session,
     create_authoring_session,
     describe_authoring_session,
+    set_active_authoring_session,
 )
 from bubble_mcp.validators.semantic import validate_plan
 
@@ -205,7 +206,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return preview_extension_tool_call(tool_name, raw_tool_arguments)
     if name == "bubble_extension_companion_start":
         args = arguments or {}
-        port = int(args.get("port") or 3847)
+        raw_port = args.get("port")
+        port = 3847 if raw_port in (None, "") else int(str(raw_port))
         return start_extension_companion_background(
             ExtensionCompanionConfig(
                 host=str(args.get("host") or "127.0.0.1"),
@@ -237,6 +239,10 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         session_id = _required_string_arg(args, "session_id", name)
         file_path = _required_string_arg(args, "file", name)
         return append_capture_to_authoring_session(session_id, Path(file_path))
+    if name == "bubble_tool_wizard_activate":
+        args = arguments or {}
+        session_id = _required_string_arg(args, "session_id", name)
+        return set_active_authoring_session(session_id)
     if name == "bubble_tool_wizard_describe":
         args = arguments or {}
         session_id = _required_string_arg(args, "session_id", name)

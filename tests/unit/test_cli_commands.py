@@ -1059,7 +1059,12 @@ def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, c
     assert main(["tool-wizard", "describe", session_id]) == 0
     described = json.loads(capsys.readouterr().out)
     assert described["session"]["profile"] == "client"
+    assert described["active"] is True
     assert described["classification"]["app_id"] == "synthetic-app"
+
+    assert main(["tool-wizard", "activate", session_id]) == 0
+    activated = json.loads(capsys.readouterr().out)
+    assert activated["session_id"] == session_id
 
 
 def test_cli_tool_wizard_add_capture_returns_structured_errors(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]

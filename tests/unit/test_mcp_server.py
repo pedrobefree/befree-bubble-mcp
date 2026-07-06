@@ -2417,6 +2417,9 @@ def test_extension_management_tools_are_listed() -> None:
     assert tools["bubble_extension_companion_start"]["inputSchema"]["properties"]["port"]["default"] == 3847
     assert tools["bubble_extension_companion_status"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_extension_companion_stop"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_tool_wizard_activate"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_tool_wizard_activate"]["annotations"]["idempotentHint"] is True
+    assert tools["bubble_tool_wizard_activate"]["inputSchema"]["required"] == ["session_id"]
 
 
 def test_extension_management_tools_are_searchable() -> None:

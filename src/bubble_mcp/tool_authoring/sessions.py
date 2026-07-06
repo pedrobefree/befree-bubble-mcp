@@ -15,6 +15,7 @@ from bubble_mcp.tool_authoring.models import ToolAuthoringSession
 
 
 SESSION_FILENAME = "session.json"
+ACTIVE_SESSION_FILENAME = "active-session.json"
 _SAFE_SEGMENT_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
@@ -40,6 +41,10 @@ def _validate_safe_segment(value: str, *, label: str) -> str:
 
 def _sessions_dir() -> Path:
     return get_config_dir() / "tool-authoring" / "sessions"
+
+
+def _active_session_path() -> Path:
+    return get_config_dir() / "tool-authoring" / ACTIVE_SESSION_FILENAME
 
 
 def _ensure_under_base(path: Path, base: Path) -> Path:
@@ -93,6 +98,32 @@ def _write_session(session: ToolAuthoringSession) -> None:
     path.write_text(json.dumps(session.to_dict(), indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
+def set_active_authoring_session(session_id: str) -> dict[str, object]:
+    session = _load_session(session_id)
+    path = _active_session_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"session_id": session.id, "activated_at": _utc_now_iso()}
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return {"ok": True, **payload}
+
+
+def active_authoring_session_id() -> str | None:
+    path = _active_session_path()
+    if path.is_symlink():
+        raise ValueError(f"Active tool-authoring session file cannot be a symlink: {path}")
+    if not path.exists():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected active tool-authoring session JSON object in {path}")
+    session_id = str(payload.get("session_id") or "").strip()
+    if not session_id:
+        return None
+    safe_session_id = _validate_safe_segment(session_id, label="session_id")
+    _load_session(safe_session_id)
+    return safe_session_id
+
+
 def _new_session_id(target: str) -> str:
     date = datetime.now(UTC).strftime("%Y%m%d")
     target_slug = _slug(target, fallback="candidate")
@@ -120,6 +151,7 @@ def create_authoring_session(*, intent: str, target: str, profile: str) -> ToolA
     )
     _write_session(session)
     _captures_dir(session.id)
+    set_active_authoring_session(session.id)
     return session
 
 
@@ -269,5 +301,6 @@ def describe_authoring_session(session_id: str) -> dict[str, object]:
     return {
         "ok": True,
         "session": session.to_dict(),
+        "active": active_authoring_session_id() == session.id,
         "classification": _aggregate_classification(session),
     }

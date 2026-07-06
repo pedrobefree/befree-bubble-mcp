@@ -62,6 +62,7 @@ from bubble_mcp.tool_authoring.sessions import (
     append_capture_to_authoring_session,
     create_authoring_session,
     describe_authoring_session,
+    set_active_authoring_session,
 )
 from bubble_mcp.validators.semantic import validate_plan
 
@@ -791,6 +792,16 @@ def command_tool_wizard_add_capture(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def command_tool_wizard_activate(args: argparse.Namespace) -> int:
+    try:
+        result = set_active_authoring_session(args.session_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_tool_wizard_error("activate", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def command_tool_wizard_describe(args: argparse.Namespace) -> int:
     try:
         result = describe_authoring_session(args.session_id)
@@ -1461,6 +1472,13 @@ def build_parser() -> argparse.ArgumentParser:
     tool_wizard_add_parser.add_argument("session_id")
     tool_wizard_add_parser.add_argument("--file", required=True)
     tool_wizard_add_parser.set_defaults(func=command_tool_wizard_add_capture)
+
+    tool_wizard_activate_parser = tool_wizard_subparsers.add_parser(
+        "activate",
+        help="Mark an existing tool-authoring session as the active Chrome extension capture target.",
+    )
+    tool_wizard_activate_parser.add_argument("session_id")
+    tool_wizard_activate_parser.set_defaults(func=command_tool_wizard_activate)
 
     tool_wizard_describe_parser = tool_wizard_subparsers.add_parser(
         "describe",

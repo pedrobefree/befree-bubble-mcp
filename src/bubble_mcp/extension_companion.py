@@ -14,7 +14,10 @@ from typing import Any, cast
 from urllib.parse import urlparse
 
 from bubble_mcp.core.config import get_config_dir
-from bubble_mcp.tool_authoring.sessions import append_capture_payload_to_authoring_session
+from bubble_mcp.tool_authoring.sessions import (
+    active_authoring_session_id,
+    append_capture_payload_to_authoring_session,
+)
 
 
 DEFAULT_COMPANION_HOST = "127.0.0.1"
@@ -84,6 +87,19 @@ def _extract_version(payload: dict[str, Any]) -> str | None:
     return text or None
 
 
+def _write_change_count(payload: dict[str, Any]) -> int:
+    request_body = payload.get("requestBody")
+    request = request_body if isinstance(request_body, dict) else {}
+    changes = request.get("changes")
+    return len(changes) if isinstance(changes, list) else 0
+
+
+def _resolve_tool_session_id(config: ExtensionCompanionConfig) -> str | None:
+    if config.tool_session_id:
+        return config.tool_session_id
+    return active_authoring_session_id()
+
+
 def record_extension_companion_event(
     kind: str,
     payload: dict[str, Any],
@@ -93,12 +109,16 @@ def record_extension_companion_event(
         raise ValueError(f"Unsupported extension companion event kind: {kind}")
 
     tool_result: dict[str, Any] | None = None
-    if kind == "write" and config.tool_session_id:
+    tool_skip_reason: str | None = None
+    tool_session_id = _resolve_tool_session_id(config)
+    if kind == "write" and tool_session_id and _write_change_count(payload) > 0:
         tool_result = append_capture_payload_to_authoring_session(
-            config.tool_session_id,
+            tool_session_id,
             cast(dict[str, object], payload),
             source_label="extension-write-capture",
         )
+    elif kind == "write" and tool_session_id:
+        tool_skip_reason = "write_without_changes"
 
     event = {
         "received_at": _utc_now_iso(),
@@ -106,8 +126,9 @@ def record_extension_companion_event(
         "app_id": _extract_app_id(payload),
         "version": _extract_version(payload),
         "endpoint": str(payload.get("endpoint") or "").strip() or None,
-        "tool_session_id": config.tool_session_id,
+        "tool_session_id": tool_session_id,
         "tool_authoring": tool_result,
+        "tool_authoring_skip_reason": tool_skip_reason,
         "payload": payload,
     }
     log_path = _event_log_path(config)
@@ -151,6 +172,7 @@ class ExtensionCompanionRequestHandler(BaseHTTPRequestHandler):
             self._send_json(HTTPStatus.NOT_FOUND, {"ok": False, "error": "not_found"})
             return
         config = self.companion_server.config
+        tool_session_id = _resolve_tool_session_id(config)
         self._send_json(
             HTTPStatus.OK,
             {
@@ -160,7 +182,8 @@ class ExtensionCompanionRequestHandler(BaseHTTPRequestHandler):
                 "host": _server_host(self.companion_server),
                 "port": self.companion_server.server_address[1],
                 "capture_key_required": bool(config.capture_key),
-                "tool_session_id": config.tool_session_id,
+                "tool_session_id": tool_session_id,
+                "configured_tool_session_id": config.tool_session_id,
             },
         )
 
@@ -235,7 +258,8 @@ def companion_status_payload(server: ExtensionCompanionHTTPServer | None) -> dic
         "host": _server_host(server),
         "port": server.server_address[1],
         "capture_key_required": bool(config.capture_key),
-        "tool_session_id": config.tool_session_id,
+        "tool_session_id": _resolve_tool_session_id(config),
+        "configured_tool_session_id": config.tool_session_id,
         "event_log": str(_event_log_path(config)),
     }
 

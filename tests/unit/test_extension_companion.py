@@ -63,6 +63,7 @@ def test_extension_companion_serves_health_and_records_structure_event(
         assert health["service"] == "befree-bubble-mcp"
         assert health["component"] == "chrome-extension-companion"
         assert health["capture_key_required"] is True
+        assert health["tool_session_id"] is None
 
         denied_status, denied = _json_request(
             base_url,
@@ -106,7 +107,6 @@ def test_extension_companion_can_feed_write_captures_to_tool_wizard(
     server = create_extension_companion_server(
         ExtensionCompanionConfig(
             port=0,
-            tool_session_id=session.id,
             event_log_path=tmp_path / "events.jsonl",
         )
     )
@@ -140,6 +140,22 @@ def test_extension_companion_can_feed_write_captures_to_tool_wizard(
         assert payload["ok"] is True
         assert payload["kind"] == "write"
         assert payload["tool_authoring"]["classification"]["change_count"] == 1
+
+        refresh_status, refresh_payload = _json_request(
+            base_url,
+            "/v1/bubble/crawler/write-ingest",
+            method="POST",
+            body={
+                "endpoint": "/appeditor/notify_ai_app_context_change",
+                "appId": "synthetic-app",
+                "version": "test",
+                "requestBody": {"appname": "synthetic-app"},
+                "refreshOnly": True,
+            },
+        )
+        assert refresh_status == HTTPStatus.OK
+        assert refresh_payload["ok"] is True
+        assert refresh_payload["tool_authoring"] is None
     finally:
         server.shutdown()
         server.server_close()
@@ -148,3 +164,8 @@ def test_extension_companion_can_feed_write_captures_to_tool_wizard(
     described = describe_authoring_session(session.id)
     assert described["session"]["capture_files"] == ["0001_extension_write_capture.json"]
     assert described["classification"]["change_count"] == 1
+    saved = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert saved[0]["tool_session_id"] == session.id
+    assert saved[0]["tool_authoring"]["classification"]["change_count"] == 1
+    assert saved[1]["tool_session_id"] == session.id
+    assert saved[1]["tool_authoring_skip_reason"] == "write_without_changes"
