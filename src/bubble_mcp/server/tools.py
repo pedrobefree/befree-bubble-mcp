@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 from pathlib import Path
 
@@ -145,8 +146,38 @@ def _cache_artifact_status(path: Path) -> dict[str, Any]:
     }
 
 
+def _arguments_with_profile_defaults(arguments: dict[str, Any] | None) -> dict[str, Any]:
+    args = dict(arguments or {})
+    profile_name = str(args.get("profile") or "").strip()
+    if not profile_name:
+        return args
+    profile = resolve_profile(load_settings(), profile_name)
+    if profile is None:
+        return args
+    if profile.app_id and not str(args.get("app_id") or "").strip():
+        args["app_id"] = profile.app_id
+    if profile.appname and not str(args.get("appname") or "").strip():
+        args["appname"] = profile.appname
+    if profile.app_version and not str(args.get("app_version") or "").strip():
+        args["app_version"] = profile.app_version
+    return args
+
+
+def _write_payload_for_target_version(payload: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
+    target_version = str(args.get("app_version") or "").strip()
+    if not target_version:
+        return payload
+    normalized = deepcopy(payload)
+    body = normalized.get("body") if isinstance(normalized.get("body"), dict) else normalized
+    if isinstance(body, dict):
+        body["app_version"] = target_version
+        if "appVersion" in body:
+            body["appVersion"] = target_version
+    return normalized
+
+
 def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
-    args = arguments or {}
+    args = _arguments_with_profile_defaults(arguments)
     requested_profile = _required_string_arg(args, "profile", "bubble_profile_cache_refresh")
     settings = load_settings()
     resolved_profile = resolve_profile(settings, requested_profile)
@@ -211,7 +242,8 @@ def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
 def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
     """Call a supported tool and return a JSON-serializable payload."""
 
-    _ = arguments or {}
+    arguments = _arguments_with_profile_defaults(arguments)
+    _ = arguments
     if name == "bubble_health_check":
         return {
             "ok": True,
@@ -915,8 +947,9 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         if write_session is None:
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
         execute = bool(args.get("execute"))
+        targeted_payload = _write_payload_for_target_version(write_payload, args)
         write_result: dict[str, Any] = BubbleEditorClient().write(
-            write_payload,
+            targeted_payload,
             write_session,
             dry_run=not execute,
             calculate_derived=bool(args.get("calculate_derived")),
@@ -928,7 +961,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                     write_result.get("request", {}).get("payload", {}).get("appname")
                     or write_session.app_id
                 ),
-                payload=write_result.get("request", {}).get("payload") or write_payload,
+                payload=write_result.get("request", {}).get("payload") or targeted_payload,
                 source="bubble_editor_write",
                 response=write_result.get("response"),
             )
@@ -1087,8 +1120,9 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         session = load_session(profile)
         if session is None:
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
+        targeted_payload = _write_payload_for_target_version(write_payload, args)
         result = BubbleEditorClient().write(
-            write_payload,
+            targeted_payload,
             session,
             dry_run=not execute,
             calculate_derived=name in {
@@ -1107,7 +1141,7 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             record_mutation_overlay(
                 profile=profile,
                 app_id=str(result.get("request", {}).get("payload", {}).get("appname") or session.app_id),
-                payload=result.get("request", {}).get("payload") or write_payload,
+                payload=result.get("request", {}).get("payload") or targeted_payload,
                 source=name,
                 response=result.get("response"),
             )

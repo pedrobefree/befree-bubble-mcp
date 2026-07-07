@@ -2,6 +2,7 @@ import json
 
 import pytest
 
+from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.execution.client import (
     EDITOR_CALCULATE_DERIVED_URL,
     EDITOR_WRITE_URL,
@@ -166,6 +167,47 @@ def test_execute_plan_runs_write_payload_steps_with_fake_client() -> None:
     assert result["results"][0]["executed"] is True
     assert result["structural_validation"]["status"] == "executable"
     assert result["operation_snapshot"]["next_user_action"] == "inspect_editor_result"
+
+
+def test_execute_plan_uses_profile_app_version_for_existing_write_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="branch-profile",
+            profiles={
+                "branch-profile": BubbleProfile(
+                    name="branch-profile",
+                    app_id="synthetic-app",
+                    appname="synthetic-app",
+                    app_version="feature-branch",
+                )
+            },
+        )
+    )
+
+    class FakeClient:
+        def __init__(self) -> None:
+            self.payloads = []
+
+        def write(self, payload, session, *, dry_run=False):  # type: ignore[no-untyped-def]
+            self.payloads.append(payload)
+            return {"ok": True, "payload": payload, "dry_run": dry_run}
+
+    fake_client = FakeClient()
+    payload = write_payload()
+    assert payload["app_version"] == "test"
+
+    result = execute_plan(
+        {"steps": [{"id": "s1", "args": {"write_payload": payload}}]},
+        profile="branch-profile",
+        execute=True,
+        session=synthetic_session(),
+        client=fake_client,  # type: ignore[arg-type]
+    )
+
+    assert result["ok"] is True
+    assert fake_client.payloads[0]["app_version"] == "feature-branch"
 
 
 def test_execute_plan_requires_write_payload_when_executing() -> None:

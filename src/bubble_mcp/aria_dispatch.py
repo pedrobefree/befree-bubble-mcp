@@ -326,12 +326,28 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
     captured_payloads: list[dict[str, Any]] = []
     captured_results: list[dict[str, Any]] = []
     captured_builder_ids: set[int] = set()
+    original_builder_init = bubble_sdk.PayloadBuilder.__init__
+    builder_init_signature = inspect.signature(original_builder_init)
+    builder_accepts_app_version = "app_version" in builder_init_signature.parameters or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in builder_init_signature.parameters.values()
+    )
     original_send = bubble_sdk.PayloadBuilder.send_to_webhook
     original_to_json = bubble_sdk.PayloadBuilder.to_json
+
+    def init_builder_with_target_version(builder: Any, *init_args: Any, **init_kwargs: Any) -> None:
+        if (
+            builder_accepts_app_version
+            and len(init_args) < 2
+            and not str(init_kwargs.get("app_version") or "").strip()
+        ):
+            init_kwargs["app_version"] = env.app_version
+        original_builder_init(builder, *init_args, **init_kwargs)
 
     def capture_payload(builder: Any) -> dict[str, Any]:
         builder_id = id(builder)
         write_payload = cast("dict[str, Any]", builder.build())
+        write_payload["app_version"] = env.app_version
         if builder_id not in captured_builder_ids:
             captured_builder_ids.add(builder_id)
             captured_payloads.append(write_payload)
@@ -375,6 +391,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
     stderr = StringIO()
     return_value: Any = None
     try:
+        bubble_sdk.PayloadBuilder.__init__ = init_builder_with_target_version
         bubble_sdk.PayloadBuilder.send_to_webhook = send_to_local_bubble
         bubble_sdk.PayloadBuilder.to_json = to_json_with_capture
         with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -396,6 +413,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
                 method = getattr(cli, method_name)
                 return_value = method(**_method_kwargs(method, args, execute=execute))
     finally:
+        bubble_sdk.PayloadBuilder.__init__ = original_builder_init
         bubble_sdk.PayloadBuilder.send_to_webhook = original_send
         bubble_sdk.PayloadBuilder.to_json = original_to_json
 

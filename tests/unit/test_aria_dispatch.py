@@ -1,4 +1,12 @@
-from bubble_mcp.aria_dispatch import _method_kwargs, _requires_calculate_derived
+import json
+from types import SimpleNamespace
+
+from bubble_mcp.aria_dispatch import (
+    _method_kwargs,
+    _requires_calculate_derived,
+    dispatch_aria_runtime_tool,
+)
+from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 
 
 def test_method_kwargs_maps_public_schema_aliases_to_aria_runtime_args() -> None:
@@ -108,3 +116,59 @@ def test_method_kwargs_maps_visual_and_workflow_aliases() -> None:
         "event_type": "PageLoaded",
         "dry_run": True,
     }
+
+
+def test_aria_runtime_payload_builder_inherits_profile_app_version(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    bubble_file = tmp_path / "app.bubble"
+    bubble_file.write_text("{}", encoding="utf-8")
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="branch-profile",
+            profiles={
+                "branch-profile": BubbleProfile(
+                    name="branch-profile",
+                    app_id="synthetic-app",
+                    appname="synthetic-app",
+                    app_version="feature-branch",
+                    app_json_path=str(bubble_file),
+                )
+            },
+        )
+    )
+
+    class FakePayloadBuilder:
+        def __init__(self, appname="synthetic-page", app_version="test", metadata=None):  # type: ignore[no-untyped-def]
+            self.appname = appname
+            self.app_version = app_version
+            self.metadata = metadata or {}
+
+        def build(self):  # type: ignore[no-untyped-def]
+            return {"appname": self.appname, "app_version": self.app_version, "changes": []}
+
+        def send_to_webhook(self, _url=""):  # type: ignore[no-untyped-def]
+            return {"ok": True}
+
+        def to_json(self, indent=2):  # type: ignore[no-untyped-def]
+            return json.dumps(self.build(), indent=indent)
+
+    fake_sdk = SimpleNamespace(PayloadBuilder=FakePayloadBuilder)
+
+    class FakeBubbleCLI:
+        def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
+            self.appname = kwargs["appname"]
+
+        def create_text(self, dry_run=False):  # type: ignore[no-untyped-def]
+            builder = fake_sdk.PayloadBuilder(appname=self.appname)
+            return builder.to_json()
+
+    fake_cli = SimpleNamespace(BubbleCLI=FakeBubbleCLI)
+    monkeypatch.setattr("bubble_mcp.aria_dispatch._load_aria_runtime_modules", lambda: (fake_cli, fake_sdk))
+
+    result = dispatch_aria_runtime_tool("create_text", {"profile": "branch-profile"})
+
+    assert result is not None
+    assert result["ok"] is True
+    assert result["app_version"] == "feature-branch"
+    assert result["results"][0]["payload"]["app_version"] == "feature-branch"

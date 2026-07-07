@@ -714,6 +714,52 @@ def test_context_find_tool_can_resolve_context_from_profile(tmp_path, monkeypatc
     assert "metadata" not in payload["results"][0]
 
 
+def test_execute_plan_tool_inherits_profile_app_version(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="branch-profile",
+            profiles={
+                "branch-profile": BubbleProfile(
+                    name="branch-profile",
+                    app_id="synthetic-app",
+                    appname="synthetic-app",
+                    app_version="feature-branch",
+                )
+            },
+        )
+    )
+    calls = []
+
+    def fake_execute_plan(plan, **kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "executed": kwargs["execute"]}
+
+    monkeypatch.setattr(tools_module, "execute_plan", fake_execute_plan)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 48,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_execute_plan",
+                "arguments": {
+                    "profile": "branch-profile",
+                    "execute": True,
+                    "plan": {"steps": [{"id": "s1", "args": {"write_payload": {"appname": "synthetic-app", "app_version": "test", "changes": []}}}]},
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert calls[0]["app_version"] == "feature-branch"
+
+
 def test_completion_suggests_recipe_ids() -> None:
     response = handle_request(
         {
@@ -2265,6 +2311,20 @@ def test_branch_create_tool_routes_sub_branch_source(monkeypatch) -> None:  # ty
 
 def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="synthetic-app",
+                    appname="synthetic-app",
+                    app_version="feature-branch",
+                )
+            },
+        )
+    )
     save_session(
         "smoke",
         BubbleSessionData(
@@ -2318,6 +2378,7 @@ def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  
     assert response is not None
     result = json.loads(response["result"]["content"][0]["text"])
     assert result["ok"] is True
+    assert result["request"]["payload"]["app_version"] == "feature-branch"
 
     overlay_path = tmp_path / "contexts" / "smoke" / "synthetic-app-mutation-overlay.json"
     overlay = json.loads(overlay_path.read_text(encoding="utf-8"))

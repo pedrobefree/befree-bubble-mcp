@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
@@ -9,6 +10,7 @@ from bubble_mcp.context.detector import detect_project_context
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.models import BubbleProjectContext
 from bubble_mcp.context.mutation_overlay import record_mutation_overlay
+from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.execution.executor_types import extract_write_payload
 from bubble_mcp.execution.state import operation_snapshot
@@ -22,18 +24,23 @@ def execute_plan(
     profile: str,
     execute: bool = False,
     app_id: str | None = None,
-    app_version: str = "test",
+    app_version: str | None = None,
     context: BubbleProjectContext | None = None,
     compile_missing: bool = False,
     auto_context: bool = True,
     session: BubbleSessionData | None = None,
     client: BubbleEditorClient | None = None,
 ) -> dict[str, Any]:
+    resolved_session = session or load_session(profile)
+    target_app_version = _resolve_target_app_version(
+        profile=profile,
+        app_version=app_version,
+        session=resolved_session,
+    )
     if compile_missing:
         target_app_id = app_id or (session.app_id if session else None)
         if not target_app_id:
-            loaded_for_app = load_session(profile)
-            target_app_id = loaded_for_app.app_id if loaded_for_app else None
+            target_app_id = resolved_session.app_id if resolved_session else None
         if not target_app_id:
             raise ValueError("app_id is required when compile_missing is true.")
         context_source: str | None = None
@@ -41,7 +48,7 @@ def execute_plan(
             detected = detect_project_context(
                 profile=profile,
                 app_id=target_app_id,
-                app_version=app_version,
+                app_version=target_app_version,
             )
             context = load_context_with_overlay(
                 detected.context_path,
@@ -52,7 +59,7 @@ def execute_plan(
         plan = compile_plan_to_write_payloads(
             plan,
             app_id=target_app_id,
-            app_version=app_version,
+            app_version=target_app_version,
             context=context,
         )
         if context_source:
@@ -66,7 +73,6 @@ def execute_plan(
     if not isinstance(steps, list):
         raise ValueError("Plan must include a steps array.")
 
-    resolved_session = session or load_session(profile)
     if execute and resolved_session is None:
         raise ValueError(f"No Bubble session stored for profile '{profile}'.")
 
@@ -114,6 +120,7 @@ def execute_plan(
             if execute:
                 break
             continue
+        payload = _payload_with_target_version(payload, target_app_version)
 
         if not execute:
             results.append(
@@ -180,3 +187,30 @@ def execute_plan(
     if context_freshness_meta:
         result["context_freshness"] = context_freshness_meta
     return result
+
+
+def _resolve_target_app_version(
+    *,
+    profile: str,
+    app_version: str | None,
+    session: BubbleSessionData | None,
+) -> str:
+    explicit = str(app_version or "").strip()
+    if explicit:
+        return explicit
+    configured_profile = resolve_profile(load_settings(), profile)
+    return str(
+        (configured_profile.app_version if configured_profile and configured_profile.app_version else "")
+        or (session.app_version if session and session.app_version else "")
+        or "test"
+    ).strip()
+
+
+def _payload_with_target_version(payload: dict[str, Any], app_version: str) -> dict[str, Any]:
+    if not app_version:
+        return payload
+    targeted = deepcopy(payload)
+    targeted["app_version"] = app_version
+    if "appVersion" in targeted:
+        targeted["appVersion"] = app_version
+    return targeted
