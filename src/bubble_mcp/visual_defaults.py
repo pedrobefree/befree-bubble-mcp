@@ -7,7 +7,80 @@ from pathlib import Path
 from typing import Any
 
 
-BUTTON_FALLBACK_STYLE = "Button_primary_button_"
+FALLBACK_STYLES_BY_ELEMENT_TYPE = {
+    "Button": "Button_primary_button_",
+    "Input": "Input_std_dash_",
+    "Dropdown": "Dropdown_dash_std_",
+    "Checkbox": "Checkbox_standard",
+    "DateInput": "DateInput_standard",
+}
+STYLE_DEFAULT_ELEMENT_TYPES = {
+    "Text",
+    "Icon",
+    "Link",
+    "Image",
+    "Shape",
+    "Alert",
+    "VideoPlayer",
+    "HTML",
+    "Map",
+    "Group",
+    "RepeatingGroup",
+    "Popup",
+    "FloatingGroup",
+    "GroupFocus",
+    "Table",
+    "Button",
+    "Input",
+    "MultiLineInput",
+    "Dropdown",
+    "AutocompleteDropdown",
+    "Checkbox",
+    "RadioButtons",
+    "SliderInput",
+    "DateInput",
+    "FileInput",
+    "PictureInput",
+}
+CREATE_TOOL_ELEMENT_TYPES = {
+    "create_text": "Text",
+    "create_icon": "Icon",
+    "create_link": "Link",
+    "create_image": "Image",
+    "create_shape": "Shape",
+    "create_alert": "Alert",
+    "create_video": "VideoPlayer",
+    "create_html": "HTML",
+    "create_map": "Map",
+    "create_group": "Group",
+    "create_repeating_group": "RepeatingGroup",
+    "create_popup": "Popup",
+    "create_floating_group": "FloatingGroup",
+    "create_group_focus": "GroupFocus",
+    "create_table": "Table",
+    "create_button": "Button",
+    "create_input": "Input",
+    "create_multiline_input": "MultiLineInput",
+    "create_dropdown": "Dropdown",
+    "create_searchbox": "AutocompleteDropdown",
+    "create_checkbox": "Checkbox",
+    "create_radio": "RadioButtons",
+    "create_slider": "SliderInput",
+    "create_datepicker": "DateInput",
+    "create_file_uploader": "FileInput",
+    "create_picture_uploader": "PictureInput",
+}
+DEFAULT_STYLE_LOOKUP_ALIASES = {
+    "AutocompleteDropdown": ("AutocompleteDropdown", "SearchBox", "Searchbox"),
+    "DateInput": ("DateInput", "DatePicker"),
+    "FloatingGroup": ("FloatingGroup", "Floating Group"),
+    "GroupFocus": ("GroupFocus", "Group Focus"),
+    "MultiLineInput": ("MultiLineInput", "MultilineInput", "Multiline Input"),
+    "PictureInput": ("PictureInput", "PictureUploader", "Picture Uploader"),
+    "RadioButtons": ("RadioButtons", "RadioButton"),
+    "RepeatingGroup": ("RepeatingGroup", "Repeating Group"),
+    "VideoPlayer": ("VideoPlayer", "Video"),
+}
 
 
 def _obj(value: Any) -> dict[str, Any]:
@@ -55,8 +128,11 @@ def project_default_style_id(metadata: dict[str, Any], element_type: str) -> str
     settings = _obj(metadata.get("settings"))
     client_safe = _obj(settings.get("client_safe"))
     default_styles = _obj(client_safe.get("default_styles") or metadata.get("default_styles"))
-    style_id = str(default_styles.get(element_type) or "").strip()
-    return style_id or None
+    for key in DEFAULT_STYLE_LOOKUP_ALIASES.get(element_type, (element_type,)):
+        style_id = str(default_styles.get(key) or "").strip()
+        if style_id:
+            return style_id
+    return None
 
 
 def style_metadata_from_artifact(path: str | Path | None) -> dict[str, Any]:
@@ -91,18 +167,49 @@ def default_style_for_element(
     return project_default_style_id(merged_metadata, element_type) or fallback
 
 
+def fallback_style_for_element(element_type: str) -> str | None:
+    return FALLBACK_STYLES_BY_ELEMENT_TYPE.get(element_type)
+
+
 def apply_visual_default_args(tool_name: str, args: dict[str, Any], *, context: Any | None = None) -> dict[str, Any]:
     """Apply project-aware defaults that should not depend on agent memory."""
 
-    if tool_name != "create_button":
+    element_type = CREATE_TOOL_ELEMENT_TYPES.get(tool_name)
+    if element_type is None:
         return args
     if has_explicit_style_arg(args):
         return args
-    style = default_style_for_element("Button", context=context, fallback=BUTTON_FALLBACK_STYLE)
+    style = default_style_for_element(element_type, context=context, fallback=fallback_style_for_element(element_type))
     if style and not _style_is_explicitly_disabled(style):
         args = dict(args)
         args["style"] = style
     return args
+
+
+def _style_should_be_replaced(existing: Any, project_style: str | None) -> bool:
+    if not project_style:
+        return False
+    if not existing:
+        return True
+    return str(existing).strip() in set(FALLBACK_STYLES_BY_ELEMENT_TYPE.values())
+
+
+def enforce_default_style(
+    body: dict[str, Any],
+    element_type: str,
+    *,
+    context: Any | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    if element_type not in STYLE_DEFAULT_ELEMENT_TYPES:
+        return
+    project_style = default_style_for_element(element_type, context=context, metadata=metadata)
+    fallback_style = fallback_style_for_element(element_type)
+    existing = body.get("%s1")
+    if _style_should_be_replaced(existing, project_style):
+        body["%s1"] = project_style
+    elif not existing and fallback_style:
+        body["%s1"] = fallback_style
 
 
 def enforce_button_create_payload_quality(
@@ -111,27 +218,9 @@ def enforce_button_create_payload_quality(
     context: Any | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    """Normalize Button create payloads to the required quality baseline."""
+    """Apply Button style defaults without overriding the declared size policy."""
 
-    props = body.get("%p")
-    if not isinstance(props, dict):
-        props = {}
-        body["%p"] = props
-    height = props.get("%h") if props.get("%h") is not None else 44
-    props["%h"] = height
-    props["fixed_height"] = True
-    props["single_height"] = True
-    props["fit_height"] = False
-    height_css = _css_px(height)
-    if height_css is not None:
-        props["min_height_css"] = height_css
-        props["max_height_css"] = height_css
-    props["fit_width"] = True
-    props.setdefault("single_width", False)
-    if not body.get("%s1"):
-        style = default_style_for_element("Button", context=context, metadata=metadata, fallback=BUTTON_FALLBACK_STYLE)
-        if style:
-            body["%s1"] = style
+    enforce_default_style(body, "Button", context=context, metadata=metadata)
 
 
 def enforce_visual_create_payload_quality(
@@ -143,3 +232,5 @@ def enforce_visual_create_payload_quality(
     element_type = str(body.get("%x") or body.get("type") or "").strip()
     if element_type == "Button":
         enforce_button_create_payload_quality(body, context=context, metadata=metadata)
+    else:
+        enforce_default_style(body, element_type, context=context, metadata=metadata)

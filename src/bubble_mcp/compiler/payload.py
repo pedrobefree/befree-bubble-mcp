@@ -101,7 +101,7 @@ CREATE_NAME_PREFIXES = {
     "create_file_uploader": "fu_",
 }
 CREATE_DEFAULT_ARGS: dict[str, dict[str, Any]] = {
-    "create_button": {"height": 44, "fixed_height": True, "fit_width": True},
+    "create_button": {"fit_width": True, "fit_height": True},
     "create_text": {"fit_height": True},
     "create_icon": {"width": 20, "height": 20, "fixed_width": True, "fixed_height": True},
     "create_link": {"label": "Link label"},
@@ -980,6 +980,7 @@ def compile_create_text_step(
     context: BubbleProjectContext | None,
 ) -> dict[str, Any]:
     args = apply_create_defaults("create_text", args, element_type="Text")
+    args = apply_visual_default_args("create_text", args, context=context)
     content = str(args.get("content") or "").strip()
     if not content:
         raise ValueError("create_text requires content.")
@@ -987,6 +988,7 @@ def compile_create_text_step(
     body = ElementBuilder().text(**_aria_builder_args("create_text", args))
     body = _normalize_aria_body(body, element_type="Text", name=name)
     apply_catalog_argument_properties(body["%p"], args, element_type="Text")
+    enforce_visual_create_payload_quality(body, context=context)
     return body
 
 
@@ -1089,12 +1091,14 @@ def compile_create_group_step(
     context: BubbleProjectContext | None,
 ) -> dict[str, Any]:
     args = apply_create_defaults("create_group", args, element_type="Group")
+    args = apply_visual_default_args("create_group", args, context=context)
     name = str(args.get("name") or "").strip()
     if not name:
         raise ValueError("create_group requires name.")
     body = ElementBuilder().group(**_aria_builder_args("create_group", args))
     body = _normalize_aria_body(body, element_type="Group", name=name)
     apply_catalog_argument_properties(body["%p"], args, element_type="Group")
+    enforce_visual_create_payload_quality(body, context=context)
     return body
 
 

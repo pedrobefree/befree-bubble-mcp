@@ -60,7 +60,7 @@ def test_create_defaults_match_golden_fixture() -> None:
     ("tool_name", "args", "expected"),
     [
         ("create_text", {"content": "Hello"}, {"fit_height": True}),
-        ("create_button", {}, {"fit_width": True, "fixed_height": True, "fit_height": False, "single_width": False, "single_height": True, "%h": 44, "min_height_css": "44px", "max_height_css": "44px"}),
+        ("create_button", {}, {"fit_width": True, "fit_height": True, "single_width": False, "single_height": False}),
         ("create_group", {"name": "Group"}, {"container_layout": "column", "min_width_css": "40px", "min_height_css": "40px", "fit_height": True}),
         ("create_input", {}, {"%h": 44, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px", "min_height_css": "44px", "max_height_css": "44px"}),
         ("create_icon", {}, {"%w": 20, "%h": 20, "fixed_width": True, "fixed_height": True, "min_width_css": "20px", "max_width_css": "20px", "min_height_css": "20px", "max_height_css": "20px"}),
@@ -126,3 +126,63 @@ def test_button_preserves_explicit_style() -> None:
     body = create_body("create_button", {"label": "Continue", "style": "Button_explicit"})
 
     assert body["%s1"] == "Button_explicit"
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "element_type", "style_id"),
+    [
+        ("create_text", "Text", "Text_project_default"),
+        ("create_icon", "Icon", "Icon_project_default"),
+        ("create_link", "Link", "Link_project_default"),
+        ("create_image", "Image", "Image_project_default"),
+        ("create_shape", "Shape", "Shape_project_default"),
+        ("create_alert", "Alert", "Alert_project_default"),
+        ("create_video", "VideoPlayer", "Video_project_default"),
+        ("create_html", "HTML", "Html_project_default"),
+        ("create_map", "Map", "Map_project_default"),
+        ("create_group", "Group", "Group_project_default"),
+        ("create_repeating_group", "RepeatingGroup", "Repeating_project_default"),
+        ("create_popup", "Popup", "Popup_project_default"),
+        ("create_floating_group", "FloatingGroup", "Floating_project_default"),
+        ("create_group_focus", "GroupFocus", "Focus_project_default"),
+        ("create_table", "Table", "Table_project_default"),
+        ("create_button", "Button", "Button_project_default"),
+        ("create_input", "Input", "Input_project_default"),
+        ("create_multiline_input", "MultiLineInput", "MultiLine_project_default"),
+        ("create_dropdown", "Dropdown", "Dropdown_project_default"),
+        ("create_searchbox", "AutocompleteDropdown", "Search_project_default"),
+        ("create_checkbox", "Checkbox", "Checkbox_project_default"),
+        ("create_radio", "RadioButtons", "Radio_project_default"),
+        ("create_slider", "SliderInput", "Slider_project_default"),
+        ("create_datepicker", "DateInput", "Date_project_default"),
+        ("create_file_uploader", "FileInput", "File_project_default"),
+        ("create_picture_uploader", "PictureInput", "Picture_project_default"),
+    ],
+)
+def test_creates_use_project_default_styles_from_context(tool_name: str, element_type: str, style_id: str) -> None:
+    context = BubbleProjectContext(
+        app_id="synthetic-app",
+        source="test",
+        nodes=[],
+        edges=[],
+        metadata={
+            "settings": {
+                "client_safe": {
+                    "default_styles": {
+                        element_type: style_id,
+                    }
+                }
+            }
+        },
+    )
+
+    args = {"content": "Hello"} if tool_name == "create_text" else {}
+    body = create_body(tool_name, args, context=context)
+
+    assert body["%s1"] == style_id
+
+
+def test_create_preserves_explicit_style() -> None:
+    body = create_body("create_input", {"style": "Input_explicit"})
+
+    assert body["%s1"] == "Input_explicit"

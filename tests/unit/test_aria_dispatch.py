@@ -196,7 +196,7 @@ def test_aria_runtime_payload_builder_inherits_profile_app_version(tmp_path, mon
     assert properties["max_height_css"] == "180px"
 
 
-def test_aria_runtime_normalizes_button_quality_defaults(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_aria_runtime_applies_project_default_styles_to_created_elements(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     bubble_file = tmp_path / "app.bubble"
     bubble_file.write_text(
@@ -206,7 +206,11 @@ def test_aria_runtime_normalizes_button_quality_defaults(tmp_path, monkeypatch) 
                     "settings": {
                         "client_safe": {
                             "default_styles": {
+                                "Group": "Group_runtime_default",
+                                "Text": "Text_runtime_default",
                                 "Button": "Button_runtime_default",
+                                "Input": "Input_runtime_default",
+                                "RadioButtons": "Radio_runtime_default",
                             }
                         }
                     }
@@ -245,10 +249,44 @@ def test_aria_runtime_normalizes_button_quality_defaults(tmp_path, monkeypatch) 
                     {
                         "intent": {"name": "CreateElement"},
                         "body": {
+                            "%x": "Group",
+                            "%p": {},
+                        },
+                    },
+                    {
+                        "intent": {"name": "CreateElement"},
+                        "body": {
+                            "%x": "Text",
+                            "%p": {},
+                        },
+                    },
+                    {
+                        "intent": {"name": "CreateElement"},
+                        "body": {
                             "%x": "Button",
                             "%p": {
-                                "%h": 44,
+                                "fit_height": True,
+                                "fit_width": True,
                                 "single_width": False,
+                            },
+                        },
+                    },
+                    {
+                        "intent": {"name": "CreateElement"},
+                        "body": {
+                            "%x": "Input",
+                            "%s1": "Input_std_dash_",
+                            "%p": {
+                                "%h": 44,
+                            },
+                        },
+                    },
+                    {
+                        "intent": {"name": "CreateElement"},
+                        "body": {
+                            "%x": "RadioButtons",
+                            "%p": {
+                                "fit_height": True,
                             },
                         },
                     }
@@ -278,11 +316,16 @@ def test_aria_runtime_normalizes_button_quality_defaults(tmp_path, monkeypatch) 
 
     assert result is not None
     payload = result["results"][0]["payload"]
-    body = payload["changes"][0]["body"]
+    group_body = payload["changes"][0]["body"]
+    text_body = payload["changes"][1]["body"]
+    body = payload["changes"][2]["body"]
     properties = body["%p"]
+    assert group_body["%s1"] == "Group_runtime_default"
+    assert text_body["%s1"] == "Text_runtime_default"
     assert body["%s1"] == "Button_runtime_default"
-    assert properties["fixed_height"] is True
-    assert properties["fit_height"] is False
-    assert properties["min_height_css"] == "44px"
-    assert properties["max_height_css"] == "44px"
+    assert properties["fit_height"] is True
     assert properties["fit_width"] is True
+    input_body = payload["changes"][3]["body"]
+    radio_body = payload["changes"][4]["body"]
+    assert input_body["%s1"] == "Input_runtime_default"
+    assert radio_body["%s1"] == "Radio_runtime_default"

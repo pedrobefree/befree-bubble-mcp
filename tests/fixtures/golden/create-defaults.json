@@ -5,8 +5,7 @@
     "fit_height": true
   },
   "create_button": {
-    "fixed_height": true,
-    "height": 44,
+    "fit_height": true,
     "fit_width": true
   },
   "create_checkbox": {
