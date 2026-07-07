@@ -204,7 +204,19 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                 node.metadata.setdefault("path_array", _encoded_path_to_array(str(encoded_path)))
                 break
 
-    return BubbleProjectContext(app_id=app_id, source=source, nodes=nodes, edges=edges)
+    settings = _obj(payload.get("settings"))
+    client_safe = _obj(settings.get("client_safe"))
+    return BubbleProjectContext(
+        app_id=app_id,
+        source=source,
+        nodes=nodes,
+        edges=edges,
+        metadata={
+            "settings": settings,
+            "styles": _obj(payload.get("styles")),
+            "default_styles": _obj(client_safe.get("default_styles")),
+        },
+    )
 
 
 def context_from_crawler_index(path: Path) -> BubbleProjectContext:
@@ -257,6 +269,8 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
         ],
         "dataTypes": _obj(app.get("data_types") or app.get("dataTypes") or app.get("user_types")),
         "optionSets": _obj(app.get("option_sets") or app.get("optionSets")),
+        "settings": _obj(app.get("settings")),
+        "styles": _obj(app.get("styles")),
     }
     return context_from_crawler_payload(crawler_like, path)
 

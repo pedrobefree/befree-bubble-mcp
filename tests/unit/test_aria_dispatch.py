@@ -194,3 +194,95 @@ def test_aria_runtime_payload_builder_inherits_profile_app_version(tmp_path, mon
     assert properties["max_width_css"] == "320px"
     assert properties["min_height_css"] == "180px"
     assert properties["max_height_css"] == "180px"
+
+
+def test_aria_runtime_normalizes_button_quality_defaults(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    bubble_file = tmp_path / "app.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "app": {
+                    "settings": {
+                        "client_safe": {
+                            "default_styles": {
+                                "Button": "Button_runtime_default",
+                            }
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="runtime-profile",
+            profiles={
+                "runtime-profile": BubbleProfile(
+                    name="runtime-profile",
+                    app_id="synthetic-app",
+                    appname="synthetic-app",
+                    app_version="test",
+                    app_json_path=str(bubble_file),
+                )
+            },
+        )
+    )
+
+    class FakePayloadBuilder:
+        def __init__(self, appname="synthetic-page", app_version="test", metadata=None):  # type: ignore[no-untyped-def]
+            self.appname = appname
+            self.app_version = app_version
+            self.metadata = metadata or {}
+
+        def build(self):  # type: ignore[no-untyped-def]
+            return {
+                "appname": self.appname,
+                "app_version": self.app_version,
+                "changes": [
+                    {
+                        "intent": {"name": "CreateElement"},
+                        "body": {
+                            "%x": "Button",
+                            "%p": {
+                                "%h": 44,
+                                "single_width": False,
+                            },
+                        },
+                    }
+                ],
+            }
+
+        def send_to_webhook(self, _url=""):  # type: ignore[no-untyped-def]
+            return {"ok": True}
+
+        def to_json(self, indent=2):  # type: ignore[no-untyped-def]
+            return json.dumps(self.build(), indent=indent)
+
+    fake_sdk = SimpleNamespace(PayloadBuilder=FakePayloadBuilder)
+
+    class FakeBubbleCLI:
+        def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
+            self.appname = kwargs["appname"]
+
+        def create_button(self, dry_run=False):  # type: ignore[no-untyped-def]
+            builder = fake_sdk.PayloadBuilder(appname=self.appname)
+            return builder.to_json()
+
+    fake_cli = SimpleNamespace(BubbleCLI=FakeBubbleCLI)
+    monkeypatch.setattr("bubble_mcp.aria_dispatch._load_aria_runtime_modules", lambda: (fake_cli, fake_sdk))
+
+    result = dispatch_aria_runtime_tool("create_button", {"profile": "runtime-profile"})
+
+    assert result is not None
+    payload = result["results"][0]["payload"]
+    body = payload["changes"][0]["body"]
+    properties = body["%p"]
+    assert body["%s1"] == "Button_runtime_default"
+    assert properties["fixed_height"] is True
+    assert properties["fit_height"] is False
+    assert properties["min_height_css"] == "44px"
+    assert properties["max_height_css"] == "44px"
+    assert properties["fit_width"] is True

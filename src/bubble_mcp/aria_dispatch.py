@@ -16,6 +16,7 @@ from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mu
 from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.store import load_session
+from bubble_mcp.visual_defaults import enforce_visual_create_payload_quality, style_metadata_from_artifact
 
 
 CONTROL_ARG_KEYS = {
@@ -131,7 +132,11 @@ def _normalize_fixed_size_properties(properties: dict[str, Any]) -> None:
             properties["max_height_css"] = height_css
 
 
-def _normalize_fixed_size_create_payload(payload: dict[str, Any]) -> dict[str, Any]:
+def _normalize_fixed_size_create_payload(
+    payload: dict[str, Any],
+    *,
+    style_metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     changes = payload.get("changes")
     if not isinstance(changes, list):
         return payload
@@ -146,6 +151,7 @@ def _normalize_fixed_size_create_payload(payload: dict[str, Any]) -> dict[str, A
         properties = body.get("%p")
         if isinstance(properties, dict):
             _normalize_fixed_size_properties(properties)
+        enforce_visual_create_payload_quality(body, metadata=style_metadata)
     return payload
 
 
@@ -379,6 +385,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         raise ValueError(f"No Bubble session stored for profile '{profile}'.")
 
     env = _resolve_runtime_environment(args)
+    style_metadata = style_metadata_from_artifact(env.app_json_path or env.crawler_index_path or env.consolelog_json_path)
     captured_payloads: list[dict[str, Any]] = []
     captured_results: list[dict[str, Any]] = []
     captured_builder_ids: set[int] = set()
@@ -404,7 +411,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         builder_id = id(builder)
         write_payload = cast("dict[str, Any]", builder.build())
         write_payload["app_version"] = env.app_version
-        _normalize_fixed_size_create_payload(write_payload)
+        _normalize_fixed_size_create_payload(write_payload, style_metadata=style_metadata)
         if builder_id not in captured_builder_ids:
             captured_builder_ids.add(builder_id)
             captured_payloads.append(write_payload)

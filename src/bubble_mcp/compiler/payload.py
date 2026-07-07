@@ -15,6 +15,7 @@ from typing import Any
 
 from bubble_mcp.aria_runtime.bubble_sdk import ElementBuilder
 from bubble_mcp.context.models import BubbleProjectContext
+from bubble_mcp.visual_defaults import apply_visual_default_args, enforce_visual_create_payload_quality
 
 
 ROOT_PARENT_NAMES = {"", "root", "page", "index"}
@@ -100,7 +101,7 @@ CREATE_NAME_PREFIXES = {
     "create_file_uploader": "fu_",
 }
 CREATE_DEFAULT_ARGS: dict[str, dict[str, Any]] = {
-    "create_button": {"fit_width": True, "fit_height": True},
+    "create_button": {"height": 44, "fixed_height": True, "fit_width": True},
     "create_text": {"fit_height": True},
     "create_icon": {"width": 20, "height": 20, "fixed_width": True, "fixed_height": True},
     "create_link": {"label": "Link label"},
@@ -1059,6 +1060,7 @@ def compile_create_visual_step(
 ) -> dict[str, Any]:
     element_type = VISUAL_CREATE_TYPES[tool_name]
     args = apply_create_defaults(tool_name, args, element_type=element_type)
+    args = apply_visual_default_args(tool_name, args, context=context)
     builder_method = ARIA_BUILDER_METHODS.get(tool_name)
     if builder_method:
         method = getattr(ElementBuilder(), builder_method)
@@ -1067,15 +1069,18 @@ def compile_create_visual_step(
         props = body.get("%p")
         if isinstance(props, dict):
             apply_catalog_argument_properties(props, args, element_type=element_type)
+        enforce_visual_create_payload_quality(body, context=context)
         return body
     properties = collect_visual_properties(args, element_type=element_type)
-    return {
+    body = {
         "%x": element_type,
         "type": element_type,
         "%dn": str(args.get("name") or ""),
         "%p": properties,
         "id": bubble_element_id(),
     }
+    enforce_visual_create_payload_quality(body, context=context)
+    return body
 
 
 def compile_create_group_step(

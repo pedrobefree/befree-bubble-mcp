@@ -5,21 +5,43 @@ from typing import Any
 import pytest
 
 from bubble_mcp.compiler.payload import CREATE_DEFAULT_ARGS, compile_plan_to_write_payloads
+from bubble_mcp.context.models import BubbleProjectContext
 
 
 GOLDEN_DEFAULTS = Path("tests/fixtures/golden/create-defaults.json")
 
 
-def create_properties(tool_name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
+def create_body(
+    tool_name: str,
+    args: dict[str, Any] | None = None,
+    *,
+    context: BubbleProjectContext | None = None,
+) -> dict[str, Any]:
     step_args = {"context": "index", "parent": "root", **(args or {})}
     payload = compile_plan_to_write_payloads(
         {"steps": [{"id": "s1", "tool_name": tool_name, "args": step_args}]},
         app_id="synthetic-app",
+        context=context,
     )["steps"][0]["args"]["write_payload"]
-    create_change = next(
+    return next(
         change for change in payload["changes"] if change.get("intent", {}).get("name") == "CreateElement"
-    )
-    properties = create_change["body"]["%p"]
+    )["body"]
+
+
+def create_properties(
+    tool_name: str,
+    args: dict[str, Any] | None = None,
+    *,
+    context: BubbleProjectContext | None = None,
+) -> dict[str, Any]:
+    body = create_body(tool_name, args, context=context)
+    properties = body["%p"]
+    step_args = {"context": "index", "parent": "root", **(args or {})}
+    payload = compile_plan_to_write_payloads(
+        {"steps": [{"id": "s1", "tool_name": tool_name, "args": step_args}]},
+        app_id="synthetic-app",
+        context=context,
+    )["steps"][0]["args"]["write_payload"]
     for change in payload["changes"]:
         if change.get("intent", {}).get("name") == "SetData":
             path = change.get("path_array") or []
@@ -38,7 +60,7 @@ def test_create_defaults_match_golden_fixture() -> None:
     ("tool_name", "args", "expected"),
     [
         ("create_text", {"content": "Hello"}, {"fit_height": True}),
-        ("create_button", {}, {"fit_width": True, "fit_height": True, "single_width": False, "single_height": False}),
+        ("create_button", {}, {"fit_width": True, "fixed_height": True, "fit_height": False, "single_width": False, "single_height": True, "%h": 44, "min_height_css": "44px", "max_height_css": "44px"}),
         ("create_group", {"name": "Group"}, {"container_layout": "column", "min_width_css": "40px", "min_height_css": "40px", "fit_height": True}),
         ("create_input", {}, {"%h": 44, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px", "min_height_css": "44px", "max_height_css": "44px"}),
         ("create_icon", {}, {"%w": 20, "%h": 20, "fixed_width": True, "fixed_height": True, "min_width_css": "20px", "max_width_css": "20px", "min_height_css": "20px", "max_height_css": "20px"}),
@@ -76,3 +98,31 @@ def test_fixed_dimensions_set_matching_min_and_max_constraints() -> None:
     assert properties["%h"] == 180
     assert properties["min_height_css"] == "180px"
     assert properties["max_height_css"] == "180px"
+
+
+def test_button_uses_project_default_style_from_context() -> None:
+    context = BubbleProjectContext(
+        app_id="synthetic-app",
+        source="test",
+        nodes=[],
+        edges=[],
+        metadata={
+            "settings": {
+                "client_safe": {
+                    "default_styles": {
+                        "Button": "Button_project_default",
+                    }
+                }
+            }
+        },
+    )
+
+    body = create_body("create_button", {"label": "Continue"}, context=context)
+
+    assert body["%s1"] == "Button_project_default"
+
+
+def test_button_preserves_explicit_style() -> None:
+    body = create_body("create_button", {"label": "Continue", "style": "Button_explicit"})
+
+    assert body["%s1"] == "Button_explicit"

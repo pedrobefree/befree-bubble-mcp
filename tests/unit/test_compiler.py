@@ -428,9 +428,13 @@ def test_compile_generic_visual_catalog_tools() -> None:
 
     create_change = first_change(create_payload, "CreateElement")
     assert create_change["body"]["%x"] == "Button"
+    assert create_change["body"]["%s1"] == "Button_primary_button_"
     assert text_expression_value(create_change["body"]["%p"]["%3"]) == "Continue"
     assert create_change["body"]["%p"]["%nm"] == "bt_cta"
-    assert set_data_value(create_payload, "fit_height") is True
+    assert set_data_value(create_payload, "fit_height") is False
+    assert set_data_value(create_payload, "fixed_height") is True
+    assert set_data_value(create_payload, "min_height_css") == "44px"
+    assert set_data_value(create_payload, "max_height_css") == "44px"
     assert set_data_value(create_payload, "fit_width") is True
     assert update_payload["changes"][0]["intent"]["name"] == "SetData"
     assert update_payload["changes"][0]["body"]["placeholder"] == "Email"
@@ -439,7 +443,20 @@ def test_compile_generic_visual_catalog_tools() -> None:
 
 def test_create_visual_defaults_and_name_prefixes() -> None:
     cases = [
-        ("create_button", {"label": "Continue"}, "bt_continue", {"fit_width": True, "fit_height": True}),
+        (
+            "create_button",
+            {"label": "Continue"},
+            "bt_continue",
+            {
+                "fit_width": True,
+                "fit_height": False,
+                "fixed_height": True,
+                "single_height": True,
+                "%h": 44,
+                "min_height_css": "44px",
+                "max_height_css": "44px",
+            },
+        ),
         ("create_text", {"content": "Hello"}, "tx_hello", {"fit_height": True}),
         ("create_icon", {}, "ic_icon", {"%w": 20, "%h": 20, "fixed_width": True, "fixed_height": True, "single_width": True, "single_height": True}),
         ("create_link", {}, "li_link_label", {"%3": "Link label"}),
