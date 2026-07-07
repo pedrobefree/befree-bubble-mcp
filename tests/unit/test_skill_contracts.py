@@ -7,6 +7,11 @@ from bubble_mcp.cli.main import main
 from bubble_mcp.extensions.store import enable_extension, import_extension
 from bubble_mcp.server.schemas import list_tool_schemas
 from bubble_mcp.server.stdio import handle_request
+from bubble_mcp.skills.authoring import (
+    create_skill_authoring_session,
+    generate_skill_from_authoring_session,
+    update_skill_authoring_session,
+)
 from bubble_mcp.skills.store import (
     disable_skill,
     enable_skill,
@@ -296,6 +301,35 @@ def test_enabled_extension_pack_skills_are_listed(tmp_path, monkeypatch) -> None
     assert "simple-pack-security-review" in skills
     assert skills["simple-pack-security-review"].source == "extension"
     assert skills["simple-pack-security-review"].extension_id == "local.simple-pack"
+
+
+def test_skill_authoring_session_generates_valid_contract(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+
+    started = create_skill_authoring_session(
+        objective="Review API Connector security",
+        risk="mutating",
+        profile="client",
+    )
+    session_id = str(started["session"]["id"])
+    updated = update_skill_authoring_session(
+        session_id,
+        answer="Return a plan, risk summary, and inspect API Connector calls before any changes.",
+        field="outputs",
+    )
+    generated = generate_skill_from_authoring_session(
+        session_id,
+        skill_id="api-connector-security-review",
+        output_dir=tmp_path / "generated",
+    )
+
+    assert updated["ready_to_generate"] is True
+    assert generated["ok"] is True
+    assert generated["skill_id"] == "api-connector-security-review"
+    assert Path(str(generated["path"])).exists()
+    assert generated["validation"]["executable"] is True
+    assert generated["validation"]["skill"]["approval"]["mode"] == "plan_then_approve"
+    assert generated["next_mcp_calls"][1]["tool"] == "bubble_skill_import"
 
 
 def test_skill_mcp_tools_are_listed_and_dispatch_validate() -> None:
