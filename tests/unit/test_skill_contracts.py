@@ -4,8 +4,16 @@ from pathlib import Path
 import pytest
 
 from bubble_mcp.cli.main import main
+from bubble_mcp.extensions.store import enable_extension, import_extension
 from bubble_mcp.server.schemas import list_tool_schemas
 from bubble_mcp.server.stdio import handle_request
+from bubble_mcp.skills.store import (
+    disable_skill,
+    enable_skill,
+    export_skill,
+    import_skill,
+    list_skills,
+)
 from bubble_mcp.skills.validator import validate_skill_file
 
 
@@ -252,6 +260,42 @@ def test_root_json_array_is_rejected(tmp_path) -> None:  # type: ignore[no-untyp
     assert report["ok"] is False
     assert report["skill"] is None
     assert report["errors"] == ["skill file must contain a JSON object"]
+
+
+def test_skill_import_enable_disable_export_and_list(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    source = Path("tests/fixtures/skills/executable-security-review.skill.json")
+
+    imported = import_skill(source)
+    assert imported["ok"] is True
+    assert imported["skill_id"] == "security-review-executable"
+    assert imported["state"] == "pending"
+
+    enabled = enable_skill("security-review-executable")
+    assert enabled["ok"] is True
+    assert enabled["state"] == "enabled"
+    assert [skill.skill_id for skill in list_skills()] == ["security-review-executable"]
+    assert list_skills()[0].state == "enabled"
+
+    exported = export_skill("security-review-executable", tmp_path / "exported")
+    assert exported["ok"] is True
+    assert Path(str(exported["path"])).exists()
+
+    disabled = disable_skill("security-review-executable")
+    assert disabled["ok"] is True
+    assert disabled["state"] == "disabled"
+
+
+def test_enabled_extension_pack_skills_are_listed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    import_extension(Path("tests/fixtures/extensions/simple-pack"))
+    enable_extension("local.simple-pack")
+
+    skills = {skill.skill_id: skill for skill in list_skills()}
+
+    assert "simple-pack-security-review" in skills
+    assert skills["simple-pack-security-review"].source == "extension"
+    assert skills["simple-pack-security-review"].extension_id == "local.simple-pack"
 
 
 def test_skill_mcp_tools_are_listed_and_dispatch_validate() -> None:

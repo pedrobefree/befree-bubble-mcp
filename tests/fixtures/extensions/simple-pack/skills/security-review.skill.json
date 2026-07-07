@@ -1,0 +1,24 @@
+{
+  "id": "simple-pack-security-review",
+  "name": "Simple Pack Security Review",
+  "version": "0.1.0",
+  "description": "Read-only security review skill shipped by an extension pack.",
+  "risk": "read_only",
+  "inputs": {
+    "profile": {"type": "string", "required": true}
+  },
+  "allowedTools": ["bubble_context_detect"],
+  "steps": [
+    {
+      "id": "refresh_context",
+      "type": "tool",
+      "tool": "bubble_context_detect",
+      "args": {"profile": "{{inputs.profile}}", "force": true},
+      "mode": "read"
+    }
+  ],
+  "gates": [
+    {"type": "evidence_required", "outputs": ["plan"]}
+  ],
+  "outputs": ["plan"]
+}

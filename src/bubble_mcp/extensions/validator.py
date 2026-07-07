@@ -46,6 +46,16 @@ def _tool_path(pack_path: Path, relative: str) -> Path:
     return tool_path
 
 
+def _export_path(pack_path: Path, relative: str, *, label: str) -> Path:
+    root = pack_path.resolve(strict=True)
+    exported_path = (pack_path / relative).resolve(strict=False)
+    try:
+        exported_path.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"exported {label} escapes extension pack: {relative}") from exc
+    return exported_path
+
+
 def _load_tool_payload(tool_path: Path, relative: str) -> dict[str, Any]:
     if tool_path.is_symlink():
         raise ValueError(f"exported tool cannot be a symlink: {relative}")
@@ -53,6 +63,12 @@ def _load_tool_payload(tool_path: Path, relative: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"expected exported tool object: {relative}")
     return payload
+
+
+def _native_available_tool_names() -> set[str]:
+    names = {str(tool.get("name") or "") for tool in native_tool_schemas()}
+    names.update(ARIA_BUBBLE_TOOL_NAMES)
+    return {name for name in names if name}
 
 
 def _validate_tool_input_schema(relative: str, payload: dict[str, Any], errors: list[str]) -> None:
@@ -154,6 +170,30 @@ def validate_extension_pack(path: Path) -> ExtensionValidationReport:
         _validate_tool_input_schema(relative, payload, errors)
 
         for text in _walk_strings(payload):
+            if SECRET_PATTERN.search(text):
+                errors.append(f"{relative} contains possible secret")
+                break
+
+    for relative in manifest.exports.skills:
+        try:
+            skill_path = _export_path(path, relative, label="skill")
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if not skill_path.exists():
+            errors.append(f"missing exported skill: {relative}")
+            continue
+        if skill_path.is_symlink():
+            errors.append(f"exported skill cannot be a symlink: {relative}")
+            continue
+        from bubble_mcp.skills.validator import validate_skill_file
+
+        report = validate_skill_file(skill_path, available_tools=_native_available_tool_names())
+        if not report.get("ok"):
+            for error in report.get("errors", []):
+                errors.append(f"{relative}: {error}")
+            continue
+        for text in _walk_strings(json.loads(skill_path.read_text(encoding="utf-8"))):
             if SECRET_PATTERN.search(text):
                 errors.append(f"{relative} contains possible secret")
                 break

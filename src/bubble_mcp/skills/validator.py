@@ -333,7 +333,7 @@ def validate_skill_payload(payload: Any, *, available_tools: set[str] | None = N
     return {"ok": True, "skill": skill.to_dict(), "executable": executable, "errors": []}
 
 
-def validate_skill_file(path: Path) -> dict[str, Any]:
+def validate_skill_file(path: Path, *, available_tools: set[str] | None = None) -> dict[str, Any]:
     """Validate one declarative skill JSON file and return a report."""
 
     try:
@@ -342,7 +342,7 @@ def validate_skill_file(path: Path) -> dict[str, Any]:
         return _error_report([f"invalid JSON: {exc.msg} at line {exc.lineno} column {exc.colno}"])
     except OSError as exc:
         return _error_report([str(exc)])
-    return validate_skill_payload(payload)
+    return validate_skill_payload(payload, available_tools=available_tools)
 
 
 def describe_skill_file(path: Path) -> dict[str, Any]:

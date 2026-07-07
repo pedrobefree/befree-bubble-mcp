@@ -8,7 +8,7 @@
   "author": "local-user",
   "exports": {
     "tools": ["tools/create-plugin-widget.tool.json"],
-    "skills": [],
+    "skills": ["skills/security-review.skill.json"],
     "evals": []
   }
 }
