@@ -408,6 +408,9 @@ def test_skill_mcp_tools_are_listed_and_dispatch_validate() -> None:
     assert tools["bubble_skill_validate"]["annotations"]["idempotentHint"] is True
     assert tools["bubble_skill_validate"]["inputSchema"]["required"] == ["path"]
     assert tools["bubble_skill_describe"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_skill_import"]["inputSchema"]["required"] == ["path"]
+    assert tools["bubble_skill_run"]["inputSchema"]["required"] == ["skill_id"]
+    assert tools["bubble_skill_author_start"]["inputSchema"]["required"] == ["objective"]
 
     response = handle_request(
         {
@@ -425,6 +428,119 @@ def test_skill_mcp_tools_are_listed_and_dispatch_validate() -> None:
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["ok"] is True
     assert payload["skill"]["id"] == "security-review"
+
+
+def test_skill_mcp_import_enable_list_and_run_preview(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+
+    def fake_call(tool_name: str, args: dict[str, object]) -> dict[str, object]:
+        return {"ok": True, "tool": tool_name, "profile": args.get("profile")}
+
+    monkeypatch.setattr("bubble_mcp.skills.runner._call_mcp_tool", fake_call)
+
+    for request_id, name, arguments in (
+        (
+            10,
+            "bubble_skill_import",
+            {"path": "tests/fixtures/skills/executable-security-review.skill.json"},
+        ),
+        (11, "bubble_skill_enable", {"skill_id": "security-review-executable"}),
+        (12, "bubble_skill_list", {}),
+        (
+            13,
+            "bubble_skill_run",
+            {
+                "skill_id": "security-review-executable",
+                "inputs": {"profile": "client"},
+                "execute": False,
+            },
+        ),
+    ):
+        response = handle_request(
+            {
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": arguments},
+            }
+        )
+        assert response is not None
+        payload = json.loads(response["result"]["content"][0]["text"])
+        assert payload["ok"] is True
+
+
+def test_skill_cli_import_enable_list_and_run(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+
+    def fake_call(tool_name: str, args: dict[str, object]) -> dict[str, object]:
+        return {"ok": True, "tool": tool_name, "profile": args.get("profile")}
+
+    monkeypatch.setattr("bubble_mcp.skills.runner._call_mcp_tool", fake_call)
+
+    assert main(["skill", "import", "--path", "tests/fixtures/skills/executable-security-review.skill.json"]) == 0
+    assert json.loads(capsys.readouterr().out)["skill_id"] == "security-review-executable"
+    assert main(["skill", "enable", "security-review-executable"]) == 0
+    assert json.loads(capsys.readouterr().out)["state"] == "enabled"
+    assert main(["skill", "list"]) == 0
+    assert json.loads(capsys.readouterr().out)["skills"][0]["skill_id"] == "security-review-executable"
+    assert main(["skill", "run", "security-review-executable", "--inputs", '{"profile":"client"}']) == 0
+    assert json.loads(capsys.readouterr().out)["mode"] == "preview"
+
+
+def test_skill_mcp_authoring_flow(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    start_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_skill_author_start",
+                "arguments": {
+                    "objective": "Review API Connector security",
+                    "risk": "mutating",
+                    "profile": "client",
+                },
+            },
+        }
+    )
+    assert start_response is not None
+    start_payload = json.loads(start_response["result"]["content"][0]["text"])
+    session_id = start_payload["session"]["id"]
+
+    update_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_skill_author_update",
+                "arguments": {
+                    "session_id": session_id,
+                    "answer": "Return a plan and risk summary.",
+                    "field": "outputs",
+                },
+            },
+        }
+    )
+    assert update_response is not None
+    assert json.loads(update_response["result"]["content"][0]["text"])["ok"] is True
+
+    generate_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 22,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_skill_author_generate",
+                "arguments": {"session_id": session_id, "skill_id": "api-security-review"},
+            },
+        }
+    )
+    assert generate_response is not None
+    generate_payload = json.loads(generate_response["result"]["content"][0]["text"])
+    assert generate_payload["ok"] is True
+    assert generate_payload["validation"]["executable"] is True
 
 
 def test_malformed_skill_json_returns_useful_cli_and_mcp_errors(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]

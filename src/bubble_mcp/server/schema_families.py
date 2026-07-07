@@ -124,6 +124,44 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Local tool-authoring session id.",
         examples=["toolwiz_20260704_api_connector_1a2b3c4d"],
     ),
+    "skill_id": _prop(
+        "string",
+        "Local Bubble MCP skill id.",
+        examples=["security-review", "api-connector-security-review"],
+    ),
+    "objective": _prop(
+        "string",
+        "Natural-language objective for a new MCP skill.",
+        examples=["Review API Connector security and produce a risk summary."],
+    ),
+    "risk": _prop(
+        "string",
+        "Skill risk level.",
+        enum=["read_only", "mutating", "destructive"],
+        default="read_only",
+        examples=["read_only", "mutating"],
+    ),
+    "answer": _prop(
+        "string",
+        "Natural-language answer or instruction collected during skill authoring.",
+        examples=["The skill should return a plan, risk summary, and execution log."],
+    ),
+    "field": _prop(
+        "string",
+        "Optional authoring field label for a collected answer.",
+        examples=["outputs", "scope", "tools"],
+    ),
+    "inputs": _prop(
+        "object",
+        "Inputs passed to a skill run.",
+        additional_properties=True,
+        examples=[{"profile": "cliente2", "scope": "privacy"}],
+    ),
+    "approve_execution": _prop(
+        "boolean",
+        "Set true only after reviewing a skill preview run and approving its planned execution.",
+        default=False,
+    ),
     "tool_session_id": _prop(
         "string",
         "Optional local tool-authoring session id that receives captured extension write events.",
@@ -1227,7 +1265,7 @@ def extension_kernel_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_extension_validate",
-            "Validate a local Bubble MCP extension pack directory without importing it.",
+            "Validate a local Bubble MCP extension pack directory before list/import/enable/disable workflows, without importing or enabling it.",
             ["path"],
             required=["path"],
         ),
@@ -1276,9 +1314,60 @@ def extension_kernel_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_skill_describe",
-            "Describe a declarative Bubble MCP skill contract JSON file after validation. This is validation/description only and does not execute skill steps.",
+            "Describe a Bubble MCP skill contract by local file path or installed skill id. This validates and summarizes the skill without executing steps.",
+            ["path", "skill_id"],
+        ),
+        tool_schema(
+            "bubble_skill_import",
+            "Import a standalone Bubble MCP skill JSON file or skill directory into local skill storage. Imported skills start pending and must be enabled before running.",
             ["path"],
             required=["path"],
+        ),
+        tool_schema(
+            "bubble_skill_export",
+            "Export an installed Bubble MCP skill contract without run history or audit records.",
+            ["skill_id", "output"],
+            required=["skill_id", "output"],
+        ),
+        _empty_tool(
+            "bubble_skill_list",
+            "List local installed skills and skills exposed by enabled extension packs.",
+        ),
+        tool_schema(
+            "bubble_skill_enable",
+            "Enable a locally imported skill after validating its contract.",
+            ["skill_id"],
+            required=["skill_id"],
+        ),
+        tool_schema(
+            "bubble_skill_disable",
+            "Disable a locally imported skill without deleting the contract, run history, or exported copies from local storage.",
+            ["skill_id"],
+            required=["skill_id"],
+        ),
+        tool_schema(
+            "bubble_skill_run",
+            "Run a skill in preview mode or execute an approved preview plan. Mutating execution requires run_id, execute=true, and approve_execution=true.",
+            ["skill_id", "inputs", "execute", "approve_execution", "run_id"],
+            required=["skill_id"],
+        ),
+        tool_schema(
+            "bubble_skill_author_start",
+            "Start a friendly natural-language skill-authoring session. The generated contract is structured, but the user should not need to write JSON manually.",
+            ["objective", "risk", "profile"],
+            required=["objective"],
+        ),
+        tool_schema(
+            "bubble_skill_author_update",
+            "Add one natural-language answer or requirement to a skill-authoring session.",
+            ["session_id", "answer", "field"],
+            required=["session_id", "answer"],
+        ),
+        tool_schema(
+            "bubble_skill_author_generate",
+            "Generate and validate a skill contract from a skill-authoring session.",
+            ["session_id", "skill_id", "output_dir"],
+            required=["session_id"],
         ),
         tool_schema(
             "bubble_tool_wizard_start",

@@ -556,6 +556,14 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Soft-delete a Bubble branch/version using the stored editor session. Use only when the user asks to remove a "
         "branch; execute=true also requires confirm=true because this is destructive."
     ),
+    "bubble_extension_list": (
+        "List Bubble MCP extension packs and their enabled state before validate/import/enable/disable workflows. "
+        "Use when the user asks which extension packs are installed or active."
+    ),
+    "bubble_extension_validate": (
+        "Validate a Bubble MCP extension pack directory before list/import/enable/disable workflows. Use this when "
+        "checking an extension pack locally without importing, enabling, or executing anything."
+    ),
     "bubble_skill_validate": (
         "Validate one declarative Bubble MCP skill contract JSON file. Use to check allowed tools, non-executable "
         "steps, explicit outputs, and contract shape before a skill is imported or reviewed. Read-only and does not "
@@ -564,6 +572,36 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_skill_describe": (
         "Describe one declarative Bubble MCP skill contract after validation. Use when an agent needs to inspect the "
         "skill id, inputs, allowed tools, gates, steps, and outputs. Read-only and does not execute skill steps."
+    ),
+    "bubble_skill_import": (
+        "Import a standalone skill contract into local Bubble MCP skill storage. Imported skills start pending and "
+        "must be enabled before running."
+    ),
+    "bubble_skill_export": (
+        "Export an installed skill contract for reuse without including local run history or audit records."
+    ),
+    "bubble_skill_list": (
+        "List local skills and skills exposed by enabled extension packs. Use before running or updating a skill."
+    ),
+    "bubble_skill_enable": (
+        "Validate and enable a locally imported skill so it can be run through bubble_skill_run."
+    ),
+    "bubble_skill_disable": (
+        "Disable a locally imported skill without deleting the contract, run history, audit records, or exported copies."
+    ),
+    "bubble_skill_run": (
+        "Run a skill in preview mode, or execute an approved preview plan. Mutating execution requires run_id, "
+        "execute=true, and approve_execution=true."
+    ),
+    "bubble_skill_author_start": (
+        "Start a friendly natural-language session for creating a structured executable skill contract."
+    ),
+    "bubble_skill_author_update": (
+        "Add one natural-language requirement, answer, or constraint to a skill-authoring session."
+    ),
+    "bubble_skill_author_generate": (
+        "Generate and validate a skill contract from a skill-authoring session, returning next calls for import, "
+        "enable, and preview run."
     ),
     "bubble_learning_record": (
         "Append one local consultative learning record with scope metadata, provenance, and confidence. Use only when "
@@ -1352,6 +1390,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_extension_companion_status",
         "bubble_skill_validate",
         "bubble_skill_describe",
+        "bubble_skill_list",
         "bubble_tool_wizard_describe",
         "bubble_learning_list",
         "bubble_knowledge_search",

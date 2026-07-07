@@ -63,6 +63,20 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
+from bubble_mcp.skills.authoring import (
+    create_skill_authoring_session,
+    generate_skill_from_authoring_session,
+    update_skill_authoring_session,
+)
+from bubble_mcp.skills.runner import run_skill
+from bubble_mcp.skills.store import (
+    disable_skill,
+    enable_skill,
+    export_skill,
+    get_skill,
+    import_skill,
+    list_skills,
+)
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
@@ -226,8 +240,66 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         skill_path = _required_string_arg(arguments, "path", name)
         return validate_skill_file(Path(skill_path))
     if name == "bubble_skill_describe":
+        args = arguments or {}
+        skill_path = str(args.get("path") or "").strip()
+        skill_id = str(args.get("skill_id") or "").strip()
+        if skill_path:
+            return describe_skill_file(Path(skill_path))
+        if skill_id:
+            installed = get_skill(skill_id)
+            return describe_skill_file(installed.path)
+        raise ValueError("bubble_skill_describe requires path or skill_id.")
+    if name == "bubble_skill_import":
         skill_path = _required_string_arg(arguments, "path", name)
-        return describe_skill_file(Path(skill_path))
+        return import_skill(Path(skill_path))
+    if name == "bubble_skill_export":
+        args = arguments or {}
+        skill_id = _required_string_arg(args, "skill_id", name)
+        output = _required_string_arg(args, "output", name)
+        return export_skill(skill_id, Path(output))
+    if name == "bubble_skill_list":
+        return {"ok": True, "skills": [skill.to_dict() for skill in list_skills()]}
+    if name == "bubble_skill_enable":
+        skill_id = _required_string_arg(arguments, "skill_id", name)
+        return enable_skill(skill_id)
+    if name == "bubble_skill_disable":
+        skill_id = _required_string_arg(arguments, "skill_id", name)
+        return disable_skill(skill_id)
+    if name == "bubble_skill_run":
+        args = arguments or {}
+        skill_id = _required_string_arg(args, "skill_id", name)
+        raw_inputs = args.get("inputs")
+        if raw_inputs is not None and not isinstance(raw_inputs, dict):
+            raise ValueError("bubble_skill_run requires inputs to be an object.")
+        return run_skill(
+            skill_id,
+            inputs=raw_inputs,
+            execute=bool(args.get("execute")),
+            approve_execution=bool(args.get("approve_execution")),
+            run_id=str(args.get("run_id") or "") or None,
+        )
+    if name == "bubble_skill_author_start":
+        args = arguments or {}
+        return create_skill_authoring_session(
+            objective=_required_string_arg(args, "objective", name),
+            risk=str(args.get("risk") or "read_only"),
+            profile=str(args.get("profile") or "") or None,
+        )
+    if name == "bubble_skill_author_update":
+        args = arguments or {}
+        return update_skill_authoring_session(
+            _required_string_arg(args, "session_id", name),
+            answer=_required_string_arg(args, "answer", name),
+            field=str(args.get("field") or "") or None,
+        )
+    if name == "bubble_skill_author_generate":
+        args = arguments or {}
+        output_dir = str(args.get("output_dir") or "").strip()
+        return generate_skill_from_authoring_session(
+            _required_string_arg(args, "session_id", name),
+            skill_id=str(args.get("skill_id") or "") or None,
+            output_dir=Path(output_dir) if output_dir else None,
+        )
     if name == "bubble_tool_wizard_start":
         args = arguments or {}
         session = create_authoring_session(

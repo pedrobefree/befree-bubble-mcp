@@ -55,6 +55,19 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
 from bubble_mcp.server.tools import call_tool
+from bubble_mcp.skills.authoring import (
+    create_skill_authoring_session,
+    generate_skill_from_authoring_session,
+    update_skill_authoring_session,
+)
+from bubble_mcp.skills.runner import run_skill
+from bubble_mcp.skills.store import (
+    disable_skill,
+    enable_skill,
+    export_skill,
+    import_skill,
+    list_skills,
+)
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
@@ -750,12 +763,124 @@ def command_skill_validate(args: argparse.Namespace) -> int:
 
 def command_skill_describe(args: argparse.Namespace) -> int:
     try:
-        report = describe_skill_file(Path(args.path))
+        if args.skill_id:
+            from bubble_mcp.skills.store import get_skill
+
+            report = describe_skill_file(get_skill(args.skill_id).path)
+        elif args.path:
+            report = describe_skill_file(Path(args.path))
+        else:
+            raise ValueError("skill describe requires --path or --skill-id.")
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         emit_skill_error("describe", exc)
         return 1
     emit_json(report)
     return 0 if report.get("ok") else 1
+
+
+def command_skill_import(args: argparse.Namespace) -> int:
+    try:
+        result = import_skill(Path(args.path))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("import", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_skill_export(args: argparse.Namespace) -> int:
+    try:
+        result = export_skill(args.skill_id, Path(args.output))
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("export", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_skill_list(args: argparse.Namespace) -> int:
+    try:
+        result = {"ok": True, "skills": [skill.to_dict() for skill in list_skills()]}
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("list", exc)
+        return 1
+    emit_json(result)
+    return 0
+
+
+def command_skill_enable(args: argparse.Namespace) -> int:
+    try:
+        result = enable_skill(args.skill_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("enable", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_skill_disable(args: argparse.Namespace) -> int:
+    try:
+        result = disable_skill(args.skill_id)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("disable", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_skill_run(args: argparse.Namespace) -> int:
+    try:
+        inputs = _load_optional_json_object(args.inputs) if args.inputs else {}
+        result = run_skill(
+            args.skill_id,
+            inputs=inputs,
+            execute=bool(args.execute),
+            approve_execution=bool(args.approve_execution),
+            run_id=args.run_id or None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("run", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_skill_author_start(args: argparse.Namespace) -> int:
+    try:
+        result = create_skill_authoring_session(
+            objective=args.objective,
+            risk=args.risk,
+            profile=args.profile or None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("author-start", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_skill_author_update(args: argparse.Namespace) -> int:
+    try:
+        result = update_skill_authoring_session(args.session_id, answer=args.answer, field=args.field or None)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("author-update", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_skill_author_generate(args: argparse.Namespace) -> int:
+    try:
+        result = generate_skill_from_authoring_session(
+            args.session_id,
+            skill_id=args.skill_id or None,
+            output_dir=Path(args.output_dir) if args.output_dir else None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("author-generate", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
 
 
 def emit_tool_wizard_error(action: str, exc: Exception) -> None:
@@ -1495,8 +1620,64 @@ def build_parser() -> argparse.ArgumentParser:
     skill_validate_parser.set_defaults(func=command_skill_validate)
 
     skill_describe_parser = skill_subparsers.add_parser("describe", help="Describe a validated skill contract JSON file.")
-    skill_describe_parser.add_argument("--path", required=True)
+    skill_describe_parser.add_argument("--path", default="")
+    skill_describe_parser.add_argument("--skill-id", default="")
     skill_describe_parser.set_defaults(func=command_skill_describe)
+
+    skill_import_parser = skill_subparsers.add_parser("import", help="Import a skill contract JSON file.")
+    skill_import_parser.add_argument("--path", required=True)
+    skill_import_parser.set_defaults(func=command_skill_import)
+
+    skill_export_parser = skill_subparsers.add_parser("export", help="Export an installed skill contract.")
+    skill_export_parser.add_argument("skill_id")
+    skill_export_parser.add_argument("--output", required=True)
+    skill_export_parser.set_defaults(func=command_skill_export)
+
+    skill_list_parser = skill_subparsers.add_parser("list", help="List installed and extension-provided skills.")
+    skill_list_parser.set_defaults(func=command_skill_list)
+
+    skill_enable_parser = skill_subparsers.add_parser("enable", help="Enable an imported skill.")
+    skill_enable_parser.add_argument("skill_id")
+    skill_enable_parser.set_defaults(func=command_skill_enable)
+
+    skill_disable_parser = skill_subparsers.add_parser("disable", help="Disable an imported skill.")
+    skill_disable_parser.add_argument("skill_id")
+    skill_disable_parser.set_defaults(func=command_skill_disable)
+
+    skill_run_parser = skill_subparsers.add_parser("run", help="Preview or execute an approved skill run.")
+    skill_run_parser.add_argument("skill_id")
+    skill_run_parser.add_argument("--inputs", default="", help="JSON object text or path.")
+    skill_run_parser.add_argument("--execute", action="store_true")
+    skill_run_parser.add_argument("--approve-execution", action="store_true")
+    skill_run_parser.add_argument("--run-id", default="")
+    skill_run_parser.set_defaults(func=command_skill_run)
+
+    skill_author_parser = skill_subparsers.add_parser("author", help="Create or update skills interactively.")
+    skill_author_subparsers = skill_author_parser.add_subparsers(dest="skill_author_command", required=True)
+    skill_author_start_parser = skill_author_subparsers.add_parser("start", help="Start a skill-authoring session.")
+    skill_author_start_parser.add_argument("--objective", required=True)
+    skill_author_start_parser.add_argument(
+        "--risk",
+        choices=["read_only", "mutating", "destructive"],
+        default="read_only",
+    )
+    skill_author_start_parser.add_argument("--profile", default="")
+    skill_author_start_parser.set_defaults(func=command_skill_author_start)
+
+    skill_author_update_parser = skill_author_subparsers.add_parser("update", help="Add an answer to a skill session.")
+    skill_author_update_parser.add_argument("session_id")
+    skill_author_update_parser.add_argument("--answer", required=True)
+    skill_author_update_parser.add_argument("--field", default="")
+    skill_author_update_parser.set_defaults(func=command_skill_author_update)
+
+    skill_author_generate_parser = skill_author_subparsers.add_parser(
+        "generate",
+        help="Generate a skill contract from a skill session.",
+    )
+    skill_author_generate_parser.add_argument("session_id")
+    skill_author_generate_parser.add_argument("--skill-id", default="")
+    skill_author_generate_parser.add_argument("--output-dir", default="")
+    skill_author_generate_parser.set_defaults(func=command_skill_author_generate)
 
     tool_wizard_parser = subparsers.add_parser(
         "tool-wizard",
