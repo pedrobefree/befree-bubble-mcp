@@ -16,14 +16,16 @@ Befree Bubble MCP is organized around standalone, headless modules:
 - `bubble_mcp.learning`: append-only consultative learning records.
 - `bubble_mcp.knowledge`: local Bubble manual cache and sanitized query helpers
   for future remote fallback.
-- `bubble_mcp.skills`: declarative skill contract validation.
+- `bubble_mcp.skills`: executable skill contracts, local import/export state,
+  authoring sessions, preview/approved execution, and redacted run audits.
 - `bubble_mcp.tool_authoring`: local sessions that classify captured Bubble
   editor writes for future tool-authoring flows.
 
 These modules form the extension kernel. See
 [extension packs](extension-packs.md), [learning](learning.md),
 [knowledge sources](knowledge-sources.md), and
-[tool authoring](tool-authoring.md) for operational details.
+[tool authoring](tool-authoring.md), and [skills](skills.md) for operational
+details.
 
 Aria should consume this project as a downstream adapter. The open source package must not depend on Electron, Aria IPC, Aria databases, or Aria UI components.
 
@@ -46,7 +48,10 @@ declarative, and additive:
 - Mutating extension tools must keep the native preview-first behavior: default
   `execute=false`, require explicit `execute=true` for writes, and remain
   subject to existing profile/session/context validation.
-- All extension, learning, knowledge, and tool-authoring state lives under
+- Skills are JSON workflow contracts that orchestrate existing MCP tools. They
+  can be imported, exported, enabled, previewed, and executed after approval,
+  but they cannot run arbitrary local code.
+- All extension, learning, knowledge, skill, and tool-authoring state lives under
   `BUBBLE_MCP_CONFIG_DIR` or the default `~/.config/bubble-mcp`.
 
 The Chrome extension companion is shipped in `chrome-extension/`. It is a
@@ -81,7 +86,18 @@ The tool-authoring foundation stores local sessions under
 Bubble editor write JSON files and classify their write payloads using the
 existing expert-capture classifier.
 
-This foundation intentionally stops at classification. It does not generate tool
-schemas, activate extension packs, replay captured writes, or execute Bubble
-writes. Any future export or activation flow must add an explicit user action
-and run through the extension-pack validation gates above.
+Reviewed sessions can generate candidate declarative extension packs. Generated
+packs still pass through the extension-pack validation, import, and enable flow
+before their schemas are exposed. Declarative extension tool schemas do not run
+arbitrary code, and generic execution remains unavailable until a reviewed
+runner exists for the generated template family.
+
+## Executable Skills
+
+Executable skills live under `bubble_mcp.skills` and use existing MCP tool
+handlers rather than a separate automation runtime. The skill store manages
+standalone imports and enabled extension-pack skills. The authoring module keeps
+conversational session state and generates validated `.skill.json` contracts.
+The runner always starts with preview, saves a redacted `skillrun_*.json` audit
+record, and requires `execute=true`, `approve_execution=true`, and the saved
+`run_id` before applying mutating steps.

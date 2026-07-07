@@ -509,6 +509,68 @@ bubble-mcp validate-plan --file /path/to/plan.json --execute
 Pass `--execute` to require executable write payloads and destructive-operation
 confirmation checks.
 
+## `bubble-mcp skill`
+
+Manages executable Bubble MCP skills. Skills are reusable MCP workflows that can
+be authored conversationally, imported, exported, enabled, previewed, and run
+through the same MCP safety model used by native tools.
+
+Validate or describe a standalone skill contract:
+
+```bash
+bubble-mcp skill validate --path ./bubble-security-review.skill.json
+bubble-mcp skill describe --path ./bubble-security-review.skill.json
+bubble-mcp skill describe --skill-id bubble-security-review
+```
+
+Import, enable, list, export, or disable a skill:
+
+```bash
+bubble-mcp skill import --path ./bubble-security-review.skill.json
+bubble-mcp skill enable bubble-security-review
+bubble-mcp skill list
+bubble-mcp skill export bubble-security-review --output ./bubble-security-review.skill.json
+bubble-mcp skill disable bubble-security-review
+```
+
+Create a skill through the local authoring session flow:
+
+```bash
+bubble-mcp skill author start \
+  --objective "Review Bubble privacy rules and API Connector risk" \
+  --risk read_only \
+  --profile my-app
+
+bubble-mcp skill author update <session-id> \
+  --field outputs \
+  --answer "Return findings, severity, and recommended next MCP actions."
+
+bubble-mcp skill author generate <session-id> \
+  --skill-id bubble-security-review
+```
+
+Run a preview:
+
+```bash
+bubble-mcp skill run bubble-security-review \
+  --inputs '{"profile":"my-app"}'
+```
+
+For mutating skills, execute only after reviewing the preview and reusing its
+returned `run_id`:
+
+```bash
+bubble-mcp skill run bubble-security-review \
+  --inputs '{"profile":"my-app"}' \
+  --execute \
+  --approve-execution \
+  --run-id skillrun_20260707_1234567890
+```
+
+Skill run responses summarize steps and next actions for the user. Raw write
+payloads are not included in the user-facing response; redacted audit records
+are stored locally under `skills/runs/`.
+
 ## `bubble-mcp tools runbook`
 
 Returns a one-call compact agent runbook for a Bubble task: route intents,
@@ -753,3 +815,13 @@ Implemented tools:
 - `bubble_session_import`
 - `bubble_editor_write`
 - `bubble_execute_plan`
+- `bubble_skill_author_start`
+- `bubble_skill_author_update`
+- `bubble_skill_author_generate`
+- `bubble_skill_import`
+- `bubble_skill_export`
+- `bubble_skill_list`
+- `bubble_skill_enable`
+- `bubble_skill_disable`
+- `bubble_skill_describe`
+- `bubble_skill_run`

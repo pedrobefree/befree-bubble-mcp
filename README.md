@@ -54,7 +54,8 @@ python scripts/install_local.py --repair --extras browser,dev
 - Lightweight visual snapshot comparison for HTML/Figma/Bubble conversion regression gates.
 - Extension kernel foundation with declarative extension packs, local validation,
   consultative learning records, local Bubble manual knowledge cache, declarative
-  skill contract validation, and local tool-authoring sessions.
+  executable skills with import/export and approved runs, and local
+  tool-authoring sessions.
 - Local Figma bridge for the Befree Figma plugin. Figma-side integration code is intentionally outside this repository.
 
 ## Planned Capabilities
@@ -73,6 +74,7 @@ The extension kernel is documented in focused guides:
 - [Learning](docs/learning.md): append-only consultative learning records, scopes, CLI/MCP usage, and safety limits.
 - [Knowledge sources](docs/knowledge-sources.md): local Bubble manual cache v1, sanitization, search/fetch/guidance tools, and remote-doc fallback boundaries.
 - [Tool authoring](docs/tool-authoring.md): guided tool-authoring sessions, captured write classification, payload examples, and safe test workflow.
+- [Skills](docs/skills.md): friendly skill authoring, import/export, extension-pack skills, preview, approval, execution, and audit boundaries.
 
 ## Required Setup For Each Bubble Project
 
@@ -456,14 +458,21 @@ are stored under `BUBBLE_MCP_CONFIG_DIR` or the default
 `~/.config/bubble-mcp` directory.
 
 Extension packs are imported into a `pending` state. A pack may be enabled only
-after local validation succeeds, and enabled extension tool schemas are
-revalidated before they are exposed through the MCP tool catalog. Validation
+after local validation succeeds, and enabled extension tool schemas and skill
+contracts are revalidated before they are exposed through the MCP catalog.
+Validation
 rejects tool name collisions with built-in/native tools, duplicate names inside
 the pack, symlinks or path escapes, and likely secrets. Extension packs are JSON
 contracts only; v1 does not execute arbitrary Python, Node, shell, or bundled
 code from a pack. Declarative extension tool schemas are catalog-visible in v1,
 but their recipe/template execution runner is intentionally not implemented yet;
 calling one returns `extension_tool_execution_not_implemented`.
+
+Skills are executable MCP workflows, not arbitrary code. A skill can be created
+through a friendly authoring session, imported, exported, enabled, previewed,
+and run through the MCP. Mutating skills require a previewed plan and a later
+approved execution using the returned `run_id`; user-facing responses summarize
+steps and omit raw write payloads.
 
 When declarative execution is added, mutating extension tools must inherit the
 same preview-first contract as the native Bubble MCP catalog. They should
@@ -490,6 +499,7 @@ Focused docs:
 - [Learning](docs/learning.md)
 - [Knowledge sources](docs/knowledge-sources.md)
 - [Tool authoring](docs/tool-authoring.md)
+- [Skills](docs/skills.md)
 - [Chrome extension companion](chrome-extension/README.md)
 
 ## Safety Defaults
@@ -498,13 +508,14 @@ Focused docs:
 - Mutating commands require a local session and explicit `execute=true`/`--execute`.
 - Without execution opt-in, write commands preview the normalized request.
 - `bubble_execute_plan` runs structural validation before writes and returns `operation_snapshot.next_user_action` for agents.
+- Mutating skills require preview first and approved execution by `run_id`.
 - Session credentials stay local.
 - Sensitive values are redacted before logs or reports.
 - Extension packs are declarative only and do not run arbitrary code in v1.
 - Imported extension packs start pending; activation requires local validation.
-- Local extension, learning, knowledge, and tool-authoring state stays under
+- Local extension, learning, knowledge, skill, and tool-authoring state stays under
   `BUBBLE_MCP_CONFIG_DIR`.
 
 ## Status
 
-Early alpha. Real Bubble editor writes are supported when you provide a valid local session and an exact Bubble `/appeditor/write` payload. Generated plans that do not yet contain a `write_payload` are previewable but not automatically applied. Extension kernel v1 is a foundation for declarative local packs, advisory records, and captured-write classification; it does not generate, activate, replay, or execute new tools automatically.
+Early alpha. Real Bubble editor writes are supported when you provide a valid local session and an exact Bubble `/appeditor/write` payload. Generated plans that do not yet contain a `write_payload` are previewable but not automatically applied. Extension kernel v1 supports declarative local packs, advisory records, skill authoring/import/export/execution, and captured-write classification. Declarative extension tool schemas still require reviewed runners before they can execute writes.

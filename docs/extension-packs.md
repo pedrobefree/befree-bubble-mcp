@@ -12,6 +12,8 @@ ${BUBBLE_MCP_CONFIG_DIR:-~/.config/bubble-mcp}/extensions/packs/<extension-id>/
   state.json
   tools/
     *.tool.json
+  skills/
+    *.skill.json
 ```
 
 The default state after import is `pending`. Enabling or disabling a pack updates `state.json` to `enabled` or `disabled`.
@@ -44,7 +46,12 @@ Important fields:
 - `id` must be a safe path segment. It cannot be empty, `.`, `..`, or contain `/` or `\`.
 - `risk` must be one of `read_only`, `mutating`, or `destructive`.
 - `exports.tools` lists JSON files inside the pack. Export paths cannot escape the pack root.
-- `capabilities`, `exports.recipes`, `exports.skills`, and `exports.evals` reserve the broader kernel shape even though this release exposes only declarative tool schemas from enabled packs.
+- `exports.skills` lists executable skill contracts inside the pack. Enabled
+  pack skills are included in `bubble_skill_list` and can be run through the
+  skill runner after validation.
+- `capabilities`, `exports.recipes`, and `exports.evals` reserve the broader
+  kernel shape even though this release only activates declarative tool schemas
+  and executable skill contracts from enabled packs.
 
 ## Tool Schema
 
@@ -123,6 +130,8 @@ Validation checks:
 - exported tool files exist and parse as objects;
 - tool names are present, unique inside the pack, and do not collide with existing native/catalog tools;
 - exported tool content does not contain obvious secrets such as bearer tokens, API keys, passwords, or secret assignments.
+- exported skill files exist, stay inside the pack, parse as valid skill
+  contracts, and only reference tools available in the local MCP catalog.
 
 ## Import And Enable
 
@@ -145,6 +154,16 @@ MCP tools:
 - `bubble_extension_call`
 
 Import is idempotent for the same extension id: the local copy is replaced and returned to `pending`. Enable validates the installed pack before changing state; invalid packs remain pending or disabled and return validation errors.
+
+Enabled pack skills are managed through the skill tools rather than the
+extension dispatcher:
+
+- `bubble_skill_list`
+- `bubble_skill_describe`
+- `bubble_skill_run`
+
+See [Skills](skills.md) for import/export, authoring, preview, approval, and
+execution details.
 
 ## Preview And Execute Boundary
 
