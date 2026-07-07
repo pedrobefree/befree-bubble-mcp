@@ -54,14 +54,17 @@ class CapturedProcess:
 
 
 def _capture_result(command: list[str], *, cwd: Path) -> CapturedProcess:
-    result = subprocess.run(
-        command,
-        cwd=cwd,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            command,
+            cwd=cwd,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+    except OSError as exc:
+        return CapturedProcess(1, f"{exc.__class__.__name__}: {exc}")
     return CapturedProcess(result.returncode, (result.stdout + result.stderr).strip())
 
 
@@ -217,8 +220,28 @@ def _write_console_bootstrap(script_path: Path, python: Path, source_dir: Path, 
 
 def _write_console_bootstraps(venv: Path, python: Path, source_dir: Path) -> None:
     _remove_stale_console_script_duplicates(venv)
+    if os.name == "nt":
+        return
     for script_name, target in CONSOLE_SCRIPTS.items():
         _write_console_bootstrap(_venv_script(venv, script_name), python, source_dir, target)
+
+
+def _is_windows_text_console_launcher(path: Path) -> bool:
+    if not path.exists() or path.suffix.lower() != ".exe":
+        return False
+    try:
+        return path.read_bytes()[:2] == b"#!"
+    except OSError:
+        return False
+
+
+def _remove_windows_text_console_launchers(venv: Path) -> None:
+    if os.name != "nt":
+        return
+    for script_name in CONSOLE_SCRIPTS:
+        launcher = _venv_script(venv, script_name)
+        if _is_windows_text_console_launcher(launcher):
+            _remove_path(launcher)
 
 
 def _remove_stale_console_script_duplicates(venv: Path) -> None:
@@ -261,17 +284,22 @@ def _verify_console_scripts(venv: Path, root: Path) -> int:
         print("bubble-mcp-server console script is missing.")
         return 1
     server_request = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n'
-    server_check = subprocess.run(
-        [str(server_script)],
-        cwd=root,
-        input=server_request,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=False,
-    )
-    server_output = (server_check.stdout + server_check.stderr).strip()
-    if server_check.returncode == 0 and '"serverInfo"' in server_output and "befree-bubble-mcp" in server_output:
+    try:
+        server_check = subprocess.run(
+            [str(server_script)],
+            cwd=root,
+            input=server_request,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        server_returncode = server_check.returncode
+        server_output = (server_check.stdout + server_check.stderr).strip()
+    except OSError as exc:
+        server_returncode = 1
+        server_output = f"{exc.__class__.__name__}: {exc}"
+    if server_returncode == 0 and '"serverInfo"' in server_output and "befree-bubble-mcp" in server_output:
         print("bubble-mcp-server console script is runnable.")
         return 0
     server_fallback = subprocess.run(
@@ -290,7 +318,7 @@ def _verify_console_scripts(venv: Path, root: Path) -> int:
         or "befree-bubble-mcp" not in server_fallback_output
     ):
         print(server_output or server_fallback_output)
-        return server_check.returncode or 1
+        return server_returncode or 1
     print("bubble-mcp-server Python module fallback is runnable.")
     return 0
 
@@ -317,6 +345,7 @@ def install_local(*, root: Path, venv: Path, extras: str, repair: bool) -> int:
     if upgrade_result.returncode != 0:
         return upgrade_result.returncode
 
+    _remove_windows_text_console_launchers(venv)
     target = "-e"
     spec = f".[{extras}]" if extras else "."
     install_result = _run([str(python), "-m", "pip", "install", target, spec], cwd=root)

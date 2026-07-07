@@ -7,12 +7,15 @@ import pytest
 
 from scripts import install_local
 from scripts.install_local import (
+    _capture_result,
     _clear_macos_execution_metadata,
+    _remove_windows_text_console_launchers,
     _repair_native_extension_policy,
     _remove_stale_console_script_duplicates,
     _stale_install_paths,
     _verify_console_scripts,
     _write_console_bootstrap,
+    _write_console_bootstraps,
     _write_local_editable_pth,
 )
 
@@ -117,6 +120,55 @@ def test_remove_stale_console_script_duplicates(tmp_path: Path) -> None:
     assert not duplicate.exists()
     assert not server_duplicate.exists()
     assert unrelated.exists()
+
+
+def test_write_console_bootstraps_preserves_windows_exe_launchers(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(install_local.os, "name", "nt")
+    scripts_dir = tmp_path / "Scripts"
+    scripts_dir.mkdir()
+    launcher = scripts_dir / "bubble-mcp.exe"
+    launcher.write_bytes(b"MZ\0valid windows launcher")
+
+    _write_console_bootstraps(tmp_path, tmp_path / "Scripts" / "python.exe", tmp_path / "src")
+
+    assert launcher.read_bytes() == b"MZ\0valid windows launcher"
+    assert not (scripts_dir / "bubble-mcp-server.exe").exists()
+
+
+def test_remove_windows_text_console_launchers_removes_broken_exe_bootstraps(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(install_local.os, "name", "nt")
+    scripts_dir = tmp_path / "Scripts"
+    scripts_dir.mkdir()
+    broken = scripts_dir / "bubble-mcp.exe"
+    valid = scripts_dir / "bubble-mcp-server.exe"
+    broken.write_bytes(b"#!C:\\Python\\python.exe\nprint('not a PE executable')\n")
+    valid.write_bytes(b"MZ\0valid windows launcher")
+
+    _remove_windows_text_console_launchers(tmp_path)
+
+    assert not broken.exists()
+    assert valid.exists()
+
+
+def test_capture_result_reports_oserror_instead_of_crashing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(*_args, **_kwargs):  # type: ignore[no-untyped-def]
+        raise OSError("[WinError 216] not a valid Win32 application")
+
+    monkeypatch.setattr(install_local.subprocess, "run", fake_run)
+
+    result = _capture_result(["bubble-mcp.exe", "--help"], cwd=tmp_path)
+
+    assert result.returncode == 1
+    assert "WinError 216" in result.stdout_text
 
 
 def test_verify_console_scripts_checks_all_entrypoints(tmp_path: Path) -> None:
