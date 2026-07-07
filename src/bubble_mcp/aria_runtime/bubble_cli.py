@@ -62222,33 +62222,34 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Delete a field in a Bubble Data Type."""
-        deleted_label = f"{self._data_field_display_name(data_type_key, field_key)} - deleted"
+        resolved_field_key = self._resolve_type_field_key(data_type_key, field_key)
+        deleted_label = f"{self._data_field_display_name(data_type_key, resolved_field_key)} - deleted"
         pb = PayloadBuilder(appname=self.appname)
         self._add_schema_change(
             pb,
             "WriteCustomField",
-            ["user_types", data_type_key, "%f3", field_key, "%del"],
+            ["user_types", data_type_key, "%f3", resolved_field_key, "%del"],
             True
         )
         self._add_schema_change(
             pb,
             "WriteCustomField",
-            ["user_types", data_type_key, "%f3", field_key, "%d"],
+            ["user_types", data_type_key, "%f3", resolved_field_key, "%d"],
             deleted_label
         )
         ok = self._send_schema_payload(
             pb,
             dry_run,
-            f"Field '{field_key}' on '{data_type_key}' deleted."
+            f"Field '{resolved_field_key}' on '{data_type_key}' deleted."
         )
         if ok and not dry_run:
             user_types = self._schema_user_types_cache()
             entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
             fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-            field_entry = fields.get(field_key, {}) if isinstance(fields.get(field_key), dict) else {}
+            field_entry = fields.get(resolved_field_key, {}) if isinstance(fields.get(resolved_field_key), dict) else {}
             field_entry["%del"] = True
             field_entry["%d"] = deleted_label
-            fields[field_key] = field_entry
+            fields[resolved_field_key] = field_entry
             entry["%f3"] = fields
             user_types[data_type_key] = entry
             self._save_cli_cache()

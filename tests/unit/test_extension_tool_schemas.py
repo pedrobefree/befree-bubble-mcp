@@ -259,6 +259,145 @@ def test_generated_api_connector_extension_tool_previews_and_executes(
     )
 
 
+def test_trigger_custom_event_extension_tool_previews_and_executes(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    save_session(
+        "client",
+        session_from_payload(
+            {
+                "app_id": "synthetic-app",
+                "app_version": "test",
+                "headers": {"cookie": "sid=test"},
+                "source": "unit-test",
+            }
+        ),
+    )
+    pack_path = tmp_path / "trigger-pack"
+    tools_path = pack_path / "tools"
+    tools_path.mkdir(parents=True)
+    (pack_path / "extension.json").write_text(
+        json.dumps(
+            {
+                "id": "local.trigger-test",
+                "name": "Local Trigger Test",
+                "version": "0.1.0",
+                "bubbleMcpVersion": ">=0.1.0",
+                "capabilities": ["tools"],
+                "risk": "mutating",
+                "author": "unit-test",
+                "exports": {"tools": ["tools/trigger-custom-event.tool.json"], "skills": [], "evals": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (tools_path / "trigger-custom-event.tool.json").write_text(
+        json.dumps(
+            {
+                "name": "local.trigger-test.trigger_custom_event",
+                "description": "Trigger a Bubble custom event from a workflow using a captured write runner.",
+                "risk": "mutating",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "profile": {"type": "string", "description": "Local Bubble MCP profile."},
+                        "arguments": {"type": "object", "description": "Custom event argument values."},
+                        "execute": {
+                            "type": "boolean",
+                            "description": "Execute the write after preview and validation.",
+                            "default": False,
+                        },
+                    },
+                    "required": ["profile"],
+                },
+                "annotations": {
+                    "readOnlyHint": False,
+                    "destructiveHint": False,
+                    "idempotentHint": False,
+                    "openWorldHint": True,
+                },
+                "template": {
+                    "kind": "appeditor_write",
+                    "family": "workflow custom event trigger",
+                    "requiresValidation": True,
+                    "runner": "trigger_custom_event_v1",
+                    "defaults": {
+                        "action_index": "1",
+                        "custom_event_id": "cmMdG",
+                        "event_id": "bi6yt",
+                        "existing_action_id": "bdHu5",
+                        "existing_action_index": "0",
+                        "existing_action_type": "ShowElement",
+                        "existing_element_id": "bnSIJ",
+                        "id_counter": 20000318,
+                        "page_id": "bO9uq",
+                        "param_ids": {"user": "cmMdN", "number": "cmMdO"},
+                        "workflow_key": "bDfYE",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    validation = validate_extension_pack(pack_path)
+    assert validation.ok is True
+    import_extension(pack_path)
+    enable_extension("local.trigger-test")
+
+    arguments = {
+        "profile": "client",
+        "execute": False,
+        "arguments": {"user": "current user", "number": 1},
+    }
+    preview = call_tool(
+        "bubble_extension_call",
+        {"tool": "local.trigger-test.trigger_custom_event", "arguments": arguments},
+    )
+
+    assert preview["ok"] is True
+    assert preview["mode"] == "preview"
+    assert preview["runner"] == "trigger_custom_event_v1"
+    assert preview["compiled_payload"]["appname"] == "synthetic-app"
+    preview_changes = preview["compiled_payload"]["changes"]
+    create_action = next(change for change in preview_changes if change.get("intent", {}).get("name") == "CreateAction")
+    action_body = create_action["body"]["1"]
+    assert action_body["%x"] == "TriggerCustomEvent"
+    assert action_body["%p"]["custom_event"] == "cmMdG"
+    assert action_body["%p"]["arguments"]["0"]["arg_value"]["%x"] == "CurrentUser"
+    assert action_body["%p"]["arguments"]["1"]["arg_value"] == 1
+
+    write_calls: list[tuple[dict[str, object], object, bool]] = []
+
+    def fake_write(self, payload, session_data, *, dry_run=False):  # noqa: ANN001
+        write_calls.append((payload, session_data, dry_run))
+        return {
+            "ok": True,
+            "request": {"payload": payload},
+            "response": {"status": "ok", "last_change": 456},
+        }
+
+    monkeypatch.setattr("bubble_mcp.extensions.tools.BubbleEditorClient.write", fake_write)
+    executed = call_tool(
+        "bubble_extension_call",
+        {
+            "tool": "local.trigger-test.trigger_custom_event",
+            "arguments": {**arguments, "execute": True},
+        },
+    )
+
+    assert executed["ok"] is True
+    assert executed["mode"] == "executed"
+    assert executed["runner"] == "trigger_custom_event_v1"
+    assert write_calls
+    payload, session_data, dry_run = write_calls[0]
+    assert dry_run is False
+    assert session_data.app_id == "synthetic-app"
+    assert payload["appname"] == "synthetic-app"
+    assert any(change.get("path_array", []) == ["_index", "issues_list", "bi6yt"] for change in payload["changes"])
+
+
 def test_extension_tool_preview_validates_required_arguments(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     import_extension(SIMPLE_PACK)

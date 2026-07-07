@@ -53,6 +53,38 @@ def test_delete_data_field_emits_bubble_editor_delete_contract(tmp_path, capsys)
     assert changes[1]["body"] == "campo novo - deleted"
 
 
+def test_delete_data_field_resolves_display_name_to_internal_custom_type_key(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "user_types": {
+                    "user": {
+                        "%d": "User",
+                        "%f3": {
+                            "teste_delete_custom_enrollment": {
+                                "%d": "teste_delete",
+                                "%v": "custom.enrollment",
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="courselaunch")
+
+    assert cli.delete_data_field("user", "teste_delete", dry_run=True) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    changes = payload["changes"]
+    assert changes[0]["path_array"] == ["user_types", "user", "%f3", "teste_delete_custom_enrollment", "%del"]
+    assert changes[0]["body"] is True
+    assert changes[1]["path_array"] == ["user_types", "user", "%f3", "teste_delete_custom_enrollment", "%d"]
+    assert changes[1]["body"] == "teste_delete - deleted"
+
+
 def test_privacy_rule_tools_emit_bubble_editor_contracts(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
     app_path = tmp_path / "app.json"
     app_path.write_text(

@@ -50,6 +50,39 @@ def _value_to_bubble_param(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False)
 
 
+def _template_defaults(template: dict[str, Any]) -> dict[str, Any]:
+    defaults = template.get("defaults")
+    return defaults if isinstance(defaults, dict) else {}
+
+
+def _defaulted_string_arg(
+    template: dict[str, Any],
+    args: dict[str, Any],
+    key: str,
+    default: str = "",
+) -> str:
+    template_defaults = _template_defaults(template)
+    return _string_arg(args, key) or str(template_defaults.get(key) or default).strip()
+
+
+def _defaulted_object_arg(
+    template: dict[str, Any],
+    args: dict[str, Any],
+    key: str,
+) -> dict[str, Any]:
+    value = args.get(key)
+    if isinstance(value, dict):
+        return dict(value)
+    template_value = _template_defaults(template).get(key)
+    return dict(template_value) if isinstance(template_value, dict) else {}
+
+
+def _bubble_custom_event_argument_value(value: Any) -> Any:
+    if isinstance(value, str) and value.strip().lower() in {"current user", "current_user", "currentuser"}:
+        return {"%x": "CurrentUser", "%p": None, "%n": None, "is_slidable": False}
+    return value
+
+
 def _coerce_patch_body(value: Any, value_type: str) -> Any:
     if value_type == "integer":
         return int(value)
@@ -327,6 +360,143 @@ def _compile_api_connector_resource_v1(
     )
 
 
+def _compile_trigger_custom_event_v1(
+    template: dict[str, Any],
+    args: dict[str, Any],
+    session: BubbleSessionData | None,
+) -> ExtensionRunnerCompileResult:
+    runner = "trigger_custom_event_v1"
+    appname = _string_arg(args, "app_id") or (session.app_id if session else "") or "preview-app"
+    app_version = _string_arg(args, "app_version") or (session.app_version if session else "") or "test"
+    page_id = _defaulted_string_arg(template, args, "page_id")
+    workflow_key = (
+        _defaulted_string_arg(template, args, "workflow_key")
+        or _defaulted_string_arg(template, args, "event_key")
+    )
+    event_id = (
+        _defaulted_string_arg(template, args, "event_id")
+        or _defaulted_string_arg(template, args, "event_ref")
+    )
+    custom_event_id = (
+        _defaulted_string_arg(template, args, "custom_event_id")
+        or _defaulted_string_arg(template, args, "custom_event")
+    )
+    action_id = _defaulted_string_arg(template, args, "action_id") or bubble_element_id()
+    action_index = _defaulted_string_arg(template, args, "action_index", "1")
+    existing_action_id = _defaulted_string_arg(template, args, "existing_action_id")
+    existing_action_index = _defaulted_string_arg(template, args, "existing_action_index", "0")
+    existing_action_type = _defaulted_string_arg(template, args, "existing_action_type", "ShowElement")
+    existing_element_id = _defaulted_string_arg(template, args, "existing_element_id")
+    id_counter = args.get("id_counter") or _template_defaults(template).get("id_counter")
+
+    errors: list[str] = []
+    if not page_id:
+        errors.append("page_id is required unless the template provides a default.")
+    if not workflow_key:
+        errors.append("workflow_key is required unless the template provides a default.")
+    if not event_id:
+        errors.append("event_id/event_ref is required unless the template provides a default.")
+    if not custom_event_id:
+        errors.append("custom_event_id/custom_event is required unless the template provides a default.")
+    if errors:
+        return ExtensionRunnerCompileResult(ok=False, runner=runner, errors=errors)
+
+    param_ids = _defaulted_object_arg(template, args, "param_ids")
+    argument_values = _object_arg(args, "arguments") or _object_arg(args, "argument_values")
+    arguments_body: dict[str, Any] = {}
+    for index, (name, param_id) in enumerate(param_ids.items()):
+        item: dict[str, Any] = {"param_id": str(param_id)}
+        if name in argument_values:
+            item["arg_value"] = _bubble_custom_event_argument_value(argument_values[name])
+        arguments_body[str(index)] = item
+
+    actions_body: dict[str, Any] = {}
+    if existing_action_id:
+        existing_action: dict[str, Any] = {"%x": existing_action_type, "id": existing_action_id}
+        if existing_element_id:
+            existing_action["%p"] = {"%ei": existing_element_id}
+        actions_body[str(existing_action_index)] = existing_action
+    actions_body[str(action_index)] = {
+        "%x": "TriggerCustomEvent",
+        "%p": {"custom_event": custom_event_id, "arguments": arguments_body},
+        "id": action_id,
+    }
+
+    workflow_path = ["%p3", page_id, "%wf", workflow_key]
+    action_path = [*workflow_path, "actions", str(action_index)]
+    changes: list[dict[str, Any]] = []
+    if existing_action_id:
+        changes.append(
+            {
+                "body": f"%p3.{page_id}.%wf.{workflow_key}.actions.{existing_action_index}",
+                "path_array": ["_index", "id_to_path", existing_action_id],
+                "intent": {"name": "Update index"},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+            }
+        )
+    changes.extend(
+        [
+            {
+                "body": f"%p3.{page_id}.%wf.{workflow_key}.actions.{action_index}",
+                "path_array": ["_index", "id_to_path", action_id],
+                "intent": {"name": "Update index"},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+            },
+            {
+                "body": actions_body,
+                "path_array": [*workflow_path, "actions"],
+                "intent": {"name": "CreateAction", "id": 16, "source_appname": ""},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+            },
+            {
+                "body": custom_event_id,
+                "path_array": [*action_path, "%p", "custom_event"],
+                "intent": {"name": "SetData", "id": 18, "source_appname": ""},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+            },
+            {
+                "body": arguments_body,
+                "path_array": [*action_path, "%p", "arguments"],
+                "intent": {"name": "SetData", "id": 19, "source_appname": ""},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+            },
+            {
+                "body": "[]",
+                "path_array": ["_index", "issues_list", event_id],
+                "intent": {"name": "Update index"},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+            },
+        ]
+    )
+    if isinstance(id_counter, int):
+        changes.append({"type": "id_counter", "value": id_counter})
+
+    return ExtensionRunnerCompileResult(
+        ok=True,
+        runner=runner,
+        write_payload={
+            "appname": appname,
+            "app_version": app_version,
+            "appVersion": app_version,
+            "changes": changes,
+        },
+        metadata={
+            "page_id": page_id,
+            "workflow_key": workflow_key,
+            "event_id": event_id,
+            "action_id": action_id,
+            "custom_event_id": custom_event_id,
+            "param_ids": param_ids,
+        },
+    )
+
+
 def _template_family(template: dict[str, Any]) -> str:
     return str(template.get("family") or "").lower().strip()
 
@@ -343,6 +513,7 @@ def _runner_id(template: dict[str, Any]) -> str:
 
 RUNNERS: dict[str, ExtensionRunner] = {
     "api_connector_resource_v1": _compile_api_connector_resource_v1,
+    "trigger_custom_event_v1": _compile_trigger_custom_event_v1,
 }
 
 
