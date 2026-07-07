@@ -2,28 +2,75 @@
 
 Local-first Bubble automation toolkit for developers who want safer, more accurate agent-assisted Bubble work.
 
-This project is being extracted from Befree/Aria as a standalone open source platform. The package is installable and exposes a stdio MCP server with local profiles, context tools, planning tools, and authenticated Bubble editor write execution:
+This project is being extracted from Befree/Aria as a standalone open source platform. It exposes a local CLI and a stdio MCP server with profiles, context tools, planning tools, and authenticated Bubble editor write execution.
 
-```bash
-pipx install befree-bubble-mcp
-bubble-mcp init
-bubble-mcp-server
+Until the package is published to a Python package index, install it from a local checkout.
+
+## Install From This Repository
+
+Requirements:
+
+- Python 3.11 or newer.
+- Node.js 20 or newer only for the Figma bridge, Chrome extension companion, or bridge development.
+- A Bubble account and the Bubble app id you want to automate.
+- An MCP client that can launch stdio servers, such as Codex or Claude Desktop.
+
+Clone the repository, then choose the terminal commands for your environment:
+
+```text
+git clone https://github.com/pedrobefree/befree-bubble-mcp.git
+cd befree-bubble-mcp
 ```
 
-For local checkout development:
+### macOS / Linux / Git Bash
 
 ```bash
 python3.11 -m venv .venv
-. .venv/bin/activate
+source .venv/bin/activate
 python scripts/install_local.py --extras browser,dev
+python -m playwright install chromium
+bubble-mcp --help
 ```
 
-If an editable install is interrupted and the console script can no longer
-import `bubble_mcp`, run:
+### Windows PowerShell
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python scripts\install_local.py --extras browser,dev
+python -m playwright install chromium
+bubble-mcp --help
+```
+
+If PowerShell blocks virtualenv activation for the current terminal session:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+If an editable install is interrupted and the console script can no longer import `bubble_mcp`, repair the same virtualenv from the repository checkout.
+
+macOS / Linux / Git Bash:
 
 ```bash
 python scripts/install_local.py --repair --extras browser,dev
 ```
+
+Windows PowerShell:
+
+```powershell
+python scripts\install_local.py --repair --extras browser,dev
+```
+
+### Terminal Syntax Notes
+
+- Commands shown as one line work in Bash, zsh, Git Bash, and PowerShell.
+- Bash/zsh line continuation uses `\`.
+- PowerShell line continuation uses a backtick: `` ` ``.
+- Environment variables differ:
+  - Bash/zsh: `BUBBLE_MCP_CONFIG_DIR=/path/to/config command`
+  - PowerShell: `$env:BUBBLE_MCP_CONFIG_DIR="C:\path\to\config"; command`
 
 ## Current Capabilities
 
@@ -92,7 +139,8 @@ bubble-mcp init
 This creates the local config directory, by default:
 
 ```text
-~/.config/bubble-mcp
+macOS / Linux: ~/.config/bubble-mcp
+Windows: %USERPROFILE%\.config\bubble-mcp
 ```
 
 Use `BUBBLE_MCP_CONFIG_DIR` when you need a different config location.
@@ -108,12 +156,8 @@ bubble-mcp profile add my-app --app-id my-bubble-app
 
 Optional metadata:
 
-```bash
-bubble-mcp profile add my-app \
-  --app-id my-bubble-app \
-  --appname my-bubble-app \
-  --editor-url "https://bubble.io/page?id=my-bubble-app" \
-  --app-version test
+```text
+bubble-mcp profile add my-app --app-id my-bubble-app --appname my-bubble-app --editor-url "https://bubble.io/page?id=my-bubble-app" --app-version test
 ```
 
 Confirm the profile exists:
@@ -136,17 +180,20 @@ lower-level local settings write.
 
 ### 3. Capture A Bubble Editor Session
 
-Install the browser extra if it is not already installed:
+Install the browser extra if it is not already installed. For this repository
+checkout, use the same virtualenv created during installation:
 
-```bash
-python -m pip install "befree-bubble-mcp[browser]"
-python -m playwright install chromium
-```
-
-For a local checkout, prefer:
+macOS / Linux / Git Bash:
 
 ```bash
 python scripts/install_local.py --repair --extras browser,dev
+python -m playwright install chromium
+```
+
+Windows PowerShell:
+
+```powershell
+python scripts\install_local.py --repair --extras browser,dev
 python -m playwright install chromium
 ```
 
@@ -198,24 +245,16 @@ bubble-mcp context detect --profile my-app --app-id my-bubble-app --force
 
 To save the compact context in a known path for inspection:
 
-```bash
-bubble-mcp context detect \
-  --profile my-app \
-  --app-id my-bubble-app \
-  --force \
-  --output ./my-bubble-app.context.json
+```text
+bubble-mcp context detect --profile my-app --app-id my-bubble-app --force --output ./my-bubble-app.context.json
 
 bubble-mcp context summary --file ./my-bubble-app.context.json
 ```
 
 If your app uses a non-default Bubble version, include it:
 
-```bash
-bubble-mcp context detect \
-  --profile my-app \
-  --app-id my-bubble-app \
-  --app-version test \
-  --force
+```text
+bubble-mcp context detect --profile my-app --app-id my-bubble-app --app-version test --force
 ```
 
 Refresh context after creating pages/elements outside this MCP, after importing
@@ -428,6 +467,22 @@ Use the virtualenv Python module path in your MCP config:
 }
 ```
 
+On Windows, use the virtualenv Python executable from `Scripts`:
+
+```json
+{
+  "mcpServers": {
+    "befree-bubble-mcp": {
+      "command": "C:\\path\\to\\befree-bubble-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "bubble_mcp.server.stdio"],
+      "env": {
+        "BUBBLE_MCP_CONFIG_DIR": "C:\\Users\\me\\.config\\bubble-mcp"
+      }
+    }
+  }
+}
+```
+
 The `bubble-mcp-server` console script is also installed, but the Python module
 form is the most reliable option for desktop MCP clients that do not inherit an
 activated virtual environment or are affected by local macOS execution policy.
@@ -436,14 +491,22 @@ activated virtual environment or are affected by local macOS execution policy.
 
 Start the local bridge from the repository clone when using the Befree Figma plugin:
 
+macOS / Linux / Git Bash:
+
 ```bash
 BUBBLE_MCP_CONFIG_DIR=/Users/me/.config/bubble-mcp npm run figma:bridge
 ```
 
+Windows PowerShell:
+
+```powershell
+$env:BUBBLE_MCP_CONFIG_DIR="$env:USERPROFILE\.config\bubble-mcp"; npm run figma:bridge
+```
+
 If `BUBBLE_MCP_CONFIG_DIR` is omitted, the bridge uses the same default as the
-Python CLI/MCP server: `~/.config/bubble-mcp`. Use a real local path such as
-`/Users/pedroduarte/.config/bubble-mcp` or `~/.config/bubble-mcp`; the example
-`/Users/me/...` is only a placeholder. The bridge listens on
+Python CLI/MCP server: `~/.config/bubble-mcp` on macOS/Linux and
+`%USERPROFILE%\.config\bubble-mcp` on Windows. Use a real local path; examples
+such as `/Users/me/...` and `C:\Users\me\...` are placeholders. The bridge listens on
 `http://localhost:3333`, exposes `/health`, `/profiles`, and `/sync`, saves
 incoming plugin payloads under `tmp/bridge_data`, and runs the Aria-derived
 Figma-to-Bubble runtime through the local Bubble session before returning
@@ -455,7 +518,7 @@ plugin logs can show exactly which settings file was read.
 The extension kernel v1 is local-first and declarative. Extension packs, learning
 records, cached knowledge records, skill contracts, and tool-authoring captures
 are stored under `BUBBLE_MCP_CONFIG_DIR` or the default
-`~/.config/bubble-mcp` directory.
+local Bubble MCP config directory.
 
 Extension packs are imported into a `pending` state. A pack may be enabled only
 after local validation succeeds, and enabled extension tool schemas and skill

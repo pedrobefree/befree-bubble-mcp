@@ -16,13 +16,28 @@ current CLI and MCP server are installed from Python.
 - An MCP client that can launch stdio servers, such as Codex, Claude Desktop, or
   another compatible client.
 
+Until the package is published to a Python package index, install from a local
+repository checkout.
+
 ## Local smoke install
 
 Use this when testing the package the same way an end user will run it:
 
+macOS / Linux / Git Bash:
+
 ```bash
 python3.11 -m venv .venv
-. .venv/bin/activate
+source .venv/bin/activate
+python -m pip install ".[browser]"
+python -m playwright install chromium
+bubble-mcp --help
+```
+
+Windows PowerShell:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install ".[browser]"
 python -m playwright install chromium
 bubble-mcp --help
@@ -35,16 +50,27 @@ publishing while editing source files. For real Bubble smoke tests, prefer the
 normal local smoke install above so the console scripts import the packaged
 module exactly as an end user will run it.
 
+macOS / Linux / Git Bash:
+
 ```bash
 python3.11 -m venv .venv
-. .venv/bin/activate
+source .venv/bin/activate
 python scripts/install_local.py --extras browser
+bubble-mcp --help
+```
+
+Windows PowerShell:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python scripts\install_local.py --extras browser
 bubble-mcp --help
 ```
 
 Install development dependencies when running tests or static checks:
 
-```bash
+```text
 python scripts/install_local.py --extras browser,dev
 ```
 
@@ -52,7 +78,7 @@ If a previous editable install was interrupted or `bubble-mcp` cannot import
 `bubble_mcp`, repair the virtual environment from the checkout without relying
 on the broken console script:
 
-```bash
+```text
 python scripts/install_local.py --repair --extras browser,dev
 ```
 
@@ -61,21 +87,6 @@ environment, refreshes local console entrypoints through an external copy/move
 step that avoids local execution-policy kills, signs native extension modules
 with an ad-hoc local signature, and validates the Playwright browser dependency
 when the `browser` extra is installed.
-
-## Optional isolated install with pipx
-
-When the package is available to your Python package index, `pipx` can install
-the CLI and server into an isolated environment:
-
-```bash
-pipx install befree-bubble-mcp
-```
-
-For a local checkout, use:
-
-```bash
-pipx install .
-```
 
 ## Configure a Bubble profile
 

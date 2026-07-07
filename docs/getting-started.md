@@ -12,26 +12,33 @@ request.
 
 For a local checkout:
 
+macOS / Linux / Git Bash:
+
 ```bash
 python3.11 -m venv .venv
-. .venv/bin/activate
+source .venv/bin/activate
 python scripts/install_local.py --extras browser,dev
+python -m playwright install chromium
+```
+
+Windows PowerShell:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python scripts\install_local.py --extras browser,dev
 python -m playwright install chromium
 ```
 
 If an editable install is interrupted or a console script stops importing
 `bubble_mcp`, repair the checkout:
 
-```bash
+```text
 python scripts/install_local.py --repair --extras browser,dev
 ```
 
-For a packaged install:
-
-```bash
-python -m pip install "befree-bubble-mcp[browser]"
-python -m playwright install chromium
-```
+Packaged installation instructions will be added after the package is published
+to a Python package index.
 
 Confirm the CLI is available:
 
@@ -66,12 +73,8 @@ bubble-mcp profile list
 
 You can also store the editor URL:
 
-```bash
-bubble-mcp profile add my-app \
-  --app-id my-bubble-app \
-  --appname my-bubble-app \
-  --editor-url "https://bubble.io/page?id=my-bubble-app" \
-  --app-version test
+```text
+bubble-mcp profile add my-app --app-id my-bubble-app --appname my-bubble-app --editor-url "https://bubble.io/page?id=my-bubble-app" --app-version test
 ```
 
 ## 4. Capture The Bubble Session
@@ -114,12 +117,8 @@ bubble-mcp context detect --profile my-app --app-id my-bubble-app --force
 
 If your app uses a specific Bubble branch/version:
 
-```bash
-bubble-mcp context detect \
-  --profile my-app \
-  --app-id my-bubble-app \
-  --app-version test \
-  --force
+```text
+bubble-mcp context detect --profile my-app --app-id my-bubble-app --app-version test --force
 ```
 
 Detected artifacts stay local under:
@@ -167,21 +166,25 @@ virtualenv Python:
 }
 ```
 
-The console script form is also supported:
+On Windows, use the virtualenv Python executable from `Scripts`:
 
 ```json
 {
   "mcpServers": {
     "befree-bubble-mcp": {
-      "command": "/absolute/path/to/befree-bubble-mcp/.venv/bin/bubble-mcp-server",
-      "args": [],
+      "command": "C:\\path\\to\\befree-bubble-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "bubble_mcp.server.stdio"],
       "env": {
-        "BUBBLE_MCP_CONFIG_DIR": "/Users/me/.config/bubble-mcp"
+        "BUBBLE_MCP_CONFIG_DIR": "C:\\Users\\me\\.config\\bubble-mcp"
       }
     }
   }
 }
 ```
+
+The console script form is also supported in normal shells, but the Python
+module form is more reliable for desktop MCP clients that do not inherit an
+activated virtual environment.
 
 After connecting, ask naturally and reference the profile name:
 

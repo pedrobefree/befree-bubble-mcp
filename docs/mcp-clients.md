@@ -13,9 +13,24 @@ profile/app setup, check `bubble_profile_status` for configured profiles, use
 
 Install the Python package and create at least one local Bubble profile:
 
+macOS / Linux / Git Bash:
+
 ```bash
 python3.11 -m venv .venv
-. .venv/bin/activate
+source .venv/bin/activate
+python -m pip install ".[browser]"
+python -m playwright install chromium
+bubble-mcp init
+bubble-mcp profile add my-app --app-id my-bubble-app
+bubble-mcp profile list
+bubble-mcp profile status --profile my-app
+```
+
+Windows PowerShell:
+
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install ".[browser]"
 python -m playwright install chromium
 bubble-mcp init
@@ -37,6 +52,22 @@ module:
       "args": ["-m", "bubble_mcp.server.stdio"],
       "env": {
         "BUBBLE_MCP_CONFIG_DIR": "/Users/me/.config/bubble-mcp"
+      }
+    }
+  }
+}
+```
+
+On Windows:
+
+```json
+{
+  "mcpServers": {
+    "befree-bubble-mcp": {
+      "command": "C:\\path\\to\\befree-bubble-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "bubble_mcp.server.stdio"],
+      "env": {
+        "BUBBLE_MCP_CONFIG_DIR": "C:\\Users\\me\\.config\\bubble-mcp"
       }
     }
   }

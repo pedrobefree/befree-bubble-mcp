@@ -4,14 +4,21 @@
 
 Install the package or activate the virtual environment where it is installed:
 
+macOS / Linux / Git Bash:
+
 ```bash
-. .venv/bin/activate
+source .venv/bin/activate
 python -m pip install -e .
 bubble-mcp --help
 ```
 
-For `pipx`, install from the local checkout with `pipx install .` or from the
-published package with `pipx install befree-bubble-mcp`.
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+bubble-mcp --help
+```
 
 ## `bubble-mcp` or `bubble-mcp-server` exits with `killed` on macOS
 
@@ -41,8 +48,18 @@ For MCP client configuration, use the virtualenv Python command with
 Your shell may be using a global or Conda `pip` instead of the virtual
 environment's `pip`. Install through the active Python interpreter:
 
+macOS / Linux / Git Bash:
+
 ```bash
-. .venv/bin/activate
+source .venv/bin/activate
+python -m pip install -e ".[browser]"
+python -m playwright install chromium
+```
+
+Windows PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
 python -m pip install -e ".[browser]"
 python -m playwright install chromium
 ```
@@ -65,10 +82,29 @@ virtualenv Python:
 }
 ```
 
+On Windows, use the virtualenv Python executable from `Scripts`:
+
+```json
+{
+  "mcpServers": {
+    "befree-bubble-mcp": {
+      "command": "C:\\path\\to\\befree-bubble-mcp\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "bubble_mcp.server.stdio"]
+    }
+  }
+}
+```
+
 You can find the Python path from an activated virtual environment:
 
 ```bash
 command -v python
+```
+
+In PowerShell:
+
+```powershell
+(Get-Command python).Source
 ```
 
 ## No profiles returned
@@ -83,8 +119,19 @@ bubble-mcp profile add my-app --app-id my-bubble-app
 If you used a custom config directory, pass the same environment variable to the
 CLI and MCP server:
 
+macOS / Linux / Git Bash:
+
 ```bash
 export BUBBLE_MCP_CONFIG_DIR=/path/to/bubble-mcp-config
+bubble-mcp init
+bubble-mcp profile add my-app --app-id my-bubble-app
+bubble-mcp profile list
+```
+
+Windows PowerShell:
+
+```powershell
+$env:BUBBLE_MCP_CONFIG_DIR="C:\path\to\bubble-mcp-config"
 bubble-mcp init
 bubble-mcp profile add my-app --app-id my-bubble-app
 bubble-mcp profile list
@@ -104,8 +151,16 @@ The response includes `config_dir` and `settings_path`. If those fields point to
 an empty or placeholder directory such as `/Users/me/.config/bubble-mcp`, restart
 the bridge with the real path or use `~/.config/bubble-mcp`:
 
+macOS / Linux / Git Bash:
+
 ```bash
 BUBBLE_MCP_CONFIG_DIR=~/.config/bubble-mcp npm run figma:bridge
+```
+
+Windows PowerShell:
+
+```powershell
+$env:BUBBLE_MCP_CONFIG_DIR="$env:USERPROFILE\.config\bubble-mcp"; npm run figma:bridge
 ```
 
 ## Server appears to hang when run manually
