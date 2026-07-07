@@ -12,6 +12,7 @@ from bubble_mcp.skills.authoring import (
     generate_skill_from_authoring_session,
     update_skill_authoring_session,
 )
+from bubble_mcp.skills.runner import run_skill
 from bubble_mcp.skills.store import (
     disable_skill,
     enable_skill,
@@ -332,6 +333,74 @@ def test_skill_authoring_session_generates_valid_contract(tmp_path, monkeypatch)
     assert generated["next_mcp_calls"][1]["tool"] == "bubble_skill_import"
 
 
+def test_skill_run_preview_returns_friendly_steps_without_raw_payloads(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    import_skill(Path("tests/fixtures/skills/executable-security-review.skill.json"))
+    enable_skill("security-review-executable")
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_call(tool_name: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((tool_name, args))
+        return {"ok": True, "compiled_payload": {"secret": "not-for-user"}}
+
+    monkeypatch.setattr("bubble_mcp.skills.runner._call_mcp_tool", fake_call)
+    result = run_skill(
+        "security-review-executable",
+        inputs={"profile": "client", "scope": "privacy"},
+        execute=False,
+    )
+
+    assert result["ok"] is True
+    assert result["mode"] == "preview"
+    assert str(result["run_id"]).startswith("skillrun_")
+    assert result["steps"][0]["tool"] == "bubble_context_detect"
+    assert "compiled_payload" not in json.dumps(result)
+    assert calls[0][1]["profile"] == "client"
+
+
+def test_skill_run_execute_requires_approval_and_preview_run(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    import_skill(Path("tests/fixtures/skills/executable-security-review.skill.json"))
+    enable_skill("security-review-executable")
+
+    no_approval = run_skill("security-review-executable", execute=True)
+    no_run = run_skill("security-review-executable", execute=True, approve_execution=True)
+
+    assert no_approval["error"] == "skill_execution_requires_approval"
+    assert no_run["error"] == "skill_execution_requires_preview_run"
+
+
+def test_skill_run_executes_approved_plan(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    skill_path = tmp_path / "write.skill.json"
+    skill_path.write_text(json.dumps(_valid_write_skill_payload()), encoding="utf-8")
+    import_skill(skill_path)
+    enable_skill("write-skill")
+
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_call(tool_name: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((tool_name, args))
+        return {"ok": True}
+
+    monkeypatch.setattr("bubble_mcp.skills.runner._call_mcp_tool", fake_call)
+    preview = run_skill("write-skill", inputs={"profile": "client"}, execute=False)
+    executed = run_skill(
+        "write-skill",
+        execute=True,
+        approve_execution=True,
+        run_id=str(preview["run_id"]),
+    )
+
+    assert preview["ok"] is True
+    assert preview["approval_required"] is True
+    assert executed["ok"] is True
+    assert executed["mode"] == "executed"
+    assert calls[0][1]["arguments"]["execute"] is False
+    assert calls[1][1]["arguments"]["execute"] is True
+
+
 def test_skill_mcp_tools_are_listed_and_dispatch_validate() -> None:
     tools = {tool["name"]: tool for tool in list_tool_schemas()}
 
@@ -424,4 +493,30 @@ def _valid_executable_skill_payload() -> dict[str, object]:
             {"type": "evidence_required", "outputs": ["plan", "risk_summary"]},
         ],
         "outputs": ["plan", "risk_summary", "execution_log"],
+    }
+
+
+def _valid_write_skill_payload() -> dict[str, object]:
+    return {
+        "id": "write-skill",
+        "name": "Write Skill",
+        "version": "0.1.0",
+        "risk": "mutating",
+        "inputs": {"profile": {"type": "string", "required": True}},
+        "allowedTools": ["bubble_extension_call"],
+        "steps": [
+            {
+                "id": "write_preview",
+                "type": "tool",
+                "tool": "bubble_extension_call",
+                "args": {
+                    "tool": "local.example.write",
+                    "arguments": {"profile": "{{inputs.profile}}", "execute": False},
+                },
+                "mode": "write",
+            }
+        ],
+        "approval": {"requiredFor": ["mutating"], "mode": "plan_then_approve"},
+        "gates": [{"type": "approval_required", "whenRisk": ["mutating"]}],
+        "outputs": ["plan"],
     }
