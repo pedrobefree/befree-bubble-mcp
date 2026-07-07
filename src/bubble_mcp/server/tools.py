@@ -54,6 +54,7 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.knowledge.advisor import knowledge_advice
 from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
 from bubble_mcp.learning.store import append_learning_record, list_learning_records
 from bubble_mcp.planner.deterministic import plan_message
@@ -89,6 +90,42 @@ from bubble_mcp.tool_authoring.sessions import (
     set_active_authoring_session,
 )
 from bubble_mcp.validators.semantic import validate_plan
+
+
+def _manual_guidance_payload(query: str, *, limit: int, purpose: str) -> dict[str, Any]:
+    local = knowledge_search(query, limit=limit)
+    if local.get("ok"):
+        return {
+            **local,
+            "purpose": purpose,
+            "cache_only": True,
+            "remote_docs": "selective_fetch_available",
+            "knowledge_advice": knowledge_advice(task=query, family=purpose),
+        }
+    advice = knowledge_advice(task=query, family=purpose)
+    guidance = advice.get("guidance", []) if isinstance(advice, dict) else []
+    return {
+        "ok": bool(advice.get("used")),
+        "query": query,
+        "limit": limit,
+        "count": len(guidance),
+        "results": [
+            {
+                "id": item.get("id"),
+                "source": item.get("source_id"),
+                "source_url": item.get("source_url"),
+                "title": item.get("title"),
+                "summary": item.get("summary"),
+                "retrieved_at": item.get("retrieved_at"),
+                "confidence": item.get("confidence"),
+            }
+            for item in guidance[:limit]
+        ],
+        "purpose": purpose,
+        "cache_only": not bool(advice.get("remote_used")),
+        "remote_docs": "selective_fetch",
+        "knowledge_advice": advice,
+    }
 
 
 def _required_string_arg(arguments: dict[str, Any] | None, key: str, tool_name: str) -> str:
@@ -400,33 +437,15 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
     if name == "bubble_manual_guidance":
         args = arguments or {}
         query = _required_string_arg(args, "query", name)
-        result = knowledge_search(query, limit=int(args.get("limit") or 5))
-        return {
-            **result,
-            "purpose": "manual_guidance",
-            "cache_only": True,
-            "remote_docs": "disabled",
-        }
+        return _manual_guidance_payload(query, limit=int(args.get("limit") or 5), purpose="manual_guidance")
     if name == "bubble_manual_context_for_tool_authoring":
         args = arguments or {}
         query = _required_string_arg(args, "query", name)
-        result = knowledge_search(query, limit=int(args.get("limit") or 5))
-        return {
-            **result,
-            "purpose": "tool_authoring",
-            "cache_only": True,
-            "remote_docs": "disabled",
-        }
+        return _manual_guidance_payload(query, limit=int(args.get("limit") or 5), purpose="tool_authoring")
     if name == "bubble_manual_context_for_validation":
         args = arguments or {}
         query = _required_string_arg(args, "query", name)
-        result = knowledge_search(query, limit=int(args.get("limit") or 5))
-        return {
-            **result,
-            "purpose": "validation",
-            "cache_only": True,
-            "remote_docs": "disabled",
-        }
+        return _manual_guidance_payload(query, limit=int(args.get("limit") or 5), purpose="validation")
     if name == "bubble_readiness_check":
         args = arguments or {}
         return run_readiness_check(

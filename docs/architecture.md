@@ -67,9 +67,12 @@ execution model:
 
 - `bubble_mcp.knowledge` imports normalized local JSONL records with
   `bubble_knowledge_refresh_source` / `bubble-mcp knowledge refresh-source`.
-  Search, fetch, and guidance calls are cache-only in v1.
-- A remote GitBook MCP fallback is planned behind the same knowledge interface,
-  but remote queries must be sanitized before that fallback is enabled.
+  Explicit search/fetch calls are cache-only; agent-facing guidance uses the
+  selective KnowledgeAdvisor, which searches local cache first and may fetch a
+  small number of official Bubble manual pages and Bubble Forum topics.
+- Remote selective fetch is enabled by default, can be disabled with
+  `BUBBLE_MCP_KNOWLEDGE_REMOTE=0`, and must sanitize queries before any network
+  call.
 - Official Bubble manual guidance can explain platform behavior, but it never
   proves the current project state. Project state still comes from local
   profiles, captured sessions, detected context, mutation overlays, and fresh

@@ -46,6 +46,7 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.knowledge.advisor import knowledge_advice
 from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
 from bubble_mcp.learning.store import append_learning_record, list_learning_records
 from bubble_mcp.planner.deterministic import plan_message
@@ -1080,15 +1081,44 @@ def command_knowledge_guidance(args: argparse.Namespace) -> int:
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         emit_knowledge_error("guidance", exc)
         return 1
+    if result.get("ok"):
+        emit_json(
+            {
+                **result,
+                "purpose": "manual_guidance",
+                "cache_only": True,
+                "remote_docs": "selective_fetch_available",
+                "knowledge_advice": knowledge_advice(task=args.query, family="manual_guidance"),
+            }
+        )
+        return 0
+    advice = knowledge_advice(task=args.query, family="manual_guidance")
+    guidance = advice.get("guidance", []) if isinstance(advice, dict) else []
     emit_json(
         {
-            **result,
+            "ok": bool(advice.get("used")),
+            "query": args.query,
+            "limit": args.limit,
+            "count": len(guidance),
+            "results": [
+                {
+                    "id": item.get("id"),
+                    "source": item.get("source_id"),
+                    "source_url": item.get("source_url"),
+                    "title": item.get("title"),
+                    "summary": item.get("summary"),
+                    "retrieved_at": item.get("retrieved_at"),
+                    "confidence": item.get("confidence"),
+                }
+                for item in guidance[: args.limit]
+            ],
             "purpose": "manual_guidance",
-            "cache_only": True,
-            "remote_docs": "disabled",
+            "cache_only": not bool(advice.get("remote_used")),
+            "remote_docs": "selective_fetch",
+            "knowledge_advice": advice,
         }
     )
-    return 0 if result.get("ok") else 1
+    return 0 if advice.get("used") else 1
 
 
 def command_tools_guide(args: argparse.Namespace) -> int:

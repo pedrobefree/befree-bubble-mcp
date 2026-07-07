@@ -69,6 +69,42 @@ def import_knowledge_records(path: Path, *, source: str) -> dict[str, Any]:
     return {"ok": True, "source": normalized_source, "imported": len(records), "path": str(output_path)}
 
 
+def _write_source_records(source: str, records: list[KnowledgeRecord]) -> Path:
+    output_path = source_records_path(source)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = output_path.with_suffix(".jsonl.tmp")
+    with temporary_path.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record.to_dict(), sort_keys=True) + "\n")
+    temporary_path.replace(output_path)
+    return output_path
+
+
+def store_knowledge_records(records: list[KnowledgeRecord]) -> dict[str, Any]:
+    """Merge normalized records into their local source caches."""
+
+    grouped: dict[str, dict[str, KnowledgeRecord]] = {}
+    for record in records:
+        source = _safe_source(record.source)
+        grouped.setdefault(source, {})
+        path = source_records_path(source)
+        if path.exists() and not grouped[source]:
+            grouped[source].update({existing.id: existing for existing in _load_jsonl_records(path)})
+        grouped[source][record.id] = record
+
+    written: list[dict[str, Any]] = []
+    for source, records_by_id in grouped.items():
+        merged = list(records_by_id.values())
+        output_path = _write_source_records(source, merged)
+        written.append({"source": source, "count": len(merged), "path": str(output_path)})
+
+    return {
+        "ok": True,
+        "stored": sum(item["count"] for item in written),
+        "sources": written,
+    }
+
+
 def _all_records() -> list[KnowledgeRecord]:
     """Load cached records with deterministic global id dedupe.
 

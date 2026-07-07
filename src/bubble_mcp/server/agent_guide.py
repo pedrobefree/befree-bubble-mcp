@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 from typing import Any
+
+from bubble_mcp.knowledge.advisor import knowledge_advice
 import unicodedata
 
 
@@ -995,7 +997,7 @@ def agent_guide(task: str = "") -> dict[str, Any]:
     route_map = {route["intent"]: route for route in ROUTES}
     recommended = [route_map[intent] for intent in unique_intents if intent in route_map]
 
-    return {
+    result = {
         "ok": True,
         "task": task or None,
         "direct_tool_policy": {
@@ -1013,6 +1015,10 @@ def agent_guide(task: str = "") -> dict[str, Any]:
         "recommended_routes": recommended,
         "all_routes": list(ROUTES),
     }
+    advice = knowledge_advice(task=task, family="agent_guide")
+    if advice.get("used"):
+        result["knowledge_advice"] = advice
+    return result
 
 
 def task_recipe(
@@ -1060,7 +1066,7 @@ def task_recipe(
         },
     )
     guide = agent_guide(task)
-    return {
+    result = {
         "ok": True,
         "task": task or None,
         "recipe": recipe_id,
@@ -1101,6 +1107,10 @@ def task_recipe(
         },
         "cli_equivalent": f"bubble-mcp tools recipe --task {task!r}" if task else "bubble-mcp tools recipe --task '<task>'",
     }
+    advice = knowledge_advice(task=task, family=recipe_id, profile=profile, context=context)
+    if advice.get("used"):
+        result["knowledge_advice"] = advice
+    return result
 
 
 def _compact_tool_schema(tool: dict[str, Any]) -> dict[str, Any]:
@@ -1222,7 +1232,7 @@ def task_runbook(
             "next_actions": status.get("next_actions", []),
         }
 
-    return {
+    result = {
         "ok": True,
         "task": task or None,
         "inputs": recipe["inputs"],
@@ -1245,6 +1255,16 @@ def task_runbook(
         ),
         "cli_equivalent": f"bubble-mcp tools runbook --task {task!r}" if task else "bubble-mcp tools runbook --task '<task>'",
     }
+    advice = knowledge_advice(
+        task=task,
+        family=str(recipe["recipe"]),
+        profile=profile,
+        context=context,
+        arguments={"parent": parent, "execute": execute},
+    )
+    if advice.get("used"):
+        result["knowledge_advice"] = advice
+    return result
 
 
 def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
