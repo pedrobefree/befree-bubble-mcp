@@ -2111,6 +2111,15 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
     for field in ["map_type", "custom_style", "border_radius"]:
         assert field in create_style["properties"]
 
+    delete_data_field = tools["delete_data_field"]["inputSchema"]
+    assert delete_data_field["required"] == ["profile", "data_type_ref", "name"]
+    assert "x-bubble-data-field-key-guidance" in delete_data_field
+    delete_field_description = delete_data_field["properties"]["name"]["description"]
+    assert "Exact Bubble schema field key" in delete_field_description
+    assert "field_name_text" in delete_field_description
+    assert "field_name_number" in delete_field_description
+    assert "nome_do_campo_tabelarelacional" in delete_field_description
+
     create_event = tools["create_event"]["inputSchema"]
     assert create_event["required"] == ["profile", "context", "event_type"]
     for field in ["only_when_json", "interval_seconds", "element_ref", "event_key"]:
@@ -2131,6 +2140,7 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
 
     change_user = tools["make_changes_to_current_user"]["inputSchema"]
     assert change_user["required"] == ["profile", "context", "event_ref", "fields"]
+    assert "field_name_text" in change_user["properties"]["fields"]["description"]
     for field in ["fields", "thing", "to_email", "query_json"]:
         assert field in add_action["properties"]
 
@@ -2138,6 +2148,8 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
     assert create_privacy_rule["required"] == ["profile", "data_type_ref"]
     for field in ["rule_key", "rule_name", "view_all", "view_fields", "binding_fields", "condition_json"]:
         assert field in create_privacy_rule["properties"]
+    assert "field_name_text" in create_privacy_rule["properties"]["view_fields"]["description"]
+    assert "field_name_text" in create_privacy_rule["properties"]["binding_fields"]["description"]
 
     set_privacy_rule_permission = tools["set_privacy_rule_permission"]["inputSchema"]
     assert set_privacy_rule_permission["required"] == ["profile", "data_type_ref", "rule_key", "permission", "value"]

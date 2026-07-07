@@ -323,6 +323,25 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "include_cache": "Include local cache data in the read-only response.",
 }
 
+DATA_FIELD_KEY_GUIDANCE = (
+    "When referencing Bubble Data Type fields, consult the selected app schema/context first and pass the exact "
+    "Bubble field key with its type suffix. Text fields usually end in _text, number fields in _number, and "
+    "relational fields use the related table key as the suffix, for example field_name_text, field_name_number, "
+    "or nome_do_campo_tabelarelacional."
+)
+
+DATA_FIELD_REFERENCE_PROPERTIES = {
+    "binding_fields",
+    "fields",
+    "option_caption_field",
+    "query_result_from_field",
+    "query_sort_field",
+    "result_from_field",
+    "sort_field",
+    "url_backup_field",
+    "view_fields",
+}
+
 
 NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_project_bootstrap": (
@@ -950,6 +969,7 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
         if field in defaults and isinstance(field_schema, dict):
             field_schema.setdefault("default", deepcopy(defaults[field]))
     _apply_visual_create_metadata(name, input_schema, properties)
+    _apply_data_field_reference_metadata(name, input_schema, properties)
 
 
 def _apply_visual_create_metadata(name: str, input_schema: dict[str, Any], properties: dict[str, Any]) -> None:
@@ -971,18 +991,45 @@ def _apply_visual_create_metadata(name: str, input_schema: dict[str, Any], prope
         input_schema["x-bubble-element-type"] = VISUAL_CREATE_TYPES[name]
 
 
+def _apply_data_field_reference_metadata(name: str, input_schema: dict[str, Any], properties: dict[str, Any]) -> None:
+    has_data_field_reference = False
+    for field_name in DATA_FIELD_REFERENCE_PROPERTIES:
+        field_schema = properties.get(field_name)
+        if not isinstance(field_schema, dict):
+            continue
+        has_data_field_reference = True
+        base_description = field_schema.get("description") or COMMON_PROPERTY_DESCRIPTIONS.get(field_name, "")
+        field_schema["description"] = f"{base_description} {DATA_FIELD_KEY_GUIDANCE}".strip()
+
+    if name in {"rename_data_field", "delete_data_field"}:
+        name_schema = properties.get("name")
+        if isinstance(name_schema, dict):
+            has_data_field_reference = True
+            name_schema["description"] = (
+                "Exact Bubble schema field key to target. Consult the selected data type schema/context before "
+                f"executing. {DATA_FIELD_KEY_GUIDANCE} Do not pass only the display label."
+            )
+            name_schema.setdefault(
+                "examples",
+                ["field_name_text", "field_name_number", "nome_do_campo_tabelarelacional"],
+            )
+
+    if has_data_field_reference:
+        input_schema["x-bubble-data-field-key-guidance"] = DATA_FIELD_KEY_GUIDANCE
+
+
 def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
     if name in EXACT_TOOL_FIELDS:
         return EXACT_TOOL_FIELDS[name]
     visual_fields = _visual_fields_for_name(name)
     if visual_fields is not None:
         return visual_fields
+    if name.startswith(("create_data_type", "rename_data_type", "delete_data_type", "create_data_field", "rename_data_field", "delete_data_field", "set_data_type_api_exposure", "list_privacy_rules", "create_privacy_rule", "delete_privacy_rule", "set_privacy_rule")):
+        return _data_schema_fields(name)
     if name.startswith(("delete_", "clear_", "regenerate_")):
         return (("profile",), ("dry_run", "settings_path", "name", "confirm"))
     if name.startswith(("list_", "inspect_", "scan_", "resolve_", "verify_")):
         return (("profile",), ("dry_run", "settings_path", "context", "query", "limit", "json"))
-    if name.startswith(("create_data_type", "rename_data_type", "delete_data_type", "create_data_field", "rename_data_field", "delete_data_field", "set_data_type_api_exposure", "list_privacy_rules", "create_privacy_rule", "delete_privacy_rule", "set_privacy_rule")):
-        return _data_schema_fields(name)
     if name.startswith(("create_option_", "rename_option_", "delete_option_", "list_option_", "set_option_", "reorder_option_")):
         return _option_schema_fields(name)
     if name.startswith(("create_color", "update_color", "delete_color", "delete_colors", "clear_custom_colors", "reorder_colors")):
