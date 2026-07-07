@@ -13,8 +13,51 @@ def test_validate_declarative_skill_file() -> None:
     report = validate_skill_file(Path("tests/fixtures/skills/security-review.skill.json"))
 
     assert report["ok"] is True
+    assert report["executable"] is False
     assert report["skill"]["id"] == "security-review"
     assert "bubble_context_detect" in report["skill"]["allowedTools"]
+
+
+def test_validate_executable_skill_file() -> None:
+    report = validate_skill_file(Path("tests/fixtures/skills/executable-security-review.skill.json"))
+
+    assert report["ok"] is True
+    assert report["executable"] is True
+    assert report["skill"]["id"] == "security-review-executable"
+    assert report["skill"]["risk"] == "mutating"
+    assert report["skill"]["steps"][0]["tool"] == "bubble_context_detect"
+
+
+def test_executable_mutating_skill_requires_approval(tmp_path) -> None:
+    skill_path = tmp_path / "missing-approval.skill.json"
+    payload = _valid_executable_skill_payload()
+    payload.pop("approval")
+    skill_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = validate_skill_file(skill_path)
+
+    assert report["ok"] is False
+    assert "mutating and destructive skills require approval object" in report["errors"]
+
+
+def test_executable_skill_step_must_be_allowed(tmp_path) -> None:
+    skill_path = tmp_path / "step-not-allowed.skill.json"
+    payload = _valid_executable_skill_payload()
+    payload["steps"] = [
+        {
+            "id": "bad_step",
+            "type": "tool",
+            "tool": "bubble_context_find",
+            "args": {"profile": "{{inputs.profile}}", "query": "privacy"},
+            "mode": "read",
+        }
+    ]
+    skill_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    report = validate_skill_file(skill_path)
+
+    assert report["ok"] is False
+    assert "steps[0].tool is not listed in allowedTools: bubble_context_find" in report["errors"]
 
 
 def test_unknown_allowed_tool_is_rejected(tmp_path) -> None:  # type: ignore[no-untyped-def]
@@ -271,4 +314,36 @@ def _valid_skill_payload() -> dict[str, object]:
         "steps": [{"type": "refresh_context"}],
         "gates": [{"type": "read_only_only"}],
         "outputs": ["markdown_report"],
+    }
+
+
+def _valid_executable_skill_payload() -> dict[str, object]:
+    return {
+        "id": "security-review-executable",
+        "name": "Security Review Executable",
+        "version": "0.1.0",
+        "description": "Review Bubble app security posture.",
+        "risk": "mutating",
+        "inputs": {
+            "profile": {"type": "string", "required": True},
+        },
+        "allowedTools": ["bubble_context_detect"],
+        "steps": [
+            {
+                "id": "refresh_context",
+                "type": "tool",
+                "tool": "bubble_context_detect",
+                "args": {"profile": "{{inputs.profile}}", "force": True},
+                "mode": "read",
+            }
+        ],
+        "approval": {
+            "requiredFor": ["mutating", "destructive"],
+            "mode": "plan_then_approve",
+        },
+        "gates": [
+            {"type": "approval_required", "whenRisk": ["mutating", "destructive"]},
+            {"type": "evidence_required", "outputs": ["plan", "risk_summary"]},
+        ],
+        "outputs": ["plan", "risk_summary", "execution_log"],
     }

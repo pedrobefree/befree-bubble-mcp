@@ -1,0 +1,38 @@
+{
+  "id": "security-review-executable",
+  "name": "Security Review Executable",
+  "version": "0.1.0",
+  "description": "Review Bubble app security posture through an executable MCP skill contract.",
+  "risk": "mutating",
+  "inputs": {
+    "profile": {"type": "string", "required": true},
+    "scope": {"type": "string", "required": false}
+  },
+  "allowedTools": ["bubble_context_detect", "bubble_context_find"],
+  "steps": [
+    {
+      "id": "refresh_context",
+      "type": "tool",
+      "tool": "bubble_context_detect",
+      "args": {"profile": "{{inputs.profile}}", "force": true},
+      "mode": "read"
+    },
+    {
+      "id": "find_privacy",
+      "type": "tool",
+      "tool": "bubble_context_find",
+      "args": {"profile": "{{inputs.profile}}", "query": "privacy"},
+      "mode": "read",
+      "dependsOn": ["refresh_context"]
+    }
+  ],
+  "approval": {
+    "requiredFor": ["mutating", "destructive"],
+    "mode": "plan_then_approve"
+  },
+  "gates": [
+    {"type": "approval_required", "whenRisk": ["mutating", "destructive"]},
+    {"type": "evidence_required", "outputs": ["plan", "risk_summary"]}
+  ],
+  "outputs": ["plan", "risk_summary", "execution_log"]
+}
