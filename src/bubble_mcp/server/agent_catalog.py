@@ -32,6 +32,16 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "user_id": "Bubble collaborator user id or ids used to filter changelog entries.",
     "soft_delete": "When deleting a branch, keep Bubble's soft-delete behavior enabled unless explicitly instructed otherwise.",
     "version_control_api_version": "Bubble version-control API version for branch operations. Defaults to the current observed value.",
+    "rule_key": "Privacy rule key under the selected data type, such as everyone, new_rule_, or new_rule_1.",
+    "rule_name": "Privacy rule display name shown in Bubble's privacy rules editor.",
+    "permission": "Privacy permission key to toggle, such as search_for, view_attachments, view_all, or auto_binding.",
+    "view_all": "Whether this privacy rule allows all fields to be viewed.",
+    "view_attachments": "Whether this privacy rule allows file/image attachments to be viewed.",
+    "search_for": "Whether this privacy rule allows client-side searches for this data type.",
+    "auto_binding": "Whether this privacy rule allows autobinding for the selected fields.",
+    "view_fields": "Fields visible under this privacy rule. Pass a comma-separated string, JSON array, or indexed Bubble object.",
+    "binding_fields": "Fields allowed for auto-binding under this privacy rule. Pass a comma-separated string, JSON array, or indexed Bubble object.",
+    "include_everyone_default": "When creating the first privacy rule for a data type, also create Bubble's default everyone rule if missing.",
     "context": "Target Bubble page, reusable element, or container context by visible name or known id.",
     "parent": "Parent Bubble element/container where new children should be added. Use root for page-level insertion.",
     "execute": "Set true only when the user asked to apply the change in Bubble. Leave false for preview/planning.",
@@ -590,8 +600,8 @@ LEGACY_CATEGORY_DESCRIPTIONS: tuple[tuple[str, str], ...] = (
         "Create or modify Bubble styles, style conditions, and reusable design-system definitions.",
     ),
     (
-        "create_data_type rename_data_type delete_data_type create_data_field rename_data_field delete_data_field set_data_type_api_exposure",
-        "Create or modify Bubble database types, fields, and API exposure settings.",
+        "create_data_type rename_data_type delete_data_type create_data_field rename_data_field delete_data_field set_data_type_api_exposure list_privacy_rules create_privacy_rule delete_privacy_rule set_privacy_rule",
+        "Create or modify Bubble database types, fields, privacy rules, and API exposure settings.",
     ),
     (
         "create_option_set rename_option_set delete_option_set create_option_attribute create_option_value delete_option_value list_option_values",
@@ -788,11 +798,24 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "change_password": {"type": "boolean"},
     "do_not_show_success_alert": {"type": "boolean"},
     "oauth_provider": {"type": "string", "enum": ["google", "facebook"]},
+    "rule_key": {"type": "string"},
+    "rule_name": {"type": "string"},
+    "permission": {"type": "string", "enum": ["view_all", "view_attachments", "search_for", "auto_binding"]},
+    "view_all": {"type": "boolean"},
+    "view_attachments": {"type": "boolean"},
+    "search_for": {"type": "boolean"},
+    "auto_binding": {"type": "boolean"},
+    "include_everyone_default": {"type": "boolean", "default": True},
+    "id_counter": {"type": "integer"},
     "provider_app_id": {"type": "string"},
     "provider_app_secret": {"type": "string"},
     "provider_scopes": {"type": ["string", "array"], "items": {"type": "string"}},
     "facebook_user_link": {"type": "boolean"},
     "facebook_server_redirect": {"type": "boolean"},
+    "value": {"type": ["string", "number", "boolean", "object", "array", "null"]},
+    "view_fields": {"type": ["string", "array", "object", "null"], "items": {"type": "string"}},
+    "binding_fields": {"type": ["string", "array", "object", "null"], "items": {"type": "string"}},
+    "condition_json": {"type": ["string", "object", "null"]},
     "pause_ms": {"type": "integer"},
     "interval_seconds": {"type": "number"},
     "width": {"type": "number", "minimum": 0},
@@ -958,7 +981,7 @@ def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
         return (("profile",), ("dry_run", "settings_path", "name", "confirm"))
     if name.startswith(("list_", "inspect_", "scan_", "resolve_", "verify_")):
         return (("profile",), ("dry_run", "settings_path", "context", "query", "limit", "json"))
-    if name.startswith(("create_data_type", "rename_data_type", "delete_data_type", "create_data_field", "rename_data_field", "delete_data_field", "set_data_type_api_exposure")):
+    if name.startswith(("create_data_type", "rename_data_type", "delete_data_type", "create_data_field", "rename_data_field", "delete_data_field", "set_data_type_api_exposure", "list_privacy_rules", "create_privacy_rule", "delete_privacy_rule", "set_privacy_rule")):
         return _data_schema_fields(name)
     if name.startswith(("create_option_", "rename_option_", "delete_option_", "list_option_", "set_option_", "reorder_option_")):
         return _option_schema_fields(name)
@@ -1039,6 +1062,39 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
         return (("profile", "data_type_ref", "name", "new_name"), ("dry_run", "settings_path"))
     if name == "delete_data_field":
         return (("profile", "data_type_ref", "name"), ("dry_run", "settings_path", "confirm"))
+    if name == "list_privacy_rules":
+        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "json"))
+    if name == "create_privacy_rule":
+        return (
+            ("profile", "data_type_ref"),
+            (
+                "dry_run",
+                "settings_path",
+                "rule_key",
+                "rule_name",
+                "view_all",
+                "view_attachments",
+                "search_for",
+                "auto_binding",
+                "view_fields",
+                "binding_fields",
+                "condition_json",
+                "include_everyone_default",
+                "id_counter",
+            ),
+        )
+    if name == "delete_privacy_rule":
+        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "settings_path", "confirm"))
+    if name == "set_privacy_rule_name":
+        return (("profile", "data_type_ref", "rule_key", "new_name"), ("dry_run", "settings_path"))
+    if name == "set_privacy_rule_condition":
+        return (("profile", "data_type_ref", "rule_key", "condition_json"), ("dry_run", "settings_path"))
+    if name == "set_privacy_rule_permission":
+        return (("profile", "data_type_ref", "rule_key", "permission", "value"), ("dry_run", "settings_path"))
+    if name == "set_privacy_rule_field_visibility":
+        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "settings_path", "view_all", "view_fields"))
+    if name == "set_privacy_rule_auto_binding":
+        return (("profile", "data_type_ref", "rule_key", "auto_binding"), ("dry_run", "settings_path", "binding_fields"))
     return (("profile", "data_type_ref"), ("dry_run", "settings_path", "value", "confirm"))
 
 

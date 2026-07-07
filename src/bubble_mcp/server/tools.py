@@ -1000,7 +1000,17 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             write_payload,
             session,
             dry_run=not execute,
-            calculate_derived=name == "delete_data_field" or bool(args.get("calculate_derived")),
+            calculate_derived=name in {
+                "delete_data_field",
+                "create_privacy_rule",
+                "delete_privacy_rule",
+                "set_privacy_rule_name",
+                "set_privacy_rule_condition",
+                "set_privacy_rule_permission",
+                "set_privacy_rule_field_visibility",
+                "set_privacy_rule_auto_binding",
+            }
+            or bool(args.get("calculate_derived")),
         )
         if execute and result.get("ok"):
             record_mutation_overlay(

@@ -53,6 +53,102 @@ def test_delete_data_field_emits_bubble_editor_delete_contract(tmp_path, capsys)
     assert changes[1]["body"] == "campo novo - deleted"
 
 
+def test_privacy_rule_tools_emit_bubble_editor_contracts(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "user_types": {
+                    "testimonial": {
+                        "%d": "Testimonial",
+                        "%f3": {
+                            "avatar_image": {"%d": "avatar", "%v": "image"},
+                            "public_boolean": {"%d": "public", "%v": "yes_no"},
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="courselaunch")
+
+    assert cli.create_privacy_rule("testimonial", dry_run=True, id_counter=20000318) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    changes = payload["changes"]
+    assert changes[0]["intent"]["name"] == "ChangeAppSetting"
+    assert changes[0]["path_array"] == ["user_types", "testimonial", "privacy_role", "everyone"]
+    assert changes[0]["body"]["permissions"]["non_filterable_fields"]["avatar_image"] is True
+    assert changes[1]["path_array"] == ["user_types", "testimonial", "privacy_role", "new_rule_"]
+    assert changes[1]["body"] == {
+        "%d": "New rule",
+        "permissions": {
+            "view_all": True,
+            "view_attachments": True,
+            "search_for": True,
+            "auto_binding": False,
+        },
+    }
+    assert changes[2] == {"type": "id_counter", "value": 20000318}
+
+    assert cli.set_privacy_rule_name("testimonial", "new_rule_", "public_testimonial", dry_run=True) is True
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    assert payload["changes"][0]["path_array"] == ["user_types", "testimonial", "privacy_role", "new_rule_", "%d"]
+    assert payload["changes"][0]["body"] == "public_testimonial"
+
+    condition = {
+        "%x": "InjectedValue",
+        "%n": {
+            "%x": "Message",
+            "%nm": "public_boolean",
+            "is_slidable": False,
+            "%n": {"%x": "Message", "%nm": "is_true", "is_slidable": False},
+        },
+        "is_slidable": False,
+        "said": "Y291cnNlbGF1bmNo",
+    }
+    assert cli.set_privacy_rule_condition("testimonial", "new_rule_", condition, dry_run=True) is True
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    assert payload["changes"][0]["path_array"] == ["user_types", "testimonial", "privacy_role", "new_rule_", "%c"]
+    assert payload["changes"][0]["body"] == condition
+
+    assert cli.set_privacy_rule_field_visibility(
+        "testimonial",
+        "new_rule_",
+        view_all=False,
+        view_fields=["avatar_image", "public_boolean"],
+        dry_run=True,
+    ) is True
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    assert payload["changes"][0]["path_array"] == [
+        "user_types", "testimonial", "privacy_role", "new_rule_", "permissions", "view_all"
+    ]
+    assert payload["changes"][0]["body"] is False
+    assert payload["changes"][1]["path_array"] == [
+        "user_types", "testimonial", "privacy_role", "new_rule_", "permissions", "view_fields"
+    ]
+    assert payload["changes"][1]["body"] == {"0": "avatar_image", "1": "public_boolean"}
+
+    assert cli.set_privacy_rule_auto_binding(
+        "testimonial",
+        "new_rule_",
+        True,
+        binding_fields="avatar_image",
+        dry_run=True,
+    ) is True
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    assert payload["changes"][0]["path_array"][-1] == "auto_binding"
+    assert payload["changes"][0]["body"] is True
+    assert payload["changes"][1]["path_array"][-1] == "binding_fields"
+    assert payload["changes"][1]["body"] == {"0": "avatar_image"}
+
+    assert cli.delete_privacy_rule("testimonial", "new_rule_1", dry_run=True) is True
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    assert payload["changes"][0]["path_array"] == ["user_types", "testimonial", "privacy_role", "new_rule_1"]
+    assert payload["changes"][0]["body"] is None
+
+
 def test_cli_context_summary(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["context", "summary", "--file", str(FIXTURE)]) == 0
 

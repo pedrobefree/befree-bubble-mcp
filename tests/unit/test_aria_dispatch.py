@@ -58,6 +58,9 @@ def test_method_kwargs_maps_delete_data_field_name_to_field_key() -> None:
 
 def test_delete_data_field_requires_calculate_derived_refresh() -> None:
     assert _requires_calculate_derived("delete_data_field") is True
+    assert _requires_calculate_derived("create_privacy_rule") is True
+    assert _requires_calculate_derived("set_privacy_rule_field_visibility") is True
+    assert _requires_calculate_derived("delete_privacy_rule") is True
     assert _requires_calculate_derived("create_data_field") is False
 
 

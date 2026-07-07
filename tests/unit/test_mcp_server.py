@@ -2134,6 +2134,20 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
     for field in ["fields", "thing", "to_email", "query_json"]:
         assert field in add_action["properties"]
 
+    create_privacy_rule = tools["create_privacy_rule"]["inputSchema"]
+    assert create_privacy_rule["required"] == ["profile", "data_type_ref"]
+    for field in ["rule_key", "rule_name", "view_all", "view_fields", "binding_fields", "condition_json"]:
+        assert field in create_privacy_rule["properties"]
+
+    set_privacy_rule_permission = tools["set_privacy_rule_permission"]["inputSchema"]
+    assert set_privacy_rule_permission["required"] == ["profile", "data_type_ref", "rule_key", "permission", "value"]
+    assert set_privacy_rule_permission["properties"]["permission"]["enum"] == [
+        "view_all",
+        "view_attachments",
+        "search_for",
+        "auto_binding",
+    ]
+
     list_styles = tools["list_styles"]["inputSchema"]
     assert "execute" not in list_styles["properties"]
     assert "payload" not in list_styles["properties"]
@@ -2304,9 +2318,12 @@ def test_tools_list_includes_full_aria_catalog() -> None:
 
     assert response is not None
     names = {tool["name"] for tool in response["result"]["tools"]}
-    assert len(ARIA_BUBBLE_TOOL_NAMES) == 204
+    assert len(ARIA_BUBBLE_TOOL_NAMES) == 212
     assert set(ARIA_BUBBLE_TOOL_NAMES).issubset(names)
     assert "delete_data_field" in names
+    assert "create_privacy_rule" in names
+    assert "set_privacy_rule_field_visibility" in names
+    assert "delete_privacy_rule" in names
 
 
 def test_direct_catalog_tool_call_compiles_when_supported() -> None:

@@ -56051,6 +56051,66 @@ class BubbleCLI:
                         cmd['field_key'],
                         dry_run=dry_run
                     )
+                elif command_type == 'create-privacy-rule':
+                    result = self.create_privacy_rule(
+                        cmd['data_type_key'],
+                        rule_name=cmd.get('rule_name', cmd.get('name', 'New rule')),
+                        rule_key=cmd.get('rule_key'),
+                        view_all=self._parse_privacy_bool(cmd.get('view_all', True), 'view_all'),
+                        view_attachments=self._parse_privacy_bool(cmd.get('view_attachments', True), 'view_attachments'),
+                        search_for=self._parse_privacy_bool(cmd.get('search_for', True), 'search_for'),
+                        auto_binding=self._parse_privacy_bool(cmd.get('auto_binding', False), 'auto_binding'),
+                        view_fields=cmd.get('view_fields'),
+                        binding_fields=cmd.get('binding_fields'),
+                        condition_json=cmd.get('condition_json'),
+                        include_everyone_default=self._parse_privacy_bool(cmd.get('include_everyone_default', True), 'include_everyone_default'),
+                        id_counter=cmd.get('id_counter'),
+                        dry_run=dry_run
+                    )
+                elif command_type == 'delete-privacy-rule':
+                    result = self.delete_privacy_rule(
+                        cmd['data_type_key'],
+                        cmd['rule_key'],
+                        dry_run=dry_run
+                    )
+                elif command_type == 'set-privacy-rule-name':
+                    result = self.set_privacy_rule_name(
+                        cmd['data_type_key'],
+                        cmd['rule_key'],
+                        cmd['new_name'],
+                        dry_run=dry_run
+                    )
+                elif command_type == 'set-privacy-rule-condition':
+                    result = self.set_privacy_rule_condition(
+                        cmd['data_type_key'],
+                        cmd['rule_key'],
+                        cmd['condition_json'],
+                        dry_run=dry_run
+                    )
+                elif command_type == 'set-privacy-rule-permission':
+                    result = self.set_privacy_rule_permission(
+                        cmd['data_type_key'],
+                        cmd['rule_key'],
+                        cmd['permission'],
+                        self._parse_privacy_bool(cmd['value'], 'value'),
+                        dry_run=dry_run
+                    )
+                elif command_type == 'set-privacy-rule-field-visibility':
+                    result = self.set_privacy_rule_field_visibility(
+                        cmd['data_type_key'],
+                        cmd['rule_key'],
+                        view_all=self._parse_privacy_bool(cmd['view_all'], 'view_all') if 'view_all' in cmd else None,
+                        view_fields=cmd.get('view_fields'),
+                        dry_run=dry_run
+                    )
+                elif command_type == 'set-privacy-rule-auto-binding':
+                    result = self.set_privacy_rule_auto_binding(
+                        cmd['data_type_key'],
+                        cmd['rule_key'],
+                        self._parse_privacy_bool(cmd['auto_binding'], 'auto_binding'),
+                        binding_fields=cmd.get('binding_fields'),
+                        dry_run=dry_run
+                    )
                 elif command_type == 'create-option-set':
                     result = self.create_option_set(
                         cmd['name'],
@@ -62202,6 +62262,385 @@ class BubbleCLI:
         display_name = str(field_entry.get("%d") or "").strip()
         return display_name or field_key
 
+    def list_privacy_rules(self, data_type_key: str, dry_run: bool = False) -> List[Dict[str, Any]]:
+        """List privacy rules for a Bubble Data Type from the loaded context/cache."""
+        user_types = self._get_user_types(include_cache=True)
+        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
+        privacy_role = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
+        rows: List[Dict[str, Any]] = []
+        for rule_key, rule_payload in sorted(privacy_role.items()):
+            payload = rule_payload if isinstance(rule_payload, dict) else {}
+            permissions = payload.get("permissions", {}) if isinstance(payload.get("permissions"), dict) else {}
+            rows.append(
+                {
+                    "data_type_key": data_type_key,
+                    "rule_key": rule_key,
+                    "name": payload.get("%d") or rule_key,
+                    "has_condition": "%c" in payload,
+                    "permissions": permissions,
+                }
+            )
+        if dry_run:
+            print(json.dumps({"ok": True, "data_type_key": data_type_key, "privacy_rules": rows}, indent=2))
+        return rows
+
+    def create_privacy_rule(
+        self,
+        data_type_key: str,
+        rule_name: str = "New rule",
+        rule_key: Optional[str] = None,
+        view_all: bool = True,
+        view_attachments: bool = True,
+        search_for: bool = True,
+        auto_binding: bool = False,
+        view_fields: Optional[Any] = None,
+        binding_fields: Optional[Any] = None,
+        condition_json: Optional[Any] = None,
+        include_everyone_default: bool = True,
+        id_counter: Optional[int] = None,
+        dry_run: bool = False
+    ) -> bool:
+        """Create a privacy rule under a Bubble Data Type."""
+        resolved_rule_key = rule_key or self._next_privacy_rule_key(data_type_key)
+        permissions: Dict[str, Any] = {
+            "view_all": self._parse_privacy_bool(view_all, "view_all"),
+            "view_attachments": self._parse_privacy_bool(view_attachments, "view_attachments"),
+            "search_for": self._parse_privacy_bool(search_for, "search_for"),
+            "auto_binding": self._parse_privacy_bool(auto_binding, "auto_binding"),
+        }
+        if view_fields is not None:
+            permissions["view_fields"] = self._privacy_field_list_payload(view_fields)
+        if auto_binding:
+            permissions["binding_fields"] = self._privacy_field_list_payload(binding_fields or [])
+        elif binding_fields is not None:
+            permissions["binding_fields"] = self._privacy_field_list_payload(binding_fields)
+
+        rule_payload: Dict[str, Any] = {"%d": rule_name, "permissions": permissions}
+        if condition_json is not None:
+            rule_payload["%c"] = self._parse_privacy_json_value(condition_json, "condition_json")
+
+        pb = PayloadBuilder(appname=self.appname)
+        if self._parse_privacy_bool(include_everyone_default, "include_everyone_default") and not self._privacy_rules_for_type(data_type_key):
+            self._add_schema_change(
+                pb,
+                "ChangeAppSetting",
+                ["user_types", data_type_key, "privacy_role", "everyone"],
+                self._default_everyone_privacy_rule(data_type_key),
+            )
+        self._add_schema_change(
+            pb,
+            "ChangeAppSetting",
+            ["user_types", data_type_key, "privacy_role", resolved_rule_key],
+            rule_payload,
+        )
+        if id_counter is not None:
+            pb.add_change_raw({"type": "id_counter", "value": int(id_counter)})
+
+        ok = self._send_schema_payload(
+            pb,
+            dry_run,
+            f"Privacy rule '{resolved_rule_key}' created on '{data_type_key}'."
+        )
+        if ok and not dry_run:
+            self._update_privacy_rule_cache(data_type_key, resolved_rule_key, rule_payload)
+            self._save_cli_cache()
+        return ok
+
+    def delete_privacy_rule(self, data_type_key: str, rule_key: str, dry_run: bool = False) -> bool:
+        """Delete a privacy rule from a Bubble Data Type."""
+        pb = PayloadBuilder(appname=self.appname)
+        self._add_schema_change(
+            pb,
+            "ChangeAppSetting",
+            ["user_types", data_type_key, "privacy_role", rule_key],
+            None,
+        )
+        ok = self._send_schema_payload(
+            pb,
+            dry_run,
+            f"Privacy rule '{rule_key}' deleted from '{data_type_key}'."
+        )
+        if ok and not dry_run:
+            self._delete_privacy_rule_cache(data_type_key, rule_key)
+            self._save_cli_cache()
+        return ok
+
+    def set_privacy_rule_name(
+        self,
+        data_type_key: str,
+        rule_key: str,
+        new_name: str,
+        dry_run: bool = False
+    ) -> bool:
+        """Rename a privacy rule."""
+        return self._set_privacy_rule_path(
+            data_type_key,
+            rule_key,
+            ["%d"],
+            new_name,
+            dry_run=dry_run,
+            success_message=f"Privacy rule '{rule_key}' renamed to '{new_name}'.",
+        )
+
+    def set_privacy_rule_condition(
+        self,
+        data_type_key: str,
+        rule_key: str,
+        condition_json: Any,
+        dry_run: bool = False
+    ) -> bool:
+        """Set a privacy rule condition expression."""
+        condition_payload = self._parse_privacy_json_value(condition_json, "condition_json")
+        return self._set_privacy_rule_path(
+            data_type_key,
+            rule_key,
+            ["%c"],
+            condition_payload,
+            dry_run=dry_run,
+            success_message=f"Privacy rule '{rule_key}' condition updated.",
+        )
+
+    def set_privacy_rule_permission(
+        self,
+        data_type_key: str,
+        rule_key: str,
+        permission: str,
+        value: bool,
+        dry_run: bool = False
+    ) -> bool:
+        """Set a boolean privacy rule permission such as search_for or view_attachments."""
+        allowed = {"view_all", "view_attachments", "search_for", "auto_binding"}
+        if permission not in allowed:
+            print(f"❌ Unsupported privacy permission '{permission}'. Expected one of: {', '.join(sorted(allowed))}")
+            return False
+        return self._set_privacy_rule_path(
+            data_type_key,
+            rule_key,
+            ["permissions", permission],
+            self._parse_privacy_bool(value, "value"),
+            dry_run=dry_run,
+            success_message=f"Privacy rule '{rule_key}' permission '{permission}' set to {self._parse_privacy_bool(value, 'value')}.",
+        )
+
+    def set_privacy_rule_field_visibility(
+        self,
+        data_type_key: str,
+        rule_key: str,
+        view_all: Optional[bool] = None,
+        view_fields: Optional[Any] = None,
+        dry_run: bool = False
+    ) -> bool:
+        """Set visible fields for a privacy rule and optionally update view_all."""
+        pb = PayloadBuilder(appname=self.appname)
+        if view_all is not None:
+            self._add_schema_change(
+                pb,
+                "ChangeAppSetting",
+                ["user_types", data_type_key, "privacy_role", rule_key, "permissions", "view_all"],
+                self._parse_privacy_bool(view_all, "view_all"),
+            )
+        if view_fields is not None:
+            self._add_schema_change(
+                pb,
+                "ChangeAppSetting",
+                ["user_types", data_type_key, "privacy_role", rule_key, "permissions", "view_fields"],
+                self._privacy_field_list_payload(view_fields),
+            )
+        if view_all is None and view_fields is None:
+            print("❌ Missing privacy field visibility change: pass view_all and/or view_fields.")
+            return False
+        ok = self._send_schema_payload(
+            pb,
+            dry_run,
+            f"Privacy rule '{rule_key}' field visibility updated."
+        )
+        if ok and not dry_run:
+            if view_all is not None:
+                self._update_privacy_rule_cache_path(data_type_key, rule_key, ["permissions", "view_all"], self._parse_privacy_bool(view_all, "view_all"))
+            if view_fields is not None:
+                self._update_privacy_rule_cache_path(data_type_key, rule_key, ["permissions", "view_fields"], self._privacy_field_list_payload(view_fields))
+            self._save_cli_cache()
+        return ok
+
+    def set_privacy_rule_auto_binding(
+        self,
+        data_type_key: str,
+        rule_key: str,
+        auto_binding: bool,
+        binding_fields: Optional[Any] = None,
+        dry_run: bool = False
+    ) -> bool:
+        """Set auto-binding for a privacy rule and its binding fields."""
+        parsed_auto_binding = self._parse_privacy_bool(auto_binding, "auto_binding")
+        pb = PayloadBuilder(appname=self.appname)
+        self._add_schema_change(
+            pb,
+            "ChangeAppSetting",
+            ["user_types", data_type_key, "privacy_role", rule_key, "permissions", "auto_binding"],
+            parsed_auto_binding,
+        )
+        binding_body = self._privacy_field_list_payload(binding_fields or []) if parsed_auto_binding else None
+        self._add_schema_change(
+            pb,
+            "ChangeAppSetting",
+            ["user_types", data_type_key, "privacy_role", rule_key, "permissions", "binding_fields"],
+            binding_body,
+        )
+        ok = self._send_schema_payload(
+            pb,
+            dry_run,
+            f"Privacy rule '{rule_key}' auto-binding updated."
+        )
+        if ok and not dry_run:
+            self._update_privacy_rule_cache_path(data_type_key, rule_key, ["permissions", "auto_binding"], parsed_auto_binding)
+            self._update_privacy_rule_cache_path(data_type_key, rule_key, ["permissions", "binding_fields"], binding_body)
+            self._save_cli_cache()
+        return ok
+
+    def _set_privacy_rule_path(
+        self,
+        data_type_key: str,
+        rule_key: str,
+        path_suffix: List[str],
+        body: Any,
+        *,
+        dry_run: bool,
+        success_message: str,
+    ) -> bool:
+        pb = PayloadBuilder(appname=self.appname)
+        self._add_schema_change(
+            pb,
+            "ChangeAppSetting",
+            ["user_types", data_type_key, "privacy_role", rule_key, *path_suffix],
+            body,
+        )
+        ok = self._send_schema_payload(pb, dry_run, success_message)
+        if ok and not dry_run:
+            self._update_privacy_rule_cache_path(data_type_key, rule_key, path_suffix, body)
+            self._save_cli_cache()
+        return ok
+
+    def _privacy_rules_for_type(self, data_type_key: str) -> Dict[str, Any]:
+        user_types = self._get_user_types(include_cache=True)
+        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
+        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
+        return rules
+
+    def _next_privacy_rule_key(self, data_type_key: str) -> str:
+        rules = self._privacy_rules_for_type(data_type_key)
+        if "new_rule_" not in rules:
+            return "new_rule_"
+        index = 1
+        while f"new_rule_{index}" in rules:
+            index += 1
+        return f"new_rule_{index}"
+
+    def _default_everyone_privacy_rule(self, data_type_key: str) -> Dict[str, Any]:
+        fields = self._data_type_field_keys(data_type_key, include_system_fields=True)
+        return {
+            "%d": "everyone",
+            "permissions": {
+                "view_all": False,
+                "view_attachments": False,
+                "search_for": False,
+                "auto_binding": False,
+                "non_filterable_fields": {field: True for field in fields},
+            },
+        }
+
+    def _data_type_field_keys(self, data_type_key: str, *, include_system_fields: bool = False) -> List[str]:
+        user_types = self._get_user_types(include_cache=True)
+        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
+        fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
+        result = [str(key) for key in fields.keys()]
+        if include_system_fields:
+            for system_field in ("Created Date", "Modified Date", "Slug", "Created By"):
+                if system_field not in result:
+                    result.append(system_field)
+        return result
+
+    def _privacy_field_list_payload(self, fields: Any) -> Optional[Dict[str, str]]:
+        if fields is None:
+            return None
+        values: List[str]
+        if isinstance(fields, str):
+            stripped = fields.strip()
+            if not stripped:
+                values = []
+            elif stripped.startswith("["):
+                parsed = self._parse_json_arg(stripped, "fields")
+                if not isinstance(parsed, list):
+                    raise ValueError("fields JSON must be an array.")
+                values = [str(item) for item in parsed]
+            else:
+                values = [part.strip() for part in stripped.split(",") if part.strip()]
+        elif isinstance(fields, dict):
+            values = [
+                str(fields[key])
+                for key in sorted(
+                    fields,
+                    key=lambda item: (0, int(str(item))) if str(item).isdigit() else (1, str(item)),
+                )
+            ]
+        elif isinstance(fields, list):
+            values = [str(item) for item in fields]
+        else:
+            raise ValueError("fields must be a comma-separated string, JSON array, or object.")
+        return {str(index): field for index, field in enumerate(values)}
+
+    def _parse_privacy_bool(self, value: Any, label: str) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)) and value in {0, 1}:
+            return bool(value)
+        normalized = str(value).strip().lower()
+        if normalized in {"1", "true", "yes", "on", "enable", "enabled"}:
+            return True
+        if normalized in {"0", "false", "no", "off", "disable", "disabled"}:
+            return False
+        raise ValueError(f"Invalid boolean value for {label}: {value!r}")
+
+    def _parse_privacy_json_value(self, value: Any, label: str) -> Any:
+        if isinstance(value, str):
+            parsed = self._parse_json_arg(value, label)
+            if parsed is None:
+                raise ValueError(f"Invalid {label}.")
+            return parsed
+        return value
+
+    def _update_privacy_rule_cache(self, data_type_key: str, rule_key: str, rule_payload: Dict[str, Any]) -> None:
+        user_types = self._schema_user_types_cache()
+        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
+        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
+        rules[rule_key] = copy.deepcopy(rule_payload)
+        entry["privacy_role"] = rules
+        user_types[data_type_key] = entry
+
+    def _delete_privacy_rule_cache(self, data_type_key: str, rule_key: str) -> None:
+        user_types = self._schema_user_types_cache()
+        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
+        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
+        rules.pop(rule_key, None)
+        entry["privacy_role"] = rules
+        user_types[data_type_key] = entry
+
+    def _update_privacy_rule_cache_path(self, data_type_key: str, rule_key: str, path_suffix: List[str], body: Any) -> None:
+        user_types = self._schema_user_types_cache()
+        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
+        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
+        rule_payload = rules.get(rule_key, {}) if isinstance(rules.get(rule_key), dict) else {}
+        cursor = rule_payload
+        for token in path_suffix[:-1]:
+            current = cursor.get(token)
+            if not isinstance(current, dict):
+                current = {}
+                cursor[token] = current
+            cursor = current
+        cursor[path_suffix[-1]] = copy.deepcopy(body)
+        rules[rule_key] = rule_payload
+        entry["privacy_role"] = rules
+        user_types[data_type_key] = entry
+
     def create_option_set(
         self,
         name: str,
@@ -68014,6 +68453,72 @@ Examples:
     delete_data_field_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
     delete_data_field_parser.add_argument('field_key', help='Field key (e.g. field_date_date)')
     delete_data_field_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
+
+    list_privacy_rules_parser = subparsers.add_parser('list-privacy-rules', help='List privacy rules for a data type')
+    list_privacy_rules_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    list_privacy_rules_parser.add_argument('--dry-run', action='store_true', help='Print JSON preview output')
+
+    create_privacy_rule_parser = subparsers.add_parser('create-privacy-rule', help='Create a privacy rule for a data type')
+    create_privacy_rule_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    create_privacy_rule_parser.add_argument('--rule-key', help='Privacy rule key (defaults to next new_rule_)')
+    create_privacy_rule_parser.add_argument('--rule-name', default='New rule', help='Privacy rule display name')
+    create_privacy_rule_parser.add_argument('--view-all', dest='view_all', action='store_true', help='Allow all fields to be viewed')
+    create_privacy_rule_parser.add_argument('--no-view-all', dest='view_all', action='store_false', help='Do not allow all fields to be viewed')
+    create_privacy_rule_parser.set_defaults(view_all=True)
+    create_privacy_rule_parser.add_argument('--view-attachments', dest='view_attachments', action='store_true', help='Allow attachments to be viewed')
+    create_privacy_rule_parser.add_argument('--no-view-attachments', dest='view_attachments', action='store_false', help='Do not allow attachments to be viewed')
+    create_privacy_rule_parser.set_defaults(view_attachments=True)
+    create_privacy_rule_parser.add_argument('--search-for', dest='search_for', action='store_true', help='Allow searching for this data type')
+    create_privacy_rule_parser.add_argument('--no-search-for', dest='search_for', action='store_false', help='Do not allow searching for this data type')
+    create_privacy_rule_parser.set_defaults(search_for=True)
+    create_privacy_rule_parser.add_argument('--auto-binding', action='store_true', help='Enable auto-binding for this rule')
+    create_privacy_rule_parser.add_argument('--view-fields', help='Comma-separated or JSON array of visible fields')
+    create_privacy_rule_parser.add_argument('--binding-fields', help='Comma-separated or JSON array of auto-binding fields')
+    create_privacy_rule_parser.add_argument('--condition-json', help='Raw Bubble condition JSON')
+    create_privacy_rule_parser.add_argument('--skip-everyone-default', dest='include_everyone_default', action='store_false', help='Do not create the default everyone rule when missing')
+    create_privacy_rule_parser.set_defaults(include_everyone_default=True)
+    create_privacy_rule_parser.add_argument('--id-counter', type=int, help='Optional Bubble id_counter value observed from editor')
+    create_privacy_rule_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
+
+    delete_privacy_rule_parser = subparsers.add_parser('delete-privacy-rule', help='Delete a privacy rule from a data type')
+    delete_privacy_rule_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    delete_privacy_rule_parser.add_argument('rule_key', help='Privacy rule key (e.g. everyone, new_rule_)')
+    delete_privacy_rule_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
+
+    set_privacy_rule_name_parser = subparsers.add_parser('set-privacy-rule-name', help='Rename a privacy rule')
+    set_privacy_rule_name_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    set_privacy_rule_name_parser.add_argument('rule_key', help='Privacy rule key')
+    set_privacy_rule_name_parser.add_argument('new_name', help='New privacy rule display name')
+    set_privacy_rule_name_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
+
+    set_privacy_rule_condition_parser = subparsers.add_parser('set-privacy-rule-condition', help='Set a privacy rule condition JSON')
+    set_privacy_rule_condition_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    set_privacy_rule_condition_parser.add_argument('rule_key', help='Privacy rule key')
+    set_privacy_rule_condition_parser.add_argument('condition_json', help='Raw Bubble condition JSON')
+    set_privacy_rule_condition_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
+
+    set_privacy_rule_permission_parser = subparsers.add_parser('set-privacy-rule-permission', help='Set a boolean privacy rule permission')
+    set_privacy_rule_permission_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    set_privacy_rule_permission_parser.add_argument('rule_key', help='Privacy rule key')
+    set_privacy_rule_permission_parser.add_argument('permission', choices=['view_all', 'view_attachments', 'search_for', 'auto_binding'])
+    set_privacy_rule_permission_parser.add_argument('value', type=lambda raw: str(raw).lower() in {'1', 'true', 'yes', 'on'})
+    set_privacy_rule_permission_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
+
+    set_privacy_rule_field_visibility_parser = subparsers.add_parser('set-privacy-rule-field-visibility', help='Set privacy rule visible fields')
+    set_privacy_rule_field_visibility_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    set_privacy_rule_field_visibility_parser.add_argument('rule_key', help='Privacy rule key')
+    set_privacy_rule_field_visibility_parser.add_argument('--view-all', dest='view_all', action='store_true', help='Set view_all true')
+    set_privacy_rule_field_visibility_parser.add_argument('--no-view-all', dest='view_all', action='store_false', help='Set view_all false')
+    set_privacy_rule_field_visibility_parser.set_defaults(view_all=None)
+    set_privacy_rule_field_visibility_parser.add_argument('--view-fields', help='Comma-separated or JSON array of visible fields')
+    set_privacy_rule_field_visibility_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
+
+    set_privacy_rule_auto_binding_parser = subparsers.add_parser('set-privacy-rule-auto-binding', help='Set privacy rule auto-binding fields')
+    set_privacy_rule_auto_binding_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    set_privacy_rule_auto_binding_parser.add_argument('rule_key', help='Privacy rule key')
+    set_privacy_rule_auto_binding_parser.add_argument('auto_binding', type=lambda raw: str(raw).lower() in {'1', 'true', 'yes', 'on'})
+    set_privacy_rule_auto_binding_parser.add_argument('--binding-fields', help='Comma-separated or JSON array of binding fields')
+    set_privacy_rule_auto_binding_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
 
     create_option_set_parser = subparsers.add_parser('create-option-set', help='Create a new option set')
     create_option_set_parser.add_argument('name', help='Option set name (with or without OS: prefix)')
@@ -73960,6 +74465,76 @@ Examples:
         success = cli.delete_data_field(
             args.data_type_key,
             args.field_key,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'list-privacy-rules':
+        rules = cli.list_privacy_rules(
+            args.data_type_key,
+            dry_run=args.dry_run
+        )
+        if not args.dry_run:
+            print(json.dumps({"ok": True, "data_type_key": args.data_type_key, "privacy_rules": rules}, indent=2))
+            success = True
+        else:
+            success = True
+    elif args.command == 'create-privacy-rule':
+        success = cli.create_privacy_rule(
+            args.data_type_key,
+            rule_name=args.rule_name,
+            rule_key=args.rule_key,
+            view_all=args.view_all,
+            view_attachments=args.view_attachments,
+            search_for=args.search_for,
+            auto_binding=args.auto_binding,
+            view_fields=args.view_fields,
+            binding_fields=args.binding_fields,
+            condition_json=args.condition_json,
+            include_everyone_default=args.include_everyone_default,
+            id_counter=args.id_counter,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'delete-privacy-rule':
+        success = cli.delete_privacy_rule(
+            args.data_type_key,
+            args.rule_key,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'set-privacy-rule-name':
+        success = cli.set_privacy_rule_name(
+            args.data_type_key,
+            args.rule_key,
+            args.new_name,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'set-privacy-rule-condition':
+        success = cli.set_privacy_rule_condition(
+            args.data_type_key,
+            args.rule_key,
+            args.condition_json,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'set-privacy-rule-permission':
+        success = cli.set_privacy_rule_permission(
+            args.data_type_key,
+            args.rule_key,
+            args.permission,
+            args.value,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'set-privacy-rule-field-visibility':
+        success = cli.set_privacy_rule_field_visibility(
+            args.data_type_key,
+            args.rule_key,
+            view_all=args.view_all,
+            view_fields=args.view_fields,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'set-privacy-rule-auto-binding':
+        success = cli.set_privacy_rule_auto_binding(
+            args.data_type_key,
+            args.rule_key,
+            args.auto_binding,
+            binding_fields=args.binding_fields,
             dry_run=args.dry_run
         )
     elif args.command == 'create-option-set':

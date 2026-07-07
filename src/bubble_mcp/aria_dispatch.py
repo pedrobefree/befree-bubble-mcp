@@ -95,7 +95,16 @@ MUTATING_PREFIXES = (
 
 def _requires_calculate_derived(tool_name: str) -> bool:
     """Return true for schema writes that Bubble finalizes through calculate_derived."""
-    return tool_name in {"delete_data_field"}
+    return tool_name in {
+        "delete_data_field",
+        "create_privacy_rule",
+        "delete_privacy_rule",
+        "set_privacy_rule_name",
+        "set_privacy_rule_condition",
+        "set_privacy_rule_permission",
+        "set_privacy_rule_field_visibility",
+        "set_privacy_rule_auto_binding",
+    }
 
 
 @dataclass(frozen=True)
