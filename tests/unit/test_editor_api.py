@@ -10,9 +10,16 @@ from bubble_mcp.execution.editor_api import (
     BubbleEditorApiClient,
     create_bubble_branch,
     delete_bubble_branch,
+    fetch_jetstream_logs,
     fetch_changelog_entries,
+    fetch_storage_usage,
+    fetch_workflow_runs,
+    fetch_workload_usage_breakdown,
+    fetch_workload_usage_by_date,
     list_branch_contributors,
     list_bubble_branches,
+    performance_audit,
+    read_time_series,
 )
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
@@ -57,6 +64,61 @@ def _client_with_calls(calls: list[dict[str, Any]]) -> BubbleEditorApiClient:
             }
         )
         return HttpResponse(status=200, body='{"status":"success","items":[]}', headers={})
+
+    return BubbleEditorApiClient(transport=fake_transport)
+
+
+def _metrics_client_with_calls(calls: list[dict[str, Any]]) -> BubbleEditorApiClient:
+    def fake_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        payload = json.loads(body.decode("utf-8"))
+        calls.append(
+            {
+                "url": url,
+                "payload": payload,
+                "headers": headers,
+                "timeout": timeout,
+            }
+        )
+        if url.endswith("/get_workload_usage_by_date"):
+            body_text = json.dumps(
+                [
+                    {
+                        "date": "2026-04-11T00:00:00.000Z",
+                        "live_workload_used": 10,
+                        "test_workload_used": 2,
+                        "total_workload_used": 12,
+                    }
+                ]
+            )
+        elif url.endswith("/get_workload_usage_breakdown"):
+            body_text = json.dumps(
+                [
+                    {"tag": "workflow", "workload_used": 20, "activity_count": 4},
+                    {"tag": "elasticsearch", "workload_used": 5, "activity_count": 1},
+                ]
+            )
+        elif url.endswith("/get_jetstream_logs"):
+            body_text = json.dumps(
+                {
+                    "data": {
+                        "rows": [
+                            {"message": "running event", "timestamp": 1783000000000},
+                            {"message": "running action", "timestamp": 1783000001000},
+                        ]
+                    }
+                }
+            )
+        elif url.endswith("/get_workflow_runs"):
+            body_text = json.dumps({"current": {"web": 15}, "history": []})
+        elif url.endswith("/get_current_app_plan_usage"):
+            body_text = json.dumps({"workload": {"current": 20}})
+        elif url.endswith("/get_storage_size"):
+            body_text = json.dumps({"current": 123, "allowance": 1000})
+        elif url.endswith("/read_time_series"):
+            body_text = json.dumps({"series": [[1783000000000, 7]]})
+        else:
+            body_text = "{}"
+        return HttpResponse(status=200, body=body_text, headers={})
 
     return BubbleEditorApiClient(transport=fake_transport)
 
@@ -137,3 +199,120 @@ def test_branch_delete_requires_confirm_when_executing(tmp_path, monkeypatch) ->
 
     with pytest.raises(ValueError, match="confirm=true"):
         delete_bubble_branch(profile="dev", app_version="feature-branch", execute=True, confirm=False)
+
+
+def test_workload_usage_by_date_posts_editor_metrics_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    result = fetch_workload_usage_by_date(
+        profile="dev",
+        start="2026-04-11T00:00:00Z",
+        end="2026-05-10T00:00:00Z",
+        granularity="day",
+        client=_metrics_client_with_calls(calls),
+    )
+
+    assert result["ok"] is True
+    assert calls[0]["url"] == "https://bubble.io/appeditor/get_workload_usage_by_date"
+    assert calls[0]["payload"] == {
+        "appname": "synthetic-app",
+        "start_date_in_iso_format": "2026-04-11T00:00:00.000Z",
+        "end_date_in_iso_format": "2026-05-10T00:00:00.000Z",
+        "granularity": "day",
+    }
+    assert result["summary"]["live_workload_used"] == 10
+
+
+def test_workload_breakdown_supports_tags_and_platform(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    result = fetch_workload_usage_breakdown(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-05-10T00:00:00.000Z",
+        tag1="workflow",
+        tag2=None,
+        platform="web_and_mobile",
+        client=_metrics_client_with_calls(calls),
+    )
+
+    assert result["ok"] is True
+    assert calls[0]["url"] == "https://bubble.io/appeditor/get_workload_usage_breakdown"
+    assert calls[0]["payload"]["tag1"] == "workflow"
+    assert calls[0]["payload"]["tag2"] is None
+    assert calls[0]["payload"]["platformToggleValue"] == "web_and_mobile"
+    assert result["summary"]["top_breakdown"][0]["tag"] == "workflow"
+
+
+def test_logs_default_to_live_app_version(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        client=_metrics_client_with_calls(calls),
+    )
+
+    assert result["ok"] is True
+    assert result["app_version"] == "live"
+    assert result["defaulted_to_live"] is True
+    assert calls[0]["url"] == "https://bubble.io/appeditor/get_jetstream_logs"
+    assert calls[0]["payload"]["tags"]["app_version"] == "live"
+    assert calls[0]["payload"]["tags"]["appname"] == "synthetic-app"
+    assert "running action" in calls[0]["payload"]["tags"]["message"]
+    assert len(result["items"]) == 2
+
+
+def test_secondary_metrics_endpoints_post_expected_payloads(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+    client = _metrics_client_with_calls(calls)
+
+    fetch_workflow_runs(profile="dev", platform="web_and_mobile", client=client)
+    fetch_storage_usage(profile="dev", refresh=True, client=client)
+    read_time_series(
+        profile="dev",
+        start=1783000000000,
+        end=1783003600000,
+        metric="page_views",
+        resolution=60,
+        client=client,
+    )
+
+    assert calls[0]["url"] == "https://bubble.io/appeditor/get_workflow_runs"
+    assert calls[0]["payload"] == {"appname": "synthetic-app", "platform": "web_and_mobile"}
+    assert calls[1]["url"] == "https://bubble.io/appeditor/get_storage_size"
+    assert calls[1]["payload"] == {"appname": "synthetic-app", "refresh": True}
+    assert calls[2]["url"] == "https://bubble.io/appeditor/read_time_series"
+    assert calls[2]["payload"]["metric"] == "page_views"
+    assert calls[2]["payload"]["use_observe"] is True
+
+
+def test_performance_audit_combines_direct_editor_sources(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    result = performance_audit(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-05-10T00:00:00.000Z",
+        client=_metrics_client_with_calls(calls),
+    )
+
+    assert result["ok"] is True
+    assert result["app_version"] == "live"
+    assert result["defaulted_to_live"] is True
+    assert result["summary"]["recommendation_count"] >= 1
+    assert result["recommendations"][0]["area"] == "workflow"
+    assert [call["url"].removeprefix("https://bubble.io") for call in calls] == [
+        "/appeditor/get_workload_usage_by_date",
+        "/appeditor/get_workload_usage_breakdown",
+        "/appeditor/get_workflow_runs",
+        "/appeditor/get_current_app_plan_usage",
+        "/appeditor/get_storage_size",
+        "/appeditor/get_jetstream_logs",
+    ]

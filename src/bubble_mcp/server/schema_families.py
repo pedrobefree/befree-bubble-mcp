@@ -767,6 +767,85 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         fmt="uri",
         examples=["https://example.com/component.html"],
     ),
+    "start": _prop(
+        ["string", "integer", "number"],
+        "Start date/time for Bubble log, workload, or usage queries. Accepts ISO datetime or epoch milliseconds.",
+        examples=["2026-04-11T00:00:00.000Z", 1783000000000],
+    ),
+    "end": _prop(
+        ["string", "integer", "number"],
+        "End date/time for Bubble log, workload, or usage queries. Accepts ISO datetime or epoch milliseconds.",
+        examples=["2026-05-10T23:59:59.999Z", 1783086400000],
+    ),
+    "granularity": _prop(
+        "string",
+        "Bucket size for Bubble workload usage queries.",
+        enum=["minute", "hour", "day"],
+        default="day",
+        examples=["day", "hour"],
+    ),
+    "platform": _prop(
+        "string",
+        "Bubble app platform filter for editor metrics endpoints.",
+        enum=["web", "mobile", "web_and_mobile"],
+        default="web_and_mobile",
+    ),
+    "tag1": _prop(
+        ["string", "null"],
+        "Optional first Bubble workload tag filter such as workflow, elasticsearch, or appeditor.",
+        examples=["workflow", "elasticsearch", "appeditor"],
+    ),
+    "tag2": _prop(
+        ["string", "null"],
+        "Optional second Bubble workload tag filter for a narrower breakdown.",
+        examples=["search"],
+    ),
+    "messages": _prop(
+        "array",
+        "Optional Jetstream log message tags to request. Omit to use the default workflow, database, HTTP, scheduled task, plugin, and error tags.",
+        items={"type": "string"},
+        examples=[["running event", "running action", "server_db.modify"]],
+    ),
+    "ascending": _prop(
+        "boolean",
+        "Return Bubble logs in ascending time order.",
+        default=True,
+    ),
+    "is_state_ar": _prop(
+        "boolean",
+        "Bubble Jetstream state flag observed from the editor log calls. Leave true unless the editor contract changes.",
+        default=True,
+    ),
+    "include_raw": _prop(
+        "boolean",
+        "Include the raw Bubble editor response in addition to compact summaries. Defaults false to keep agent context small.",
+        default=False,
+    ),
+    "refresh": _prop(
+        "boolean",
+        "Ask Bubble to refresh storage calculation before returning storage usage.",
+        default=True,
+    ),
+    "metric": _prop(
+        "string",
+        "Bubble time-series metric name.",
+        examples=["page_views"],
+    ),
+    "resolution": _prop(
+        "number",
+        "Optional Bubble time-series resolution. Omit to auto-derive a compact resolution from the selected time window.",
+        minimum=0,
+    ),
+    "use_observe": _prop(
+        "boolean",
+        "Use Bubble observe data for read_time_series.",
+        default=True,
+    ),
+    "include_logs": _prop(
+        "boolean",
+        "Include Jetstream log sampling in performance audit output. Logs default to the live app version unless app_version is provided.",
+        default=True,
+    ),
 }
 
 
@@ -1257,6 +1336,95 @@ def branch_changelog_tools() -> list[ToolSchema]:
     ]
 
 
+def _metrics_app_version_field() -> JsonSchema:
+    return _prop(
+        "string",
+        "Bubble app version/branch for log sampling. Defaults to live for production performance diagnostics; pass test or a branch id only when explicitly analyzing non-live behavior.",
+        default="live",
+        examples=["live", "test", "feature-checkout"],
+    )
+
+
+def performance_metrics_tools() -> list[ToolSchema]:
+    audit = tool_schema(
+            "bubble_performance_audit",
+            "Run a compact read-only Bubble performance audit from direct editor metrics endpoints. It fetches workload usage, workload breakdown, workflow runs, plan usage, storage usage, and optional live-version logs, then returns prioritized optimization suggestions.",
+            [
+                "profile",
+                "app_id",
+                "app_version",
+                "start",
+                "end",
+                "granularity",
+                "platform",
+                "include_logs",
+                "include_raw",
+            ],
+            required=["profile"],
+    )
+    audit["inputSchema"]["properties"]["app_version"] = _metrics_app_version_field()
+
+    logs = tool_schema(
+        "bubble_logs_fetch",
+        "Fetch Bubble Jetstream logs from the editor for a selected app/profile/time window. Defaults app_version to live for production performance diagnostics unless explicitly overridden. Read-only.",
+        [
+            "profile",
+            "app_id",
+            "app_version",
+            "start",
+            "end",
+            "messages",
+            "ascending",
+            "is_state_ar",
+            "limit",
+            "include_raw",
+        ],
+        required=["profile", "start", "end"],
+    )
+    logs["inputSchema"]["properties"]["app_version"] = _metrics_app_version_field()
+
+    return [
+        audit,
+        tool_schema(
+            "bubble_workload_usage_by_date",
+            "Read Bubble workload usage by date directly from the editor metrics endpoint. Use this for workload trend charts and date buckets. Read-only.",
+            ["profile", "app_id", "start", "end", "granularity", "include_raw"],
+            required=["profile", "start", "end"],
+        ),
+        tool_schema(
+            "bubble_workload_usage_breakdown",
+            "Read Bubble workload usage breakdown directly from the editor metrics endpoint. Use tag1/tag2 to drill into workload families. Read-only.",
+            ["profile", "app_id", "start", "end", "granularity", "tag1", "tag2", "platform", "limit", "include_raw"],
+            required=["profile", "start", "end"],
+        ),
+        logs,
+        tool_schema(
+            "bubble_plan_usage_get",
+            "Read current Bubble plan usage for the selected profile/app from the editor endpoint. Read-only.",
+            ["profile", "app_id", "include_raw"],
+            required=["profile"],
+        ),
+        tool_schema(
+            "bubble_workflow_runs_get",
+            "Read Bubble workflow run counts for the selected app/platform from the editor endpoint. Read-only.",
+            ["profile", "app_id", "platform", "include_raw"],
+            required=["profile"],
+        ),
+        tool_schema(
+            "bubble_storage_usage_get",
+            "Read Bubble file storage usage and allowance for the selected app from the editor endpoint. Read-only.",
+            ["profile", "app_id", "refresh", "include_raw"],
+            required=["profile"],
+        ),
+        tool_schema(
+            "bubble_time_series_read",
+            "Read a Bubble editor time-series metric such as page_views for a profile/app/time window. Read-only.",
+            ["profile", "app_id", "start", "end", "metric", "resolution", "use_observe", "include_raw"],
+            required=["profile", "start", "end", "metric"],
+        ),
+    ]
+
+
 def extension_kernel_tools() -> list[ToolSchema]:
     return [
         _empty_tool(
@@ -1594,5 +1762,6 @@ def native_tool_schemas() -> list[ToolSchema]:
         *planning_execution_tools(),
         *html_import_tools(),
         *branch_changelog_tools(),
+        *performance_metrics_tools(),
         *extension_kernel_tools(),
     ]

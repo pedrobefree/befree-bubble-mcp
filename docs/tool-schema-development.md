@@ -38,6 +38,8 @@ For each tool family:
 - `bubble_eval_export_expert`: local redacted expert-capture export for eval growth.
 - `html_import_tools`: advanced HTML-to-Bubble runtime import.
 - `branch_changelog_tools`: branch list/create/delete, contributors, changelog fetch.
+- `performance_metrics_tools`: read-only direct Bubble editor performance,
+  workload, logs, plan usage, workflow runs, storage, and time-series queries.
 
 ## Required Tests
 

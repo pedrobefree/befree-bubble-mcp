@@ -1,6 +1,6 @@
 import json
 
-from bubble_mcp.context.models import BubbleProjectContext
+from bubble_mcp.context.models import BubbleContextNode, BubbleProjectContext
 from bubble_mcp.context.source import save_context
 from bubble_mcp.context.detector import default_context_path
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
@@ -251,6 +251,59 @@ def test_profile_status_uses_compact_context_for_bubble_source_artifact(tmp_path
     assert status["session"]["write_ready"] is True
     assert status["context"]["path"] == str(compact_context_path)
     assert status["context"]["source_artifact"]["path"] == str(bubble_path)
+
+
+def test_profile_status_returns_safe_context_summary(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    context_path = tmp_path / "contexts" / "client-app.json"
+    save_context(
+        BubbleProjectContext(
+            app_id="client-app",
+            source="test",
+            nodes=[
+                BubbleContextNode(
+                    id="node-1",
+                    label="Secret node",
+                    type="page",
+                    metadata={"private_property": "node-secret"},
+                )
+            ],
+            edges=[],
+            metadata={
+                "saved_at": "2026-07-04T00:00:00+00:00",
+                "client_safe": {"api_key": "client-secret"},
+                "default_styles": {"Button": {"secret": "style-secret"}},
+                "settings": {"secret": "settings-secret"},
+            },
+        ),
+        context_path,
+    )
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={
+                "client": BubbleProfile(
+                    name="client",
+                    app_id="client-app",
+                    appname="client-app",
+                    app_json_path="contexts/client-app.json",
+                )
+            },
+        )
+    )
+
+    status = profile_status("client")
+    encoded = json.dumps(status)
+
+    assert status["context"]["summary"]["counts"] == {"page": 1}
+    assert isinstance(status["context"]["summary"]["metadata"]["saved_at"], str)
+    assert status["context"]["summary"]["metadata"]["default_styles"] == {"count": 1}
+    assert "client_safe" not in encoded
+    assert "client-secret" not in encoded
+    assert "node-secret" not in encoded
+    assert "style-secret" not in encoded
+    assert "settings-secret" not in encoded
 
 
 def test_profile_status_missing_profile(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

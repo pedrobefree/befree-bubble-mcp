@@ -26,6 +26,42 @@ def _path_status(path: Path | None) -> dict[str, Any]:
     return {"configured": True, "exists": path.exists(), "path": str(path)}
 
 
+def _safe_context_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    safe_summary = {
+        "app_id": summary.get("app_id"),
+        "source": summary.get("source"),
+        "counts": summary.get("counts", {}),
+        "nodes": summary.get("nodes", 0),
+        "edges": summary.get("edges", 0),
+    }
+    metadata = summary.get("metadata")
+    if not isinstance(metadata, dict):
+        return safe_summary
+
+    safe_metadata: dict[str, Any] = {}
+    for key in ("saved_at", "captured_at", "generated_at", "schema_version", "source"):
+        value = metadata.get(key)
+        if isinstance(value, str | int | float | bool):
+            safe_metadata[key] = value
+
+    mutation_overlay = metadata.get("mutation_overlay")
+    if isinstance(mutation_overlay, dict):
+        safe_metadata["mutation_overlay"] = {
+            key: value
+            for key, value in mutation_overlay.items()
+            if key in {"nodes", "edges", "pages", "elements", "mutations", "updated_at"}
+            and (isinstance(value, str | int | float | bool) or value is None)
+        }
+
+    default_styles = metadata.get("default_styles")
+    if isinstance(default_styles, dict):
+        safe_metadata["default_styles"] = {"count": len(default_styles)}
+
+    if safe_metadata:
+        safe_summary["metadata"] = safe_metadata
+    return safe_summary
+
+
 def _context_path_for_profile(profile: BubbleProfile, settings_dir: Path) -> tuple[Path | None, Path | None]:
     source_artifact = _resolve_profile_path(profile, profile.app_json_path, settings_dir)
     if source_artifact is None:
@@ -72,7 +108,7 @@ def _context_status(profile: BubbleProfile, *, settings_dir: Path, max_age_hours
         "source_artifact": _path_status(source_artifact),
         "loadable": True,
         "app_id_matches_profile": context.app_id == profile.app_id,
-        "summary": context.summary(),
+        "summary": _safe_context_summary(context.summary()),
         "freshness": context_freshness(context, path=context_path, max_age_hours=max_age_hours),
     }
 

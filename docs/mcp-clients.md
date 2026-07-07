@@ -257,6 +257,21 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_changelog_fetch`: fetches editor changelog entries with optional date, user, category, root, identifier, and path filters.
 - `bubble_branch_create`: creates a Bubble branch or sub-branch. Pass `from_app_version` for sub-branches and `execute=true` to apply it.
 - `bubble_branch_delete`: soft-deletes a Bubble branch/version. Requires `execute=true` and `confirm=true` to apply it.
+- `bubble_performance_audit`: answers broad Bubble performance, WU, workload,
+  log, usage, storage, or workflow-run questions from direct Bubble editor
+  sources. Defaults log analysis to `app_version=live`.
+- `bubble_workload_usage_by_date`: reads workload usage grouped by minute,
+  hour, or day for a profile and date range.
+- `bubble_workload_usage_breakdown`: reads workload breakdown by tags such as
+  workflow, elasticsearch, or app editor categories for a profile and date
+  range.
+- `bubble_logs_fetch`: fetches Bubble runtime logs for a profile and time
+  range. Defaults to `app_version=live`.
+- `bubble_plan_usage_get`: reads the current app plan/usage snapshot.
+- `bubble_workflow_runs_get`: reads workflow-run usage metadata.
+- `bubble_storage_usage_get`: reads current app storage usage.
+- `bubble_time_series_read`: reads a Bubble editor time-series metric such as
+  page views for a timestamp range.
 
 Mutating calls require a stored local session. Calls without `execute=true`
 return a preview instead of posting to Bubble.

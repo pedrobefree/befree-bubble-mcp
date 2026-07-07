@@ -27,9 +27,17 @@ from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_h
 from bubble_mcp.execution.editor_api import (
     create_bubble_branch,
     delete_bubble_branch,
+    fetch_jetstream_logs,
     fetch_changelog_entries,
+    fetch_plan_usage,
+    fetch_storage_usage,
+    fetch_workflow_runs,
+    fetch_workload_usage_breakdown,
+    fetch_workload_usage_by_date,
     list_branch_contributors,
     list_bubble_branches,
+    performance_audit,
+    read_time_series,
 )
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
@@ -1034,6 +1042,98 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             soft_delete=bool(args.get("soft_delete", True)),
             execute=bool(args.get("execute")),
             confirm=bool(args.get("confirm")),
+        )
+    if name == "bubble_performance_audit":
+        args = arguments or {}
+        return performance_audit(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "") or None,
+            start=str(args.get("start") or "") or None,
+            end=str(args.get("end") or "") or None,
+            granularity=str(args.get("granularity") or "day"),
+            platform=str(args.get("platform") or "web_and_mobile"),
+            include_logs=bool(args.get("include_logs", True)),
+            include_raw=bool(args.get("include_raw")),
+        )
+    if name == "bubble_workload_usage_by_date":
+        args = arguments or {}
+        return fetch_workload_usage_by_date(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            start=_required_string_arg(args, "start", name),
+            end=_required_string_arg(args, "end", name),
+            granularity=str(args.get("granularity") or "day"),
+            include_raw=bool(args.get("include_raw")),
+        )
+    if name == "bubble_workload_usage_breakdown":
+        args = arguments or {}
+        return fetch_workload_usage_breakdown(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            start=_required_string_arg(args, "start", name),
+            end=_required_string_arg(args, "end", name),
+            granularity=str(args.get("granularity") or "day"),
+            tag1=str(args.get("tag1") or "") or None,
+            tag2=str(args.get("tag2") or "") or None,
+            platform=str(args.get("platform") or "web_and_mobile"),
+            include_raw=bool(args.get("include_raw")),
+            limit=int(args.get("limit") or 50),
+        )
+    if name == "bubble_logs_fetch":
+        args = arguments or {}
+        raw_messages = args.get("messages")
+        messages = [str(item) for item in raw_messages] if isinstance(raw_messages, list) else None
+        return fetch_jetstream_logs(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "") or None,
+            start=_required_string_arg(args, "start", name),
+            end=_required_string_arg(args, "end", name),
+            messages=messages,
+            ascending=bool(args.get("ascending", True)),
+            is_state_ar=bool(args.get("is_state_ar", True)),
+            include_raw=bool(args.get("include_raw")),
+            limit=int(args.get("limit") or 100),
+        )
+    if name == "bubble_plan_usage_get":
+        args = arguments or {}
+        return fetch_plan_usage(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            include_raw=bool(args.get("include_raw")),
+        )
+    if name == "bubble_workflow_runs_get":
+        args = arguments or {}
+        return fetch_workflow_runs(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            platform=str(args.get("platform") or "web_and_mobile"),
+            include_raw=bool(args.get("include_raw")),
+        )
+    if name == "bubble_storage_usage_get":
+        args = arguments or {}
+        return fetch_storage_usage(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            refresh=bool(args.get("refresh", True)),
+            include_raw=bool(args.get("include_raw")),
+        )
+    if name == "bubble_time_series_read":
+        args = arguments or {}
+        resolution = args.get("resolution")
+        resolution_value: float | None = None
+        if resolution not in (None, ""):
+            resolution_value = float(str(resolution))
+        return read_time_series(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            start=_required_string_arg(args, "start", name),
+            end=_required_string_arg(args, "end", name),
+            metric=_required_string_arg(args, "metric", name),
+            resolution=resolution_value,
+            use_observe=bool(args.get("use_observe", True)),
+            include_raw=bool(args.get("include_raw")),
         )
     enabled_extension_tools = {str(tool.get("name") or "") for tool in enabled_extension_tool_schemas()}
     if name in enabled_extension_tools:

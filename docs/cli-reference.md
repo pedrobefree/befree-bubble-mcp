@@ -346,6 +346,30 @@ bubble-mcp changelog fetch \
 For advanced Bubble-native filters, pass `--filters` with either a JSON object
 or a path to a JSON file.
 
+## `bubble-mcp metrics`
+
+Reads Bubble editor workload, log, usage, workflow, storage, and time-series
+data through the stored local session. These commands are read-only. Log and
+performance-audit commands default to Bubble `app_version=live` unless an
+explicit `--app-version` is provided.
+
+```bash
+bubble-mcp metrics audit --profile my-app --start 2026-04-11T00:00:00Z --end 2026-05-10T00:00:00Z
+bubble-mcp metrics workload-by-date --profile my-app --start 2026-04-11T00:00:00Z --end 2026-05-10T00:00:00Z --granularity day
+bubble-mcp metrics workload-breakdown --profile my-app --start 2026-04-11T00:00:00Z --end 2026-05-10T00:00:00Z --tag1 workflow
+bubble-mcp metrics logs --profile my-app --start 2026-04-11T00:00:00Z --end 2026-04-11T01:00:00Z --limit 25
+bubble-mcp metrics plan-usage --profile my-app
+bubble-mcp metrics workflow-runs --profile my-app
+bubble-mcp metrics storage --profile my-app
+bubble-mcp metrics time-series --profile my-app --start 1783440000000 --end 1783526400000 --metric page_views
+```
+
+Use `metrics audit` for broad questions such as "what should I improve for app
+performance?". It combines workload by date, workload breakdown, workflow runs,
+plan usage, storage, and optionally logs into compact recommendations for an
+agent. Use the lower-level commands when the caller needs a specific Bubble
+editor endpoint.
+
 ## `bubble-mcp compile-plan`
 
 Compiles supported abstract plan steps into Bubble write payloads.

@@ -29,9 +29,17 @@ from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_h
 from bubble_mcp.execution.editor_api import (
     create_bubble_branch,
     delete_bubble_branch,
+    fetch_jetstream_logs,
     fetch_changelog_entries,
+    fetch_plan_usage,
+    fetch_storage_usage,
+    fetch_workflow_runs,
+    fetch_workload_usage_breakdown,
+    fetch_workload_usage_by_date,
     list_branch_contributors,
     list_bubble_branches,
+    performance_audit,
+    read_time_series,
 )
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
@@ -672,6 +680,119 @@ def command_changelog_fetch(args: argparse.Namespace) -> int:
             start_index=args.start_index,
             num_fetch=args.num_fetch,
             filters=_cli_changelog_filters(args),
+        )
+    )
+    return 0
+
+
+def command_metrics_audit(args: argparse.Namespace) -> int:
+    emit_json(
+        performance_audit(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            app_version=args.app_version or None,
+            start=args.start or None,
+            end=args.end or None,
+            granularity=args.granularity,
+            platform=args.platform,
+            include_logs=not args.no_logs,
+            include_raw=args.include_raw,
+        )
+    )
+    return 0
+
+
+def command_metrics_workload_by_date(args: argparse.Namespace) -> int:
+    emit_json(
+        fetch_workload_usage_by_date(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            start=args.start,
+            end=args.end,
+            granularity=args.granularity,
+            include_raw=args.include_raw,
+        )
+    )
+    return 0
+
+
+def command_metrics_workload_breakdown(args: argparse.Namespace) -> int:
+    emit_json(
+        fetch_workload_usage_breakdown(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            start=args.start,
+            end=args.end,
+            granularity=args.granularity,
+            tag1=args.tag1 or None,
+            tag2=args.tag2 or None,
+            platform=args.platform,
+            limit=args.limit,
+            include_raw=args.include_raw,
+        )
+    )
+    return 0
+
+
+def command_metrics_logs(args: argparse.Namespace) -> int:
+    messages = [item.strip() for item in args.message if item.strip()] if args.message else None
+    emit_json(
+        fetch_jetstream_logs(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            app_version=args.app_version or None,
+            start=args.start,
+            end=args.end,
+            messages=messages,
+            ascending=not args.descending,
+            is_state_ar=not args.no_state_ar,
+            limit=args.limit,
+            include_raw=args.include_raw,
+        )
+    )
+    return 0
+
+
+def command_metrics_plan_usage(args: argparse.Namespace) -> int:
+    emit_json(fetch_plan_usage(profile=args.profile, app_id=args.app_id or None, include_raw=args.include_raw))
+    return 0
+
+
+def command_metrics_workflow_runs(args: argparse.Namespace) -> int:
+    emit_json(
+        fetch_workflow_runs(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            platform=args.platform,
+            include_raw=args.include_raw,
+        )
+    )
+    return 0
+
+
+def command_metrics_storage(args: argparse.Namespace) -> int:
+    emit_json(
+        fetch_storage_usage(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            refresh=not args.no_refresh,
+            include_raw=args.include_raw,
+        )
+    )
+    return 0
+
+
+def command_metrics_time_series(args: argparse.Namespace) -> int:
+    emit_json(
+        read_time_series(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            start=args.start,
+            end=args.end,
+            metric=args.metric,
+            resolution=args.resolution,
+            use_observe=not args.no_observe,
+            include_raw=args.include_raw,
         )
     )
     return 0
@@ -1593,6 +1714,87 @@ def build_parser() -> argparse.ArgumentParser:
     changelog_fetch_parser.add_argument("--change-path", default="")
     changelog_fetch_parser.add_argument("--user-id", action="append", default=[])
     changelog_fetch_parser.set_defaults(func=command_changelog_fetch)
+
+    metrics_parser = subparsers.add_parser("metrics", help="Read Bubble editor performance, workload, log, and usage data.")
+    metrics_subparsers = metrics_parser.add_subparsers(dest="metrics_command", required=True)
+
+    metrics_audit_parser = metrics_subparsers.add_parser("audit", help="Run a compact read-only performance audit.")
+    metrics_audit_parser.add_argument("--profile", required=True)
+    metrics_audit_parser.add_argument("--app-id", default="")
+    metrics_audit_parser.add_argument("--app-version", default="", help="Defaults to live for log sampling.")
+    metrics_audit_parser.add_argument("--start", default="", help="ISO datetime or epoch milliseconds. Defaults to 30 days ago.")
+    metrics_audit_parser.add_argument("--end", default="", help="ISO datetime or epoch milliseconds. Defaults to now.")
+    metrics_audit_parser.add_argument("--granularity", choices=["minute", "hour", "day"], default="day")
+    metrics_audit_parser.add_argument("--platform", choices=["web", "mobile", "web_and_mobile"], default="web_and_mobile")
+    metrics_audit_parser.add_argument("--no-logs", action="store_true")
+    metrics_audit_parser.add_argument("--include-raw", action="store_true")
+    metrics_audit_parser.set_defaults(func=command_metrics_audit)
+
+    workload_date_parser = metrics_subparsers.add_parser("workload-by-date", help="Read workload usage by date.")
+    workload_date_parser.add_argument("--profile", required=True)
+    workload_date_parser.add_argument("--app-id", default="")
+    workload_date_parser.add_argument("--start", required=True)
+    workload_date_parser.add_argument("--end", required=True)
+    workload_date_parser.add_argument("--granularity", choices=["minute", "hour", "day"], default="day")
+    workload_date_parser.add_argument("--include-raw", action="store_true")
+    workload_date_parser.set_defaults(func=command_metrics_workload_by_date)
+
+    workload_breakdown_parser = metrics_subparsers.add_parser("workload-breakdown", help="Read workload usage breakdown.")
+    workload_breakdown_parser.add_argument("--profile", required=True)
+    workload_breakdown_parser.add_argument("--app-id", default="")
+    workload_breakdown_parser.add_argument("--start", required=True)
+    workload_breakdown_parser.add_argument("--end", required=True)
+    workload_breakdown_parser.add_argument("--granularity", choices=["minute", "hour", "day"], default="day")
+    workload_breakdown_parser.add_argument("--tag1", default="")
+    workload_breakdown_parser.add_argument("--tag2", default="")
+    workload_breakdown_parser.add_argument("--platform", choices=["web", "mobile", "web_and_mobile"], default="web_and_mobile")
+    workload_breakdown_parser.add_argument("--limit", type=int, default=50)
+    workload_breakdown_parser.add_argument("--include-raw", action="store_true")
+    workload_breakdown_parser.set_defaults(func=command_metrics_workload_breakdown)
+
+    logs_parser = metrics_subparsers.add_parser("logs", help="Fetch Bubble Jetstream logs.")
+    logs_parser.add_argument("--profile", required=True)
+    logs_parser.add_argument("--app-id", default="")
+    logs_parser.add_argument("--app-version", default="", help="Defaults to live.")
+    logs_parser.add_argument("--start", required=True)
+    logs_parser.add_argument("--end", required=True)
+    logs_parser.add_argument("--message", action="append", default=[], help="Log message tag to include. Repeatable.")
+    logs_parser.add_argument("--descending", action="store_true")
+    logs_parser.add_argument("--no-state-ar", action="store_true")
+    logs_parser.add_argument("--limit", type=int, default=100)
+    logs_parser.add_argument("--include-raw", action="store_true")
+    logs_parser.set_defaults(func=command_metrics_logs)
+
+    plan_usage_parser = metrics_subparsers.add_parser("plan-usage", help="Read current app plan usage.")
+    plan_usage_parser.add_argument("--profile", required=True)
+    plan_usage_parser.add_argument("--app-id", default="")
+    plan_usage_parser.add_argument("--include-raw", action="store_true")
+    plan_usage_parser.set_defaults(func=command_metrics_plan_usage)
+
+    workflow_runs_parser = metrics_subparsers.add_parser("workflow-runs", help="Read workflow run counts.")
+    workflow_runs_parser.add_argument("--profile", required=True)
+    workflow_runs_parser.add_argument("--app-id", default="")
+    workflow_runs_parser.add_argument("--platform", choices=["web", "mobile", "web_and_mobile"], default="web_and_mobile")
+    workflow_runs_parser.add_argument("--include-raw", action="store_true")
+    workflow_runs_parser.set_defaults(func=command_metrics_workflow_runs)
+
+    storage_parser = metrics_subparsers.add_parser("storage", help="Read storage usage and allowance.")
+    storage_parser.add_argument("--profile", required=True)
+    storage_parser.add_argument("--app-id", default="")
+    storage_parser.add_argument("--no-refresh", action="store_true")
+    storage_parser.add_argument("--include-raw", action="store_true")
+    storage_parser.set_defaults(func=command_metrics_storage)
+
+    time_series_parser = metrics_subparsers.add_parser("time-series", help="Read a Bubble editor time-series metric.")
+    time_series_parser.add_argument("--profile", required=True)
+    time_series_parser.add_argument("--app-id", default="")
+    time_series_parser.add_argument("--start", required=True)
+    time_series_parser.add_argument("--end", required=True)
+    time_series_parser.add_argument("--metric", required=True)
+    time_series_parser.add_argument("--resolution", type=float, default=None)
+    time_series_parser.add_argument("--no-observe", action="store_true")
+    time_series_parser.add_argument("--include-raw", action="store_true")
+    time_series_parser.set_defaults(func=command_metrics_time_series)
 
     extension_parser = subparsers.add_parser("extension", help="Manage local Bubble MCP extension packs.")
     extension_subparsers = extension_parser.add_subparsers(dest="extension_command", required=True)

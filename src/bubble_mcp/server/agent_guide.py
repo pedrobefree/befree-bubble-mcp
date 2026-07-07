@@ -97,6 +97,12 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "notes": "Branch delete requires execute=true and confirm=true. Branch create previews unless execute=true.",
     },
     {
+        "intent": "performance_logs_usage",
+        "when": "The user asks about app performance, workload, WU consumption, logs, workflow runs, plan usage, storage usage, or what to optimize first.",
+        "tools": ["bubble_performance_audit", "bubble_workload_usage_by_date", "bubble_workload_usage_breakdown", "bubble_logs_fetch", "bubble_workflow_runs_get", "bubble_plan_usage_get", "bubble_storage_usage_get"],
+        "notes": "Use bubble_performance_audit first for broad performance questions. Direct log/usage tools are read-only and default production log queries to app_version=live unless overridden.",
+    },
+    {
         "intent": "execute_exact_payload_or_plan",
         "when": "A previous step produced a validated Bubble payload or structured plan.",
         "tools": ["bubble_compile_plan", "bubble_execute_plan", "bubble_editor_write"],
@@ -136,6 +142,27 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (
         ("branch", "sub-branch", "version", "versao", "changelog", "history", "historico", "contributors", "colaboradores"),
         ("branches_or_changelog",),
+    ),
+    (
+        (
+            "performance",
+            "performace",
+            "wu",
+            "workload",
+            "consumo",
+            "consumption",
+            "usage",
+            "logs",
+            "log",
+            "jetstream",
+            "workflow runs",
+            "storage",
+            "plan usage",
+            "otimizar",
+            "optimization",
+            "performance app",
+        ),
+        ("performance_logs_usage",),
     ),
     (
         ("workflow", "fluxo", "event", "evento", "action", "acao", "condition", "condicao", "page load", "click", "clique"),
@@ -551,6 +578,38 @@ RECIPES: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "performance_logs_usage": {
+        "when": "Analyze Bubble workload, usage, logs, workflow runs, storage, or performance hotspots.",
+        "tools": [
+            "bubble_performance_audit",
+            "bubble_workload_usage_by_date",
+            "bubble_workload_usage_breakdown",
+            "bubble_logs_fetch",
+            "bubble_workflow_runs_get",
+            "bubble_plan_usage_get",
+            "bubble_storage_usage_get",
+        ],
+        "steps": [
+            {
+                "tool": "bubble_performance_audit",
+                "purpose": "Use first for broad performance questions. It collects direct editor metrics and returns prioritized optimization suggestions.",
+                "args": {"profile": "$profile", "start": "$start", "end": "$end", "granularity": "day", "include_logs": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_workload_usage_breakdown",
+                "purpose": "Use after the audit when a specific workload family needs deeper tag1/tag2 inspection.",
+                "args": {"profile": "$profile", "start": "$start", "end": "$end", "tag1": "$tag1", "tag2": "$tag2"},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_logs_fetch",
+                "purpose": "Use for workflow/log details. The app_version defaults to live unless the user explicitly requests test or a branch.",
+                "args": {"profile": "$profile", "start": "$start", "end": "$end", "app_version": "live"},
+                "required_before_execute": False,
+            },
+        ],
+    },
     "quality_gate": {
         "when": "Verify install health, catalog coverage, runtime behavior, or safe profile integration.",
         "tools": ["bubble_readiness_check", "bubble_runtime_smoke", "bubble_health_check", "bubble_tool_coverage", "bubble_catalog_quality"],
@@ -606,6 +665,25 @@ RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("page", "pagina", "paginas", "reusable", "reutilizavel", "reutilizaveis"), "page_or_reusable"),
     (("data type", "tipo de dado", "field", "campo", "option set", "option value", "opcao", "schema"), "data_schema"),
     (("branch", "sub-branch", "version", "versao", "changelog", "history", "historico", "contributors"), "branch_or_changelog"),
+    (
+        (
+            "performance",
+            "performace",
+            "wu",
+            "workload",
+            "consumo",
+            "consumption",
+            "usage",
+            "logs",
+            "log",
+            "jetstream",
+            "workflow runs",
+            "storage",
+            "otimizar",
+            "optimization",
+        ),
+        "performance_logs_usage",
+    ),
     (
         (
             "coverage",
@@ -695,6 +773,8 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
     "pagina": ("page",),
     "paginas": ("page",),
     "perfil": ("profile", "bootstrap", "setup"),
+    "performance": ("workload", "usage", "logs", "audit"),
+    "performace": ("performance", "workload", "usage", "logs"),
     "plano": ("plan",),
     "print": ("screenshot", "visual", "audit"),
     "qualidade": ("visual", "audit"),
@@ -707,6 +787,8 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
     "validar": ("validate",),
     "versao": ("version",),
     "visual": ("audit", "compare", "repair"),
+    "workload": ("usage", "performance", "audit"),
+    "wu": ("workload", "usage", "performance"),
 }
 
 
@@ -811,6 +893,7 @@ RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
     "html_import": "create_from_html html selector url import visual audit compare",
     "page_or_reusable": "create page reusable clone delete context",
     "quality_gate": "readiness coverage catalog smoke health",
+    "performance_logs_usage": "performance workload usage WU logs jetstream workflow runs storage plan usage audit",
     "setup_or_refresh_context": "bubble_profile_cache_refresh refresh cache atualizar recarregar sync profile context detect find status .bubble",
     "style_or_tokens": "style color font token figma condition hovered",
     "visual_quality_gate": "visual audit compare screenshot repair plan drift",
@@ -1116,14 +1199,25 @@ def task_recipe(
 def _compact_tool_schema(tool: dict[str, Any]) -> dict[str, Any]:
     input_schema = tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {}
     properties = input_schema.get("properties") if isinstance(input_schema, dict) else {}
+    docs = input_schema.get("x-bubble-docs") if isinstance(input_schema, dict) else None
     property_names = list(properties.keys()) if isinstance(properties, dict) else []
-    return {
+    compact = {
         "name": str(tool.get("name") or ""),
         "description": str(tool.get("description") or ""),
         "required": input_schema.get("required", []) if isinstance(input_schema, dict) else [],
         "properties": property_names[:40],
         "annotations": tool.get("annotations", {}),
     }
+    if isinstance(docs, dict):
+        compact["docs_enrichment"] = {
+            "family": docs.get("family"),
+            "priority": docs.get("priority"),
+            "manual_context_tool": docs.get("manual_context_tool"),
+            "recommended_queries": list(docs.get("recommended_queries") or [])[:3],
+            "schema_effect": docs.get("schema_effect"),
+            "validation_effect": docs.get("validation_effect"),
+        }
+    return compact
 
 
 def _action_prefixes(terms: list[str]) -> set[str]:
@@ -1287,7 +1381,16 @@ def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
         input_schema = tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {}
         properties = input_schema.get("properties") if isinstance(input_schema, dict) else {}
         property_names = list(properties.keys()) if isinstance(properties, dict) else []
-        haystack = _normalize_text(" ".join([name, description, *property_names]))
+        docs = input_schema.get("x-bubble-docs") if isinstance(input_schema, dict) else None
+        doc_terms: list[str] = []
+        if isinstance(docs, dict):
+            doc_terms = [
+                str(docs.get("family") or ""),
+                str(docs.get("schema_effect") or ""),
+                str(docs.get("validation_effect") or ""),
+                *[str(query) for query in docs.get("recommended_queries") or []],
+            ]
+        haystack = _normalize_text(" ".join([name, description, *property_names, *doc_terms]))
         if not terms:
             score = 1
         else:

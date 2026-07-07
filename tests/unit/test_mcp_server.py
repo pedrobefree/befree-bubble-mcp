@@ -52,6 +52,11 @@ def test_tools_list_includes_profile_list() -> None:
     assert "bubble_visual_audit" in names
     assert "bubble_visual_capture" in names
     assert "bubble_visual_capture_actual" in names
+    assert "bubble_performance_audit" in names
+    assert "bubble_workload_usage_by_date" in names
+    assert "bubble_workload_usage_breakdown" in names
+    assert "bubble_logs_fetch" in names
+    assert "bubble_workflow_runs_get" in names
     assert "bubble_task_runbook" in names
     assert "batch" in names
     assert tools["bubble_project_bootstrap"]["annotations"]["readOnlyHint"] is False
@@ -83,6 +88,17 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_visual_capture"]["inputSchema"]["required"] == ["source"]
     assert tools["bubble_visual_capture_actual"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_visual_capture_actual"]["annotations"]["openWorldHint"] is True
+    assert tools["bubble_performance_audit"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_performance_audit"]["inputSchema"]["required"] == ["profile"]
+    assert tools["bubble_logs_fetch"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_logs_fetch"]["inputSchema"]["properties"]["app_version"]["default"] == "live"
+    assert "Defaults app_version to live" in tools["bubble_logs_fetch"]["description"]
+    assert tools["bubble_workload_usage_by_date"]["inputSchema"]["required"] == ["profile", "start", "end"]
+    assert tools["bubble_workload_usage_breakdown"]["inputSchema"]["properties"]["granularity"]["enum"] == [
+        "minute",
+        "hour",
+        "day",
+    ]
     assert tools["create_group"]["inputSchema"]["properties"]["layout"]["enum"] == [
         "column",
         "row",
@@ -2686,6 +2702,53 @@ def test_knowledge_tools_are_listed_with_annotations() -> None:
     assert tools["bubble_knowledge_search"]["inputSchema"]["required"] == ["query"]
     assert tools["bubble_knowledge_fetch"]["inputSchema"]["required"] == ["record_id"]
     assert tools["bubble_knowledge_refresh_source"]["inputSchema"]["required"] == ["source", "file"]
+
+
+def test_high_potential_tools_include_docs_enrichment_metadata() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 111, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    expected = {
+        "create_api_token": ("api_connector", 5),
+        "delete_data_field": ("data_schema", 5),
+        "create_workflow": ("workflow", 5),
+        "bubble_performance_audit": ("observability", 4),
+        "edit_style": ("style_design", 4),
+        "create_button": ("visual_editor", 3),
+        "bubble_branch_list": ("branch_version", 3),
+        "bubble_tool_wizard_generate": ("extension_authoring", 4),
+    }
+    for tool_name, (family, priority) in expected.items():
+        docs = tools[tool_name]["inputSchema"]["x-bubble-docs"]
+        assert docs["family"] == family
+        assert docs["priority"] == priority
+        assert docs["manual_context_tool"] == "bubble_manual_context_for_tool_authoring"
+        assert docs["recommended_queries"]
+        assert "never authorizes execution" in docs["source_policy"]
+        assert f"Docs-enrichment family: {family}." in tools[tool_name]["description"]
+
+
+def test_tool_search_returns_docs_enrichment_hints() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 112,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_search",
+                "arguments": {"query": "API Connector authentication credentials", "limit": 5},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    matches = {match["name"]: match for match in payload["matches"]}
+    docs = matches["create_api_token"]["docs_enrichment"]
+    assert docs["family"] == "api_connector"
+    assert docs["priority"] == 5
+    assert docs["recommended_queries"][0] == "API Connector authentication reusable calls private credentials"
 
 
 def test_tool_wizard_tools_are_listed_with_annotations() -> None:

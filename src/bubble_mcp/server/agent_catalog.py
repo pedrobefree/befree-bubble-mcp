@@ -342,6 +342,122 @@ DATA_FIELD_REFERENCE_PROPERTIES = {
     "view_fields",
 }
 
+DOC_ENRICHMENT_PROFILES: dict[str, dict[str, Any]] = {
+    "api_connector": {
+        "priority": 5,
+        "recommended_queries": [
+            "API Connector authentication reusable calls private credentials",
+            "API Connector initialize call response schema",
+            "API Connector headers query parameters body parameters",
+        ],
+        "schema_effect": "Improve API Connector argument descriptions, credential warnings, initialization fields, examples, and preview validation.",
+        "validation_effect": "Require explicit credential redaction, captured-write evidence, preview payload review, and post-write API Connector context refresh.",
+        "safety_notes": [
+            "Never include private API keys or bearer tokens in generated examples.",
+            "Treat manual guidance as schema context only; captured writes and reviewed runners remain the execution source of truth.",
+        ],
+    },
+    "data_schema": {
+        "priority": 5,
+        "recommended_queries": [
+            "Bubble data types fields privacy rules Data API exposure",
+            "Bubble privacy rules field visibility autobinding search_for",
+            "Bubble database migration relationships privacy rules",
+        ],
+        "schema_effect": "Improve data type, field, privacy rule, and API exposure argument descriptions, risk labels, and exact-reference guidance.",
+        "validation_effect": "Require schema/context lookup, exact field keys, preview before writes, context refresh, and privacy/migration review after structural changes.",
+        "safety_notes": [
+            "Structural schema writes can affect data visibility, API exposure, autobinding, and migration plans.",
+            "Destructive field/type/privacy operations must keep confirm=true and post-write verification gates.",
+        ],
+    },
+    "workflow": {
+        "priority": 5,
+        "recommended_queries": [
+            "Bubble workflows events actions custom events API workflows",
+            "Bubble scheduled workflows backend workflows parameters",
+            "Bubble workflow only when conditions action order",
+        ],
+        "schema_effect": "Improve event/action/custom-event parameter descriptions, required context, reference disambiguation, and workflow examples.",
+        "validation_effect": "Require event/action reference resolution, ordered preview, condition review, and workflow cache refresh after mutation.",
+        "safety_notes": [
+            "Workflow mutations can change business logic and side effects even when no visual element changes.",
+            "Manual documentation may describe product concepts; captured payloads and runtime adapters still determine write shape.",
+        ],
+    },
+    "observability": {
+        "priority": 4,
+        "recommended_queries": [
+            "Bubble workload usage logs workflow runs performance",
+            "Bubble workload units performance optimization logs",
+            "Bubble storage plan usage app metrics",
+        ],
+        "schema_effect": "Improve workload/log/usage parameter descriptions, time-window guidance, app-version defaults, and interpretation notes.",
+        "validation_effect": "Require date-window bounds, compact output by default, and source attribution for optimization recommendations.",
+        "safety_notes": [
+            "Metrics/log tools are read-only but may expose operational data; keep raw responses opt-in.",
+            "Default production diagnostics to live only when that is explicit in the tool contract.",
+        ],
+    },
+    "style_design": {
+        "priority": 4,
+        "recommended_queries": [
+            "Bubble styles default styles responsive layout colors fonts",
+            "Bubble style conditions reusable styles design system",
+            "Bubble responsive layout fit width fixed width min max",
+        ],
+        "schema_effect": "Improve style/default-style argument descriptions, responsive layout defaults, color/font token semantics, and visual examples.",
+        "validation_effect": "Require project style lookup, default style preservation, responsive dimension checks, and visual verification after writes.",
+        "safety_notes": [
+            "Project default styles and local design-system state override generic documentation hints.",
+            "Fixed dimensions must preserve matching min/max values when fixed width or height is requested.",
+        ],
+    },
+    "visual_editor": {
+        "priority": 3,
+        "recommended_queries": [
+            "Bubble visual elements responsive layout containers inputs",
+            "Bubble element properties responsive engine fit width fit height",
+            "Bubble reusable elements groups repeating groups inputs",
+        ],
+        "schema_effect": "Improve element/property descriptions and examples while preserving deterministic project defaults.",
+        "validation_effect": "Require context/parent resolution, project default styles, layout quality checks, and post-write visual/context verification.",
+        "safety_notes": [
+            "Captured project defaults and visual default policies have higher precedence than generic manual guidance.",
+            "Use documentation to explain semantics, not to infer editor write payloads.",
+        ],
+    },
+    "branch_version": {
+        "priority": 3,
+        "recommended_queries": [
+            "Bubble version control branches changelog deployment",
+            "Bubble app versions development branch live test",
+        ],
+        "schema_effect": "Improve branch/version argument descriptions, app_version examples, and changelog filter guidance.",
+        "validation_effect": "Require explicit branch targets for non-test work and verification that profile app_version is honored.",
+        "safety_notes": [
+            "Never assume test/main when the profile or user selected another app_version.",
+            "Branch deletion and deployment-adjacent actions remain explicit-confirmation operations.",
+        ],
+    },
+    "extension_authoring": {
+        "priority": 4,
+        "recommended_queries": [
+            "Bubble editor feature documentation for captured tool authoring",
+            "Bubble API Connector workflows data privacy extension tool schema",
+            "Bubble plugin editor behavior payload capture",
+        ],
+        "schema_effect": "Improve generated extension tool names, descriptions, argument questions, examples, and candidate-review warnings.",
+        "validation_effect": "Require captured-write evidence, docs evidence, validation, import, enable, preview, and explicit execution support before activation.",
+        "safety_notes": [
+            "Documentation enrichment must not make a candidate executable without a reviewed runner/template.",
+            "Remote docs queries must be sanitized and must never include app ids, cookies, credentials, or raw captured payloads.",
+        ],
+    },
+}
+
+DOC_ENRICHMENT_TOOL = "bubble_manual_context_for_tool_authoring"
+
 
 NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_project_bootstrap": (
@@ -410,6 +526,36 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Audit the exposed MCP catalog for agent usability. Checks tool/resource/prompt identifiers, descriptions, "
         "input schemas, property descriptions, annotations, resource metadata, prompt arguments, and runtime coverage "
         "so clients can detect catalog regressions before agents waste tokens on discovery. Read-only."
+    ),
+    "bubble_performance_audit": (
+        "Run a compact read-only Bubble performance audit from direct editor metrics endpoints. It fetches workload "
+        "usage, workload breakdown, workflow runs, plan usage, storage usage, and optional live-version logs, then "
+        "returns prioritized optimization suggestions. Use this first when the user asks what to improve for app "
+        "performance, WU consumption, workload, or production usage. Read-only."
+    ),
+    "bubble_workload_usage_by_date": (
+        "Read Bubble workload usage by date directly from the editor metrics endpoint. Use this for WU/workload "
+        "trend charts and date buckets. Read-only."
+    ),
+    "bubble_workload_usage_breakdown": (
+        "Read Bubble workload usage breakdown directly from the editor metrics endpoint. Use tag1/tag2 to drill "
+        "into workload families such as workflow, searches, or editor categories. Read-only."
+    ),
+    "bubble_logs_fetch": (
+        "Fetch Bubble Jetstream logs from the editor for a selected app/profile/time window. Defaults app_version "
+        "to live for production performance diagnostics unless explicitly overridden. Read-only."
+    ),
+    "bubble_plan_usage_get": (
+        "Read current Bubble plan usage for the selected profile/app from the direct editor endpoint. Read-only."
+    ),
+    "bubble_workflow_runs_get": (
+        "Read Bubble workflow run counts for the selected app/platform from the direct editor endpoint. Read-only."
+    ),
+    "bubble_storage_usage_get": (
+        "Read Bubble file storage usage and allowance for the selected app from the direct editor endpoint. Read-only."
+    ),
+    "bubble_time_series_read": (
+        "Read a Bubble editor time-series metric such as page_views for a profile/app/time window. Read-only."
     ),
     "bubble_tool_wizard_start": (
         "Start a local tool-authoring session that groups captured Bubble editor writes for a future extension tool. "
@@ -982,6 +1128,7 @@ def enhance_tool_schema(schema: dict[str, Any]) -> dict[str, Any]:
         input_schema.setdefault("$schema", "http://json-schema.org/draft-07/schema#")
     apply_legacy_specific_schema(tool)
     describe_input_properties(tool)
+    apply_documentation_enrichment(tool)
     return tool
 
 
@@ -1054,6 +1201,115 @@ def _apply_data_field_reference_metadata(name: str, input_schema: dict[str, Any]
 
     if has_data_field_reference:
         input_schema["x-bubble-data-field-key-guidance"] = DATA_FIELD_KEY_GUIDANCE
+
+
+def apply_documentation_enrichment(tool: dict[str, Any]) -> None:
+    """Attach source-guidance metadata for tools that benefit from Bubble docs context."""
+
+    name = str(tool.get("name") or "")
+    family = _documentation_family_for_name(name)
+    if not family:
+        return
+    profile = DOC_ENRICHMENT_PROFILES[family]
+    input_schema = tool.setdefault("inputSchema", {"type": "object"})
+    if not isinstance(input_schema, dict):
+        return
+    metadata = {
+        "family": family,
+        "priority": profile["priority"],
+        "manual_context_tool": DOC_ENRICHMENT_TOOL,
+        "recommended_queries": list(profile["recommended_queries"]),
+        "schema_effect": profile["schema_effect"],
+        "validation_effect": profile["validation_effect"],
+        "safety_notes": list(profile["safety_notes"]),
+        "source_policy": (
+            "Official Bubble manual/GitBook context can enrich descriptions, examples, warnings, and validation "
+            "requirements. It never authorizes execution and never replaces captured write evidence or deterministic runners."
+        ),
+    }
+    input_schema["x-bubble-docs"] = metadata
+
+    description = str(tool.get("description") or "")
+    marker = f"Docs-enrichment family: {family}."
+    if marker not in description:
+        tool["description"] = f"{description} {marker} Consult {DOC_ENRICHMENT_TOOL} when authoring, validating, or explaining this capability.".strip()
+
+
+def _documentation_family_for_name(name: str) -> str | None:
+    if name.startswith("bubble_manual") or name.startswith("bubble_knowledge"):
+        return None
+    if name in {"create_api_connector_resource"} or "api_connector" in name:
+        return "api_connector"
+    if name.startswith(("create_api_token", "rename_api_token", "regenerate_api_token", "delete_api_token")):
+        return "api_connector"
+    if name.startswith(
+        (
+            "list_data_types",
+            "create_data_type",
+            "rename_data_type",
+            "delete_data_type",
+            "create_data_field",
+            "rename_data_field",
+            "delete_data_field",
+            "list_privacy_rules",
+            "create_privacy_rule",
+            "delete_privacy_rule",
+            "set_privacy_rule",
+            "create_option_",
+            "rename_option_",
+            "delete_option_",
+            "list_option_",
+            "set_option_",
+            "reorder_option_",
+            "scan_types",
+        )
+    ):
+        return "data_schema"
+    if name in {
+        "bubble_performance_audit",
+        "bubble_workload_usage_by_date",
+        "bubble_workload_usage_breakdown",
+        "bubble_logs_fetch",
+        "bubble_plan_usage_get",
+        "bubble_workflow_runs_get",
+        "bubble_storage_usage_get",
+        "bubble_time_series_read",
+    }:
+        return "observability"
+    if (
+        name.startswith(
+            (
+                "create_workflow",
+                "add_action",
+                "replace_action",
+                "delete_action",
+                "cleanup_empty_actions",
+                "create_event",
+                "delete_event",
+                "set_event_",
+                "set_condition_",
+                "map_workflow_ref",
+                "sync_event_cache",
+                "sync_workflow_ref_cache",
+            )
+        )
+        or "custom_event" in name
+        or "workflow" in name
+    ):
+        return "workflow"
+    if name.startswith(("list_styles", "create_style", "edit_style", "add_style_condition", "rename_style", "delete_style", "reorder_style_states", "create_button_style", "update_style")):
+        return "style_design"
+    if name.startswith(("list_colors", "create_color", "update_color", "delete_color", "delete_colors", "clear_custom_colors", "reorder_colors", "list_fonts", "create_font", "update_font", "delete_font")):
+        return "style_design"
+    if name.startswith(("bubble_branch_", "bubble_changelog_")):
+        return "branch_version"
+    if name.startswith(("bubble_extension_", "bubble_tool_wizard_", "bubble_skill_", "bubble_learning_")):
+        return "extension_authoring"
+    if _visual_element_family(name):
+        return "visual_editor"
+    if name in {"create_from_html", "sync_figma_component", "sync_component", "sync_figma_style", "sync_figma_tokens", "upload_asset"}:
+        return "visual_editor"
+    return None
 
 
 def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
@@ -1228,6 +1484,14 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_task_runbook",
         "bubble_catalog_quality",
         "bubble_readiness_check",
+        "bubble_performance_audit",
+        "bubble_workload_usage_by_date",
+        "bubble_workload_usage_breakdown",
+        "bubble_logs_fetch",
+        "bubble_plan_usage_get",
+        "bubble_workflow_runs_get",
+        "bubble_storage_usage_get",
+        "bubble_time_series_read",
     }
     read_only = _is_read_only(name) or name in agent_read_only
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}
@@ -1297,6 +1561,10 @@ def _category_for_name(name: str) -> str:
     visual_family = _visual_element_family(name)
     if visual_family:
         return visual_family
+    if name == "create_api_connector_resource":
+        return "Create a Bubble API Connector collection/call resource from a reviewed captured-write recipe."
+    if name.startswith(("create_api_token", "rename_api_token", "regenerate_api_token", "delete_api_token")):
+        return "Create, rename, regenerate, or delete Bubble API tokens in app settings."
     if name == "list_styles":
         return "List Bubble styles for lookup, validation, style matching, and design-system inspection."
     if name == "list_colors":
