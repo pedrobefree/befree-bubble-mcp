@@ -93,6 +93,62 @@ MUTATING_PREFIXES = (
 )
 
 
+def _css_px(value: Any) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        number = int(value) if float(value).is_integer() else value
+        return f"{number}px"
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.replace(".", "", 1).isdigit():
+        return f"{text}px"
+    return text
+
+
+def _first_present(*values: Any) -> Any | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _normalize_fixed_size_properties(properties: dict[str, Any]) -> None:
+    if properties.get("fixed_width") is True or properties.get("single_width") is True:
+        width_css = _css_px(
+            _first_present(properties.get("%w"), properties.get("max_width_css"), properties.get("min_width_css"))
+        )
+        if width_css is not None:
+            properties["min_width_css"] = width_css
+            properties["max_width_css"] = width_css
+    if properties.get("fixed_height") is True or properties.get("single_height") is True:
+        height_css = _css_px(
+            _first_present(properties.get("%h"), properties.get("max_height_css"), properties.get("min_height_css"))
+        )
+        if height_css is not None:
+            properties["min_height_css"] = height_css
+            properties["max_height_css"] = height_css
+
+
+def _normalize_fixed_size_create_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    changes = payload.get("changes")
+    if not isinstance(changes, list):
+        return payload
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        if change.get("intent", {}).get("name") != "CreateElement":
+            continue
+        body = change.get("body")
+        if not isinstance(body, dict):
+            continue
+        properties = body.get("%p")
+        if isinstance(properties, dict):
+            _normalize_fixed_size_properties(properties)
+    return payload
+
+
 def _requires_calculate_derived(tool_name: str) -> bool:
     """Return true for schema writes that Bubble finalizes through calculate_derived."""
     return tool_name in {
@@ -348,6 +404,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         builder_id = id(builder)
         write_payload = cast("dict[str, Any]", builder.build())
         write_payload["app_version"] = env.app_version
+        _normalize_fixed_size_create_payload(write_payload)
         if builder_id not in captured_builder_ids:
             captured_builder_ids.add(builder_id)
             captured_payloads.append(write_payload)

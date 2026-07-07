@@ -780,6 +780,13 @@ def apply_create_defaults(tool_name: str, args: dict[str, Any], *, element_type:
     return merged
 
 
+def first_present(*values: Any) -> Any | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def apply_dimension_properties(properties: dict[str, Any], args: dict[str, Any]) -> None:
     if args.get("width") is not None:
         properties["%w"] = int(args["width"])
@@ -801,20 +808,22 @@ def apply_dimension_properties(properties: dict[str, Any], args: dict[str, Any])
         properties["fixed_width"] = True
         properties["single_width"] = True
         properties["fit_width"] = False
-        if "min_width_css" not in properties:
-            fixed_width = args.get("width") if args.get("width") is not None else args.get("max_width")
-            if fixed_width is not None:
-                properties["min_width_css"] = css_px(fixed_width)
+        fixed_width = first_present(args.get("width"), args.get("max_width"), args.get("min_width"))
+        if fixed_width is not None:
+            fixed_width_css = css_px(fixed_width)
+            properties["min_width_css"] = fixed_width_css
+            properties["max_width_css"] = fixed_width_css
     elif args.get("single_width") is not None:
         properties["single_width"] = bool(args["single_width"])
     if args.get("fixed_height") is True:
         properties["fixed_height"] = True
         properties["single_height"] = True
         properties["fit_height"] = False
-        if "min_height_css" not in properties:
-            fixed_height = args.get("height") if args.get("height") is not None else args.get("max_height")
-            if fixed_height is not None:
-                properties["min_height_css"] = css_px(fixed_height)
+        fixed_height = first_present(args.get("height"), args.get("max_height"), args.get("min_height"))
+        if fixed_height is not None:
+            fixed_height_css = css_px(fixed_height)
+            properties["min_height_css"] = fixed_height_css
+            properties["max_height_css"] = fixed_height_css
     elif args.get("single_height") is not None:
         properties["single_height"] = bool(args["single_height"])
 

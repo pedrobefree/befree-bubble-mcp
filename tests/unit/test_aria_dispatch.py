@@ -145,7 +145,23 @@ def test_aria_runtime_payload_builder_inherits_profile_app_version(tmp_path, mon
             self.metadata = metadata or {}
 
         def build(self):  # type: ignore[no-untyped-def]
-            return {"appname": self.appname, "app_version": self.app_version, "changes": []}
+            return {
+                "appname": self.appname,
+                "app_version": self.app_version,
+                "changes": [
+                    {
+                        "intent": {"name": "CreateElement"},
+                        "body": {
+                            "%p": {
+                                "%w": 320,
+                                "%h": 180,
+                                "fixed_width": True,
+                                "fixed_height": True,
+                            }
+                        },
+                    }
+                ],
+            }
 
         def send_to_webhook(self, _url=""):  # type: ignore[no-untyped-def]
             return {"ok": True}
@@ -171,4 +187,10 @@ def test_aria_runtime_payload_builder_inherits_profile_app_version(tmp_path, mon
     assert result is not None
     assert result["ok"] is True
     assert result["app_version"] == "feature-branch"
-    assert result["results"][0]["payload"]["app_version"] == "feature-branch"
+    payload = result["results"][0]["payload"]
+    assert payload["app_version"] == "feature-branch"
+    properties = payload["changes"][0]["body"]["%p"]
+    assert properties["min_width_css"] == "320px"
+    assert properties["max_width_css"] == "320px"
+    assert properties["min_height_css"] == "180px"
+    assert properties["max_height_css"] == "180px"

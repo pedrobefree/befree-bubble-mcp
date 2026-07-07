@@ -40,11 +40,11 @@ def test_create_defaults_match_golden_fixture() -> None:
         ("create_text", {"content": "Hello"}, {"fit_height": True}),
         ("create_button", {}, {"fit_width": True, "fit_height": True, "single_width": False, "single_height": False}),
         ("create_group", {"name": "Group"}, {"container_layout": "column", "min_width_css": "40px", "min_height_css": "40px", "fit_height": True}),
-        ("create_input", {}, {"%h": 44, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px"}),
-        ("create_icon", {}, {"%w": 20, "%h": 20, "fixed_width": True, "fixed_height": True}),
+        ("create_input", {}, {"%h": 44, "fixed_height": True, "single_height": True, "min_width_css": "0px", "max_width_css": "240px", "min_height_css": "44px", "max_height_css": "44px"}),
+        ("create_icon", {}, {"%w": 20, "%h": 20, "fixed_width": True, "fixed_height": True, "min_width_css": "20px", "max_width_css": "20px", "min_height_css": "20px", "max_height_css": "20px"}),
         ("create_repeating_group", {}, {"%gt": "text", "stable_pagination": True, "cell_min_height_css": "32px", "cell_min_width_css": "32px"}),
         ("create_video", {}, {"video_id": "id", "use_aspect_ratio": True, "aspect_ratio_width": 16, "aspect_ratio_height": 9, "%w": 360}),
-        ("create_html", {}, {"fit_height": True, "fixed_width": True, "min_height_css": "120px", "%w": 240}),
+        ("create_html", {}, {"fit_height": True, "fixed_width": True, "min_height_css": "120px", "%w": 240, "min_width_css": "240px", "max_width_css": "240px"}),
     ],
 )
 def test_compiled_create_defaults_materialize_in_payload(
@@ -56,3 +56,23 @@ def test_compiled_create_defaults_materialize_in_payload(
 
     for key, value in expected.items():
         assert properties.get(key) == value
+
+
+def test_fixed_dimensions_set_matching_min_and_max_constraints() -> None:
+    properties = create_properties(
+        "create_group",
+        {
+            "name": "Fixed Card",
+            "width": 320,
+            "height": 180,
+            "fixed_width": True,
+            "fixed_height": True,
+        },
+    )
+
+    assert properties["%w"] == 320
+    assert properties["min_width_css"] == "320px"
+    assert properties["max_width_css"] == "320px"
+    assert properties["%h"] == 180
+    assert properties["min_height_css"] == "180px"
+    assert properties["max_height_css"] == "180px"
