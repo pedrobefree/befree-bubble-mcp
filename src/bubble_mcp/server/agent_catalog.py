@@ -43,6 +43,7 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "force": "Refresh or rebuild cached data even when a previous artifact exists.",
     "payload": "Exact Bubble editor write payload to preview or send with the stored session.",
     "write_payload": "Exact Bubble editor write payload produced by a previous validated planning or compiler step.",
+    "calculate_derived": "After a successful write, call Bubble /appeditor/calculate_derived to refresh derived schema/editor indexes. Use for manual schema writes such as deleting data fields.",
     "confirm": "Required true for destructive operations such as deleting or clearing Bubble resources.",
     "plan": "Structured Bubble MCP plan object containing ordered steps and tool arguments.",
     "message": "Natural language instruction to convert into a deterministic Bubble plan.",
@@ -589,7 +590,7 @@ LEGACY_CATEGORY_DESCRIPTIONS: tuple[tuple[str, str], ...] = (
         "Create or modify Bubble styles, style conditions, and reusable design-system definitions.",
     ),
     (
-        "create_data_type rename_data_type delete_data_type create_data_field rename_data_field set_data_type_api_exposure",
+        "create_data_type rename_data_type delete_data_type create_data_field rename_data_field delete_data_field set_data_type_api_exposure",
         "Create or modify Bubble database types, fields, and API exposure settings.",
     ),
     (
@@ -729,6 +730,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 FIELD_TYPES: dict[str, dict[str, Any]] = {
     "dry_run": {"type": "boolean", "default": True},
     "execute": {"type": "boolean", "default": False},
+    "calculate_derived": {"type": "boolean", "default": False},
     "confirm": {"type": "boolean", "default": False},
     "force": {"type": "boolean"},
     "compile": {"type": "boolean"},
@@ -956,7 +958,7 @@ def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
         return (("profile",), ("dry_run", "settings_path", "name", "confirm"))
     if name.startswith(("list_", "inspect_", "scan_", "resolve_", "verify_")):
         return (("profile",), ("dry_run", "settings_path", "context", "query", "limit", "json"))
-    if name.startswith(("create_data_type", "rename_data_type", "delete_data_type", "create_data_field", "rename_data_field", "set_data_type_api_exposure")):
+    if name.startswith(("create_data_type", "rename_data_type", "delete_data_type", "create_data_field", "rename_data_field", "delete_data_field", "set_data_type_api_exposure")):
         return _data_schema_fields(name)
     if name.startswith(("create_option_", "rename_option_", "delete_option_", "list_option_", "set_option_", "reorder_option_")):
         return _option_schema_fields(name)
@@ -1035,6 +1037,8 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
         return (("profile", "data_type_ref", "name", "type"), ("dry_run", "settings_path", "is_list", "optional"))
     if name == "rename_data_field":
         return (("profile", "data_type_ref", "name", "new_name"), ("dry_run", "settings_path"))
+    if name == "delete_data_field":
+        return (("profile", "data_type_ref", "name"), ("dry_run", "settings_path", "confirm"))
     return (("profile", "data_type_ref"), ("dry_run", "settings_path", "value", "confirm"))
 
 

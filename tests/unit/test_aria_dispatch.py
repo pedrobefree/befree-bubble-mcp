@@ -1,4 +1,4 @@
-from bubble_mcp.aria_dispatch import _method_kwargs
+from bubble_mcp.aria_dispatch import _method_kwargs, _requires_calculate_derived
 
 
 def test_method_kwargs_maps_public_schema_aliases_to_aria_runtime_args() -> None:
@@ -28,6 +28,37 @@ def test_method_kwargs_maps_public_schema_aliases_to_aria_runtime_args() -> None
         "field_type": "text",
         "dry_run": True,
     }
+
+
+def test_method_kwargs_maps_delete_data_field_name_to_field_key() -> None:
+    def delete_data_field(
+        data_type_key: str,
+        field_key: str,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    kwargs = _method_kwargs(
+        delete_data_field,
+        {
+            "profile": "smoke",
+            "data_type_ref": "user",
+            "name": "campo_novo_text",
+            "execute": False,
+        },
+        execute=False,
+    )
+
+    assert kwargs == {
+        "data_type_key": "user",
+        "field_key": "campo_novo_text",
+        "dry_run": True,
+    }
+
+
+def test_delete_data_field_requires_calculate_derived_refresh() -> None:
+    assert _requires_calculate_derived("delete_data_field") is True
+    assert _requires_calculate_derived("create_data_field") is False
 
 
 def test_method_kwargs_maps_visual_and_workflow_aliases() -> None:

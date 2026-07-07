@@ -14,7 +14,12 @@ from bubble_mcp.sessions.store import BubbleSessionData
 
 
 EDITOR_WRITE_URL = "https://bubble.io/appeditor/write"
+EDITOR_CALCULATE_DERIVED_URL = "https://bubble.io/appeditor/calculate_derived"
 EDITOR_WRITE_TIMEOUT_SEC = 80.0
+
+DEFAULT_DERIVED_FUNCTIONS: list[dict[str, Any]] = [
+    {"function_name": "ElementTypeToPath", "args": [], "verbose": False},
+]
 
 
 @dataclass(frozen=True)
@@ -78,6 +83,45 @@ def normalize_write_payload(payload: dict[str, Any], session: BubbleSessionData)
     return normalized
 
 
+def normalize_calculate_derived_payload(
+    payload: dict[str, Any],
+    session: BubbleSessionData,
+    *,
+    derived: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    candidate = payload.get("body") if isinstance(payload.get("body"), dict) else payload
+    normalized = json.loads(json.dumps(candidate))
+    if not isinstance(normalized, dict):
+        raise ValueError("Bubble calculate_derived payload must be a JSON object.")
+
+    app_id = str(
+        normalized.get("appname")
+        or payload.get("appname")
+        or payload.get("app_id")
+        or payload.get("appId")
+        or session.app_id
+        or ""
+    ).strip()
+    if not app_id:
+        raise ValueError("Bubble calculate_derived payload is missing appname/app_id.")
+
+    app_version = str(
+        normalized.get("app_version")
+        or payload.get("app_version")
+        or payload.get("appVersion")
+        or session.app_version
+        or "test"
+    ).strip()
+    normalized = {
+        "derived": derived or normalized.get("derived") or DEFAULT_DERIVED_FUNCTIONS,
+        "appname": app_id,
+        "app_version": app_version or "test",
+    }
+    if not isinstance(normalized["derived"], list):
+        raise ValueError("Bubble calculate_derived payload must include a derived array.")
+    return normalized
+
+
 def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, Any]) -> dict[str, str]:
     captured = {str(key).lower(): str(value) for key, value in session.headers.items()}
     cookie = str(session.cookies or captured.get("cookie") or "").strip()
@@ -136,6 +180,10 @@ def has_expected_write_shape(data: Any) -> bool:
     return isinstance(data, dict) and ("last_change" in data or "id_counter" in data)
 
 
+def has_expected_calculate_derived_shape(data: Any) -> bool:
+    return isinstance(data, dict) and isinstance(data.get("fingerprints"), list)
+
+
 class BubbleEditorClient:
     """Posts authenticated Bubble editor mutations."""
 
@@ -154,6 +202,7 @@ class BubbleEditorClient:
         session: BubbleSessionData,
         *,
         dry_run: bool = False,
+        calculate_derived: bool = False,
     ) -> dict[str, Any]:
         normalized = normalize_write_payload(payload, session)
         headers = build_editor_write_headers(session, normalized)
@@ -163,7 +212,10 @@ class BubbleEditorClient:
             "headers": redact_sensitive(headers),
         }
         if dry_run:
-            return {"ok": True, "dry_run": True, "request": safe_request}
+            result: dict[str, Any] = {"ok": True, "dry_run": True, "request": safe_request}
+            if calculate_derived:
+                result["derived"] = self.calculate_derived(normalized, session, dry_run=True)
+            return result
 
         body = json.dumps(normalized, separators=(",", ":")).encode("utf-8")
         response = self._transport(EDITOR_WRITE_URL, body, headers, self._timeout)
@@ -183,6 +235,57 @@ class BubbleEditorClient:
             raise RuntimeError("Bubble session expired: received HTML instead of JSON.")
 
         valid_shape = has_expected_write_shape(data)
+        ok = 200 <= response.status < 300 and valid_shape
+        result = {
+            "ok": 200 <= response.status < 300 and valid_shape,
+            "dry_run": False,
+            "status": response.status,
+            "response": data,
+            "valid_shape": valid_shape,
+            "request": safe_request,
+        }
+        if ok and calculate_derived:
+            derived_result = self.calculate_derived(normalized, session, dry_run=False)
+            result["derived"] = derived_result
+            result["ok"] = bool(derived_result.get("ok"))
+        return result
+
+    def calculate_derived(
+        self,
+        payload: dict[str, Any],
+        session: BubbleSessionData,
+        *,
+        dry_run: bool = False,
+        derived: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        normalized = normalize_calculate_derived_payload(payload, session, derived=derived)
+        headers = build_editor_write_headers(session, normalized)
+        safe_request = {
+            "url": EDITOR_CALCULATE_DERIVED_URL,
+            "payload": normalized,
+            "headers": redact_sensitive(headers),
+        }
+        if dry_run:
+            return {"ok": True, "dry_run": True, "request": safe_request}
+
+        body = json.dumps(normalized, separators=(",", ":")).encode("utf-8")
+        response = self._transport(EDITOR_CALCULATE_DERIVED_URL, body, headers, self._timeout)
+        data = parse_response_body(response.body)
+
+        if response.status in (401, 403):
+            return {
+                "ok": False,
+                "dry_run": False,
+                "status": response.status,
+                "error": f"Bubble blocked calculate_derived ({response.status}).",
+                "reason": "auth_blocked",
+                "response": data,
+                "request": safe_request,
+            }
+        if isinstance(data, str) and data.lstrip().startswith("<"):
+            raise RuntimeError("Bubble session expired: received HTML instead of JSON.")
+
+        valid_shape = has_expected_calculate_derived_shape(data)
         return {
             "ok": 200 <= response.status < 300 and valid_shape,
             "dry_run": False,

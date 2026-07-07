@@ -828,6 +828,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             write_payload,
             write_session,
             dry_run=not execute,
+            calculate_derived=bool(args.get("calculate_derived")),
         )
         if execute and write_result.get("ok"):
             record_mutation_overlay(
@@ -995,7 +996,12 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         session = load_session(profile)
         if session is None:
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
-        result = BubbleEditorClient().write(write_payload, session, dry_run=not execute)
+        result = BubbleEditorClient().write(
+            write_payload,
+            session,
+            dry_run=not execute,
+            calculate_derived=name == "delete_data_field" or bool(args.get("calculate_derived")),
+        )
         if execute and result.get("ok"):
             record_mutation_overlay(
                 profile=profile,

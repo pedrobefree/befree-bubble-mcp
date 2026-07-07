@@ -2,7 +2,13 @@ import json
 
 import pytest
 
-from bubble_mcp.execution.client import BubbleEditorClient, HttpResponse, build_editor_write_headers
+from bubble_mcp.execution.client import (
+    EDITOR_CALCULATE_DERIVED_URL,
+    EDITOR_WRITE_URL,
+    BubbleEditorClient,
+    HttpResponse,
+    build_editor_write_headers,
+)
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.sessions.store import session_from_payload
 
@@ -55,6 +61,46 @@ def test_editor_client_posts_write_payload_with_fake_transport() -> None:
     assert calls[0][1]["app_version"] == "test"
     assert calls[0][1]["appVersion"] == "test"
     assert calls[0][2]["cookie"] == "sid=secret"
+
+
+def test_editor_client_can_run_calculate_derived_after_write() -> None:
+    calls = []
+
+    def fake_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        calls.append((url, json.loads(body.decode("utf-8")), headers, timeout))
+        if url == EDITOR_CALCULATE_DERIVED_URL:
+            return HttpResponse(status=200, body='{"fingerprints":["abc123"]}', headers={})
+        return HttpResponse(status=200, body='{"last_change":123}', headers={})
+
+    result = BubbleEditorClient(transport=fake_transport).write(
+        write_payload(),
+        synthetic_session(),
+        calculate_derived=True,
+    )
+
+    assert result["ok"] is True
+    assert calls[0][0] == EDITOR_WRITE_URL
+    assert calls[1][0] == EDITOR_CALCULATE_DERIVED_URL
+    assert calls[1][1] == {
+        "derived": [{"function_name": "ElementTypeToPath", "args": [], "verbose": False}],
+        "appname": "synthetic-app",
+        "app_version": "test",
+    }
+    assert result["derived"]["response"]["fingerprints"] == ["abc123"]
+
+
+def test_editor_client_previews_calculate_derived_request_in_dry_run() -> None:
+    result = BubbleEditorClient().write(
+        write_payload(),
+        synthetic_session(),
+        dry_run=True,
+        calculate_derived=True,
+    )
+
+    assert result["ok"] is True
+    assert result["derived"]["dry_run"] is True
+    assert result["derived"]["request"]["url"] == EDITOR_CALCULATE_DERIVED_URL
+    assert result["derived"]["request"]["payload"]["derived"][0]["function_name"] == "ElementTypeToPath"
 
 
 def test_editor_client_uses_aria_editor_write_headers() -> None:

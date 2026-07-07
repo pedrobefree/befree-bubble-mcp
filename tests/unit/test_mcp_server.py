@@ -2266,10 +2266,11 @@ def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  
         ],
     }
 
-    def fake_write(self, write_payload, session, *, dry_run=False):  # type: ignore[no-untyped-def]
+    def fake_write(self, write_payload, session, *, dry_run=False, calculate_derived=False):  # type: ignore[no-untyped-def]
         return {
             "ok": True,
             "dry_run": dry_run,
+            "calculate_derived": calculate_derived,
             "response": {"last_change": "1"},
             "request": {"payload": write_payload},
         }
@@ -2303,8 +2304,9 @@ def test_tools_list_includes_full_aria_catalog() -> None:
 
     assert response is not None
     names = {tool["name"] for tool in response["result"]["tools"]}
-    assert len(ARIA_BUBBLE_TOOL_NAMES) == 203
+    assert len(ARIA_BUBBLE_TOOL_NAMES) == 204
     assert set(ARIA_BUBBLE_TOOL_NAMES).issubset(names)
+    assert "delete_data_field" in names
 
 
 def test_direct_catalog_tool_call_compiles_when_supported() -> None:

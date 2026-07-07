@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
 from bubble_mcp.cli.main import main
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.sessions.store import session_from_payload
@@ -11,6 +12,45 @@ FIXTURE = Path("tests/fixtures/context/synthetic-app-context.json")
 
 def first_change(payload: dict, intent_name: str) -> dict:  # type: ignore[type-arg]
     return next(change for change in payload["changes"] if change.get("intent", {}).get("name") == intent_name)
+
+
+def payload_from_dry_run_output(output: str) -> dict:  # type: ignore[type-arg]
+    return json.loads(output[output.index("{") :])
+
+
+def test_delete_data_field_emits_bubble_editor_delete_contract(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "user_types": {
+                    "user": {
+                        "%d": "User",
+                        "%f3": {
+                            "campo_novo_text": {
+                                "%d": "campo novo",
+                                "%v": "text",
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="courselaunch")
+
+    assert cli.delete_data_field("user", "campo_novo_text", dry_run=True) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    changes = payload["changes"]
+    assert len(changes) == 2
+    assert changes[0]["intent"]["name"] == "WriteCustomField"
+    assert changes[0]["path_array"] == ["user_types", "user", "%f3", "campo_novo_text", "%del"]
+    assert changes[0]["body"] is True
+    assert changes[1]["intent"]["name"] == "WriteCustomField"
+    assert changes[1]["path_array"] == ["user_types", "user", "%f3", "campo_novo_text", "%d"]
+    assert changes[1]["body"] == "campo novo - deleted"
 
 
 def test_cli_context_summary(capsys) -> None:  # type: ignore[no-untyped-def]

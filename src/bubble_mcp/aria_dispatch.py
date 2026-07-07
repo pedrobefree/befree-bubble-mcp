@@ -93,6 +93,11 @@ MUTATING_PREFIXES = (
 )
 
 
+def _requires_calculate_derived(tool_name: str) -> bool:
+    """Return true for schema writes that Bubble finalizes through calculate_derived."""
+    return tool_name in {"delete_data_field"}
+
+
 @dataclass(frozen=True)
 class AriaRuntimeEnvironment:
     profile: str
@@ -237,6 +242,10 @@ def _method_kwargs(method: Any, args: dict[str, Any], *, execute: bool) -> dict[
 
     if method.__name__ == "add_event_go_to_page_action" and args.get("same_tab") is True:
         kwargs["open_in_new_tab"] = False
+    if method.__name__ == "delete_data_field" and "field_key" not in kwargs:
+        raw_field_ref = args.get("name") or args.get("field_name")
+        if raw_field_ref is not None:
+            kwargs["field_key"] = raw_field_ref
 
     if "dry_run" in signature.parameters:
         kwargs["dry_run"] = not execute
@@ -326,7 +335,12 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
             captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
             return result
         assert session is not None
-        result = BubbleEditorClient().write(write_payload, session, dry_run=False)
+        result = BubbleEditorClient().write(
+            write_payload,
+            session,
+            dry_run=False,
+            calculate_derived=_requires_calculate_derived(name),
+        )
         captured_results.append({"ok": bool(result.get("ok")), "executed": True, "result": result})
         if result.get("ok"):
             request = result.get("request")

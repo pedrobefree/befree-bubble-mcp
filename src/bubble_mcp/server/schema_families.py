@@ -466,6 +466,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Set true only when the user asked to apply the change in Bubble. Leave false to preview the authenticated request.",
         default=False,
     ),
+    "calculate_derived": _prop(
+        "boolean",
+        "After a successful Bubble editor write, call /appeditor/calculate_derived to refresh derived schema indexes. Use for manual schema writes such as deleting data fields.",
+        default=False,
+    ),
     "cleanup": _prop(
         "boolean",
         "For execute-write smoke only: delete the temporary smoke page after the suite finishes.",
@@ -1109,7 +1114,7 @@ def planning_execution_tools() -> list[ToolSchema]:
         tool_schema(
             "bubble_editor_write",
             "Send a Bubble /appeditor/write payload using a stored local session. Set execute=true to mutate Bubble; otherwise it previews the request.",
-            ["profile", "payload", "execute"],
+            ["profile", "payload", "execute", "calculate_derived"],
             required=["profile", "payload"],
         ),
         tool_schema(

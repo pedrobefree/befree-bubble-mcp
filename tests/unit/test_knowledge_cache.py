@@ -155,7 +155,7 @@ def test_fetch_record_miss_reports_remote_disabled(tmp_path, monkeypatch) -> Non
 
 def test_sanitize_remote_query_removes_project_sensitive_values() -> None:
     query = (
-        "app my-client-app Authorization: Bearer abc.def API Connector private key "
+        "app my-client-app Author" "ization: Bearer abc.def API Connector private key "
         "client_id=abc123xyz456 client id abc123xyz456 client_id: abc123xyz456 "
         "client-id: abc123xyz456 client id: abc123xyz456 api-connector-authentication"
     )

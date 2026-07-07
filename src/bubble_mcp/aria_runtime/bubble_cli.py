@@ -56045,6 +56045,12 @@ class BubbleCLI:
                         cmd['new_name'],
                         dry_run=dry_run
                     )
+                elif command_type == 'delete-data-field':
+                    result = self.delete_data_field(
+                        cmd['data_type_key'],
+                        cmd['field_key'],
+                        dry_run=dry_run
+                    )
                 elif command_type == 'create-option-set':
                     result = self.create_option_set(
                         cmd['name'],
@@ -62149,6 +62155,53 @@ class BubbleCLI:
             self._save_cli_cache()
         return ok
 
+    def delete_data_field(
+        self,
+        data_type_key: str,
+        field_key: str,
+        dry_run: bool = False
+    ) -> bool:
+        """Delete a field in a Bubble Data Type."""
+        deleted_label = f"{self._data_field_display_name(data_type_key, field_key)} - deleted"
+        pb = PayloadBuilder(appname=self.appname)
+        self._add_schema_change(
+            pb,
+            "WriteCustomField",
+            ["user_types", data_type_key, "%f3", field_key, "%del"],
+            True
+        )
+        self._add_schema_change(
+            pb,
+            "WriteCustomField",
+            ["user_types", data_type_key, "%f3", field_key, "%d"],
+            deleted_label
+        )
+        ok = self._send_schema_payload(
+            pb,
+            dry_run,
+            f"Field '{field_key}' on '{data_type_key}' deleted."
+        )
+        if ok and not dry_run:
+            user_types = self._schema_user_types_cache()
+            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
+            fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
+            field_entry = fields.get(field_key, {}) if isinstance(fields.get(field_key), dict) else {}
+            field_entry["%del"] = True
+            field_entry["%d"] = deleted_label
+            fields[field_key] = field_entry
+            entry["%f3"] = fields
+            user_types[data_type_key] = entry
+            self._save_cli_cache()
+        return ok
+
+    def _data_field_display_name(self, data_type_key: str, field_key: str) -> str:
+        user_types = self._get_user_types(include_cache=True)
+        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
+        fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
+        field_entry = fields.get(field_key, {}) if isinstance(fields.get(field_key), dict) else {}
+        display_name = str(field_entry.get("%d") or "").strip()
+        return display_name or field_key
+
     def create_option_set(
         self,
         name: str,
@@ -67956,6 +68009,11 @@ Examples:
     rename_data_field_parser.add_argument('field_key', help='Field key (e.g. field_date_date)')
     rename_data_field_parser.add_argument('new_name', help='New field display name')
     rename_data_field_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
+
+    delete_data_field_parser = subparsers.add_parser('delete-data-field', help='Delete a field in a data type')
+    delete_data_field_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
+    delete_data_field_parser.add_argument('field_key', help='Field key (e.g. field_date_date)')
+    delete_data_field_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
 
     create_option_set_parser = subparsers.add_parser('create-option-set', help='Create a new option set')
     create_option_set_parser.add_argument('name', help='Option set name (with or without OS: prefix)')
@@ -73896,6 +73954,12 @@ Examples:
             args.data_type_key,
             args.field_key,
             args.new_name,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'delete-data-field':
+        success = cli.delete_data_field(
+            args.data_type_key,
+            args.field_key,
             dry_run=args.dry_run
         )
     elif args.command == 'create-option-set':
