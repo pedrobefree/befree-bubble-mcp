@@ -10,7 +10,7 @@ from typing import Any, Callable
 from urllib import error, request
 
 from bubble_mcp.core.redaction import redact_sensitive
-from bubble_mcp.sessions.store import BubbleSessionData
+from bubble_mcp.sessions.store import BubbleSessionData, editor_write_session_status
 
 
 EDITOR_WRITE_URL = "https://bubble.io/appeditor/write"
@@ -136,7 +136,7 @@ def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, An
         "content-type": "application/json",
         "origin": captured.get("origin") or "https://bubble.io",
         "priority": captured.get("priority") or "u=1, i",
-        "referer": captured.get("referer") or "https://bubble.io/",
+        "referer": captured.get("referer") or session.url or f"https://bubble.io/page?id={appname}",
         "sec-fetch-dest": captured.get("sec-fetch-dest") or "empty",
         "sec-fetch-mode": captured.get("sec-fetch-mode") or "cors",
         "sec-fetch-site": captured.get("sec-fetch-site") or "same-origin",
@@ -222,12 +222,20 @@ class BubbleEditorClient:
         data = parse_response_body(response.body)
 
         if response.status in (401, 403):
+            session_status = editor_write_session_status(session)
             return {
                 "ok": False,
                 "dry_run": False,
                 "status": response.status,
                 "error": f"Bubble blocked the editor write ({response.status}).",
                 "reason": "auth_blocked",
+                "session_write_ready": session_status["write_ready"],
+                "session_diagnostics": session_status,
+                "next_user_action": (
+                    "Recapture the Bubble editor session and keep the editor open until the MCP reports "
+                    "that editor request headers were detected. A session that can download .bubble may still "
+                    "be missing headers required for /appeditor/write."
+                ),
                 "response": data,
                 "request": safe_request,
             }
@@ -273,12 +281,19 @@ class BubbleEditorClient:
         data = parse_response_body(response.body)
 
         if response.status in (401, 403):
+            session_status = editor_write_session_status(session)
             return {
                 "ok": False,
                 "dry_run": False,
                 "status": response.status,
                 "error": f"Bubble blocked calculate_derived ({response.status}).",
                 "reason": "auth_blocked",
+                "session_write_ready": session_status["write_ready"],
+                "session_diagnostics": session_status,
+                "next_user_action": (
+                    "Recapture the Bubble editor session and keep the editor open until the MCP reports "
+                    "that editor request headers were detected."
+                ),
                 "response": data,
                 "request": safe_request,
             }

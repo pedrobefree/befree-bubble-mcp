@@ -12,6 +12,11 @@ from typing import Any
 from bubble_mcp.core.config import get_config_dir
 from bubble_mcp.core.redaction import redact_sensitive
 
+EDITOR_WRITE_HEADER_KEYS = {
+    "x-bubble-client-version",
+    "x-bubble-client-commit-timestamp",
+}
+
 
 @dataclass(frozen=True)
 class BubbleSessionData:
@@ -96,6 +101,32 @@ def session_from_payload(payload: dict[str, Any], *, default_app_id: str | None 
         captured_at=captured_at,
         source=source,
     )
+
+
+def editor_write_session_status(session: BubbleSessionData | None) -> dict[str, Any]:
+    """Return whether a captured session has enough editor headers for writes."""
+
+    if session is None:
+        return {
+            "write_ready": False,
+            "has_cookies": False,
+            "has_editor_request_headers": False,
+            "missing": ["cookies", "editor_request_headers"],
+        }
+    lowered = {str(key).lower(): str(value) for key, value in session.headers.items() if value is not None}
+    has_cookies = bool(session.cookies or lowered.get("cookie"))
+    has_editor_request_headers = any(key in lowered for key in EDITOR_WRITE_HEADER_KEYS)
+    missing: list[str] = []
+    if not has_cookies:
+        missing.append("cookies")
+    if not has_editor_request_headers:
+        missing.append("editor_request_headers")
+    return {
+        "write_ready": has_cookies and has_editor_request_headers,
+        "has_cookies": has_cookies,
+        "has_editor_request_headers": has_editor_request_headers,
+        "missing": missing,
+    }
 
 
 def save_session(profile: str, session: BubbleSessionData, config_dir: Path | None = None) -> Path:

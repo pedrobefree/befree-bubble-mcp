@@ -57,6 +57,7 @@ def _poll_browser_session(
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
     progress: ProgressCallback | None = None,
+    editor_headers_ready: Callable[[], bool] | None = None,
 ) -> tuple[str, str, bool]:
     """Poll a Playwright context and keep the newest usable Bubble session state.
 
@@ -67,6 +68,7 @@ def _poll_browser_session(
 
     interrupted = False
     reported_cookies = bool(last_cookie_string)
+    reported_write_ready = False
     deadline = monotonic() + max(1, wait_seconds)
     while monotonic() < deadline:
         try:
@@ -76,10 +78,29 @@ def _poll_browser_session(
                 if not reported_cookies:
                     reported_cookies = True
                     if progress is not None:
-                        progress(
-                            "Session cookies detected. You can close the browser now; "
-                            "the CLI will save the newest captured session."
-                        )
+                        if editor_headers_ready is None:
+                            progress(
+                                "Session cookies detected. You can close the browser now; "
+                                "the CLI will save the newest captured session."
+                            )
+                        else:
+                            progress(
+                                "Session cookies detected. Keep the Bubble editor open until editor request "
+                                "headers are detected."
+                            )
+            if (
+                editor_headers_ready is not None
+                and last_cookie_string
+                and editor_headers_ready()
+                and not reported_write_ready
+            ):
+                reported_write_ready = True
+                if progress is not None:
+                    progress(
+                        "Bubble editor request headers detected. The session is write-ready; "
+                        "you can close the browser now."
+                    )
+                break
             last_user_agent = _first_open_page_user_agent(context, last_user_agent)
             sleep(1)
         except KeyboardInterrupt:
@@ -147,17 +168,22 @@ def capture_session_with_playwright(
             for key, value in raw_headers.items():
                 lowered = str(key).lower()
                 if lowered.startswith("x-bubble-") or lowered in {
+                    "accept",
                     "accept-language",
+                    "authorization",
                     "cache-control",
                     "origin",
                     "priority",
+                    "referer",
                     "sec-ch-ua",
                     "sec-ch-ua-mobile",
                     "sec-ch-ua-platform",
                     "sec-fetch-dest",
                     "sec-fetch-mode",
                     "sec-fetch-site",
+                    "x-csrf-token",
                     "x-requested-with",
+                    "x-xsrf-token",
                     "user-agent",
                 }:
                     captured_write_headers[lowered] = str(value)
@@ -177,6 +203,10 @@ def capture_session_with_playwright(
             last_cookie_string=last_cookie_string,
             last_user_agent=last_user_agent,
             progress=progress,
+            editor_headers_ready=lambda: bool(
+                captured_write_headers.get("x-bubble-client-version")
+                or captured_write_headers.get("x-bubble-client-commit-timestamp")
+            ),
         )
 
         try:
@@ -202,6 +232,14 @@ def capture_session_with_playwright(
 
     if not last_cookie_string:
         raise RuntimeError("No bubble.io cookies were captured. Log in before the wait timeout expires.")
+    if not (
+        captured_write_headers.get("x-bubble-client-version")
+        or captured_write_headers.get("x-bubble-client-commit-timestamp")
+    ):
+        raise RuntimeError(
+            "Bubble cookies were captured, but editor request headers were not. "
+            "Open the Bubble editor for the target app, wait until it fully loads, and rerun session login."
+        )
 
     if progress is not None:
         header_count = len(captured_write_headers)

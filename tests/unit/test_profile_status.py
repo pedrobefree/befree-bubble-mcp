@@ -42,8 +42,8 @@ def test_profile_status_reports_ready_profile(tmp_path, monkeypatch) -> None:  #
             app_id="client-app",
             url="https://bubble.io/appeditor/write",
             method="POST",
-            headers={"x-bubble-appname": "client-app"},
-            cookies=None,
+            headers={"x-bubble-appname": "client-app", "x-bubble-client-version": "client-version"},
+            cookies="sid=secret",
             app_version="test",
             captured_at="2026-07-04T00:00:00+00:00",
             source="test",
@@ -57,6 +57,7 @@ def test_profile_status_reports_ready_profile(tmp_path, monkeypatch) -> None:  #
     assert status["ready"] is True
     assert status["session"]["exists"] is True
     assert status["session"]["app_id_matches_profile"] is True
+    assert status["session"]["write_ready"] is True
     assert status["context"]["loadable"] is True
     assert status["context"]["freshness"]["stale"] is False
     assert status["next_actions"] == []
@@ -124,8 +125,8 @@ def test_profile_status_rejects_context_for_another_app(tmp_path, monkeypatch) -
             app_id="client-app",
             url="https://bubble.io/appeditor/write",
             method="POST",
-            headers={},
-            cookies=None,
+            headers={"x-bubble-client-version": "client-version"},
+            cookies="sid=secret",
             app_version="test",
             captured_at="2026-07-04T00:00:00+00:00",
             source="test",
@@ -145,6 +146,58 @@ def test_profile_status_rejects_context_for_another_app(tmp_path, monkeypatch) -
             "reason": "Loaded context app_id does not match the configured profile app_id. Refresh context for this profile.",
         }
     ]
+
+
+def test_profile_status_requires_write_ready_session(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    context_path = tmp_path / "contexts" / "client-app.json"
+    save_context(
+        BubbleProjectContext(
+            app_id="client-app",
+            source="test",
+            nodes=[],
+            edges=[],
+            metadata={},
+        ),
+        context_path,
+    )
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={
+                "client": BubbleProfile(
+                    name="client",
+                    app_id="client-app",
+                    appname="client-app",
+                    app_version="test",
+                    app_json_path="contexts/client-app.json",
+                )
+            },
+        )
+    )
+    save_session(
+        "client",
+        BubbleSessionData(
+            app_id="client-app",
+            url="https://bubble.io/page?id=client-app",
+            method="POST",
+            headers={"cookie": "sid=secret"},
+            cookies="sid=secret",
+            app_version="test",
+            captured_at="2026-07-04T00:00:00+00:00",
+            source="test",
+        ),
+        tmp_path,
+    )
+
+    status = profile_status("client")
+
+    assert status["ready"] is False
+    assert status["session"]["write_ready"] is False
+    assert status["session"]["write_diagnostics"]["missing"] == ["editor_request_headers"]
+    assert status["next_actions"][0]["tool"] == "bubble_session_login"
+    assert "editor request headers" in status["next_actions"][0]["reason"]
 
 
 def test_profile_status_uses_compact_context_for_bubble_source_artifact(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -183,8 +236,8 @@ def test_profile_status_uses_compact_context_for_bubble_source_artifact(tmp_path
             app_id="client-app",
             url="https://bubble.io/appeditor/write",
             method="POST",
-            headers={},
-            cookies=None,
+            headers={"x-bubble-client-version": "client-version"},
+            cookies="sid=secret",
             app_version="test",
             captured_at="2026-07-04T00:00:00+00:00",
             source="test",
@@ -195,6 +248,7 @@ def test_profile_status_uses_compact_context_for_bubble_source_artifact(tmp_path
     status = profile_status("client")
 
     assert status["ready"] is True
+    assert status["session"]["write_ready"] is True
     assert status["context"]["path"] == str(compact_context_path)
     assert status["context"]["source_artifact"]["path"] == str(bubble_path)
 

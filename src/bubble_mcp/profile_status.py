@@ -8,7 +8,7 @@ from typing import Any
 from bubble_mcp.context.detector import default_context_path
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.core.config import BubbleProfile, get_settings_path, load_settings, resolve_profile
-from bubble_mcp.sessions.store import load_session, session_path
+from bubble_mcp.sessions.store import editor_write_session_status, load_session, session_path
 
 
 def _resolve_profile_path(profile: BubbleProfile, raw_path: str | None, settings_dir: Path) -> Path | None:
@@ -87,11 +87,21 @@ def _session_status(profile: BubbleProfile, *, settings_dir: Path) -> dict[str, 
             "path": str(path),
             "metadata": None,
             "app_id_matches_profile": False,
+            "write_ready": False,
+            "write_diagnostics": editor_write_session_status(None),
             "error": str(exc),
         }
     if not session:
-        return {"exists": False, "path": str(path), "metadata": None, "app_id_matches_profile": False}
+        return {
+            "exists": False,
+            "path": str(path),
+            "metadata": None,
+            "app_id_matches_profile": False,
+            "write_ready": False,
+            "write_diagnostics": editor_write_session_status(None),
+        }
     metadata = session.metadata()
+    write_status = editor_write_session_status(session)
     return {
         "exists": True,
         "path": str(path),
@@ -100,6 +110,8 @@ def _session_status(profile: BubbleProfile, *, settings_dir: Path) -> dict[str, 
         "app_version_matches_profile": bool(
             not profile.app_version or not session.app_version or session.app_version == profile.app_version
         ),
+        "write_ready": write_status["write_ready"],
+        "write_diagnostics": write_status,
     }
 
 
@@ -129,6 +141,18 @@ def _next_actions(*, profile: BubbleProfile | None, session: dict[str, Any] | No
                 "args": {"profile": profile.name, "app_id": profile.app_id, "wait_seconds": 180},
                 "command": f"bubble-mcp session login --profile {profile.name} --app-id {profile.app_id}",
                 "reason": "Stored session app_id does not match the configured profile app_id. Capture a new session for this profile.",
+            }
+        )
+    elif not session.get("write_ready"):
+        actions.append(
+            {
+                "tool": "bubble_session_login",
+                "args": {"profile": profile.name, "app_id": profile.app_id, "wait_seconds": 180},
+                "command": f"bubble-mcp session login --profile {profile.name} --app-id {profile.app_id}",
+                "reason": (
+                    "Stored session can exist and still be insufficient for editor writes. Recapture it and "
+                    "keep the Bubble editor open until editor request headers are detected."
+                ),
             }
         )
     if not context or not context.get("loadable"):
@@ -182,6 +206,7 @@ def profile_status(profile_name: str = "", *, max_age_hours: int = 24) -> dict[s
     ready = bool(
         session.get("exists")
         and session.get("app_id_matches_profile")
+        and session.get("write_ready")
         and context.get("loadable")
         and context.get("app_id_matches_profile")
         and not context.get("freshness", {}).get("stale")

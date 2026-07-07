@@ -112,7 +112,7 @@ def test_editor_client_uses_aria_editor_write_headers() -> None:
     assert headers["cache-control"] == "no-cache"
     assert headers["content-type"] == "application/json"
     assert headers["origin"] == "https://bubble.io"
-    assert headers["referer"] == "https://bubble.io/"
+    assert headers["referer"] == "https://bubble.io/page?name=synthetic-app"
     assert headers["sec-fetch-dest"] == "empty"
     assert headers["sec-fetch-mode"] == "cors"
     assert headers["sec-fetch-site"] == "same-origin"
@@ -144,8 +144,17 @@ def test_editor_client_returns_structured_auth_block() -> None:
     assert result["ok"] is False
     assert result["status"] == 401
     assert result["reason"] == "auth_blocked"
+    assert result["session_write_ready"] is False
+    assert result["session_diagnostics"]["missing"] == ["editor_request_headers"]
+    assert "editor request headers" in result["next_user_action"]
     assert result["request"]["headers"]["cookie"] == "[REDACTED]"
     assert result["request"]["headers"]["x-bubble-appname"] == "synthetic-app"
+
+
+def test_editor_write_headers_use_session_url_as_referer() -> None:
+    headers = build_editor_write_headers(synthetic_session(), write_payload())
+
+    assert headers["referer"] == "https://bubble.io/page?name=synthetic-app"
 
 
 def test_execute_plan_runs_write_payload_steps_with_fake_client() -> None:
