@@ -446,6 +446,20 @@ DOC_ENRICHMENT_PROFILES: dict[str, dict[str, Any]] = {
             "Branch deletion and deployment-adjacent actions remain explicit-confirmation operations.",
         ],
     },
+    "browser_automation": {
+        "priority": 4,
+        "recommended_queries": [
+            "Bubble deployment scheduling version control deploy modal",
+            "Bubble deploy to live scheduling app versions",
+            "Bubble editor browser automation deployment confirmation",
+        ],
+        "schema_effect": "Improve browser-assisted deploy scheduling descriptions, confirmation requirements, branch warnings, and timing examples.",
+        "validation_effect": "Require preview id confirmation, explicit execute/confirm gates, authenticated browser session checks, and local history evidence.",
+        "safety_notes": [
+            "Browser-assisted deployment actions are high risk and must stay preview-first with explicit confirmation.",
+            "Manual documentation can explain the deploy flow, but Playwright/browser execution remains the operational source of truth.",
+        ],
+    },
     "extension_authoring": {
         "priority": 4,
         "recommended_queries": [
@@ -1553,9 +1567,11 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_language_cache_status",
         "bubble_framework_list",
         "bubble_framework_status",
+        "bubble_list_scheduled_deploys",
+        "bubble_deploy_history",
     }
     read_only = _is_read_only(name) or name in agent_read_only
-    destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}
+    destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete", "bubble_schedule_deploy"}
     return {
         "readOnlyHint": read_only,
         "destructiveHint": destructive,
@@ -1594,6 +1610,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_branch_create",
             "bubble_branch_delete",
             "bubble_extension_companion_start",
+            "bubble_schedule_deploy",
             "upload_asset",
         },
     }
