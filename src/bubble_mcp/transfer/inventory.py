@@ -67,6 +67,24 @@ def _resolve_source_node(
 
 
 def _subtree_nodes(context: BubbleProjectContext, root: BubbleContextNode) -> list[BubbleContextNode]:
+    root_path = root.metadata.get("path") or root.metadata.get("path_array")
+    if root.type in {"page", "reusable"} and isinstance(root_path, list) and root_path:
+        prefix = [str(item) for item in root_path]
+        related_ids = {
+            edge.target
+            for edge in context.edges
+            if edge.source == root.id and edge.type in _CHILD_EDGE_TYPES
+        }
+        scoped = [root]
+        for node in context.nodes:
+            if node.id == root.id:
+                continue
+            node_path = node.metadata.get("path") or node.metadata.get("path_array")
+            normalized = [str(item) for item in node_path] if isinstance(node_path, list) else []
+            if normalized[: len(prefix)] == prefix or (not normalized and node.id in related_ids):
+                scoped.append(node)
+        return scoped
+
     nodes_by_id = {node.id: node for node in context.nodes}
     children_by_source: dict[str, list[str]] = defaultdict(list)
     for edge in context.edges:

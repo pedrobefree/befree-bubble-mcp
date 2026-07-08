@@ -10,6 +10,7 @@ def _source_context(
     include_api_connector: bool = False,
     include_asset: bool = False,
     include_style: bool = False,
+    include_plugin_element: bool = False,
 ) -> BubbleProjectContext:
     element_metadata = {
         "bubble_id": "bHero",
@@ -43,6 +44,8 @@ def _source_context(
         element_metadata["image_url"] = "https://example.com/source-hero.png"
     if include_style:
         element_metadata["style"] = "Primary Button"
+    if include_plugin_element:
+        element_metadata["element_type"] = "plugin-example-Widget"
     return BubbleProjectContext(
         app_id="source-app",
         source="test",
@@ -103,6 +106,8 @@ def _settings(  # type: ignore[no-untyped-def]
     source_has_api_connector: bool = False,
     source_has_asset: bool = False,
     source_has_style: bool = False,
+    source_has_plugin_element: bool = False,
+    source_app_json_path: str | None = None,
 ) -> None:
     source_path = tmp_path / "contexts" / "source" / "source-app-context.json"
     target_path = tmp_path / "contexts" / "target" / "target-app-context.json"
@@ -111,6 +116,7 @@ def _settings(  # type: ignore[no-untyped-def]
             include_api_connector=source_has_api_connector,
             include_asset=source_has_asset,
             include_style=source_has_style,
+            include_plugin_element=source_has_plugin_element,
         ),
         source_path,
     )
@@ -120,7 +126,12 @@ def _settings(  # type: ignore[no-untyped-def]
             config_dir=tmp_path,
             default_profile=None,
             profiles={
-                "source": BubbleProfile(name="source", app_id="source-app", appname="source-app"),
+                "source": BubbleProfile(
+                    name="source",
+                    app_id="source-app",
+                    appname="source-app",
+                    app_json_path=source_app_json_path,
+                ),
                 "target": BubbleProfile(name="target", app_id="target-app", appname="target-app"),
             },
         )
@@ -270,6 +281,64 @@ def test_create_transfer_plan_compiles_reusable_as_nested_payload(tmp_path, monk
     assert root_body["%x"] == "CustomDefinition"
     assert root_body["%nm"] == "fileUploader"
     assert root_body["%el"]
+
+
+def test_create_transfer_plan_uses_profile_bubble_raw_for_reusable_clone(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    bubble_path = tmp_path / "contexts" / "source" / "source-app.bubble"
+    bubble_path.parent.mkdir(parents=True, exist_ok=True)
+    bubble_path.write_text(
+        (
+            '{"element_definitions":{"bSrcReusable":{"id":"bSrcRoot","name":"fileUploader",'
+            '"type":"CustomDefinition","properties":{"group_type":"file"},'
+            '"custom_states":{"file_":{"display":"file","value":"file"}},'
+            '"elements":{"bHero":{"id":"bHeroRoot","name":"gp_Hero","type":"Group",'
+            '"states":{"0":{"condition":{"type":"GetElement","properties":{"element_id":"bSrcRoot"}},'
+            '"properties":{"is_visible":true}}}}},'
+            '"workflows":{"bWorkflow":{"id":"bWorkflowRoot","type":"InputChanged","properties":{"element_id":"bHeroRoot"}}}}}}'
+        ),
+        encoding="utf-8",
+    )
+    _settings(tmp_path, source_app_json_path="contexts/source/source-app.bubble")
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="reusable",
+        source_ref="fileUploader",
+        target_name="fileUploader",
+        conflict_policy="rename",
+        dependency_policy="map_only",
+    )
+
+    assert result["ok"] is True
+    plan = load_transfer_plan(result["transfer_id"])
+    root_body = next(
+        change["body"]
+        for change in plan["write_payloads"][0]["changes"]
+        if change["intent"]["name"] == "CreateElement"
+    )
+    assert root_body["%s"]
+    assert root_body["%wf"]
+    assert next(iter(root_body["%el"].values()))["%s"]
+
+
+def test_create_transfer_plan_blocks_missing_plugin_element_dependency(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path, source_has_plugin_element=True)
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="element",
+        source_ref="gp_Hero",
+        target_context="index",
+        target_parent="root",
+    )
+
+    assert result["ok"] is False
+    assert result["payload_count"] == 0
+    assert any("Install the matching plugin" in reason for reason in result["blocked_reasons"])
 
 
 def test_create_transfer_plan_blocks_page_shell_name_conflict_by_default(tmp_path, monkeypatch) -> None:

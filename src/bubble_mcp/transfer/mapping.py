@@ -47,6 +47,37 @@ def _target_reference(node: BubbleContextNode) -> dict[str, str]:
     return reference
 
 
+def _plugin_keys(value: str) -> set[str]:
+    normalized = str(value or "").strip()
+    if not normalized:
+        return set()
+    keys = {normalized}
+    if "-" in normalized:
+        keys.add(normalized.split("-", 1)[0])
+    return {_normalize(item) for item in keys if item}
+
+
+def _installed_plugin_node(target_context: BubbleProjectContext, *, key: str, label: str) -> BubbleContextNode | None:
+    plugins = (
+        ((target_context.metadata or {}).get("settings") or {})
+        .get("client_safe", {})
+        .get("plugins", {})
+    )
+    if not isinstance(plugins, dict):
+        plugins = {}
+    wanted = _plugin_keys(key) | _plugin_keys(label)
+    for plugin_key, version in plugins.items():
+        if _normalize(str(plugin_key)) not in wanted:
+            continue
+        return BubbleContextNode(
+            id=f"plugin:{plugin_key}",
+            label=str(plugin_key),
+            type="plugin",
+            metadata={"key": str(plugin_key), "name": str(plugin_key), "version": str(version)},
+        )
+    return None
+
+
 def _find_target_dependency(
     target_context: BubbleProjectContext,
     *,
@@ -54,6 +85,8 @@ def _find_target_dependency(
     key: str,
     label: str,
 ) -> BubbleContextNode | None:
+    if kind == "plugin":
+        return _installed_plugin_node(target_context, key=key, label=label)
     wanted = {_normalize(key), _normalize(label)}
     if kind == "data_field" and "." in key:
         wanted.add(_normalize(key.rsplit(".", 1)[-1]))
@@ -122,6 +155,20 @@ def build_dependency_decisions(
                     dependency=dependency,
                     action="skip",
                     reason="Missing optional dependency skipped by policy.",
+                )
+            )
+            continue
+        if dependency.kind == "plugin":
+            decisions.append(
+                TransferMappingDecision(
+                    dependency=dependency,
+                    action="block",
+                    reason=(
+                        "Target app is missing Bubble plugin support required by transfer dependency: "
+                        f"{dependency.key}. Install the matching plugin in the target app, refresh context, "
+                        "and rerun the transfer. Execution is blocked to avoid creating a broken "
+                        "'missing element' reusable."
+                    ),
                 )
             )
             continue

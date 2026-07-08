@@ -455,3 +455,89 @@ def test_compile_reusable_inventory_payload_nests_children_under_custom_definiti
     assert id_to_path_updates[("_index", "id_to_path", child_id)] == (
         f"%ed.{reusable_ref}.%el.{parent_id}.%el.{child_id}"
     )
+
+
+def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone() -> None:
+    inventory = TransferInventory(
+        source=TransferObjectRef(
+            profile="source",
+            app_id="source-app",
+            app_version="test",
+            source_type="reusable",
+            ref="fileUploader",
+            bubble_id="bSourceReusable",
+        ),
+        root={
+            "id": "reusable:fileUploader",
+            "label": "fileUploader",
+            "type": "reusable",
+            "metadata": {
+                "bubble_id": "bSourceReusable",
+                "raw_definition": {
+                    "id": "bSourceRoot",
+                    "name": "fileUploader",
+                    "type": "CustomDefinition",
+                    "properties": {"group_type": "file", "fit_height": True},
+                    "custom_states": {"file_": {"display": "file", "value": "file", "make_static": True}},
+                    "elements": {
+                        "bGroupSlot": {
+                            "id": "bGroupRoot",
+                            "name": "gp file",
+                            "type": "Group",
+                            "properties": {"is_visible": False},
+                            "states": {
+                                "0": {
+                                    "condition": {
+                                        "type": "GetElement",
+                                        "properties": {"element_id": "bSourceRoot"},
+                                    },
+                                    "properties": {"is_visible": True},
+                                }
+                            },
+                        }
+                    },
+                    "workflows": {
+                        "bWorkflowSlot": {
+                            "id": "bWorkflowRoot",
+                            "type": "InputChanged",
+                            "properties": {"element_id": "bGroupRoot"},
+                            "actions": {
+                                "0": {
+                                    "id": "bActionRoot",
+                                    "type": "SetCustomState",
+                                    "properties": {"element_id": "bSourceRoot", "custom_state": "custom.file_"},
+                                }
+                            },
+                        }
+                    },
+                },
+            },
+        },
+        nodes=[],
+        dependencies=[],
+    )
+
+    compiled = compile_reusable_inventory_to_payload(
+        inventory=inventory,
+        target_app_id="target-app",
+        target_app_version="test",
+        target_name="fileUploaderCopy",
+    )
+
+    assert compiled is not None
+    payload, reusable_ref = compiled
+    root_change = next(change for change in payload["changes"] if change["intent"]["name"] == "CreateElement")
+    root_body = root_change["body"]
+    assert root_change["path_array"] == ["%ed", reusable_ref]
+    assert root_body["%x"] == "CustomDefinition"
+    assert root_body["%nm"] == "fileUploaderCopy"
+    assert root_body["%s"]
+    assert root_body["%wf"]
+    child_body = next(iter(root_body["%el"].values()))
+    assert child_body["%nm"] == "gp file"
+    assert child_body["%s"]
+    serialized = str(root_body)
+    assert "bSourceRoot" not in serialized
+    assert "bGroupRoot" not in serialized
+    assert "bWorkflowRoot" not in serialized
+    assert "bActionRoot" not in serialized

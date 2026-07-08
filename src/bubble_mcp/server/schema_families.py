@@ -1039,7 +1039,7 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "dependency_policy": _prop(
         "string",
-        "How to handle dependencies not found in the target app.",
+        "How to handle dependencies not found in the target app. Missing Bubble plugin-backed element/action types block execution until the matching plugin is installed and target context is refreshed.",
         enum=["map_only", "map_or_create", "skip_optional"],
         default="map_or_create",
     ),
@@ -1488,13 +1488,13 @@ def transfer_tools() -> list[ToolSchema]:
     return [
         tool_schema(
             "bubble_transfer_inventory",
-            "Inspect a source Bubble page, reusable, or element subtree for project-to-project transfer. This is read-only and returns dependency warnings before planning.",
+            "Inspect a source Bubble page, reusable, or element subtree for project-to-project transfer. This is read-only and returns dependency warnings, including plugin-backed element/action types that must exist in the target app.",
             ["source_profile", "source_type", "source_ref", "source_context", "include_raw"],
             required=["source_profile", "source_type", "source_ref"],
         ),
         tool_schema(
             "bubble_transfer_plan",
-            "Create a local preview-first transfer plan from one Bubble project profile to another. This writes only a local plan artifact, never Bubble.",
+            "Create a local preview-first transfer plan from one Bubble project profile to another. This writes only a local plan artifact, never Bubble, and blocks copies that would create broken missing-plugin elements.",
             [
                 "source_profile",
                 "target_profile",

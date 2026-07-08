@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import re
+from dataclasses import replace
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
+from bubble_mcp.context.detector import default_bubble_export_path
 from bubble_mcp.context.models import BubbleContextNode, BubbleProjectContext
 from bubble_mcp.context.freshness import load_context_with_overlay
+from bubble_mcp.core.config import get_config_dir
 from bubble_mcp.transfer.api_connector import (
     extract_api_connector_bundle,
     plan_api_connector_bundle,
@@ -23,7 +28,7 @@ from bubble_mcp.transfer.compiler import (
 )
 from bubble_mcp.transfer.inventory import inventory_source_object
 from bubble_mcp.transfer.mapping import build_dependency_decisions
-from bubble_mcp.transfer.models import TransferPlan
+from bubble_mcp.transfer.models import TransferInventory, TransferPlan
 from bubble_mcp.transfer.profiles import resolve_transfer_profiles
 from bubble_mcp.transfer.store import save_transfer_plan
 
@@ -40,6 +45,46 @@ def _blocked_reasons(decisions: list[Any]) -> list[str]:
 
 def _obj(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def _configured_bubble_path(profile: Any) -> Path | None:
+    configured = str(getattr(profile, "app_json_path", "") or "").strip()
+    if configured:
+        path = Path(configured).expanduser()
+        if not path.is_absolute():
+            path = get_config_dir() / path
+        if path.exists() and path.suffix == ".bubble":
+            return path
+    candidate = default_bubble_export_path(str(profile.name), str(profile.app_id))
+    return candidate if candidate.exists() else None
+
+
+def _load_reusable_definition(profile: Any, reusable_id: str | None) -> dict[str, Any]:
+    if not reusable_id:
+        return {}
+    path = _configured_bubble_path(profile)
+    if path is None:
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    definitions = _obj(payload.get("element_definitions") or payload.get("reusables"))
+    raw = definitions.get(reusable_id)
+    return raw if isinstance(raw, dict) else {}
+
+
+def _with_raw_reusable_definition(inventory: TransferInventory, profile: Any) -> TransferInventory:
+    if inventory.source.source_type != "reusable":
+        return inventory
+    raw_definition = _load_reusable_definition(profile, inventory.source.bubble_id)
+    if not raw_definition:
+        return inventory
+    root = dict(inventory.root)
+    metadata = dict(_obj(root.get("metadata")))
+    metadata["raw_definition"] = raw_definition
+    root["metadata"] = metadata
+    return replace(inventory, root=root)
 
 
 def _normalize_name(value: str) -> str:
@@ -263,6 +308,13 @@ def _unsupported_create_copy_blocked(decisions: list[Any]) -> list[str]:
         if kind in compiler_supported:
             continue
         key = str(getattr(dependency, "key", "") or getattr(dependency, "label", "") or kind)
+        if kind == "plugin":
+            blocked.append(
+                f"Target app is missing Bubble plugin support required by transfer dependency: {key}. "
+                "Install the matching plugin in the target app, refresh context, and rerun the transfer. "
+                "Execution is blocked to avoid creating a broken 'missing element' reusable."
+            )
+            continue
         blocked.append(
             f"Missing transfer dependency has no safe create compiler yet: {kind}:{key}. "
             "Map or reuse it in the target project before executing the transfer."
@@ -377,6 +429,7 @@ def create_transfer_plan(
         source_ref=source_ref,
         source_context=source_context,
     )
+    inventory = _with_raw_reusable_definition(inventory, resolved.source)
     (
         effective_target_context,
         effective_target_name,

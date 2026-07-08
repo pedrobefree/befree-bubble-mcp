@@ -176,6 +176,13 @@ def overlay_summary(profile: str, app_id: str) -> dict[str, Any]:
     }
 
 
+def _node_identity(node: BubbleContextNode) -> tuple[str, str, str, str]:
+    path = node.metadata.get("path") or node.metadata.get("path_array")
+    path_key = ".".join(str(item) for item in path) if isinstance(path, list) else ""
+    context = str(node.metadata.get("context") or "")
+    return (node.type, node.id, context, path_key)
+
+
 def apply_mutation_overlay(
     context: BubbleProjectContext,
     *,
@@ -202,7 +209,7 @@ def apply_mutation_overlay(
             },
         )
 
-    nodes_by_id = {node.id: node for node in context.nodes}
+    nodes_by_key = {_node_identity(node): node for node in context.nodes}
     edges_by_key = {(edge.source, edge.target, edge.type): edge for edge in context.edges}
     added_nodes = 0
     for entry in entries:
@@ -217,23 +224,23 @@ def apply_mutation_overlay(
             intent_name = _intent_name(change)
             if intent_name in {"CreatePage", "Create page"}:
                 page_node = _page_node_from_change(change)
-                if page_node is not None and page_node.id not in nodes_by_id:
-                    nodes_by_id[page_node.id] = page_node
+                if page_node is not None and _node_identity(page_node) not in nodes_by_key:
+                    nodes_by_key[_node_identity(page_node)] = page_node
                     added_nodes += 1
             elif intent_name == "CreateElement":
                 element = _element_node_from_change(change)
                 if element is None:
                     continue
                 node, edge = element
-                if node.id not in nodes_by_id:
-                    nodes_by_id[node.id] = node
+                if _node_identity(node) not in nodes_by_key:
+                    nodes_by_key[_node_identity(node)] = node
                     added_nodes += 1
                 edges_by_key.setdefault((edge.source, edge.target, edge.type), edge)
 
     return BubbleProjectContext(
         app_id=context.app_id,
         source=f"{context.source}+mutation_overlay",
-        nodes=list(nodes_by_id.values()),
+        nodes=list(nodes_by_key.values()),
         edges=list(edges_by_key.values()),
         metadata={
             **context.metadata,

@@ -88,9 +88,56 @@ def test_inventory_page_includes_workflows() -> None:
     assert [node["id"] for node in inventory.nodes] == [
         "page:index",
         "element:bHero",
-        "workflow:wf1",
         "element:bButton",
+        "workflow:wf1",
     ]
+
+
+def test_inventory_reusable_scopes_duplicate_element_ids_by_path_prefix() -> None:
+    context = BubbleProjectContext(
+        app_id="source-app",
+        source="test",
+        nodes=[
+            BubbleContextNode(
+                id="reusable:fileUploader",
+                label="fileUploader",
+                type="reusable",
+                metadata={"bubble_id": "bReusableA", "path_array": ["%ed", "bReusableA"]},
+            ),
+            BubbleContextNode(
+                id="reusable:otherUploader",
+                label="otherUploader",
+                type="reusable",
+                metadata={"bubble_id": "bReusableB", "path_array": ["%ed", "bReusableB"]},
+            ),
+            BubbleContextNode(
+                id="element:bShared",
+                label="gp correct",
+                type="element",
+                metadata={"bubble_id": "bShared", "path_array": ["%ed", "bReusableA", "%el", "bShared"]},
+            ),
+            BubbleContextNode(
+                id="element:bShared",
+                label="gp wrong",
+                type="element",
+                metadata={"bubble_id": "bShared", "path_array": ["%ed", "bReusableB", "%el", "bShared"]},
+            ),
+        ],
+        edges=[
+            BubbleContextEdge(source="reusable:fileUploader", target="element:bShared", type="contains"),
+            BubbleContextEdge(source="reusable:otherUploader", target="element:bShared", type="contains"),
+        ],
+    )
+
+    inventory = inventory_source_object(
+        context=context,
+        profile="source",
+        app_version="test",
+        source_type="reusable",
+        source_ref="fileUploader",
+    )
+
+    assert [node["label"] for node in inventory.nodes] == ["fileUploader", "gp correct"]
 
 
 def test_inventory_requires_matching_source_type() -> None:

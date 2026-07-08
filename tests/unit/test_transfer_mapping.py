@@ -46,6 +46,7 @@ def _target_context() -> BubbleProjectContext:
             ),
         ],
         edges=[],
+        metadata={"settings": {"client_safe": {"plugins": {"progressbar": True}}}},
     )
 
 
@@ -188,3 +189,41 @@ def test_build_dependency_decisions_reuses_compatible_api_call_without_secret_me
     assert decisions[0].action == "map_existing"
     assert decisions[0].target_id == "api:stripe.create-customer"
     assert "authorization" not in decisions[0].metadata["signature_fields"]
+
+
+def test_build_dependency_decisions_maps_installed_plugin_by_element_type_prefix() -> None:
+    decisions = build_dependency_decisions(
+        _inventory(
+            [
+                TransferDependency(
+                    kind="plugin",
+                    key="progressbar-ProgressBar",
+                    label="Bubble plugin element/action type progressbar-ProgressBar",
+                )
+            ]
+        ),
+        _target_context(),
+        dependency_policy="map_only",
+    )
+
+    assert decisions[0].action == "map_existing"
+    assert decisions[0].target_id == "plugin:progressbar"
+
+
+def test_build_dependency_decisions_blocks_missing_plugin_dependency() -> None:
+    decisions = build_dependency_decisions(
+        _inventory(
+            [
+                TransferDependency(
+                    kind="plugin",
+                    key="missingplugin-Widget",
+                    label="Bubble plugin element/action type missingplugin-Widget",
+                )
+            ]
+        ),
+        _target_context(),
+        dependency_policy="map_or_create",
+    )
+
+    assert decisions[0].action == "block"
+    assert "Install the matching plugin" in decisions[0].reason

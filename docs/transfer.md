@@ -144,8 +144,16 @@ required by the transferred object.
 When `dependency_policy=map_or_create`, only dependencies with safe compilers
 are created automatically: collection schema resources, option sets, privacy
 rules, API Connector structure, and asset references according to
-`asset_policy`. Missing styles, colors, fonts, plugins, workflows, or custom
-states must be mapped or reused in the target project before execution.
+`asset_policy`. Missing styles, colors, fonts, workflows, or custom states must
+be mapped or reused in the target project before execution.
+
+Plugin-backed Bubble element and action types are treated as required runtime
+dependencies. If the source object uses a plugin that is not installed in the
+target app, planning blocks execution and reports the missing plugin element or
+action type. Install the matching Bubble plugin in the target app, refresh the
+target context, and create the transfer plan again. The planner intentionally
+does not write a partial copy that would render as a broken `missing element`
+placeholder.
 
 ## Current Limits
 

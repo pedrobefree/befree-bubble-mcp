@@ -14,6 +14,7 @@ from bubble_mcp.compiler.payload import (
     resolve_parent_path,
     update_index_change,
 )
+from bubble_mcp.aria_runtime.bubble_sdk import PayloadBuilder
 from bubble_mcp.context.models import BubbleProjectContext
 from bubble_mcp.transfer.models import TransferInventory, TransferMappingDecision
 
@@ -109,6 +110,12 @@ def _remap_value(value: Any, remap: dict[str, str]) -> Any:
     if isinstance(value, dict):
         return {key: _remap_value(item, remap) for key, item in value.items()}
     return value
+
+
+def _raw_reusable_definition(inventory: TransferInventory) -> dict[str, Any]:
+    metadata = _obj(inventory.root.get("metadata"))
+    raw = metadata.get("raw_definition")
+    return raw if isinstance(raw, dict) else {}
 
 
 def _child_ids_by_parent(element_nodes: list[dict[str, Any]]) -> dict[str, list[str]]:
@@ -276,6 +283,17 @@ def compile_reusable_inventory_to_payload(
 
     if inventory.source.source_type != "reusable":
         return None
+    raw_definition = _raw_reusable_definition(inventory)
+    if raw_definition:
+        resolved_name = target_name or inventory.source.ref
+        slot_id = bubble_element_id()
+        builder = PayloadBuilder(appname=target_app_id, app_version=target_app_version or "test")
+        source_slot_id = inventory.source.bubble_id or str(inventory.root.get("id", "")).split(":", 1)[-1]
+        builder.add_clone_reusable(source_slot_id, slot_id, resolved_name, raw_definition)
+        payload = builder.build()
+        payload["appVersion"] = target_app_version or "test"
+        return payload, slot_id
+
     element_nodes = [node for node in inventory.nodes if node.get("type") == "element"]
     session_id = bubble_session_id()
     slot_id = bubble_element_id()
