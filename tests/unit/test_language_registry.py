@@ -2,6 +2,7 @@ from bubble_mcp.language.registry import build_language_index
 from bubble_mcp.language.query import language_query, language_tool_detail
 from bubble_mcp.language.diff import language_diff, save_language_snapshot
 from bubble_mcp.language.framework_pack import framework_language_pack
+from bubble_mcp.language.compiler import compile_framework_program
 
 
 def test_language_index_is_compact_versioned_and_counts_dynamic_sources(tmp_path, monkeypatch) -> None:
@@ -90,3 +91,53 @@ def test_framework_language_pack_filters_context_for_framework_and_scope(tmp_pat
     assert result["tool_matches"]
     assert len(result["tool_matches"]) <= 10
     assert "full_catalog" not in result
+
+
+def test_compile_framework_program_outputs_preview_safe_calls(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="superpowers",
+        profile="cliente2",
+        program={
+            "objective": "Create checkout CTA",
+            "steps": [
+                {"intent": "resolve_context", "query": "page checkout"},
+                {"tool": "create_group", "arguments": {"context": "checkout", "parent": "root"}},
+                {
+                    "tool": "create_button",
+                    "arguments": {
+                        "context": "checkout",
+                        "parent": "<created_group_id>",
+                        "label": "Start checkout",
+                    },
+                },
+            ],
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["mode"] == "preview"
+    assert result["approval_required"] is True
+    assert [call["tool"] for call in result["compiled_calls"]] == [
+        "bubble_context_find",
+        "create_group",
+        "create_button",
+    ]
+    assert result["compiled_calls"][1]["arguments"]["execute"] is False
+    assert result["compiled_calls"][2]["arguments"]["profile"] == "cliente2"
+    assert result["validation_plan"]
+
+
+def test_compile_framework_program_rejects_unknown_tool(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={"objective": "Bad", "steps": [{"tool": "missing_tool", "arguments": {}}]},
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "framework_program_has_unavailable_tools"
+    assert result["unavailable_tools"] == ["missing_tool"]
