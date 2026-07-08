@@ -84,6 +84,7 @@ def test_method_kwargs_maps_style_condition_aliases() -> None:
         style_name: str,
         order_list: str,
         dry_run: bool = False,
+        prune_missing: bool = False,
     ) -> bool:
         return True
 
@@ -94,7 +95,7 @@ def test_method_kwargs_maps_style_condition_aliases() -> None:
     )
     reorder_kwargs = _method_kwargs(
         reorder_style_states,
-        {"name": "HTML Button Primary", "order": "hover,focus"},
+        {"name": "HTML Button Primary", "order": "hover,focus", "prune_missing": True},
         execute=True,
     )
 
@@ -107,6 +108,7 @@ def test_method_kwargs_maps_style_condition_aliases() -> None:
         "style_name": "HTML Button Primary",
         "order_list": "hover,focus",
         "dry_run": False,
+        "prune_missing": True,
     }
 
 

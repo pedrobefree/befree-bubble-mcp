@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import re
 from typing import Any, cast
 from pathlib import Path
 
@@ -314,12 +315,85 @@ def _style_property_aliases(property_name: str) -> tuple[str, ...]:
     return (property_name,)
 
 
-def _style_values_equal(expected: Any, actual: Any) -> bool:
+def _style_color_tokens(metadata: dict[str, Any]) -> dict[str, str]:
+    settings = metadata.get("settings") if isinstance(metadata.get("settings"), dict) else {}
+    client_safe = settings.get("client_safe") if isinstance(settings.get("client_safe"), dict) else {}
+    tokens: dict[str, str] = {}
+
+    system_tokens = client_safe.get("color_tokens") if isinstance(client_safe.get("color_tokens"), dict) else {}
+    for name, token_data in system_tokens.items():
+        color_value = token_data.get("%d1") or token_data.get("default") if isinstance(token_data, dict) else token_data
+        if isinstance(color_value, str) and color_value.strip():
+            tokens[f"var(--color_{name}_default)"] = color_value.strip()
+
+    user_tokens_wrapper = (
+        client_safe.get("color_tokens_user") if isinstance(client_safe.get("color_tokens_user"), dict) else {}
+    )
+    user_tokens = user_tokens_wrapper.get("%d1") or user_tokens_wrapper.get("default") or {}
+    if isinstance(user_tokens, dict):
+        for color_id, token_data in user_tokens.items():
+            if not isinstance(token_data, dict):
+                continue
+            if bool(token_data.get("%del", token_data.get("deleted", False))):
+                continue
+            color_value = token_data.get("rgba")
+            if isinstance(color_value, str) and color_value.strip():
+                tokens[f"var(--color_{color_id}_default)"] = color_value.strip()
+    return tokens
+
+
+def _style_color_tuple(value: Any, color_tokens: dict[str, str]) -> tuple[int, int, int, float] | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if text in color_tokens:
+        return _style_color_tuple(color_tokens[text], color_tokens)
+    rgb_var_match = re.fullmatch(r"rgba\(\s*var\((--color_[^)]+_default)_rgb\)\s*,\s*([0-9.]+)\s*\)", text)
+    if rgb_var_match is not None:
+        base = _style_color_tuple(f"var({rgb_var_match.group(1)})", color_tokens)
+        if base is None:
+            return None
+        return (base[0], base[1], base[2], float(rgb_var_match.group(2)))
+    hex_match = re.fullmatch(r"#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})", text)
+    if hex_match is not None:
+        hex_value = hex_match.group(1)
+        if len(hex_value) == 3:
+            hex_value = "".join(char * 2 for char in hex_value)
+        return (
+            int(hex_value[0:2], 16),
+            int(hex_value[2:4], 16),
+            int(hex_value[4:6], 16),
+            1.0,
+        )
+    rgb_match = re.fullmatch(
+        r"rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*([0-9.]+))?\s*\)",
+        text,
+        flags=re.I,
+    )
+    if rgb_match is not None:
+        alpha = float(rgb_match.group(4)) if rgb_match.group(4) is not None else 1.0
+        return (int(rgb_match.group(1)), int(rgb_match.group(2)), int(rgb_match.group(3)), alpha)
+    return None
+
+
+def _style_colors_equal(expected: Any, actual: Any, color_tokens: dict[str, str]) -> bool:
+    expected_color = _style_color_tuple(expected, color_tokens)
+    actual_color = _style_color_tuple(actual, color_tokens)
+    if expected_color is None or actual_color is None:
+        return False
+    rgb_distance = sum((expected_color[index] - actual_color[index]) ** 2 for index in range(3)) ** 0.5
+    alpha_distance = abs(expected_color[3] - actual_color[3])
+    return rgb_distance <= 16 and alpha_distance <= 0.02
+
+
+def _style_values_equal(expected: Any, actual: Any, color_tokens: dict[str, str] | None = None) -> bool:
     if expected == actual:
         return True
     if expected is None and actual in (None, ""):
         return True
     if actual is None and expected in (None, ""):
+        return True
+    if color_tokens and _style_colors_equal(expected, actual, color_tokens):
         return True
     try:
         return float(expected) == float(actual)
@@ -327,7 +401,12 @@ def _style_values_equal(expected: Any, actual: Any) -> bool:
         return str(expected).strip().lower() == str(actual).strip().lower()
 
 
-def _compare_style_properties(expected: dict[str, Any], actual: dict[str, Any] | None) -> dict[str, Any]:
+def _compare_style_properties(
+    expected: dict[str, Any],
+    actual: dict[str, Any] | None,
+    *,
+    color_tokens: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if not isinstance(actual, dict):
         return {
             "ok": True,
@@ -345,7 +424,7 @@ def _compare_style_properties(expected: dict[str, Any], actual: dict[str, Any] |
             missing.append({"property": property_name, "aliases": list(aliases), "expected": expected_value})
             continue
         actual_value = actual.get(actual_key)
-        if not _style_values_equal(expected_value, actual_value):
+        if not _style_values_equal(expected_value, actual_value, color_tokens):
             mismatched.append(
                 {
                     "property": property_name,
@@ -387,7 +466,12 @@ def _style_state_matches(state_name: str, state_data: dict[str, Any]) -> bool:
     return trigger in {value.strip() for value in _deep_string_values(condition)}
 
 
-def _verify_style_states(expected_states: dict[str, dict[str, Any]], actual_states: Any) -> dict[str, Any]:
+def _verify_style_states(
+    expected_states: dict[str, dict[str, Any]],
+    actual_states: Any,
+    *,
+    color_tokens: dict[str, str] | None = None,
+) -> dict[str, Any]:
     if not expected_states:
         return {"ok": True, "checked": True, "missing": [], "properties": {}}
     if not isinstance(actual_states, dict):
@@ -413,7 +497,11 @@ def _verify_style_states(expected_states: dict[str, dict[str, Any]], actual_stat
             missing.append(state_name)
             continue
         actual_properties = actual_state.get("%p") if isinstance(actual_state.get("%p"), dict) else actual_state.get("properties")
-        property_checks[state_name] = _compare_style_properties(expected_properties, actual_properties)
+        property_checks[state_name] = _compare_style_properties(
+            expected_properties,
+            actual_properties,
+            color_tokens=color_tokens,
+        )
     return {
         "ok": not missing and all(check.get("ok") for check in property_checks.values()),
         "checked": True,
@@ -444,6 +532,7 @@ def _verify_html_style_import(profile: str, candidate: dict[str, Any]) -> dict[s
             "expected_states": expected_states,
         }
     context = load_context(Path(context_path))
+    color_tokens = _style_color_tokens(context.metadata)
     styles = cast(dict[str, Any], context.metadata.get("styles") if isinstance(context.metadata.get("styles"), dict) else {})
     match: dict[str, Any] | None = None
     for style_id, style_data in styles.items():
@@ -465,8 +554,16 @@ def _verify_html_style_import(profile: str, candidate: dict[str, Any]) -> dict[s
     property_check = _compare_style_properties(
         expected_base,
         actual_properties,
+        color_tokens=color_tokens,
     )
-    state_check = _verify_style_states(expected_states_map, match.get("%s") if isinstance(match, dict) else None)
+    actual_states = None
+    if isinstance(match, dict):
+        actual_states = match.get("%s") if isinstance(match.get("%s"), dict) else match.get("states")
+    state_check = _verify_style_states(
+        expected_states_map,
+        actual_states,
+        color_tokens=color_tokens,
+    )
     verification_ok = match is not None and bool(property_check.get("ok")) and bool(state_check.get("ok"))
     return {
         "ok": verification_ok,

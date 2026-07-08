@@ -11279,7 +11279,13 @@ class BubbleCLI:
             "is_slidable": False,
         }
 
-    def reorder_style_states(self, style_name: str, order_list: Union[List[str], str], dry_run: bool = False) -> bool:
+    def reorder_style_states(
+        self,
+        style_name: str,
+        order_list: Union[List[str], str],
+        dry_run: bool = False,
+        prune_missing: bool = False,
+    ) -> bool:
         """
         Reorders style conditional states based on a provided list of triggers.
         Triggers: 'disabled', 'hover', 'pressed', 'focus', 'visible', 'not_visible'
@@ -11360,12 +11366,13 @@ class BubbleCLI:
                     state = {**state, "%x": "State"}
                 ordered_states.append(state)
 
-        # Add any remaining identified states at the end
-        for trigger in sorted(identified_states.keys()):
-            sid, state = identified_states[trigger]
-            if isinstance(state, dict) and "%x" not in state:
-                state = {**state, "%x": "State"}
-            ordered_states.append(state)
+        if not prune_missing:
+            # Add any remaining identified states at the end.
+            for trigger in sorted(identified_states.keys()):
+                sid, state = identified_states[trigger]
+                if isinstance(state, dict) and "%x" not in state:
+                    state = {**state, "%x": "State"}
+                ordered_states.append(state)
 
         ordered_states_map: Dict[str, Dict[str, Any]] = {
             str(idx): st for idx, st in enumerate(ordered_states)
@@ -11628,7 +11635,18 @@ class BubbleCLI:
 
         cond_type: Union[str, List[Tuple[str, Optional[str]]]] = chain
 
-        # Resolve color args
+        comparison_map = self._style_state_prop_wire_map()
+        base_props = self._get_base_style_props(style_id)
+
+        def base_value_for_property(prop_name: str) -> Any:
+            wire_key = comparison_map.get(prop_name, prop_name)
+            if wire_key in base_props:
+                return base_props.get(wire_key)
+            return base_props.get(prop_name)
+
+        # Resolve color args, but do not collapse a conditional color into the
+        # same token/value as the base style. In that case the state would be
+        # present but visually identical to default.
         color_keys = {
             "bg_color", "font_color", "icon_color", "border_color", "shadow_color",
             "border_color_top", "border_color_bottom", "border_color_left", "border_color_right",
@@ -11642,12 +11660,11 @@ class BubbleCLI:
                 # Keep explicit booleans only when true (style props are additive here).
                 continue
             if key in color_keys and isinstance(value, str):
-                clean_props[key] = self._resolve_color_arg(value)
+                resolved = self._resolve_color_arg(value)
+                clean_props[key] = value if resolved != value and base_value_for_property(key) == resolved else resolved
             else:
                 clean_props[key] = value
 
-        comparison_map = self._style_state_prop_wire_map()
-        base_props = self._get_base_style_props(style_id)
         is_disabled_state = bool(chain and chain[0][0] == "not_clickable")
         if is_disabled_state:
             clean_props = self._augment_not_clickable_condition_props(
@@ -11694,7 +11711,7 @@ class BubbleCLI:
             pb_transitions = PayloadBuilder(appname=self.appname)
             for intent in transition_intents:
                 pb_transitions.add_intent(intent)
-            if not self.send_raw_payload(pb_transitions.build()):
+            if not self._send_payload(pb_transitions):
                 logger.error("Failed to apply style transitions.")
                 return False
 
@@ -11709,7 +11726,7 @@ class BubbleCLI:
                 "type": "id_counter",
                 "value": random.randint(10000000, 20000000),
             })
-            if not self.send_raw_payload(pb_create.build()):
+            if not self._send_payload(pb_create):
                 logger.error("Failed to initialize style condition.")
                 return False
 
@@ -11717,7 +11734,7 @@ class BubbleCLI:
             pb_props = PayloadBuilder(appname=self.appname)
             for p in property_payloads:
                 pb_props.add_intent(p)
-            if not self.send_raw_payload(pb_props.build()):
+            if not self._send_payload(pb_props):
                 logger.error("Failed to apply condition properties.")
                 return False
 

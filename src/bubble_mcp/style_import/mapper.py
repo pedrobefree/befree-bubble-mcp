@@ -124,6 +124,50 @@ def _lab_to_css_color(value: str) -> str | None:
     return f"rgba({red}, {green}, {blue}, {alpha_value})"
 
 
+def _oklab_to_css_color(value: str) -> str | None:
+    match = re.fullmatch(
+        r"oklab\(\s*(-?[0-9.]+%?)\s+(-?[0-9.]+%?)\s+(-?[0-9.]+%?)(?:\s*/\s*([0-9.]+%?))?\s*\)",
+        value.strip(),
+        flags=re.I,
+    )
+    if match is None:
+        return None
+
+    def oklab_component(raw_value: str, *, lightness: bool = False) -> float:
+        text = raw_value.strip()
+        if text.endswith("%"):
+            value_float = float(text.removesuffix("%")) / 100
+            return value_float if lightness else value_float * 0.4
+        return float(text)
+
+    lightness = oklab_component(match.group(1), lightness=True)
+    a_axis = oklab_component(match.group(2))
+    b_axis = oklab_component(match.group(3))
+
+    long_l = lightness + 0.3963377774 * a_axis + 0.2158037573 * b_axis
+    medium_l = lightness - 0.1055613458 * a_axis - 0.0638541728 * b_axis
+    short_l = lightness - 0.0894841775 * a_axis - 1.2914855480 * b_axis
+
+    long = long_l**3
+    medium = medium_l**3
+    short = short_l**3
+
+    red_linear = 4.0767416621 * long - 3.3077115913 * medium + 0.2309699292 * short
+    green_linear = -1.2684380046 * long + 2.6097574011 * medium - 0.3413193965 * short
+    blue_linear = -0.0041960863 * long - 0.7034186147 * medium + 1.7076147010 * short
+    red, green, blue = [
+        max(0, min(255, round(_linear_rgb_to_srgb(channel) * 255)))
+        for channel in (red_linear, green_linear, blue_linear)
+    ]
+    alpha = match.group(4)
+    if alpha is None:
+        return f"#{red:02x}{green:02x}{blue:02x}"
+    alpha_value = alpha.strip()
+    if alpha_value.endswith("%"):
+        alpha_value = str(float(alpha_value.removesuffix("%")) / 100)
+    return f"rgba({red}, {green}, {blue}, {alpha_value})"
+
+
 def _css_color(value: str) -> str | None:
     hex_color = _lower_hex(value)
     if hex_color is not None:
@@ -157,6 +201,9 @@ def _css_color(value: str) -> str | None:
     lab_color = _lab_to_css_color(value)
     if lab_color is not None:
         return lab_color
+    oklab_color = _oklab_to_css_color(value)
+    if oklab_color is not None:
+        return oklab_color
     return None
 
 

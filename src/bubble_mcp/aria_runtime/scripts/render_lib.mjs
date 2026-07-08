@@ -87,6 +87,58 @@ function diffStyleSubset(base, state) {
   return diff;
 }
 
+async function styleImportPseudoStatesForSelector(page, selector) {
+  return await page.evaluate((sel) => {
+    const el = document.querySelector(sel || "body");
+    const states = { hover: false, focus: false, pressed: false, disabled: false };
+    if (!el) return states;
+
+    const pseudoMap = {
+      hover: ["hover"],
+      focus: ["focus", "focus-visible"],
+      pressed: ["active"],
+      disabled: ["disabled"],
+    };
+    const pseudoPattern = /(?<!\\):(focus-visible|hover|focus|disabled|active)\b/g;
+    const selectorParts = (selectorText) => String(selectorText || "").split(",").map((part) => part.trim()).filter(Boolean);
+    const walkRules = (rules) => {
+      if (!rules) return;
+      for (const rule of Array.from(rules)) {
+        if (rule && rule.cssRules) {
+          try {
+            walkRules(rule.cssRules);
+          } catch (_) {
+            // Ignore inaccessible nested rules.
+          }
+        }
+        if (!rule || !rule.selectorText) continue;
+        for (const rawSelector of selectorParts(rule.selectorText)) {
+          for (const [state, pseudos] of Object.entries(pseudoMap)) {
+            const matchedPseudos = Array.from(rawSelector.matchAll(pseudoPattern), (match) => match[1]);
+            if (!pseudos.some((pseudo) => matchedPseudos.includes(pseudo))) continue;
+            const baseSelector = rawSelector.replace(pseudoPattern, "").trim();
+            if (!baseSelector) continue;
+            try {
+              if (el.matches(baseSelector)) states[state] = true;
+            } catch (_) {
+              // Some selectors are not valid after pseudo stripping.
+            }
+          }
+        }
+      }
+    };
+
+    for (const sheet of Array.from(document.styleSheets || [])) {
+      try {
+        walkRules(sheet.cssRules);
+      } catch (_) {
+        // Cross-origin stylesheets are not inspectable; skip them rather than guessing states.
+      }
+    }
+    return states;
+  }, selector || "body");
+}
+
 async function resetElementState(page, selector) {
   try {
     await page.mouse.up();
@@ -115,6 +167,21 @@ async function captureStyleImportStates(page, selector, sleep) {
     return { base: {}, hover: {}, focus: {}, pressed: {}, disabled: {} };
   }
 
+  await page.evaluate(() => {
+    if (document.querySelector("[data-bubble-mcp-style-state-freeze]")) return;
+    const style = document.createElement("style");
+    style.setAttribute("data-bubble-mcp-style-state-freeze", "1");
+    style.textContent = [
+      "*, *::before, *::after {",
+      "  animation-delay: 0s !important;",
+      "  animation-duration: 0s !important;",
+      "  transition-delay: 0s !important;",
+      "  transition-duration: 0s !important;",
+      "}",
+    ].join("\n");
+    document.head.appendChild(style);
+  }).catch(() => {});
+
   await resetElementState(page, safeSelector);
   const base = (await styleSubsetForSelector(page, safeSelector)) || {};
   const headingTag = await page.evaluate((sel) => {
@@ -125,6 +192,12 @@ async function captureStyleImportStates(page, selector, sleep) {
   if (headingTag) {
     base["bubble-tag"] = headingTag;
   }
+  const explicitStates = await styleImportPseudoStatesForSelector(page, safeSelector).catch(() => ({
+    hover: false,
+    focus: false,
+    pressed: false,
+    disabled: false,
+  }));
   const states = { base, hover: {}, focus: {}, pressed: {}, disabled: {} };
 
   try {
@@ -137,63 +210,69 @@ async function captureStyleImportStates(page, selector, sleep) {
     await resetElementState(page, safeSelector);
   }
 
-  try {
-    await page.focus(safeSelector);
-    await sleep(80);
-    states.focus = diffStyleSubset(base, await styleSubsetForSelector(page, safeSelector));
-  } catch (_) {
-    states.focus = {};
-  } finally {
-    await resetElementState(page, safeSelector);
-  }
-
-  try {
-    const handle = await page.$(safeSelector);
-    const box = handle && typeof handle.boundingBox === "function" ? await handle.boundingBox() : null;
-    if (box && box.width > 0 && box.height > 0) {
-      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-      await page.mouse.down();
+  if (explicitStates.focus) {
+    try {
+      await page.focus(safeSelector);
       await sleep(80);
-      states.pressed = diffStyleSubset(base, await styleSubsetForSelector(page, safeSelector));
-      await page.mouse.up();
+      states.focus = diffStyleSubset(base, await styleSubsetForSelector(page, safeSelector));
+    } catch (_) {
+      states.focus = {};
+    } finally {
+      await resetElementState(page, safeSelector);
     }
-  } catch (_) {
-    states.pressed = {};
-  } finally {
-    await resetElementState(page, safeSelector);
   }
 
-  try {
-    const disabledState = await page.evaluate(
-      ({ sel, propNames }) => {
-        const el = document.querySelector(sel || "body");
-        if (!el) return null;
-        const hadAttribute = el.hasAttribute("disabled");
-        const previousAttribute = el.getAttribute("disabled");
-        const hadDisabledProperty = "disabled" in el;
-        const previousDisabledProperty = hadDisabledProperty ? Boolean(el.disabled) : undefined;
-        el.setAttribute("disabled", "");
-        if (hadDisabledProperty) el.disabled = true;
-        const cs = window.getComputedStyle(el);
-        const out = {};
-        for (const prop of propNames) {
-          const value = String(cs.getPropertyValue(prop) || "").trim();
-          if (!value || value === "normal" || value === "auto") continue;
-          out[prop] = value;
-        }
-        if (hadAttribute) {
-          el.setAttribute("disabled", previousAttribute || "");
-        } else {
-          el.removeAttribute("disabled");
-        }
-        if (hadDisabledProperty) el.disabled = previousDisabledProperty;
-        return out;
-      },
-      { sel: safeSelector, propNames: STYLE_IMPORT_STATE_PROPS },
-    );
-    states.disabled = diffStyleSubset(base, disabledState);
-  } catch (_) {
-    states.disabled = {};
+  if (explicitStates.pressed) {
+    try {
+      const handle = await page.$(safeSelector);
+      const box = handle && typeof handle.boundingBox === "function" ? await handle.boundingBox() : null;
+      if (box && box.width > 0 && box.height > 0) {
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await sleep(80);
+        states.pressed = diffStyleSubset(base, await styleSubsetForSelector(page, safeSelector));
+        await page.mouse.up();
+      }
+    } catch (_) {
+      states.pressed = {};
+    } finally {
+      await resetElementState(page, safeSelector);
+    }
+  }
+
+  if (explicitStates.disabled) {
+    try {
+      const disabledState = await page.evaluate(
+        ({ sel, propNames }) => {
+          const el = document.querySelector(sel || "body");
+          if (!el) return null;
+          const hadAttribute = el.hasAttribute("disabled");
+          const previousAttribute = el.getAttribute("disabled");
+          const hadDisabledProperty = "disabled" in el;
+          const previousDisabledProperty = hadDisabledProperty ? Boolean(el.disabled) : undefined;
+          el.setAttribute("disabled", "");
+          if (hadDisabledProperty) el.disabled = true;
+          const cs = window.getComputedStyle(el);
+          const out = {};
+          for (const prop of propNames) {
+            const value = String(cs.getPropertyValue(prop) || "").trim();
+            if (!value || value === "normal" || value === "auto") continue;
+            out[prop] = value;
+          }
+          if (hadAttribute) {
+            el.setAttribute("disabled", previousAttribute || "");
+          } else {
+            el.removeAttribute("disabled");
+          }
+          if (hadDisabledProperty) el.disabled = previousDisabledProperty;
+          return out;
+        },
+        { sel: safeSelector, propNames: STYLE_IMPORT_STATE_PROPS },
+      );
+      states.disabled = diffStyleSubset(base, disabledState);
+    } catch (_) {
+      states.disabled = {};
+    }
   }
 
   return states;

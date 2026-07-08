@@ -2170,6 +2170,106 @@ def test_html_style_import_verification_checks_normalized_context_properties(tmp
     assert result["property_check"]["missing"] == []
 
 
+def test_html_style_import_verification_accepts_equivalent_color_tokens_and_normalized_states(
+    tmp_path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    context_path = tmp_path / "context.json"
+    context_path.write_text(
+        json.dumps(
+            {
+                "app_id": "synthetic-app",
+                "source": "test",
+                "metadata": {
+                    "settings": {
+                        "client_safe": {
+                            "color_tokens": {
+                                "background": {"default": "rgba(255, 255, 255, 1)"},
+                            },
+                            "color_tokens_user": {
+                                "default": {
+                                    "biuZ4": {
+                                        "deleted": False,
+                                        "name": "Success 700",
+                                        "rgba": "rgba(6, 118, 71, 1)",
+                                    },
+                                },
+                            },
+                        },
+                    },
+                    "styles": {
+                        "Button_htmlgreen_": {
+                            "display": "html-green",
+                            "type": "Button",
+                            "properties": {
+                                "bgcolor": "var(--color_biuZ4_default)",
+                                "font_color": "var(--color_background_default)",
+                                "border_color": "var(--color_background_default)",
+                                "font_size": 14,
+                            },
+                            "states": {
+                                "0": {
+                                    "condition": {
+                                        "type": "ThisElement",
+                                        "next": {"type": "Message", "name": "is_hovered"},
+                                    },
+                                    "properties": {"bgcolor": "var(--color_biuZ4_default)"},
+                                },
+                                "1": {
+                                    "condition": {
+                                        "type": "ThisElement",
+                                        "next": {"type": "Message", "name": "isnt_clickable"},
+                                    },
+                                    "properties": {"bgcolor": "var(--color_biuZ4_default)"},
+                                },
+                            },
+                        }
+                    },
+                },
+                "nodes": [],
+                "edges": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        tools_module,
+        "_profile_cache_refresh",
+        lambda _args: {
+            "ok": True,
+            "source": "bubble",
+            "app_id": "synthetic-app",
+            "app_version": "test",
+            "context_detection": {"context_path": str(context_path)},
+        },
+    )
+
+    result = tools_module._verify_html_style_import(
+        "smoke",
+        {
+            "name": "html-green",
+            "element_type": "Button",
+            "base": {
+                "bg_color": "#058144",
+                "font_color": "#fcfcf9",
+                "border_color": "#fcfcf9",
+                "font_size": 14,
+            },
+            "states": {
+                "hover": {"bg_color": "#017840"},
+                "disabled": {"bg_color": "#006e3c"},
+            },
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["property_check"]["mismatched"] == []
+    assert result["state_check"]["checked"] is True
+    assert result["state_check"]["properties"]["hover"]["mismatched"] == []
+    assert result["state_check"]["properties"]["disabled"]["mismatched"] == []
+
+
 def test_legacy_catalog_tool_dispatches_to_aria_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     calls = []
 

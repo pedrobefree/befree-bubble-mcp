@@ -95,6 +95,7 @@ def build_style_operations(
                         "profile": profile,
                         "name": candidate.name,
                         "order": ",".join(present_states),
+                        "prune_missing": True,
                         "dry_run": dry_run,
                         "execute": execute,
                     },

@@ -42,6 +42,7 @@ def test_build_style_operations_uses_existing_state_tools() -> None:
     assert operations[3]["arguments"]["condition"] == "pressed"
     assert operations[4]["arguments"]["condition"] == "disabled"
     assert operations[5]["arguments"]["order"] == "hover,focus,pressed,disabled"
+    assert operations[5]["arguments"]["prune_missing"] is True
     assert operations[5]["arguments"]["execute"] is False
 
 

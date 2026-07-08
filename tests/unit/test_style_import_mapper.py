@@ -99,6 +99,30 @@ def test_map_css_lab_color_to_hex() -> None:
     assert candidate.unsupported == []
 
 
+def test_map_css_oklab_hover_background_to_hex() -> None:
+    rules = extract_style_rules_from_html(
+        """
+        <style>
+          .btn { background-color: #058144; }
+          .btn:hover { background-color: oklab(0.501738 -0.113797 0.0561731); }
+        </style>
+        <a class="btn">Start</a>
+        """,
+        selector=".btn",
+    )
+
+    candidate = map_rules_to_style_candidate(
+        rules,
+        style_prefix="HTML",
+        element_type="Button",
+        selector=".btn",
+    )
+
+    assert candidate.base["bg_color"] == "#058144"
+    assert candidate.states["hover"]["bg_color"] == "#017840"
+    assert candidate.unsupported == []
+
+
 def test_map_rendered_text_metrics_and_heading_tag() -> None:
     rules = extract_style_rules_from_html(
         """
