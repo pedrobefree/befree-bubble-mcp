@@ -30,6 +30,13 @@ from bubble_mcp.sessions.browser import _bubble_cookie_header
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
 APP_VERSION = "test"
+DEPLOY_TRIGGER_SELECTOR = '[itemid="deploy-to-live"]'
+DEPLOY_DESCRIPTION_SELECTOR = (
+    'textarea[aria-labelledby="deploy-description-label"], '
+    'textarea[placeholder="Add a short description that describes any new changes"], '
+    'textarea[placeholder*="description" i], '
+    'textarea[placeholder*="short" i]'
+)
 
 _timers_lock = threading.Lock()
 _timers: dict[str, threading.Timer] = {}
@@ -276,14 +283,88 @@ def _editor_url(app_id: str) -> str:
 def _visible_deploy_button_script() -> str:
     return """
         () => {
-          const buttons = Array.from(document.querySelectorAll('button'));
+          const buttons = Array.from(document.querySelectorAll('button[aria-label="Deploy"], button[arialabel="Deploy"], button'));
           const button = buttons.find((candidate) =>
-            candidate.innerText && candidate.innerText.includes('Deploy') && candidate.offsetParent !== null
+            candidate.offsetParent !== null &&
+            (
+              candidate.getAttribute('aria-label') === 'Deploy' ||
+              candidate.getAttribute('arialabel') === 'Deploy' ||
+              (candidate.innerText && candidate.innerText.trim() === 'Deploy')
+            )
           );
           if (!button) throw new Error('Deploy confirm button not found');
+          if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
+            throw new Error('Deploy confirm button is disabled');
+          }
           button.click();
         }
     """
+
+
+def _editor_ready_script() -> str:
+    return f"""
+        () => {{
+          const bodyText = document.body ? document.body.innerText || '' : '';
+          const loading = bodyText.includes("We're loading your app");
+          const trigger = document.querySelector('{DEPLOY_TRIGGER_SELECTOR}');
+          return Boolean(trigger && trigger.offsetParent !== null && !loading);
+        }}
+    """
+
+
+def _deploy_modal_state_script() -> str:
+    return f"""
+        () => {{
+          const text = document.body ? document.body.innerText || '' : '';
+          const textarea = document.querySelector('{DEPLOY_DESCRIPTION_SELECTOR}');
+          const buttons = Array.from(document.querySelectorAll('button[aria-label="Deploy"], button[arialabel="Deploy"], button'));
+          const deployButtons = buttons
+            .filter((button) => button.offsetParent !== null)
+            .filter((button) =>
+              button.getAttribute('aria-label') === 'Deploy' ||
+              button.getAttribute('arialabel') === 'Deploy' ||
+              (button.innerText && button.innerText.trim() === 'Deploy')
+            )
+            .map((button) => ({{
+              text: button.innerText || '',
+              disabled: Boolean(button.disabled || button.getAttribute('aria-disabled') === 'true'),
+              ariaLabel: button.getAttribute('aria-label') || button.getAttribute('arialabel') || '',
+            }}));
+          const issuePatterns = [
+            /issue/i,
+            /issues/i,
+            /fix/i,
+            /error/i,
+            /cannot deploy/i,
+            /can't deploy/i,
+            /resolve/i,
+            /validation/i,
+          ];
+          const hasIssueText = issuePatterns.some((pattern) => pattern.test(text));
+          return {{
+            hasTextarea: Boolean(textarea && textarea.offsetParent !== null),
+            deployButtons,
+            hasIssueText,
+            bodySnippet: text.replace(/\\s+/g, ' ').slice(0, 1200),
+          }};
+        }}
+    """
+
+
+def _deploy_blocker_error(state: dict[str, Any]) -> str:
+    deploy_buttons = state.get("deployButtons") if isinstance(state.get("deployButtons"), list) else []
+    disabled_deploy = any(bool(button.get("disabled")) for button in deploy_buttons if isinstance(button, dict))
+    if state.get("hasIssueText") or disabled_deploy:
+        snippet = str(state.get("bodySnippet") or "").strip()
+        return (
+            "scheduled_deploy_blocked_by_bubble_issues: Bubble did not expose the deploy description textarea. "
+            "The deploy modal appears blocked by app issues or validation. "
+            f"Visible page text: {snippet}"
+        )
+    return (
+        "scheduled_deploy_modal_not_ready: Bubble did not expose the deploy description textarea after clicking deploy. "
+        f"Visible page text: {str(state.get('bodySnippet') or '').strip()}"
+    )
 
 
 def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
@@ -346,12 +427,19 @@ def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
 
             context.on("request", remember_request)
             page.goto(editor_url, wait_until="domcontentloaded", timeout=record.wait_seconds * 1000)
+            page.wait_for_function(_editor_ready_script(), timeout=record.wait_seconds * 1000)
             page.screenshot(path=str(evidence / "before-deploy.png"), full_page=True)
-            page.wait_for_selector('[itemid="deploy-to-live"]', timeout=20_000)
-            page.click('[itemid="deploy-to-live"]')
-            textarea = 'textarea[placeholder*="description"], textarea[placeholder*="short"]'
-            page.wait_for_selector(textarea, timeout=8_000)
-            page.fill(textarea, record.message)
+            page.click(DEPLOY_TRIGGER_SELECTOR)
+            page.wait_for_timeout(750)
+            state = page.evaluate(_deploy_modal_state_script())
+            if not isinstance(state, dict) or not state.get("hasTextarea"):
+                try:
+                    page.wait_for_selector(DEPLOY_DESCRIPTION_SELECTOR, timeout=8_000)
+                except Exception:
+                    state = page.evaluate(_deploy_modal_state_script())
+                    page.screenshot(path=str(evidence / "deploy-modal-blocked.png"), full_page=True)
+                    raise RuntimeError(_deploy_blocker_error(state if isinstance(state, dict) else {}))
+            page.fill(DEPLOY_DESCRIPTION_SELECTOR, record.message)
             page.wait_for_timeout(500)
             page.evaluate(_visible_deploy_button_script())
             page.wait_for_timeout(1000)

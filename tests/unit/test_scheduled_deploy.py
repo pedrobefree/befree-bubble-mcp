@@ -4,6 +4,9 @@ from pathlib import Path
 import pytest
 
 from bubble_mcp.browser_automation.scheduled_deploy import (
+    DEPLOY_DESCRIPTION_SELECTOR,
+    _deploy_blocker_error,
+    _visible_deploy_button_script,
     cancel_scheduled_deploy,
     deploy_history,
     execute_scheduled_deploy,
@@ -231,3 +234,38 @@ def test_execute_scheduled_deploy_reports_missing_playwright(tmp_path, monkeypat
 
     assert result["ok"] is False
     assert "Playwright is required" in result["error"]
+
+
+def test_deploy_modal_selectors_match_current_bubble_markup() -> None:
+    assert 'textarea[aria-labelledby="deploy-description-label"]' in DEPLOY_DESCRIPTION_SELECTOR
+    assert "Add a short description that describes any new changes" in DEPLOY_DESCRIPTION_SELECTOR
+
+    script = _visible_deploy_button_script()
+    assert 'button[aria-label="Deploy"]' in script
+    assert 'button[arialabel="Deploy"]' in script
+    assert "Deploy confirm button is disabled" in script
+
+
+def test_deploy_blocker_error_reports_bubble_issues() -> None:
+    error = _deploy_blocker_error(
+        {
+            "hasIssueText": True,
+            "deployButtons": [{"disabled": True, "text": "Deploy"}],
+            "bodySnippet": "This app has issues that need to be fixed before deploy.",
+        }
+    )
+
+    assert error.startswith("scheduled_deploy_blocked_by_bubble_issues")
+    assert "app issues or validation" in error
+
+
+def test_deploy_blocker_error_reports_missing_modal_without_issue_text() -> None:
+    error = _deploy_blocker_error(
+        {
+            "hasIssueText": False,
+            "deployButtons": [{"disabled": False, "text": "Deploy"}],
+            "bodySnippet": "Deploy to live",
+        }
+    )
+
+    assert error.startswith("scheduled_deploy_modal_not_ready")
