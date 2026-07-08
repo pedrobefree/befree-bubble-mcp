@@ -253,6 +253,7 @@ The bridge listens on `http://localhost:3333`.
 - [CLI reference](docs/cli-reference.md)
 - [Context engine](docs/context-engine.md)
 - [Session capture](docs/session-capture.md)
+- [Browser automation](docs/browser-automation.md)
 - [Project transfer](docs/transfer.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Extension packs](docs/extension-packs.md)
@@ -266,6 +267,7 @@ The bridge listens on `http://localhost:3333`.
 - No real project data is included in this repository.
 - Session credentials stay local.
 - Mutating tools require a local session and explicit `execute=true` or `--execute`.
+- Scheduled deploy is preview-first and requires a second confirmed call before it is armed.
 - Without execution opt-in, write commands preview the normalized request.
 - Sensitive values are redacted before logs or reports.
 - Local extension, learning, knowledge, skill, and tool-authoring state stays under `BUBBLE_MCP_CONFIG_DIR`.

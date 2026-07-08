@@ -367,6 +367,64 @@ prints `Session cookies detected. You can close the browser now`, the session
 has enough data to be saved. The final JSON result is still printed to stdout.
 Use `--quiet` to suppress progress messages in scripts.
 
+## `bubble-mcp browser schedule-deploy`
+
+Previews or confirms a browser-assisted deploy to live from Bubble's development
+version. The app version is always `test`; do not pass a branch.
+
+Preview first:
+
+```bash
+bubble-mcp browser schedule-deploy \
+  --profile my-app \
+  --scheduled-at 2026-07-09T10:30:00 \
+  --message "Release checkout fixes"
+```
+
+The preview returns the resolved local timezone and a `preview_id`. Show those
+values to the user. Only schedule after confirmation:
+
+```bash
+bubble-mcp browser schedule-deploy \
+  --profile my-app \
+  --scheduled-at 2026-07-09T10:30:00Z \
+  --message "Release checkout fixes" \
+  --execute \
+  --confirm \
+  --preview-id deploy_preview_...
+```
+
+`--retry-count` currently defaults to `0` and is reserved for future retry
+behavior. `--headless` is available for environments where a visible Chromium
+window is not desired, but visible Chromium is the safer default for Bubble
+session acceptance.
+
+## `bubble-mcp browser list-deploys`
+
+Lists currently scheduled deploys for a profile.
+
+```bash
+bubble-mcp browser list-deploys --profile my-app
+```
+
+## `bubble-mcp browser cancel-deploy`
+
+Cancels a scheduled deploy and writes a cancellation event to the local profile
+history.
+
+```bash
+bubble-mcp browser cancel-deploy --profile my-app --deploy-id deploy_...
+```
+
+## `bubble-mcp browser deploy-history`
+
+Lists deploy records created by the scheduled deploy tool.
+
+```bash
+bubble-mcp browser deploy-history --profile my-app
+bubble-mcp browser deploy-history --profile my-app --exclude-cancelled
+```
+
 ## `bubble-mcp session list`
 
 Lists imported session metadata without printing secrets.

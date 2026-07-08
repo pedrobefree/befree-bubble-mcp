@@ -1537,6 +1537,86 @@ def transfer_tools() -> list[ToolSchema]:
     ]
 
 
+def browser_automation_tools() -> list[ToolSchema]:
+    return [
+        {
+            "name": "bubble_schedule_deploy",
+            "description": (
+                "Preview or confirm a high-risk browser-assisted Bubble deploy schedule. "
+                "The target branch is always main/test. The first call defaults execute=false and only writes a local preview; "
+                "the confirmation call requires execute=true, confirm=true, and preview_id."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "profile": field("profile"),
+                    "scheduled_at": _prop(
+                        "string",
+                        "Local or timezone-aware ISO datetime for the future deploy. Naive values use the local machine timezone.",
+                        examples=["2026-07-09T10:30:00", "2026-07-09T13:30:00Z"],
+                    ),
+                    "message": _prop(
+                        "string",
+                        "Deploy message to enter in Bubble's deploy confirmation modal.",
+                        examples=["Main branch release"],
+                    ),
+                    "execute": field("execute"),
+                    "confirm": field("confirm"),
+                    "preview_id": _prop(
+                        "string",
+                        "Preview id returned by the execute=false call. Required with execute=true.",
+                        examples=["deploy_preview_20260708_184500_a1b2c3d4"],
+                    ),
+                    "retry_count": _prop(
+                        "integer",
+                        "Reserved retry count for future UI automation retries. Defaults to 0 and currently should stay 0.",
+                        default=0,
+                        minimum=0,
+                    ),
+                    "headless": field("headless"),
+                    "wait_seconds": field("wait_seconds"),
+                },
+                required=["profile", "scheduled_at", "message"],
+            ),
+        },
+        {
+            "name": "bubble_list_scheduled_deploys",
+            "description": "List future deploys scheduled by this Bubble MCP tool for a profile.",
+            "inputSchema": object_schema({"profile": field("profile")}, required=["profile"]),
+        },
+        {
+            "name": "bubble_cancel_scheduled_deploy",
+            "description": "Cancel a future deploy that was scheduled by this Bubble MCP tool.",
+            "inputSchema": object_schema(
+                {
+                    "profile": field("profile"),
+                    "deploy_id": _prop(
+                        "string",
+                        "Scheduled deploy id returned by bubble_schedule_deploy.",
+                        examples=["deploy_20260708_184500_a1b2c3d4"],
+                    ),
+                },
+                required=["profile", "deploy_id"],
+            ),
+        },
+        {
+            "name": "bubble_deploy_history",
+            "description": "List local history of deploys scheduled, executed, failed, or cancelled by this Bubble MCP tool.",
+            "inputSchema": object_schema(
+                {
+                    "profile": field("profile"),
+                    "limit": field("limit"),
+                    "include_cancelled": _prop(
+                        "boolean",
+                        "Include cancelled deploys in the history response.",
+                        default=True,
+                    ),
+                },
+                required=["profile"],
+            ),
+        },
+    ]
+
+
 def html_import_tools() -> list[ToolSchema]:
     return [
         tool_schema(
@@ -2161,6 +2241,7 @@ def native_tool_schemas() -> list[ToolSchema]:
         *profile_session_context_tools(),
         *planning_execution_tools(),
         *transfer_tools(),
+        *browser_automation_tools(),
         *html_import_tools(),
         *branch_changelog_tools(),
         *performance_metrics_tools(),

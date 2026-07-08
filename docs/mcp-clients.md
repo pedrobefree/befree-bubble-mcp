@@ -263,6 +263,17 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_transfer_execute`: executes a reviewed transfer plan against the
   target profile. Requires `execute=true` and `confirm=true`.
 - `bubble_transfer_status`: reads a stored local transfer plan by id.
+- `bubble_schedule_deploy`: schedules a browser-assisted deploy to live from
+  Bubble's fixed `test` app version. Always call it first with `execute=false`
+  and show the returned `preview_id`, `scheduled_at`, `timezone`, and `message`
+  to the user. Only call again with `execute=true`, `confirm=true`, and the
+  matching `preview_id` after explicit confirmation.
+- `bubble_list_scheduled_deploys`: lists currently scheduled deploys for one
+  profile and rearms pending records in the running MCP process.
+- `bubble_cancel_scheduled_deploy`: cancels a scheduled deploy by id and records
+  the cancellation in profile-local deploy history.
+- `bubble_deploy_history`: lists scheduled deploy history created by this tool,
+  including scheduled, cancelled, executed, and failed records.
 - `batch`: runs multiple explicit Bubble catalog commands with inline `commands`. Use the `command_batch` recipe from `bubble_task_runbook` for requests that combine edits such as text updates, color token changes, and element deletion in one prompt.
 - `bubble_branch_list`: lists Bubble editor branches/versions for the selected profile.
 - `bubble_branch_contributors`: lists collaborators who contributed to a branch/version.

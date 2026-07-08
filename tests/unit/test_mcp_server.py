@@ -2886,6 +2886,21 @@ def test_extension_management_tools_are_listed() -> None:
     assert tools["bubble_tool_wizard_activate"]["inputSchema"]["required"] == ["session_id"]
 
 
+def test_browser_scheduled_deploy_tools_are_listed() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 106, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    assert tools["bubble_schedule_deploy"]["inputSchema"]["required"] == ["profile", "scheduled_at", "message"]
+    assert tools["bubble_schedule_deploy"]["inputSchema"]["properties"]["execute"]["default"] is False
+    assert tools["bubble_schedule_deploy"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_schedule_deploy"]["annotations"]["destructiveHint"] is True
+    assert tools["bubble_schedule_deploy"]["annotations"]["openWorldHint"] is True
+    assert tools["bubble_list_scheduled_deploys"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_deploy_history"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_cancel_scheduled_deploy"]["annotations"]["readOnlyHint"] is False
+
+
 def test_extension_management_tools_are_searchable() -> None:
     response = handle_request(
         {
@@ -2931,6 +2946,27 @@ def test_extension_management_tools_are_searchable() -> None:
         "bubble_extension_companion_stop",
     }.issubset(companion_matches)
 
+    deploy_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 106,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_tool_search",
+                "arguments": {"query": "schedule deploy cancel history browser automation", "limit": 10},
+            },
+        }
+    )
+    assert deploy_response is not None
+    deploy_payload = json.loads(deploy_response["result"]["content"][0]["text"])
+    deploy_matches = {match["name"] for match in deploy_payload["matches"]}
+    assert {
+        "bubble_schedule_deploy",
+        "bubble_list_scheduled_deploys",
+        "bubble_cancel_scheduled_deploy",
+        "bubble_deploy_history",
+    }.issubset(deploy_matches)
+
 
 def test_extension_list_tool_returns_installed_extensions(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
@@ -2947,6 +2983,107 @@ def test_extension_list_tool_returns_installed_extensions(tmp_path, monkeypatch)
     assert response is not None
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload == {"ok": True, "extensions": []}
+
+
+def test_scheduled_deploy_mcp_flow_preview_confirm_list_cancel_history(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={
+                "client": BubbleProfile(
+                    name="client",
+                    app_id="bubble-app",
+                    appname="bubble-app",
+                    app_version="test",
+                )
+            },
+        )
+    )
+
+    preview_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 301,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_schedule_deploy",
+                "arguments": {
+                    "profile": "client",
+                    "scheduled_at": "2026-07-09T10:30:00Z",
+                    "message": "Main branch release",
+                },
+            },
+        }
+    )
+    assert preview_response is not None
+    preview = json.loads(preview_response["result"]["content"][0]["text"])
+    assert preview["mode"] == "preview"
+    assert preview["preview"]["app_version"] == "test"
+
+    confirmed_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 302,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_schedule_deploy",
+                "arguments": {
+                    "profile": "client",
+                    "scheduled_at": "2026-07-09T10:30:00Z",
+                    "message": "Main branch release",
+                    "execute": True,
+                    "confirm": True,
+                    "preview_id": preview["preview"]["preview_id"],
+                },
+            },
+        }
+    )
+    assert confirmed_response is not None
+    confirmed = json.loads(confirmed_response["result"]["content"][0]["text"])
+    assert confirmed["mode"] == "scheduled"
+    deploy_id = confirmed["deploy"]["deploy_id"]
+
+    list_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 303,
+            "method": "tools/call",
+            "params": {"name": "bubble_list_scheduled_deploys", "arguments": {"profile": "client"}},
+        }
+    )
+    assert list_response is not None
+    listed = json.loads(list_response["result"]["content"][0]["text"])
+    assert listed["count"] == 1
+    assert listed["scheduled"][0]["deploy_id"] == deploy_id
+
+    cancel_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 304,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_cancel_scheduled_deploy",
+                "arguments": {"profile": "client", "deploy_id": deploy_id},
+            },
+        }
+    )
+    assert cancel_response is not None
+    cancelled = json.loads(cancel_response["result"]["content"][0]["text"])
+    assert cancelled["cancelled"] is True
+
+    history_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 305,
+            "method": "tools/call",
+            "params": {"name": "bubble_deploy_history", "arguments": {"profile": "client"}},
+        }
+    )
+    assert history_response is not None
+    history = json.loads(history_response["result"]["content"][0]["text"])
+    assert [item["event"] for item in history["history"]] == ["scheduled", "cancelled"]
 
 
 def test_extension_companion_mcp_tools_start_status_and_stop(tmp_path, monkeypatch) -> None:

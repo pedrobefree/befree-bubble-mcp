@@ -8,6 +8,13 @@ from pathlib import Path
 
 from bubble_mcp import __version__
 from bubble_mcp.aria_dispatch import dispatch_aria_runtime_tool
+from bubble_mcp.browser_automation import (
+    cancel_scheduled_deploy,
+    deploy_history,
+    list_scheduled_deploys,
+    rearm_scheduled_deploys,
+    schedule_deploy,
+)
 from bubble_mcp.catalog_quality import catalog_quality_report
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
@@ -122,6 +129,16 @@ from bubble_mcp.transfer.inventory import inventory_source_object
 from bubble_mcp.transfer.planner import create_transfer_plan
 from bubble_mcp.transfer.store import load_transfer_plan
 from bubble_mcp.validators.semantic import validate_plan
+
+_scheduled_deploys_rearmed = False
+
+
+def _ensure_scheduled_deploys_rearmed() -> None:
+    global _scheduled_deploys_rearmed
+    if _scheduled_deploys_rearmed:
+        return
+    rearm_scheduled_deploys()
+    _scheduled_deploys_rearmed = True
 
 
 def _manual_guidance_payload(query: str, *, limit: int, purpose: str) -> dict[str, Any]:
@@ -562,6 +579,39 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return catalog_coverage_report(include_tools=bool(args.get("include_tools") or args.get("include_details")))
     if name == "bubble_catalog_quality":
         return catalog_quality_report()
+    if name == "bubble_schedule_deploy":
+        _ensure_scheduled_deploys_rearmed()
+        args = arguments or {}
+        return schedule_deploy(
+            profile=_required_string_arg(args, "profile", name),
+            scheduled_at=_required_string_arg(args, "scheduled_at", name),
+            message=_required_string_arg(args, "message", name),
+            execute=bool(args.get("execute")),
+            confirm=bool(args.get("confirm")),
+            preview_id=str(args.get("preview_id") or "") or None,
+            retry_count=int(args.get("retry_count") or 0),
+            headless=bool(args.get("headless")),
+            wait_seconds=int(args.get("wait_seconds") or 120),
+        )
+    if name == "bubble_list_scheduled_deploys":
+        _ensure_scheduled_deploys_rearmed()
+        args = arguments or {}
+        return list_scheduled_deploys(profile=_required_string_arg(args, "profile", name))
+    if name == "bubble_cancel_scheduled_deploy":
+        _ensure_scheduled_deploys_rearmed()
+        args = arguments or {}
+        return cancel_scheduled_deploy(
+            profile=_required_string_arg(args, "profile", name),
+            deploy_id=_required_string_arg(args, "deploy_id", name),
+        )
+    if name == "bubble_deploy_history":
+        _ensure_scheduled_deploys_rearmed()
+        args = arguments or {}
+        return deploy_history(
+            profile=_required_string_arg(args, "profile", name),
+            limit=int(args.get("limit") or 50),
+            include_cancelled=bool(args.get("include_cancelled", True)),
+        )
     if name == "bubble_extension_list":
         return {"ok": True, "extensions": [item.to_dict() for item in list_extensions()]}
     if name == "bubble_extension_validate":

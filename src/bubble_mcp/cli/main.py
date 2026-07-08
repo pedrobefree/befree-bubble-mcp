@@ -8,6 +8,12 @@ import sys
 from pathlib import Path
 
 from bubble_mcp.catalog_quality import catalog_quality_report
+from bubble_mcp.browser_automation import (
+    cancel_scheduled_deploy,
+    deploy_history,
+    list_scheduled_deploys,
+    schedule_deploy,
+)
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
@@ -259,6 +265,44 @@ def command_transfer_execute(args: argparse.Namespace) -> int:
 def command_transfer_status(args: argparse.Namespace) -> int:
     emit_json({"ok": True, "transfer": load_transfer_plan(args.transfer_id)})
     return 0
+
+
+def command_browser_schedule_deploy(args: argparse.Namespace) -> int:
+    result = schedule_deploy(
+        profile=args.profile,
+        scheduled_at=args.scheduled_at,
+        message=args.message,
+        execute=args.execute,
+        confirm=args.confirm,
+        preview_id=args.preview_id or None,
+        retry_count=args.retry_count,
+        headless=args.headless,
+        wait_seconds=args.wait_seconds,
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_browser_list_deploys(args: argparse.Namespace) -> int:
+    result = list_scheduled_deploys(profile=args.profile)
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_browser_cancel_deploy(args: argparse.Namespace) -> int:
+    result = cancel_scheduled_deploy(profile=args.profile, deploy_id=args.deploy_id)
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_browser_deploy_history(args: argparse.Namespace) -> int:
+    result = deploy_history(
+        profile=args.profile,
+        limit=args.limit,
+        include_cancelled=not args.exclude_cancelled,
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
 
 
 def command_context_summary(args: argparse.Namespace) -> int:
@@ -1671,6 +1715,39 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_status_parser = transfer_subparsers.add_parser("status", help="Show a local transfer plan.")
     transfer_status_parser.add_argument("--transfer-id", required=True)
     transfer_status_parser.set_defaults(func=command_transfer_status)
+
+    browser_parser = subparsers.add_parser("browser", help="Run high-risk browser-assisted Bubble workflows.")
+    browser_subparsers = browser_parser.add_subparsers(dest="browser_command", required=True)
+
+    browser_schedule_parser = browser_subparsers.add_parser(
+        "schedule-deploy",
+        help="Preview or confirm a browser-assisted deploy schedule.",
+    )
+    browser_schedule_parser.add_argument("--profile", required=True)
+    browser_schedule_parser.add_argument("--scheduled-at", required=True)
+    browser_schedule_parser.add_argument("--message", required=True)
+    browser_schedule_parser.add_argument("--execute", action="store_true")
+    browser_schedule_parser.add_argument("--confirm", action="store_true")
+    browser_schedule_parser.add_argument("--preview-id", default="")
+    browser_schedule_parser.add_argument("--retry-count", type=int, default=0)
+    browser_schedule_parser.add_argument("--headless", action="store_true")
+    browser_schedule_parser.add_argument("--wait-seconds", type=int, default=120)
+    browser_schedule_parser.set_defaults(func=command_browser_schedule_deploy)
+
+    browser_list_parser = browser_subparsers.add_parser("list-deploys", help="List future deploys scheduled by this tool.")
+    browser_list_parser.add_argument("--profile", required=True)
+    browser_list_parser.set_defaults(func=command_browser_list_deploys)
+
+    browser_cancel_parser = browser_subparsers.add_parser("cancel-deploy", help="Cancel a scheduled deploy by id.")
+    browser_cancel_parser.add_argument("--profile", required=True)
+    browser_cancel_parser.add_argument("--deploy-id", required=True)
+    browser_cancel_parser.set_defaults(func=command_browser_cancel_deploy)
+
+    browser_history_parser = browser_subparsers.add_parser("deploy-history", help="List local deploy scheduling history.")
+    browser_history_parser.add_argument("--profile", required=True)
+    browser_history_parser.add_argument("--limit", type=int, default=50)
+    browser_history_parser.add_argument("--exclude-cancelled", action="store_true")
+    browser_history_parser.set_defaults(func=command_browser_deploy_history)
 
     context_parser = subparsers.add_parser("context", help="Inspect compact Bubble context.")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)

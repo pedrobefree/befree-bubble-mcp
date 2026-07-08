@@ -1545,6 +1545,76 @@ def test_cli_extension_companion_serve_passes_listener_config(monkeypatch) -> No
     assert calls[0].tool_session_id == "toolwiz_20260704_api_connector_1a2b3c4d"
 
 
+def test_cli_browser_scheduled_deploy_flow(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="client",
+            profiles={
+                "client": BubbleProfile(
+                    name="client",
+                    app_id="bubble-app",
+                    appname="bubble-app",
+                    app_version="test",
+                )
+            },
+        )
+    )
+
+    assert (
+        main(
+            [
+                "browser",
+                "schedule-deploy",
+                "--profile",
+                "client",
+                "--scheduled-at",
+                "2026-07-09T10:30:00Z",
+                "--message",
+                "Main branch release",
+            ]
+        )
+        == 0
+    )
+    preview = json.loads(capsys.readouterr().out)
+    assert preview["mode"] == "preview"
+
+    assert (
+        main(
+            [
+                "browser",
+                "schedule-deploy",
+                "--profile",
+                "client",
+                "--scheduled-at",
+                "2026-07-09T10:30:00Z",
+                "--message",
+                "Main branch release",
+                "--execute",
+                "--confirm",
+                "--preview-id",
+                preview["preview"]["preview_id"],
+            ]
+        )
+        == 0
+    )
+    scheduled = json.loads(capsys.readouterr().out)
+    deploy_id = scheduled["deploy"]["deploy_id"]
+
+    assert main(["browser", "list-deploys", "--profile", "client"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed["scheduled"][0]["deploy_id"] == deploy_id
+
+    assert main(["browser", "cancel-deploy", "--profile", "client", "--deploy-id", deploy_id]) == 0
+    cancelled = json.loads(capsys.readouterr().out)
+    assert cancelled["cancelled"] is True
+
+    assert main(["browser", "deploy-history", "--profile", "client"]) == 0
+    history = json.loads(capsys.readouterr().out)
+    assert [item["event"] for item in history["history"]] == ["scheduled", "cancelled"]
+
+
 def test_cli_tool_wizard_start_add_capture_and_describe(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 
