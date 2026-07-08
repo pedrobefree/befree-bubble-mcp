@@ -19,6 +19,7 @@ from bubble_mcp.transfer.compiler import (
     compile_context_shell_payload,
     compile_collection_actions_to_payloads,
     compile_inventory_to_target_payloads,
+    compile_reusable_inventory_to_payload,
 )
 from bubble_mcp.transfer.inventory import inventory_source_object
 from bubble_mcp.transfer.mapping import build_dependency_decisions
@@ -421,7 +422,21 @@ def create_transfer_plan(
     effective_target_context = effective_target_context or "index"
     effective_target_context_type = reused_context_type or ("reusable" if source_type == "reusable" else "page")
     shell_payloads: list[dict[str, Any]] = []
-    if source_type in {"page", "reusable"} and not target_context and reused_context_type is None:
+    reusable_payloads: list[dict[str, Any]] = []
+    if source_type == "reusable" and not target_context and reused_context_type is None and not blocked:
+        reusable_compiled = compile_reusable_inventory_to_payload(
+            inventory=inventory,
+            target_app_id=resolved.target.app_id,
+            target_app_version=resolved.target.app_version or "test",
+            target_name=effective_target_name or source_ref,
+            dependency_decisions=decisions,
+        )
+        if reusable_compiled is not None:
+            reusable_payload, reusable_context_ref = reusable_compiled
+            reusable_payloads.append(reusable_payload)
+            effective_target_context = reusable_context_ref
+            effective_target_context_type = "reusable"
+    if source_type == "page" and not target_context and reused_context_type is None:
         shell = compile_context_shell_payload(
             source_type=source_type,
             source_root=inventory.root,
@@ -438,16 +453,21 @@ def create_transfer_plan(
         *api_payloads,
         *collection_payloads,
         *shell_payloads,
-        *compile_inventory_to_target_payloads(
-            inventory=inventory,
-            target_context=target_ctx,
-            target_app_id=resolved.target.app_id,
-            target_app_version=resolved.target.app_version or "test",
-            target_context_ref=effective_target_context,
-            target_parent_ref=target_parent,
-            target_name=effective_target_name,
-            target_context_type=effective_target_context_type,
-            dependency_decisions=decisions,
+        *reusable_payloads,
+        *(
+            []
+            if reusable_payloads
+            else compile_inventory_to_target_payloads(
+                inventory=inventory,
+                target_context=target_ctx,
+                target_app_id=resolved.target.app_id,
+                target_app_version=resolved.target.app_version or "test",
+                target_context_ref=effective_target_context,
+                target_parent_ref=target_parent,
+                target_name=effective_target_name,
+                target_context_type=effective_target_context_type,
+                dependency_decisions=decisions,
+            )
         ),
     ]
     plan = TransferPlan(

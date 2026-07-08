@@ -49,6 +49,16 @@ def _source_context(
         nodes=[
             BubbleContextNode(id="page:index", label="index", type="page", metadata={"bubble_id": "bSrcPage"}),
             BubbleContextNode(
+                id="reusable:fileUploader",
+                label="fileUploader",
+                type="reusable",
+                metadata={
+                    "bubble_id": "bSrcReusable",
+                    "children": ["bHero"],
+                    "properties": {"name": "fileUploader", "container_layout": "relative", "default_width": 480},
+                },
+            ),
+            BubbleContextNode(
                 id="element:bHero",
                 label="gp_Hero",
                 type="element",
@@ -69,7 +79,10 @@ def _source_context(
                 },
             ),
         ],
-        edges=[BubbleContextEdge(source="page:index", target="element:bHero", type="contains")],
+        edges=[
+            BubbleContextEdge(source="page:index", target="element:bHero", type="contains"),
+            BubbleContextEdge(source="reusable:fileUploader", target="element:bHero", type="contains"),
+        ],
         metadata=metadata,
     )
 
@@ -233,6 +246,30 @@ def test_create_transfer_plan_creates_page_shell_when_target_context_is_omitted(
     assert shell_payload["changes"][1]["body"]["%x"] == "Page"
     assert child_payload["changes"][0]["path_array"][:2] == ["%p3", shell_ref]
     assert plan["target_context"] == shell_ref
+
+
+def test_create_transfer_plan_compiles_reusable_as_nested_payload(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="reusable",
+        source_ref="fileUploader",
+        target_name="fileUploader",
+        conflict_policy="rename",
+        dependency_policy="map_only",
+    )
+
+    assert result["ok"] is True
+    assert result["payload_count"] == 1
+    plan = load_transfer_plan(result["transfer_id"])
+    payload = plan["write_payloads"][0]
+    root_body = payload["changes"][1]["body"]
+    assert root_body["%x"] == "CustomDefinition"
+    assert root_body["%nm"] == "fileUploader"
+    assert root_body["%el"]
 
 
 def test_create_transfer_plan_blocks_page_shell_name_conflict_by_default(tmp_path, monkeypatch) -> None:

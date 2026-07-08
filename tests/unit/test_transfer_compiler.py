@@ -4,6 +4,7 @@ from bubble_mcp.transfer.compiler import (
     compile_context_shell_payload,
     compile_collection_actions_to_payloads,
     compile_inventory_to_target_payloads,
+    compile_reusable_inventory_to_payload,
 )
 from bubble_mcp.transfer.models import (
     TransferDependency,
@@ -367,3 +368,90 @@ def test_compile_context_shell_payload_creates_page_or_reusable_root() -> None:
     assert reusable_type == "reusable"
     assert reusable_payload["changes"][1]["path_array"] == ["%ed", reusable_ref]
     assert reusable_payload["changes"][1]["body"]["%x"] == "CustomDefinition"
+
+
+def test_compile_reusable_inventory_payload_nests_children_under_custom_definition() -> None:
+    inventory = TransferInventory(
+        source=TransferObjectRef(
+            profile="source",
+            app_id="source-app",
+            app_version="test",
+            source_type="reusable",
+            ref="fileUploader",
+            bubble_id="bSourceReusable",
+        ),
+        root={
+            "id": "reusable:bSourceReusable",
+            "label": "fileUploader",
+            "type": "reusable",
+            "metadata": {
+                "bubble_id": "bSourceReusable",
+                "properties": {
+                    "name": "fileUploader",
+                    "container_layout": "relative",
+                    "default_width": 480,
+                },
+            },
+        },
+        nodes=[
+            {
+                "id": "reusable:bSourceReusable",
+                "label": "fileUploader",
+                "type": "reusable",
+                "metadata": {"bubble_id": "bSourceReusable"},
+            },
+            {
+                "id": "element:bParent",
+                "label": "gp_File",
+                "type": "element",
+                "metadata": {
+                    "bubble_id": "bParent",
+                    "path": ["%ed", "bSourceReusable", "%el", "bParent"],
+                    "properties": {"%x": "Group", "%p": {"%nm": "gp_File"}},
+                },
+            },
+            {
+                "id": "element:bChild",
+                "label": "tx_File",
+                "type": "element",
+                "metadata": {
+                    "bubble_id": "bChild",
+                    "path": ["%ed", "bSourceReusable", "%el", "bParent", "%el", "bChild"],
+                    "properties": {"%x": "Text", "%p": {"%nm": "tx_File", "%3": "File"}},
+                },
+            },
+        ],
+        dependencies=[],
+    )
+
+    compiled = compile_reusable_inventory_to_payload(
+        inventory=inventory,
+        target_app_id="target-app",
+        target_app_version="test",
+        target_name="fileUploader",
+    )
+
+    assert compiled is not None
+    payload, reusable_ref = compiled
+    root_change = payload["changes"][1]
+    root_body = root_change["body"]
+    assert root_change["path_array"] == ["%ed", reusable_ref]
+    assert root_body["%x"] == "CustomDefinition"
+    assert root_body["%nm"] == "fileUploader"
+    assert len(root_body["%el"]) == 1
+    parent_id = next(iter(root_body["%el"]))
+    parent_body = root_body["%el"][parent_id]
+    assert parent_body["%x"] == "Group"
+    assert len(parent_body["%el"]) == 1
+    child_id = next(iter(parent_body["%el"]))
+    assert parent_body["%el"][child_id]["%x"] == "Text"
+    id_to_path_updates = {
+        tuple(change["path_array"]): change["body"]
+        for change in payload["changes"]
+        if change["path_array"][:2] == ["_index", "id_to_path"]
+    }
+    assert id_to_path_updates[("_index", "id_to_path", root_body["id"])] == f"%ed.{reusable_ref}"
+    assert id_to_path_updates[("_index", "id_to_path", parent_id)] == f"%ed.{reusable_ref}.%el.{parent_id}"
+    assert id_to_path_updates[("_index", "id_to_path", child_id)] == (
+        f"%ed.{reusable_ref}.%el.{parent_id}.%el.{child_id}"
+    )

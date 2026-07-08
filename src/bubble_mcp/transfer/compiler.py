@@ -111,6 +111,21 @@ def _remap_value(value: Any, remap: dict[str, str]) -> Any:
     return value
 
 
+def _child_ids_by_parent(element_nodes: list[dict[str, Any]]) -> dict[str, list[str]]:
+    source_ids = {_source_element_id(node) for node in element_nodes}
+    children: dict[str, list[str]] = {}
+    root_children: list[str] = []
+    for node in element_nodes:
+        source_id = _source_element_id(node)
+        source_parent = _source_parent_id(node)
+        if source_parent and source_parent in source_ids:
+            children.setdefault(source_parent, []).append(source_id)
+        else:
+            root_children.append(source_id)
+    children[""] = root_children
+    return children
+
+
 def _element_body(
     node: dict[str, Any],
     *,
@@ -132,6 +147,64 @@ def _element_body(
     elif "%nm" not in props:
         props["%nm"] = str(node.get("label") or new_id)
     return {"id": new_id, "%x": element_type, "%p": props}
+
+
+def _append_reusable_children(
+    *,
+    body: dict[str, Any],
+    source_id: str,
+    nodes_by_source_id: dict[str, dict[str, Any]],
+    id_map: dict[str, str],
+    children_by_parent: dict[str, list[str]],
+    remap: dict[str, str],
+) -> None:
+    child_bodies: dict[str, dict[str, Any]] = {}
+    for child_source_id in children_by_parent.get(source_id, []):
+        child_target_id = id_map[child_source_id]
+        child_node = nodes_by_source_id[child_source_id]
+        child_body = _element_body(child_node, new_id=child_target_id, target_name=None, remap=remap)
+        _append_reusable_children(
+            body=child_body,
+            source_id=child_source_id,
+            nodes_by_source_id=nodes_by_source_id,
+            id_map=id_map,
+            children_by_parent=children_by_parent,
+            remap=remap,
+        )
+        child_bodies[child_target_id] = child_body
+    if child_bodies:
+        body["%el"] = child_bodies
+
+
+def _collect_nested_ids(body: dict[str, Any]) -> list[str]:
+    ids: list[str] = []
+    children = body.get("%el")
+    if not isinstance(children, dict):
+        return ids
+    for child_id, child_body in children.items():
+        ids.append(str(child_id))
+        if isinstance(child_body, dict):
+            ids.extend(_collect_nested_ids(child_body))
+    return ids
+
+
+def _nested_child_paths(body: dict[str, Any], root_path: list[str]) -> list[tuple[str, list[str], list[str]]]:
+    paths: list[tuple[str, list[str], list[str]]] = []
+    children = body.get("%el")
+    if not isinstance(children, dict):
+        return paths
+    child_ids = [str(child_id) for child_id in children]
+    for child_id, child_body in children.items():
+        child_id_str = str(child_id)
+        child_path = [*root_path, "%el", child_id_str]
+        nested_ids: list[str] = []
+        if isinstance(child_body, dict):
+            nested_ids = _collect_nested_ids(child_body)
+            paths.extend(_nested_child_paths(child_body, child_path))
+        paths.append((child_id_str, child_path, nested_ids))
+    if child_ids:
+        paths.append(("", root_path, child_ids))
+    return paths
 
 
 def compile_inventory_to_target_payloads(
@@ -189,6 +262,78 @@ def compile_inventory_to_target_payloads(
             "changes": changes,
         }
     ]
+
+
+def compile_reusable_inventory_to_payload(
+    *,
+    inventory: TransferInventory,
+    target_app_id: str,
+    target_app_version: str,
+    target_name: str | None = None,
+    dependency_decisions: list[TransferMappingDecision] | None = None,
+) -> tuple[dict[str, Any], str] | None:
+    """Compile a reusable transfer as one nested CustomDefinition payload."""
+
+    if inventory.source.source_type != "reusable":
+        return None
+    element_nodes = [node for node in inventory.nodes if node.get("type") == "element"]
+    session_id = bubble_session_id()
+    slot_id = bubble_element_id()
+    object_id = bubble_element_id()
+    id_map = {_source_element_id(node): bubble_element_id() for node in element_nodes}
+    nodes_by_source_id = {_source_element_id(node): node for node in element_nodes}
+    children_by_parent = _child_ids_by_parent(element_nodes)
+    remap = {**_dependency_remap(dependency_decisions), **id_map}
+    metadata = _obj(inventory.root.get("metadata"))
+    raw_properties = _obj(metadata.get("properties"))
+    props = _obj(raw_properties.get("%p")) or {key: value for key, value in raw_properties.items() if key != "%x"}
+    props = _remap_value(json.loads(json.dumps(props)), remap)
+    resolved_name = target_name or inventory.source.ref
+    props["%nm"] = resolved_name
+    props.setdefault("default_width", props.get("%w", 280))
+    body: dict[str, Any] = {
+        "id": object_id,
+        "%x": "CustomDefinition",
+        "%nm": resolved_name,
+        "%p": props,
+    }
+    root_children: dict[str, dict[str, Any]] = {}
+    for child_source_id in children_by_parent.get("", []):
+        child_target_id = id_map[child_source_id]
+        child_body = _element_body(nodes_by_source_id[child_source_id], new_id=child_target_id, target_name=None, remap=remap)
+        _append_reusable_children(
+            body=child_body,
+            source_id=child_source_id,
+            nodes_by_source_id=nodes_by_source_id,
+            id_map=id_map,
+            children_by_parent=children_by_parent,
+            remap=remap,
+        )
+        root_children[child_target_id] = child_body
+    if root_children:
+        body["%el"] = root_children
+    root_path = ["%ed", slot_id]
+    changes = [
+        update_index_change(["_index", "id_to_path", object_id], ".".join(root_path), session_id),
+        create_change(root_path, body, session_id),
+        update_index_change(["_index", "issues_list", object_id], "[]", session_id),
+    ]
+    for child_id, child_path, nested_ids in _nested_child_paths(body, root_path):
+        if not child_id:
+            changes.append(update_index_change(["_index", "issues_sub", object_id], nested_ids, session_id))
+            continue
+        changes.append(update_index_change(["_index", "id_to_path", child_id], ".".join(child_path), session_id))
+        changes.append(update_index_change(["_index", "issues_list", child_id], "[]", session_id))
+        if nested_ids:
+            changes.append(update_index_change(["_index", "issues_sub", child_id], nested_ids, session_id))
+    payload = {
+        "v": 1,
+        "appname": target_app_id,
+        "app_version": target_app_version or "test",
+        "appVersion": target_app_version or "test",
+        "changes": changes,
+    }
+    return payload, slot_id
 
 
 def compile_context_shell_payload(
