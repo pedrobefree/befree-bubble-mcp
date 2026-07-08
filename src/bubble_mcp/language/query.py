@@ -52,6 +52,8 @@ def language_query(
     risks: list[str] | None = None,
     limit: int = 12,
     profile: str | None = None,
+    framework: str | None = None,
+    cached_registry_version: str | None = None,
 ) -> dict[str, Any]:
     entries = current_language_entries()
     if families:
@@ -68,11 +70,22 @@ def language_query(
     if not matches and not query.strip():
         matches = sorted(entries, key=lambda item: item["name"])
     index = build_language_index(profile=profile)
+    cache = {"hit": False, "reason": "not_requested"}
+    if framework is not None and cached_registry_version is not None:
+        current_registry_version = str(index["registry_version"])
+        cache = {
+            "hit": cached_registry_version == current_registry_version,
+            "cached_registry_version": cached_registry_version,
+            "current_registry_version": current_registry_version,
+        }
+        if cache["hit"] is False:
+            cache["reason"] = "registry_version_mismatch"
     return {
         "ok": True,
         "language": "bubble-mcp",
         "detail": "compact",
         "registry_version": index["registry_version"],
+        "cache": cache,
         "query": query,
         "families": families or [],
         "sources": sources or [],

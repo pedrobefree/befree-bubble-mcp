@@ -1,4 +1,5 @@
 from bubble_mcp.language.registry import build_language_index
+from bubble_mcp.language.cache import cache_language_index, cached_language_index
 from bubble_mcp.language.query import language_query, language_tool_detail
 from bubble_mcp.language.diff import language_diff, save_language_snapshot
 from bubble_mcp.language.framework_pack import framework_language_pack
@@ -46,6 +47,37 @@ def test_language_query_returns_scoped_compact_matches_without_full_schema(tmp_p
     assert button["capabilities"]["requires_approval"] is True
     assert button["status"]["state"] == "available"
     assert all("inputSchema" not in match for match in result["matches"])
+    assert result["cache"] == {"hit": False, "reason": "not_requested"}
+
+
+def test_language_cache_round_trip_and_query_version_hit(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    miss = cached_language_index("bmad", "cliente2")
+    assert miss["ok"] is False
+    assert miss["error"] == "language_cache_miss"
+
+    first = build_language_index(profile="cliente2")
+    stored = cache_language_index("bmad", "cliente2", first)
+    loaded = cached_language_index("bmad", "cliente2")
+
+    assert stored["ok"] is True
+    assert stored["registry_version"] == first["registry_version"]
+    assert stored["path"].endswith("language/cache/bmad/cliente2.json")
+    assert loaded["ok"] is True
+    assert loaded["path"] == stored["path"]
+    assert loaded["index"] == first
+
+    result = language_query(
+        query="create checkout button",
+        families=["visual_editor"],
+        framework="bmad",
+        cached_registry_version=first["registry_version"],
+    )
+
+    assert result["cache"]["hit"] is True
+    assert result["cache"]["cached_registry_version"] == first["registry_version"]
+    assert result["cache"]["current_registry_version"] == first["registry_version"]
 
 
 def test_language_tool_detail_lazy_loads_selected_schemas_only(tmp_path, monkeypatch) -> None:
