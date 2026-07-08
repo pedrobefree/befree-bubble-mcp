@@ -190,6 +190,33 @@ def test_compile_framework_program_includes_quality_defaults(tmp_path, monkeypat
     assert result["quality"]["policy_version"] == "framework_quality_v2"
 
 
+def test_compile_framework_program_allows_read_only_runbook_execute_metadata(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "steps": [
+                {
+                    "tool": "bubble_task_runbook",
+                    "arguments": {
+                        "task": "criar botão",
+                        "profile": "cliente2",
+                        "execute": True,
+                    },
+                }
+            ],
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["compiled_calls"][0]["tool"] == "bubble_task_runbook"
+    assert result["compiled_calls"][0]["arguments"]["execute"] is True
+
+
 def test_compile_framework_program_requires_data_field_type(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 

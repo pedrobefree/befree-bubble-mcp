@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, Iterable
 
 VISUAL_DEFAULTS: dict[str, dict[str, Any]] = {
     "create_button": {"fit_width": True, "fit_height": True},
@@ -29,9 +29,15 @@ def _apply_visual_defaults(tool: str, args: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
-def evaluate_compiled_calls(calls: list[dict[str, Any]], *, profile: str) -> dict[str, Any]:
+def evaluate_compiled_calls(
+    calls: list[dict[str, Any]],
+    *,
+    profile: str,
+    read_only_tools: Iterable[str] = (),
+) -> dict[str, Any]:
     normalized_calls = deepcopy(calls)
     violations: list[dict[str, Any]] = []
+    read_only_tool_names = set(read_only_tools)
     for index, call in enumerate(normalized_calls, start=1):
         tool = str(call.get("tool") or "")
         raw_args = call.get("arguments")
@@ -45,7 +51,7 @@ def evaluate_compiled_calls(calls: list[dict[str, Any]], *, profile: str) -> dic
                     "message": "Compiled call profile must match the requested framework profile.",
                 }
             )
-        if args.get("execute") is True:
+        if tool not in read_only_tool_names and args.get("execute") is True:
             violations.append(
                 {
                     "step": index,

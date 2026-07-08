@@ -258,7 +258,11 @@ def compile_framework_program(
             "missing_arguments": missing_required,
             "compiled_calls": compiled_calls,
         }
-    quality = evaluate_compiled_calls(compiled_calls, profile=profile)
+    quality = evaluate_compiled_calls(
+        compiled_calls,
+        profile=profile,
+        read_only_tools=READ_ONLY_TOOLS,
+    )
     if not quality["ok"]:
         return {
             "ok": False,
