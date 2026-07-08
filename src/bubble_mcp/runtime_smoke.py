@@ -137,6 +137,16 @@ AGENT_ROUTING_CASES: tuple[AgentRoutingCase, ...] = (
         forbidden_intents=("check_server_or_catalog",),
     ),
     AgentRoutingCase(
+        task="copie o reusable Header do profile template para o profile cliente2 usando o MCP",
+        expected_recipe="project_transfer",
+        expected_intents=("transfer_between_projects",),
+        expected_recipe_tools=("bubble_transfer_inventory", "bubble_transfer_plan", "bubble_transfer_preview"),
+        search_query="transferir reusable entre profiles source target",
+        expected_search_tool="bubble_transfer_plan",
+        description="Route project-to-project copy requests to transfer inventory/plan/preview tools.",
+        forbidden_intents=("check_server_or_catalog",),
+    ),
+    AgentRoutingCase(
         task="sincronize o estilo hovered de um botão vindo do Figma para o Bubble",
         expected_recipe="style_or_tokens",
         expected_intents=("manage_styles_tokens_design_system",),

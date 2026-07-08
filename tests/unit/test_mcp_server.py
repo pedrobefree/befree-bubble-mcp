@@ -1733,6 +1733,46 @@ def test_agent_routing_understands_portuguese_page_creation() -> None:
     assert "create_page" in [match["name"] for match in search["matches"]]
 
 
+def test_agent_routing_understands_project_transfer() -> None:
+    guide_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 86,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_agent_guide",
+                "arguments": {"task": "copie o reusable Header do profile template para o profile cliente2"},
+            },
+        }
+    )
+    runbook_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 87,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_runbook",
+                "arguments": {
+                    "task": "copie o reusable Header do profile template para o profile cliente2",
+                    "profile": "cliente2",
+                    "search_limit": 5,
+                },
+            },
+        }
+    )
+
+    assert guide_response is not None
+    assert runbook_response is not None
+    guide = json.loads(guide_response["result"]["content"][0]["text"])
+    runbook = json.loads(runbook_response["result"]["content"][0]["text"])
+    route_intents = {route["intent"] for route in guide["recommended_routes"]}
+    assert "transfer_between_projects" in route_intents
+    assert runbook["recipe"] == "project_transfer"
+    assert runbook["recommended_next_call"]["tool"] == "bubble_profile_status"
+    assert "bubble_transfer_plan" in [match["name"] for match in runbook["tool_search"]["matches"]]
+    assert "bubble_transfer_execute" in runbook["matched"]["tools"]
+
+
 def test_runtime_smoke_tool_runs_coverage_suite() -> None:
     response = handle_request(
         {
@@ -1768,7 +1808,7 @@ def test_runtime_smoke_tool_runs_agent_routing_suite() -> None:
     assert payload["ok"] is True
     assert payload["suite"] == "agent-routing"
     assert payload["summary"]["failed"] == 0
-    assert payload["summary"]["passed"] == 8
+    assert payload["summary"]["passed"] == 9
     assert all("bubble_task_runbook" in result["tool"] for result in payload["results"])
 
 

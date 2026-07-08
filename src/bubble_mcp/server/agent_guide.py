@@ -50,6 +50,12 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "notes": "Refresh context before and after real page/reusable mutations so agents can verify materialization.",
     },
     {
+        "intent": "transfer_between_projects",
+        "when": "The user asks to copy or transfer a Bubble page, reusable, element subtree, collection schema, or API Connector structure from one project/profile to another.",
+        "tools": ["bubble_transfer_inventory", "bubble_transfer_plan", "bubble_transfer_preview", "bubble_transfer_execute", "bubble_transfer_status"],
+        "notes": "Use the transfer tools directly. Inventory the source first, create a local plan, preview it, and execute only with execute=true and confirm=true.",
+    },
+    {
         "intent": "import_html_component",
         "when": "The user asks to convert/import/copy an HTML section, URL, selector, or snippet into Bubble.",
         "tools": ["create_from_html", "bubble_visual_capture", "bubble_visual_capture_actual", "bubble_visual_audit"],
@@ -142,6 +148,29 @@ KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
     (
         ("branch", "sub-branch", "version", "versao", "changelog", "history", "historico", "contributors", "colaboradores"),
         ("branches_or_changelog",),
+    ),
+    (
+        (
+            "transfer",
+            "transferir",
+            "transferencia",
+            "transferência",
+            "copiar entre projetos",
+            "copy between projects",
+            "de um projeto para outro",
+            "de um profile para outro",
+            "from profile",
+            "to profile",
+            "source profile",
+            "target profile",
+            "source_profile",
+            "target_profile",
+            "projeto origem",
+            "projeto destino",
+            "profile origem",
+            "profile destino",
+        ),
+        ("transfer_between_projects",),
     ),
     (
         (
@@ -472,6 +501,92 @@ RECIPES: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "project_transfer": {
+        "when": "Copy or transfer Bubble pages, reusables, element subtrees, collection schema, or API Connector structures between project profiles.",
+        "tools": [
+            "bubble_transfer_inventory",
+            "bubble_transfer_plan",
+            "bubble_transfer_preview",
+            "bubble_transfer_execute",
+            "bubble_transfer_status",
+            "bubble_context_detect",
+            "bubble_context_find",
+        ],
+        "steps": [
+            {
+                "tool": "bubble_profile_status",
+                "purpose": "Check source and target profile readiness. The target must have a captured session before preview or execution.",
+                "args": {"profile": "$source_profile_and_target_profile"},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_context_detect",
+                "purpose": "Refresh source and target context when the requested object or target parent may have changed.",
+                "args": {"profile": "$source_profile_and_target_profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_transfer_inventory",
+                "purpose": "Inspect the source object subtree and dependencies before creating a transfer plan.",
+                "args": {
+                    "source_profile": "$source_profile",
+                    "source_type": "$page_reusable_or_element",
+                    "source_ref": "$source_name_or_id",
+                    "source_context": "$source_context",
+                    "include_raw": False,
+                },
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_transfer_plan",
+                "purpose": "Create a local preview-first transfer plan. This does not write to Bubble.",
+                "args": {
+                    "source_profile": "$source_profile",
+                    "target_profile": "$target_profile",
+                    "source_type": "$page_reusable_or_element",
+                    "source_ref": "$source_name_or_id",
+                    "source_context": "$source_context",
+                    "target_context": "$target_context",
+                    "target_parent": "$target_parent",
+                    "target_name": "$target_name",
+                    "conflict_policy": "fail",
+                    "collection_policy": "map_existing",
+                    "api_connector_policy": "structure_only",
+                    "data_records_policy": "skip",
+                },
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_transfer_preview",
+                "purpose": "Preview the stored plan against the target session and review payloads when needed.",
+                "args": {"transfer_id": "$transfer_id", "include_payloads": True},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_transfer_execute",
+                "purpose": "Execute only after preview review and explicit user intent.",
+                "args": {"transfer_id": "$transfer_id", "execute": "$execute", "confirm": "$confirm"},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_context_detect",
+                "purpose": "After execute=true, refresh target context to verify materialization.",
+                "args": {"profile": "$target_profile", "force": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_context_find",
+                "purpose": "Verify the transferred target object exists in the target context.",
+                "args": {
+                    "profile": "$target_profile",
+                    "query": "$target_name_or_source_ref",
+                    "exact": True,
+                    "include_metadata": False,
+                },
+                "required_before_execute": False,
+            },
+        ],
+    },
     "workflow": {
         "when": "Create events, add actions, wire button/page workflows, or update workflow conditions.",
         "tools": ["create_workflow", "create_event", "add_action", "resolve_refs", "map_workflow_ref"],
@@ -662,6 +777,29 @@ RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
         ("element", "elemento", "text", "texto", "button", "botao", "group", "grupo", "input", "image", "imagem"),
         "visual_edit",
     ),
+    (
+        (
+            "transfer",
+            "transferir",
+            "transferencia",
+            "transferência",
+            "copiar entre projetos",
+            "copy between projects",
+            "de um projeto para outro",
+            "de um profile para outro",
+            "from profile",
+            "to profile",
+            "source profile",
+            "target profile",
+            "source_profile",
+            "target_profile",
+            "projeto origem",
+            "projeto destino",
+            "profile origem",
+            "profile destino",
+        ),
+        "project_transfer",
+    ),
     (("page", "pagina", "paginas", "reusable", "reutilizavel", "reutilizaveis"), "page_or_reusable"),
     (("data type", "tipo de dado", "field", "campo", "option set", "option value", "opcao", "schema"), "data_schema"),
     (("branch", "sub-branch", "version", "versao", "changelog", "history", "historico", "contributors"), "branch_or_changelog"),
@@ -784,6 +922,8 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
     "seletor": ("selector",),
     "sessao": ("session", "bootstrap", "setup"),
     "texto": ("text",),
+    "transferencia": ("transfer", "source", "target", "profile"),
+    "transferir": ("transfer", "source", "target", "profile"),
     "validar": ("validate",),
     "versao": ("version",),
     "visual": ("audit", "compare", "repair"),
@@ -892,6 +1032,7 @@ RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
     "data_schema": "data type field option set option value schema",
     "html_import": "create_from_html html selector url import visual audit compare",
     "page_or_reusable": "create page reusable clone delete context",
+    "project_transfer": "project transfer copy reusable page element source target profile inventory preview execute",
     "quality_gate": "readiness coverage catalog smoke health",
     "performance_logs_usage": "performance workload usage WU logs jetstream workflow runs storage plan usage audit",
     "setup_or_refresh_context": "bubble_profile_cache_refresh refresh cache atualizar recarregar sync profile context detect find status .bubble",
@@ -965,6 +1106,25 @@ RECIPE_CONTRACTS: dict[str, dict[str, list[str]]] = {
         ],
         "verification": [
             "After execute=true, refresh context and verify exact element name/id materialization or updated property.",
+        ],
+    },
+    "project_transfer": {
+        "quality_gates": [
+            "Inventory the source object before creating a transfer plan.",
+            "Create and review a local transfer plan before any target write.",
+            "Preview the plan with the target profile session before execute=true.",
+            "Do not copy API Connector secrets; require the project owner to review credentials in the target app.",
+        ],
+        "stop_conditions": [
+            "Stop if source_profile, target_profile, source_type, or source_ref is missing.",
+            "Stop before execute=true if target profile session is missing or stale.",
+            "Stop before execute=true if the transfer plan has blocked dependency reasons.",
+            "Stop before live record migration; data_records_policy defaults to skip.",
+        ],
+        "verification": [
+            "After execute=true, refresh target context with bubble_context_detect force=true.",
+            "Verify the transferred object with bubble_context_find exact=true and include_metadata=false.",
+            "Report any skipped dependencies or API Connector credential follow-up explicitly.",
         ],
     },
 }
@@ -1056,6 +1216,38 @@ def _looks_like_direct_profile_refresh(normalized_text: str) -> bool:
     )
 
 
+def _looks_like_project_transfer(normalized_text: str) -> bool:
+    if not normalized_text:
+        return False
+    direct_terms = (
+        "transfer",
+        "transferir",
+        "transferencia",
+        "copiar entre projetos",
+        "copy between projects",
+        "de um projeto para outro",
+        "de um profile para outro",
+        "source profile",
+        "target profile",
+        "source_profile",
+        "target_profile",
+        "projeto origem",
+        "projeto destino",
+        "profile origem",
+        "profile destino",
+    )
+    if any(_has_keyword(normalized_text, term) for term in direct_terms):
+        return True
+    copy_terms = ("copy", "copiar", "copie", "clone", "clonar", "duplicar", "transferir")
+    boundary_terms = ("profile", "perfil", "project", "projeto", "app", "source", "target", "origem", "destino")
+    direction_terms = ("to", "para", "destino", "target", "into", "em")
+    return (
+        any(_has_keyword(normalized_text, term) for term in copy_terms)
+        and any(_has_keyword(normalized_text, term) for term in boundary_terms)
+        and any(_has_keyword(normalized_text, term) for term in direction_terms)
+    )
+
+
 def agent_guide(task: str = "") -> dict[str, Any]:
     """Return compact tool-routing guidance for MCP clients."""
 
@@ -1063,6 +1255,8 @@ def agent_guide(task: str = "") -> dict[str, Any]:
     matched_intents: list[str] = []
     if _looks_like_command_batch(normalized):
         matched_intents.append("run_catalog_command_batch")
+    if _looks_like_project_transfer(normalized):
+        matched_intents.append("transfer_between_projects")
     if normalized:
         for keywords, intents in KEYWORDS:
             if any(_has_keyword(normalized, keyword) for keyword in keywords):
@@ -1118,6 +1312,8 @@ def task_recipe(
     normalized = _normalize_text(str(task or "").strip())
     requested_recipe = str(recipe or "").strip()
     recipe_id = requested_recipe if requested_recipe in RECIPES else ""
+    if not recipe_id and _looks_like_project_transfer(normalized):
+        recipe_id = "project_transfer"
     if not recipe_id and _looks_like_command_batch(normalized):
         recipe_id = "command_batch"
     if not recipe_id:
@@ -1371,6 +1567,7 @@ def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
     terms = _query_terms(normalized_query)
     action_prefixes = _action_prefixes(raw_terms)
     target_terms = _tool_target_terms(terms)
+    project_transfer_query = _looks_like_project_transfer(normalized_query)
     max_results = min(max(int(limit or 8), 1), 25)
     tools = list_tool_schemas()
     scored: list[tuple[int, dict[str, Any]]] = []
@@ -1411,6 +1608,8 @@ def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
                     score += 1
         if score <= 0:
             continue
+        if project_transfer_query and name.startswith("bubble_transfer_"):
+            score += 50
         for prefix in action_prefixes:
             if normalized_name.startswith(f"{prefix} "):
                 score += 6

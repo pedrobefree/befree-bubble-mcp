@@ -685,6 +685,32 @@ def test_cli_tools_runbook_routes_profile_cache_refresh_directly(capsys) -> None
     assert "bubble_profile_cache_refresh" in [match["name"] for match in payload["tool_search"]["matches"]]
 
 
+def test_cli_tools_runbook_routes_project_transfer(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert (
+        main(
+            [
+                "tools",
+                "runbook",
+                "--task",
+                "copie o reusable Header do profile template para o profile cliente2",
+                "--profile",
+                "cliente2",
+                "--search-limit",
+                "5",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["recipe"] == "project_transfer"
+    assert "transfer_between_projects" in payload["route_intents"]
+    assert payload["recommended_next_call"]["tool"] == "bubble_profile_status"
+    assert "bubble_transfer_inventory" in [match["name"] for match in payload["tool_search"]["matches"]]
+    assert "bubble_transfer_execute" in payload["matched"]["tools"]
+
+
 def test_cli_tools_runbook_routes_multi_action_edits_to_batch(capsys) -> None:  # type: ignore[no-untyped-def]
     task = (
         'Na página mcp-llm do projeto cliente2, altere o texto "Bem-vindo à Aria" '
