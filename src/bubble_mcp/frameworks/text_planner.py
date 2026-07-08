@@ -8,7 +8,7 @@ from typing import Any
 from bubble_mcp.frameworks.adapters import get_adapter
 
 
-_OBJECTIVE_RE = re.compile(r"^\s*objective:\s*(?P<objective>.+?)\s*$", re.IGNORECASE | re.MULTILINE)
+_OBJECTIVE_RE = re.compile(r"^\s*(?:objective|story):\s*(?P<objective>.+?)\s*$", re.IGNORECASE | re.MULTILINE)
 _STEP_RE = re.compile(r"^\s*[-*]\s*(?P<step>.+?)\s*$", re.MULTILINE)
 _FIND_PAGE_RE = re.compile(r"\b(?:find|verify)\s+page\s+(?P<query>.+?)(?:[.!?])?$", re.IGNORECASE)
 _SECTION_RE = re.compile(
@@ -17,6 +17,10 @@ _SECTION_RE = re.compile(
 )
 _BUTTON_RE = re.compile(
     r"\b(?:add|create)\s+(?:a\s+)?button\s+labeled\s+(?P<text>.+?)\s+inside\s+(?P<parent>.+?)(?:[.!?])?$",
+    re.IGNORECASE,
+)
+_BUTTON_DEFAULT_PARENT_RE = re.compile(
+    r"\b(?:add|create)\s+(?:a\s+)?button\s+labeled\s+(?P<text>.+?)(?:[.!?])?$",
     re.IGNORECASE,
 )
 _VERIFY_RE = re.compile(r"\bverify\s+(?P<query>.+?)(?:[.!?])?$", re.IGNORECASE)
@@ -28,10 +32,15 @@ def _clean(value: str) -> str:
 
 def _objective(text: str) -> str:
     match = _OBJECTIVE_RE.search(text)
-    if not match:
-        return "Framework text program"
-    objective = match.group("objective").strip()
-    return objective or "Framework text program"
+    if match:
+        objective = match.group("objective").strip()
+        return objective or "Framework text program"
+
+    for line in text.splitlines():
+        candidate = line.strip()
+        if candidate and not candidate.startswith(("-", "*")):
+            return candidate
+    return "Framework text program"
 
 
 def _line_steps(text: str) -> list[str]:
@@ -84,6 +93,18 @@ def _parse_step(line: str) -> list[dict[str, Any]]:
                 "context": "index",
                 "parent": _clean(button.group("parent")) or "root",
                 "text": _clean(button.group("text")),
+            }
+        )
+        return steps
+
+    button_default_parent = _BUTTON_DEFAULT_PARENT_RE.search(line)
+    if button_default_parent:
+        steps.append(
+            {
+                "intent": "create_button",
+                "context": "index",
+                "parent": "root",
+                "text": _clean(button_default_parent.group("text")),
             }
         )
         return steps
