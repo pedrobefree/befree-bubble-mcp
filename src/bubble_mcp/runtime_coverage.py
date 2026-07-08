@@ -48,6 +48,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_session_login",
     "bubble_session_import",
     "bubble_editor_write",
+    "bubble_plugin_install",
     "bubble_execute_plan",
     "bubble_transfer_inventory",
     "bubble_transfer_plan",

@@ -189,6 +189,30 @@ Available source types:
 - `reusable`
 - `element`
 
+If a transfer blocks because the target app is missing a plugin-backed element
+or action type, install the plugin in the target profile and then refresh
+context before rerunning the transfer:
+
+```bash
+bubble-mcp plugin install \
+  --profile target-app \
+  --plugin-key progressbar-ProgressBar \
+  --execute
+
+bubble-mcp context detect --profile target-app --force
+```
+
+For plugin registry values captured as versions, pass the version as a JSON
+string. Omit `--execute` to preview the write and post-install editor calls:
+
+```bash
+bubble-mcp plugin install \
+  --profile target-app \
+  --plugin-key 1627152028063x152738721905770500-AAs \
+  --plugin-value '"2.0.0"' \
+  --execute
+```
+
 Planning policy options:
 
 - `--conflict-policy`: `fail`, `rename`, `replace`, `reuse_existing`

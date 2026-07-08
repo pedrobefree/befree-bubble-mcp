@@ -701,6 +701,12 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Preview or send an exact Bubble /appeditor/write payload with a stored local session. Use for advanced writes "
         "when a tool already produced a valid payload; execute=false previews, execute=true mutates Bubble."
     ),
+    "bubble_plugin_install": (
+        "Preview or install one Bubble plugin in a target app using the stored editor session. Use this when transfer "
+        "planning reports a missing plugin-backed element/action type such as progressbar-ProgressBar. The tool writes "
+        "settings.client_safe.plugins, can run the Bubble editor post-install conflict/derived/context refresh calls, "
+        "and must be followed by context detect before rerunning a blocked transfer."
+    ),
     "bubble_execute_plan": (
         "Preview or execute a structured Bubble MCP plan. Can compile missing write payloads, resolve context, and use "
         "the stored profile session for authenticated execution."
@@ -1599,6 +1605,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_context_detect",
             "create_from_html",
             "bubble_editor_write",
+            "bubble_plugin_install",
             "bubble_execute_plan",
             "bubble_visual_capture",
         "bubble_visual_capture_actual",
@@ -1783,4 +1790,4 @@ def _is_mutating(name: str) -> bool:
             "clear_",
             "regenerate_",
         )
-    ) or name in {"bubble_editor_write", "bubble_execute_plan", "batch", "natural"}
+    ) or name in {"bubble_editor_write", "bubble_plugin_install", "bubble_execute_plan", "batch", "natural"}

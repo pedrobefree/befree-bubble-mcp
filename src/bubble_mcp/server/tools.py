@@ -49,6 +49,7 @@ from bubble_mcp.execution.editor_api import (
     read_time_series,
 )
 from bubble_mcp.execution.executor import execute_plan
+from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.extensions.store import (
@@ -1523,6 +1524,51 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
                 response=write_result.get("response"),
             )
         return write_result
+    if name == "bubble_plugin_install":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_plugin_install requires a profile.")
+        plugin_key = str(args.get("plugin_key") or args.get("plugin") or "").strip()
+        if not plugin_key:
+            raise ValueError("bubble_plugin_install requires plugin_key.")
+        write_session = load_session(profile)
+        if write_session is None:
+            raise ValueError(f"No Bubble session stored for profile '{profile}'.")
+        execute = bool(args.get("execute"))
+        result = install_plugin(
+            profile=profile,
+            session=write_session,
+            plugin_key=plugin_key,
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "") or None,
+            plugin_value=args.get("plugin_value", True),
+            installed_version=args.get("installed_version", 1),
+            installed_version_key=str(args.get("installed_version_key") or "") or None,
+            include_installed_version=(
+                bool(args["include_installed_version"])
+                if "include_installed_version" in args
+                else None
+            ),
+            id_counter=int(args["id_counter"]) if args.get("id_counter") is not None else None,
+            execute=execute,
+            post_check_conflicts=bool(args.get("post_check_conflicts", True)),
+            calculate_derived=bool(args.get("calculate_derived", True)),
+            notify_ai_context_change=bool(args.get("notify_ai_context_change", True)),
+        )
+        write_step = result.get("steps", {}).get("write") if isinstance(result.get("steps"), dict) else {}
+        if execute and result.get("ok") and isinstance(write_step, dict):
+            record_mutation_overlay(
+                profile=profile,
+                app_id=str(
+                    write_step.get("request", {}).get("payload", {}).get("appname")
+                    or write_session.app_id
+                ),
+                payload=write_step.get("request", {}).get("payload") or result.get("write_payload"),
+                source="bubble_plugin_install",
+                response=write_step.get("response"),
+            )
+        return result
     if name == "bubble_execute_plan":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()

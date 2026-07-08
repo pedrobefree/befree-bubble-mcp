@@ -5,12 +5,15 @@ import pytest
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.execution.client import (
     EDITOR_CALCULATE_DERIVED_URL,
+    EDITOR_GET_PLUGIN_CONFLICTS_URL,
+    EDITOR_NOTIFY_AI_CONTEXT_CHANGE_URL,
     EDITOR_WRITE_URL,
     BubbleEditorClient,
     HttpResponse,
     build_editor_write_headers,
 )
 from bubble_mcp.execution.executor import execute_plan
+from bubble_mcp.execution.plugins import build_install_plugin_payload, install_plugin
 from bubble_mcp.sessions.store import session_from_payload
 
 
@@ -102,6 +105,93 @@ def test_editor_client_previews_calculate_derived_request_in_dry_run() -> None:
     assert result["derived"]["dry_run"] is True
     assert result["derived"]["request"]["url"] == EDITOR_CALCULATE_DERIVED_URL
     assert result["derived"]["request"]["payload"]["derived"][0]["function_name"] == "ElementTypeToPath"
+
+
+def test_build_install_plugin_payload_matches_progressbar_editor_shape() -> None:
+    payload = build_install_plugin_payload(
+        app_id="courselaunch",
+        app_version="test",
+        plugin_key="progressbar-ProgressBar",
+        id_counter=20000330,
+    )
+
+    assert payload["appname"] == "courselaunch"
+    assert payload["app_version"] == "test"
+    assert payload["appVersion"] == "test"
+    assert payload["changes"][0]["body"] is True
+    assert payload["changes"][0]["path_array"] == ["settings", "client_safe", "plugins", "progressbar"]
+    assert payload["changes"][0]["intent"]["name"] == "ChangeAppSetting"
+    assert payload["changes"][1]["body"] == 1
+    assert payload["changes"][1]["path_array"] == [
+        "settings",
+        "client_safe",
+        "progressbar_installed_version",
+    ]
+    assert payload["changes"][2] == {"type": "id_counter", "value": 20000330}
+
+
+def test_install_plugin_runs_editor_post_install_calls() -> None:
+    calls = []
+
+    def fake_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        payload = json.loads(body.decode("utf-8"))
+        calls.append((url, payload))
+        if url == EDITOR_WRITE_URL:
+            return HttpResponse(status=200, body='{"last_change":123,"id_counter":"20000330"}', headers={})
+        if url == EDITOR_CALCULATE_DERIVED_URL:
+            return HttpResponse(status=200, body='{"fingerprints":["abc123"]}', headers={})
+        return HttpResponse(status=200, body="{}", headers={})
+
+    result = install_plugin(
+        profile="cliente2",
+        session=synthetic_session(),
+        plugin_key="progressbar-ProgressBar",
+        app_id="courselaunch",
+        execute=True,
+        client=BubbleEditorClient(transport=fake_transport),
+    )
+
+    assert result["ok"] is True
+    assert result["plugin_key"] == "progressbar"
+    assert [call[0] for call in calls] == [
+        EDITOR_WRITE_URL,
+        EDITOR_GET_PLUGIN_CONFLICTS_URL,
+        EDITOR_CALCULATE_DERIVED_URL,
+        EDITOR_NOTIFY_AI_CONTEXT_CHANGE_URL,
+    ]
+    assert calls[0][1]["changes"][0]["path_array"] == ["settings", "client_safe", "plugins", "progressbar"]
+    assert calls[2][1]["derived"] == [
+        {"function_name": "UserCalls", "args": [], "verbose": False},
+        {"function_name": "ElementTypeToPath", "args": [], "verbose": False},
+    ]
+    assert calls[3][1]["globalContextChanged"] is True
+
+
+def test_install_plugin_auto_skips_installed_version_for_version_string_plugins() -> None:
+    result = install_plugin(
+        profile="cliente2",
+        session=synthetic_session(),
+        plugin_key="1627152028063x152738721905770500-AAs",
+        app_id="courselaunch",
+        plugin_value="2.0.0",
+        execute=False,
+        post_check_conflicts=False,
+        calculate_derived=False,
+        notify_ai_context_change=False,
+    )
+
+    assert result["ok"] is True
+    assert result["plugin_key"] == "1627152028063x152738721905770500"
+    assert result["include_installed_version"] is False
+    changes = result["write_payload"]["changes"]
+    assert len(changes) == 1
+    assert changes[0]["path_array"] == [
+        "settings",
+        "client_safe",
+        "plugins",
+        "1627152028063x152738721905770500",
+    ]
+    assert changes[0]["body"] == "2.0.0"
 
 
 def test_editor_client_uses_aria_editor_write_headers() -> None:

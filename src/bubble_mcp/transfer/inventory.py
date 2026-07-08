@@ -116,6 +116,15 @@ def _node_to_dict(node: BubbleContextNode) -> dict[str, Any]:
     }
 
 
+def _source_plugins(context: BubbleProjectContext) -> dict[str, Any]:
+    plugins = (
+        ((context.metadata or {}).get("settings") or {})
+        .get("client_safe", {})
+        .get("plugins", {})
+    )
+    return plugins if isinstance(plugins, dict) else {}
+
+
 def inventory_source_object(
     *,
     context: BubbleProjectContext,
@@ -151,5 +160,5 @@ def inventory_source_object(
         ),
         root=_node_to_dict(root),
         nodes=[_node_to_dict(node) for node in nodes],
-        dependencies=extract_node_dependencies(nodes),
+        dependencies=extract_node_dependencies(nodes, source_plugins=_source_plugins(context)),
     )

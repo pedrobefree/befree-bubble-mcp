@@ -90,9 +90,23 @@ def _plugin_element_type(value: Any) -> str | None:
     return None
 
 
-def extract_node_dependencies(nodes: list[BubbleContextNode]) -> list[TransferDependency]:
+def _plugin_install_metadata(plugin_type: str, source_plugins: dict[str, Any]) -> dict[str, Any]:
+    install_key = plugin_type.split("-", 1)[0].strip() if "-" in plugin_type else plugin_type
+    metadata: dict[str, Any] = {"install_key": install_key}
+    if install_key in source_plugins:
+        metadata["source_plugin_value"] = source_plugins[install_key]
+        metadata["source_plugin_value_type"] = type(source_plugins[install_key]).__name__
+    return metadata
+
+
+def extract_node_dependencies(
+    nodes: list[BubbleContextNode],
+    *,
+    source_plugins: dict[str, Any] | None = None,
+) -> list[TransferDependency]:
     """Extract stable dependency references from node metadata."""
 
+    plugin_registry = source_plugins if isinstance(source_plugins, dict) else {}
     seen: set[tuple[DependencyKind, str]] = set()
     dependencies: list[TransferDependency] = []
     for node in nodes:
@@ -112,6 +126,7 @@ def extract_node_dependencies(nodes: list[BubbleContextNode]) -> list[TransferDe
                             "source_node_id": node.id,
                             "metadata_key": "element_type",
                             "install_required": True,
+                            **_plugin_install_metadata(plugin_type, plugin_registry),
                         },
                     )
                 )

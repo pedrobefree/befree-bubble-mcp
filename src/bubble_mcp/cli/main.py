@@ -48,6 +48,7 @@ from bubble_mcp.execution.editor_api import (
     read_time_series,
 )
 from bubble_mcp.execution.executor import execute_plan
+from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.extensions.store import disable_extension, enable_extension, import_extension, list_extensions
@@ -658,6 +659,40 @@ def command_write(args: argparse.Namespace) -> int:
     if not isinstance(payload, dict):
         raise ValueError("Write payload file must contain a JSON object.")
     result = BubbleEditorClient().write(payload, session, dry_run=not args.execute)
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def _json_scalar(value: str | None, fallback: object) -> object:
+    if value is None:
+        return fallback
+    raw = str(value)
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return raw
+
+
+def command_plugin_install(args: argparse.Namespace) -> int:
+    session = load_session(args.profile)
+    if session is None:
+        raise ValueError(f"No Bubble session stored for profile '{args.profile}'.")
+    result = install_plugin(
+        profile=args.profile,
+        session=session,
+        plugin_key=args.plugin_key,
+        app_id=args.app_id or None,
+        app_version=args.app_version or None,
+        plugin_value=_json_scalar(args.plugin_value, True),
+        installed_version=_json_scalar(args.installed_version, 1),
+        installed_version_key=args.installed_version_key or None,
+        include_installed_version=False if args.no_installed_version else None,
+        id_counter=args.id_counter,
+        execute=args.execute,
+        post_check_conflicts=not args.no_post_check_conflicts,
+        calculate_derived=not args.no_calculate_derived,
+        notify_ai_context_change=not args.no_notify_ai_context_change,
+    )
     emit_json(result)
     return 0 if result.get("ok") else 1
 
@@ -2020,6 +2055,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="Actually post to Bubble. Without this flag the command validates and prints the request.",
     )
     write_parser.set_defaults(func=command_write)
+
+    plugin_parser = subparsers.add_parser("plugin", help="Inspect and manage Bubble plugins.")
+    plugin_subparsers = plugin_parser.add_subparsers(dest="plugin_command", required=True)
+
+    plugin_install_parser = plugin_subparsers.add_parser(
+        "install",
+        help="Preview or install a Bubble plugin through /appeditor/write.",
+    )
+    plugin_install_parser.add_argument("--profile", required=True)
+    plugin_install_parser.add_argument(
+        "--plugin-key",
+        required=True,
+        help="Plugin registry key or element/action type, such as progressbar or progressbar-ProgressBar.",
+    )
+    plugin_install_parser.add_argument("--app-id", default="")
+    plugin_install_parser.add_argument("--app-version", default="")
+    plugin_install_parser.add_argument(
+        "--plugin-value",
+        default=None,
+        help="JSON scalar value for settings.client_safe.plugins.<plugin_key>; defaults to true.",
+    )
+    plugin_install_parser.add_argument(
+        "--installed-version",
+        default=None,
+        help="JSON scalar value for the installed-version setting; defaults to 1.",
+    )
+    plugin_install_parser.add_argument("--installed-version-key", default="")
+    plugin_install_parser.add_argument("--id-counter", type=int, default=None)
+    plugin_install_parser.add_argument("--no-installed-version", action="store_true")
+    plugin_install_parser.add_argument("--no-post-check-conflicts", action="store_true")
+    plugin_install_parser.add_argument("--no-calculate-derived", action="store_true")
+    plugin_install_parser.add_argument("--no-notify-ai-context-change", action="store_true")
+    plugin_install_parser.add_argument(
+        "--execute",
+        action="store_true",
+        help="Actually post to Bubble. Without this flag the command previews the write and post-install requests.",
+    )
+    plugin_install_parser.set_defaults(func=command_plugin_install)
 
     branch_parser = subparsers.add_parser("branch", help="Inspect and manage Bubble editor branches.")
     branch_subparsers = branch_parser.add_subparsers(dest="branch_command", required=True)

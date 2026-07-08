@@ -15,6 +15,8 @@ from bubble_mcp.sessions.store import BubbleSessionData, editor_write_session_st
 
 EDITOR_WRITE_URL = "https://bubble.io/appeditor/write"
 EDITOR_CALCULATE_DERIVED_URL = "https://bubble.io/appeditor/calculate_derived"
+EDITOR_GET_PLUGIN_CONFLICTS_URL = "https://bubble.io/appeditor/get_plugin_conflicts"
+EDITOR_NOTIFY_AI_CONTEXT_CHANGE_URL = "https://bubble.io/appeditor/notify_ai_app_context_change"
 EDITOR_WRITE_TIMEOUT_SEC = 80.0
 
 DEFAULT_DERIVED_FUNCTIONS: list[dict[str, Any]] = [
@@ -122,6 +124,56 @@ def normalize_calculate_derived_payload(
     return normalized
 
 
+def normalize_plugin_conflicts_payload(payload: dict[str, Any], session: BubbleSessionData) -> dict[str, Any]:
+    candidate = payload.get("body") if isinstance(payload.get("body"), dict) else payload
+    normalized = json.loads(json.dumps(candidate))
+    if not isinstance(normalized, dict):
+        raise ValueError("Bubble get_plugin_conflicts payload must be a JSON object.")
+    app_id = str(
+        normalized.get("appname")
+        or payload.get("appname")
+        or payload.get("app_id")
+        or payload.get("appId")
+        or session.app_id
+        or ""
+    ).strip()
+    if not app_id:
+        raise ValueError("Bubble get_plugin_conflicts payload is missing appname/app_id.")
+    return {"appname": app_id}
+
+
+def normalize_ai_context_change_payload(payload: dict[str, Any], session: BubbleSessionData) -> dict[str, Any]:
+    candidate = payload.get("body") if isinstance(payload.get("body"), dict) else payload
+    normalized = json.loads(json.dumps(candidate))
+    if not isinstance(normalized, dict):
+        raise ValueError("Bubble notify_ai_app_context_change payload must be a JSON object.")
+    app_id = str(
+        normalized.get("appname")
+        or payload.get("appname")
+        or payload.get("app_id")
+        or payload.get("appId")
+        or session.app_id
+        or ""
+    ).strip()
+    if not app_id:
+        raise ValueError("Bubble notify_ai_app_context_change payload is missing appname/app_id.")
+    app_version = str(
+        normalized.get("appVersion")
+        or normalized.get("app_version")
+        or payload.get("app_version")
+        or payload.get("appVersion")
+        or session.app_version
+        or "test"
+    ).strip() or "test"
+    return {
+        "appVersion": app_version,
+        "changedViewIds": normalized.get("changedViewIds") if isinstance(normalized.get("changedViewIds"), list) else [],
+        "globalContextChanged": bool(normalized.get("globalContextChanged", True)),
+        "appname": app_id,
+        "useTestEnv": bool(normalized.get("useTestEnv", app_version == "test")),
+    }
+
+
 def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, Any]) -> dict[str, str]:
     captured = {str(key).lower(): str(value) for key, value in session.headers.items()}
     cookie = str(session.cookies or captured.get("cookie") or "").strip()
@@ -182,6 +234,10 @@ def has_expected_write_shape(data: Any) -> bool:
 
 def has_expected_calculate_derived_shape(data: Any) -> bool:
     return isinstance(data, dict) and isinstance(data.get("fingerprints"), list)
+
+
+def has_expected_auxiliary_shape(data: Any) -> bool:
+    return isinstance(data, (dict, list))
 
 
 class BubbleEditorClient:
@@ -309,3 +365,81 @@ class BubbleEditorClient:
             "valid_shape": valid_shape,
             "request": safe_request,
         }
+
+    def post_editor_endpoint(
+        self,
+        url: str,
+        payload: dict[str, Any],
+        session: BubbleSessionData,
+        *,
+        dry_run: bool = False,
+        valid_shape: Callable[[Any], bool] = has_expected_auxiliary_shape,
+    ) -> dict[str, Any]:
+        headers = build_editor_write_headers(session, payload)
+        safe_request = {
+            "url": url,
+            "payload": payload,
+            "headers": redact_sensitive(headers),
+        }
+        if dry_run:
+            return {"ok": True, "dry_run": True, "request": safe_request}
+
+        body = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        response = self._transport(url, body, headers, self._timeout)
+        data = parse_response_body(response.body)
+
+        if response.status in (401, 403):
+            session_status = editor_write_session_status(session)
+            return {
+                "ok": False,
+                "dry_run": False,
+                "status": response.status,
+                "error": f"Bubble blocked editor endpoint ({response.status}).",
+                "reason": "auth_blocked",
+                "session_write_ready": session_status["write_ready"],
+                "session_diagnostics": session_status,
+                "response": data,
+                "request": safe_request,
+            }
+        if isinstance(data, str) and data.lstrip().startswith("<"):
+            raise RuntimeError("Bubble session expired: received HTML instead of JSON.")
+
+        shape_ok = valid_shape(data)
+        return {
+            "ok": 200 <= response.status < 300 and shape_ok,
+            "dry_run": False,
+            "status": response.status,
+            "response": data,
+            "valid_shape": shape_ok,
+            "request": safe_request,
+        }
+
+    def get_plugin_conflicts(
+        self,
+        payload: dict[str, Any],
+        session: BubbleSessionData,
+        *,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        normalized = normalize_plugin_conflicts_payload(payload, session)
+        return self.post_editor_endpoint(
+            EDITOR_GET_PLUGIN_CONFLICTS_URL,
+            normalized,
+            session,
+            dry_run=dry_run,
+        )
+
+    def notify_ai_app_context_change(
+        self,
+        payload: dict[str, Any],
+        session: BubbleSessionData,
+        *,
+        dry_run: bool = False,
+    ) -> dict[str, Any]:
+        normalized = normalize_ai_context_change_payload(payload, session)
+        return self.post_editor_endpoint(
+            EDITOR_NOTIFY_AI_CONTEXT_CHANGE_URL,
+            normalized,
+            session,
+            dry_run=dry_run,
+        )

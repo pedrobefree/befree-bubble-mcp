@@ -2858,6 +2858,101 @@ def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  
     assert overlay["entries"][0]["changes"][0]["path_array"] == ["%p3", "mcp01"]
 
 
+def test_plugin_install_tool_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="cliente2",
+            profiles={
+                "cliente2": BubbleProfile(
+                    name="cliente2",
+                    app_id="courselaunch",
+                    appname="courselaunch",
+                    app_version="test",
+                )
+            },
+        )
+    )
+    save_session(
+        "cliente2",
+        BubbleSessionData(
+            app_id="courselaunch",
+            url="https://bubble.io/page?id=courselaunch",
+            method="POST",
+            headers={"cookie": "sid=secret", "x-bubble-client-version": "abc"},
+            cookies="sid=secret",
+            app_version="test",
+            captured_at="2026-07-02T00:00:00+00:00",
+            source="test",
+        ),
+    )
+
+    listed = handle_request({"jsonrpc": "2.0", "id": 50, "method": "tools/list"})
+    assert listed is not None
+    plugin_schema = next(tool for tool in listed["result"]["tools"] if tool["name"] == "bubble_plugin_install")
+    assert plugin_schema["inputSchema"]["required"] == ["profile", "plugin_key"]
+    assert plugin_schema["annotations"]["readOnlyHint"] is False
+
+    def fake_install_plugin(**kwargs):  # type: ignore[no-untyped-def]
+        execute = bool(kwargs["execute"])
+        payload = {
+            "appname": "courselaunch",
+            "app_version": "test",
+            "changes": [
+                {
+                    "intent": {"name": "ChangeAppSetting"},
+                    "path_array": ["settings", "client_safe", "plugins", "progressbar"],
+                    "body": True,
+                }
+            ],
+        }
+        return {
+            "ok": True,
+            "profile": kwargs["profile"],
+            "plugin_key": "progressbar",
+            "executed": execute,
+            "write_payload": payload,
+            "steps": {
+                "write": {
+                    "ok": True,
+                    "dry_run": not execute,
+                    "response": {"last_change": "1"},
+                    "request": {"payload": payload},
+                }
+            },
+        }
+
+    monkeypatch.setattr("bubble_mcp.server.tools.install_plugin", fake_install_plugin)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 51,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_plugin_install",
+                "arguments": {"profile": "cliente2", "plugin_key": "progressbar-ProgressBar", "execute": True},
+            },
+        }
+    )
+
+    assert response is not None
+    result = json.loads(response["result"]["content"][0]["text"])
+    assert result["ok"] is True
+    assert result["plugin_key"] == "progressbar"
+
+    overlay_path = tmp_path / "contexts" / "cliente2" / "courselaunch-mutation-overlay.json"
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    assert overlay["entries"][0]["source"] == "bubble_plugin_install"
+    assert overlay["entries"][0]["changes"][0]["path_array"] == [
+        "settings",
+        "client_safe",
+        "plugins",
+        "progressbar",
+    ]
+
+
 def test_tools_list_includes_full_aria_catalog() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 7, "method": "tools/list"})
 

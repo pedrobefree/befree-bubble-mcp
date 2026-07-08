@@ -97,6 +97,16 @@ def test_inventory_reusable_scopes_duplicate_element_ids_by_path_prefix() -> Non
     context = BubbleProjectContext(
         app_id="source-app",
         source="test",
+        metadata={
+            "settings": {
+                "client_safe": {
+                    "plugins": {
+                        "progressbar": True,
+                        "1627152028063x152738721905770500": "2.0.0",
+                    }
+                }
+            }
+        },
         nodes=[
             BubbleContextNode(
                 id="reusable:fileUploader",
@@ -114,13 +124,21 @@ def test_inventory_reusable_scopes_duplicate_element_ids_by_path_prefix() -> Non
                 id="element:bShared",
                 label="gp correct",
                 type="element",
-                metadata={"bubble_id": "bShared", "path_array": ["%ed", "bReusableA", "%el", "bShared"]},
+                metadata={
+                    "bubble_id": "bShared",
+                    "element_type": "progressbar-ProgressBar",
+                    "path_array": ["%ed", "bReusableA", "%el", "bShared"],
+                },
             ),
             BubbleContextNode(
                 id="element:bShared",
                 label="gp wrong",
                 type="element",
-                metadata={"bubble_id": "bShared", "path_array": ["%ed", "bReusableB", "%el", "bShared"]},
+                metadata={
+                    "bubble_id": "bShared",
+                    "element_type": "1627152028063x152738721905770500-AAs",
+                    "path_array": ["%ed", "bReusableB", "%el", "bShared"],
+                },
             ),
         ],
         edges=[
@@ -138,6 +156,10 @@ def test_inventory_reusable_scopes_duplicate_element_ids_by_path_prefix() -> Non
     )
 
     assert [node["label"] for node in inventory.nodes] == ["fileUploader", "gp correct"]
+    assert len(inventory.dependencies) == 1
+    assert inventory.dependencies[0].key == "progressbar-ProgressBar"
+    assert inventory.dependencies[0].metadata["install_key"] == "progressbar"
+    assert inventory.dependencies[0].metadata["source_plugin_value"] is True
 
 
 def test_inventory_requires_matching_source_type() -> None:

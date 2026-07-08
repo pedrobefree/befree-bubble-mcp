@@ -155,6 +155,13 @@ target context, and create the transfer plan again. The planner intentionally
 does not write a partial copy that would render as a broken `missing element`
 placeholder.
 
+When a blocked plan reports a plugin element/action type such as
+`progressbar-ProgressBar`, use `bubble_plugin_install` or
+`bubble-mcp plugin install` with that value; the installer resolves the Bubble
+plugin key from the prefix before `-`. If the source inventory reports a
+version string in `source_plugin_value`, pass it as `plugin_value`; otherwise
+the common editor payload writes `true` and an installed-version setting.
+
 ## Current Limits
 
 - Element subtree payloads are supported for transfer execution. Page and
