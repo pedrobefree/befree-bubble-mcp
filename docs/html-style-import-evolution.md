@@ -45,16 +45,19 @@ The mapper should normalize CSS only into Bubble-supported style fields.
 - `rgb()`, `rgba()`, `hsl()`, and `hsla()` colors should be normalized where Bubble accepts colors.
 - Unsupported CSS must be returned in `unsupported` with a reason.
 - Multiple backgrounds, multiple images, or CSS constructs without Bubble equivalents must not be forced into invalid Bubble fields.
-- Media-query handling belongs to the rendered/computed pipeline and should reflect the chosen viewport, not create a separate responsive style engine.
+- Media-query handling belongs to the rendered/computed pipeline and reflects the active browser viewport instead of creating a separate responsive style engine.
 
-## Future URL/Rendered Pipeline
+## URL/Rendered Pipeline
 
-URL support is not part of the static HTML parser. The future rendered pipeline should:
+URL support uses the existing browser renderer from the Aria HTML importer:
 
 1. Accept `url + selector`.
 2. Load the URL with a browser.
 3. Select the requested element.
 4. Extract `getComputedStyle(element)` for the base style.
-5. Resolve external CSS, cascade, inherited values, CSS variables, and active viewport media queries.
-6. Extract state deltas for hover, focus, disabled, and pressed through CSS rule matching and browser simulation where practical.
-7. Feed the normalized result into the same Bubble mapper and upsert planner.
+5. Resolve external CSS, cascade, inherited values, CSS variables, and active viewport media queries through the browser.
+6. Extract state deltas for hover, focus, disabled, and pressed through browser simulation where practical.
+7. Serialize computed base style as inline HTML and state deltas as synthetic CSS.
+8. Feed the normalized result into the same Bubble mapper and upsert planner.
+
+If browser rendering is disabled with `rendered_html=false`, URL imports fetch the raw HTML response and only static CSS present in that response can be mapped.

@@ -98,6 +98,58 @@ def test_create_styles_from_html_runtime_accepts_html_file() -> None:
     assert result["styles"][0]["states"]["pressed"]["bg_color"] == "#00359e"
 
 
+def test_create_styles_from_html_runtime_uses_rendered_html_for_url(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    def fake_render_url_to_html(**kwargs):  # type: ignore[no-untyped-def]
+        assert kwargs["url"] == "https://example.test/button"
+        assert kwargs["selector"] == ".btn-primary"
+        assert kwargs["timeout_ms"] == 35000
+        return """
+        <style>
+          .btn-primary:hover { background-color: rgb(0, 78, 235); }
+        </style>
+        <button class="btn-primary" style="background-color: rgb(21, 94, 239); color: rgb(255, 255, 255);">
+          Save
+        </button>
+        """
+
+    monkeypatch.setattr("bubble_mcp.style_import.runtime.render_url_to_html", fake_render_url_to_html)
+
+    result = create_styles_from_html_runtime(
+        profile="smoke",
+        style_name="Primary Button",
+        element_type="Button",
+        url="https://example.test/button",
+        selector=".btn-primary",
+        execute=False,
+        rendered_html=True,
+    )
+
+    assert result["ok"] is True
+    assert result["source"] == {
+        "type": "url",
+        "url": "https://example.test/button",
+        "rendered_html": True,
+        "selector": ".btn-primary",
+    }
+    assert result["styles"][0]["base"]["bg_color"] == "#155eef"
+    assert result["styles"][0]["states"]["hover"]["bg_color"] == "#004eeb"
+
+
+def test_create_styles_from_html_runtime_requires_selector_for_url() -> None:
+    try:
+        create_styles_from_html_runtime(
+            profile="smoke",
+            style_name="Primary Button",
+            element_type="Button",
+            url="https://example.test/button",
+            execute=False,
+        )
+    except ValueError as exc:
+        assert "requires selector" in str(exc)
+    else:
+        raise AssertionError("Expected URL style import without selector to fail.")
+
+
 def test_create_styles_from_html_runtime_executes_operations_with_executor() -> None:
     calls = []
 

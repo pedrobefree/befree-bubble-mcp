@@ -266,10 +266,23 @@ bubble-mcp import html-styles \
   --element-type Button
 ```
 
+For rendered URL extraction, pass `--url` and the exact source selector:
+
+```bash
+bubble-mcp import html-styles \
+  --url https://example.com/page.html \
+  --profile smoke \
+  --selector '.btn-primary' \
+  --style-name 'Primary Button' \
+  --element-type Button
+```
+
 Supported pseudo-states are `:hover`, `:focus`, `:focus-visible`, `:disabled`,
 and `:active` mapped to Bubble hover, focus, disabled, and pressed states.
 Style identity is `--style-name` plus `--element-type`; matching existing
-styles are updated, otherwise a new style is created.
+styles are updated, otherwise a new style is created. URL sources use rendered
+DOM/computed styles by default; pass `--no-rendered-html` only when raw URL HTML
+is intentionally preferred.
 
 ## `bubble-mcp session import`
 

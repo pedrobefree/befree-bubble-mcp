@@ -15,6 +15,182 @@ async function resolveEngine() {
   }
 }
 
+const STYLE_IMPORT_STATE_PROPS = [
+  "background",
+  "background-color",
+  "color",
+  "font-size",
+  "font-weight",
+  "font-family",
+  "line-height",
+  "letter-spacing",
+  "border",
+  "border-width",
+  "border-style",
+  "border-color",
+  "border-radius",
+  "border-top",
+  "border-right",
+  "border-bottom",
+  "border-left",
+  "border-top-width",
+  "border-right-width",
+  "border-bottom-width",
+  "border-left-width",
+  "border-top-style",
+  "border-right-style",
+  "border-bottom-style",
+  "border-left-style",
+  "border-top-color",
+  "border-right-color",
+  "border-bottom-color",
+  "border-left-color",
+  "border-top-left-radius",
+  "border-top-right-radius",
+  "border-bottom-right-radius",
+  "border-bottom-left-radius",
+  "box-shadow",
+  "padding",
+  "padding-top",
+  "padding-right",
+  "padding-bottom",
+  "padding-left",
+  "opacity",
+];
+
+async function styleSubsetForSelector(page, selector, props = STYLE_IMPORT_STATE_PROPS) {
+  return await page.evaluate(
+    ({ sel, propNames }) => {
+      const el = document.querySelector(sel || "body");
+      if (!el) return null;
+      const cs = window.getComputedStyle(el);
+      const out = {};
+      for (const prop of propNames) {
+        const value = String(cs.getPropertyValue(prop) || "").trim();
+        if (!value || value === "normal" || value === "auto") continue;
+        out[prop] = value;
+      }
+      return out;
+    },
+    { sel: selector || "body", propNames: props },
+  );
+}
+
+function diffStyleSubset(base, state) {
+  if (!base || !state) return {};
+  const diff = {};
+  for (const [key, value] of Object.entries(state)) {
+    if (String(base[key] || "").trim() !== String(value || "").trim()) {
+      diff[key] = value;
+    }
+  }
+  return diff;
+}
+
+async function resetElementState(page, selector) {
+  try {
+    await page.mouse.up();
+  } catch (_) {
+    // Best effort only.
+  }
+  try {
+    await page.mouse.move(0, 0);
+  } catch (_) {
+    // Best effort only.
+  }
+  try {
+    await page.evaluate((sel) => {
+      const el = document.querySelector(sel || "body");
+      if (el && typeof el.blur === "function") el.blur();
+    }, selector || "body");
+  } catch (_) {
+    // Best effort only.
+  }
+}
+
+async function captureStyleImportStates(page, selector, sleep) {
+  const safeSelector = selector || "body";
+  const exists = await page.evaluate((sel) => Boolean(document.querySelector(sel || "body")), safeSelector);
+  if (!exists) {
+    return { base: {}, hover: {}, focus: {}, pressed: {}, disabled: {} };
+  }
+
+  await resetElementState(page, safeSelector);
+  const base = (await styleSubsetForSelector(page, safeSelector)) || {};
+  const states = { base, hover: {}, focus: {}, pressed: {}, disabled: {} };
+
+  try {
+    await page.hover(safeSelector);
+    await sleep(80);
+    states.hover = diffStyleSubset(base, await styleSubsetForSelector(page, safeSelector));
+  } catch (_) {
+    states.hover = {};
+  } finally {
+    await resetElementState(page, safeSelector);
+  }
+
+  try {
+    await page.focus(safeSelector);
+    await sleep(80);
+    states.focus = diffStyleSubset(base, await styleSubsetForSelector(page, safeSelector));
+  } catch (_) {
+    states.focus = {};
+  } finally {
+    await resetElementState(page, safeSelector);
+  }
+
+  try {
+    const handle = await page.$(safeSelector);
+    const box = handle && typeof handle.boundingBox === "function" ? await handle.boundingBox() : null;
+    if (box && box.width > 0 && box.height > 0) {
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await sleep(80);
+      states.pressed = diffStyleSubset(base, await styleSubsetForSelector(page, safeSelector));
+      await page.mouse.up();
+    }
+  } catch (_) {
+    states.pressed = {};
+  } finally {
+    await resetElementState(page, safeSelector);
+  }
+
+  try {
+    const disabledState = await page.evaluate(
+      ({ sel, propNames }) => {
+        const el = document.querySelector(sel || "body");
+        if (!el) return null;
+        const hadAttribute = el.hasAttribute("disabled");
+        const previousAttribute = el.getAttribute("disabled");
+        const hadDisabledProperty = "disabled" in el;
+        const previousDisabledProperty = hadDisabledProperty ? Boolean(el.disabled) : undefined;
+        el.setAttribute("disabled", "");
+        if (hadDisabledProperty) el.disabled = true;
+        const cs = window.getComputedStyle(el);
+        const out = {};
+        for (const prop of propNames) {
+          const value = String(cs.getPropertyValue(prop) || "").trim();
+          if (!value || value === "normal" || value === "auto") continue;
+          out[prop] = value;
+        }
+        if (hadAttribute) {
+          el.setAttribute("disabled", previousAttribute || "");
+        } else {
+          el.removeAttribute("disabled");
+        }
+        if (hadDisabledProperty) el.disabled = previousDisabledProperty;
+        return out;
+      },
+      { sel: safeSelector, propNames: STYLE_IMPORT_STATE_PROPS },
+    );
+    states.disabled = diffStyleSubset(base, disabledState);
+  } catch (_) {
+    states.disabled = {};
+  }
+
+  return states;
+}
+
 function browserEvaluateFn(selector) {
   const EXTRACT_STYLE_PROPS = [
     "display",
@@ -546,9 +722,17 @@ export async function extractRenderedHtml({
       }
     }
 
+    const styleStates = await captureStyleImportStates(page, safeSelector, sleep).catch(() => ({
+      base: {},
+      hover: {},
+      focus: {},
+      pressed: {},
+      disabled: {},
+    }));
+
     await sleep(900);
     const result = await page.evaluate(browserEvaluateFn, safeSelector);
-    return { ...result, engine };
+    return { ...result, engine, styleStates };
   } finally {
     if (browser) {
       await browser.close().catch(() => {});

@@ -42,6 +42,20 @@ bubble-mcp import html-styles \
   --element-type Button
 ```
 
+For a live URL, pass the URL and the exact element selector. The command uses a
+browser-rendered DOM by default, so class-based styles, CSS variables, external
+stylesheets, and active viewport media queries are resolved from
+`getComputedStyle` before mapping:
+
+```bash
+bubble-mcp import html-styles \
+  --url https://example.com/page.html \
+  --profile smoke \
+  --selector '.btn-primary' \
+  --style-name 'Primary Button' \
+  --element-type Button
+```
+
 The style workflow maps supported CSS into `create_style`, `add_style_condition`,
 and `reorder_style_states` operations. It preserves independent border width,
 style, color, and corner radius fields when they are present, and imports
@@ -52,7 +66,8 @@ already exists, the existing Bubble style runtime updates it; otherwise it
 creates a new style. Property-equivalent styles with different names are not
 reused. With `--execute`, the workflow refreshes context/cache and verifies the
 style identity, plus base/state properties when the refreshed export exposes
-raw Bubble style fields.
+raw Bubble style fields. For URL sources, rendered extraction also attempts
+browser state deltas for hover, focus, disabled, and pressed.
 
 Execute the advanced import against Bubble:
 
@@ -89,15 +104,16 @@ MCP clients should call the advanced Aria runtime through `create_from_html`:
 ```
 
 MCP clients should call `create_styles_from_html` when they only need style
-definitions from an HTML file or raw HTML snippet:
+definitions from a URL, HTML file, or raw HTML snippet:
 
 ```json
 {
   "profile": "smoke",
-  "html_file": "component.html",
+  "url": "https://example.com/page.html",
   "selector": ".btn-primary",
   "style_name": "Primary Button",
   "element_type": "Button",
+  "rendered_html": true,
   "execute": false
 }
 ```
@@ -107,7 +123,7 @@ Implemented stages:
 ```text
 Conservative: HTML -> Bubble plan -> semantic validation -> optional write_payload compilation -> execute-plan
 Advanced: HTML/file/URL -> Aria parser -> mapper -> BubbleCLI create-from-html -> optional /appeditor/write
-Styles: HTML/file/snippet -> CSS state extractor -> Bubble style mapper -> style upsert -> optional verification
+Styles: HTML/file/snippet/URL -> static or rendered CSS extractor -> Bubble style mapper -> style upsert -> optional verification
 ```
 
 Supported conservative mapping:

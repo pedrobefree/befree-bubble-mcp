@@ -2339,15 +2339,17 @@ def test_native_family_schemas_expose_agent_selection_constraints() -> None:
     html_style_import = tools["create_styles_from_html"]["inputSchema"]
     assert html_style_import["required"] == ["profile", "style_name", "element_type"]
     assert html_style_import["anyOf"] == [
+        {"required": ["url"]},
         {"required": ["html_file"]},
         {"required": ["file"]},
         {"required": ["html"]},
     ]
+    assert html_style_import["properties"]["url"]["type"] == "string"
     assert "Bubble element type" in html_style_import["properties"]["element_type"]["description"]
     assert "style_name" in html_style_import["properties"]
+    assert html_style_import["properties"]["rendered_html"]["type"] == "boolean"
     assert html_style_import["properties"]["include_states"]["type"] == "boolean"
     assert html_style_import["properties"]["states"]["items"]["enum"] == ["hover", "focus", "disabled", "pressed"]
-    assert "rendered_html" not in html_style_import["properties"]
 
     session_import = tools["bubble_session_import"]["inputSchema"]
     assert session_import["properties"]["session"]["properties"]["headers"]["type"] == "object"

@@ -1638,6 +1638,8 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             element_type=str(args.get("element_type") or ""),
             html=html or None,
             html_file=html_file or None,
+            url=str(args.get("url") or "") or None,
+            rendered_html=args.get("rendered_html") if isinstance(args.get("rendered_html"), bool) else None,
             execute=bool(args.get("execute")),
             include_states=bool(args.get("include_states", True)),
             states=args.get("states") if isinstance(args.get("states"), list) else None,

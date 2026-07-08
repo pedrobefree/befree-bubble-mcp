@@ -414,6 +414,8 @@ def command_import_html_styles(args: argparse.Namespace) -> int:
         element_type=args.element_type,
         html_file=args.file or None,
         html=args.html or None,
+        url=args.url or None,
+        rendered_html=args.rendered_html,
         execute=args.execute,
         include_states=args.include_states,
         states=[state.strip() for state in args.states.split(",") if state.strip()] if args.states else None,
@@ -1693,12 +1695,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Create Bubble style definitions from HTML/CSS selectors.",
     )
     html_styles_parser.add_argument("--file", default="", help="Path to an HTML file.")
+    html_styles_parser.add_argument("--url", default="", help="URL to hydrate and inspect with a browser-rendered DOM.")
     html_styles_parser.add_argument("--html", default="", help="Raw HTML source.")
     html_styles_parser.add_argument("--profile", required=True)
     html_styles_parser.add_argument("--execute", action="store_true")
     html_styles_parser.add_argument("--selector", default="")
     html_styles_parser.add_argument("--style-name", required=True)
     html_styles_parser.add_argument("--element-type", required=True)
+    html_styles_parser.add_argument("--rendered-html", dest="rendered_html", action="store_true")
+    html_styles_parser.add_argument("--no-rendered-html", dest="rendered_html", action="store_false")
+    html_styles_parser.set_defaults(rendered_html=None)
     html_styles_parser.add_argument("--no-states", dest="include_states", action="store_false")
     html_styles_parser.set_defaults(include_states=True)
     html_styles_parser.add_argument("--states", default="", help="Comma-separated pseudo-states to import.")

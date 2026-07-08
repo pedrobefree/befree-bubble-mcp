@@ -951,7 +951,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "update_icon": (("profile", "context", "element_name", "new_icon"), ("dry_run", "settings_path", "prefer_last")),
     "update_layout": (("profile", "context", "element_name", "property", "value"), ("dry_run", "settings_path")),
     "create_style": (("profile", "name", "element_type"), ("dry_run", "settings_path", "default", "map_type", "map_style", "custom_style", *VISUAL_STYLE_FIELDS)),
-    "create_styles_from_html": (("profile", "style_name", "element_type"), ("html_file", "file", "html", "selector", "execute", "include_states", "states", "extra_css")),
+    "create_styles_from_html": (("profile", "style_name", "element_type"), ("url", "html_file", "file", "html", "selector", "execute", "rendered_html", "include_states", "states", "extra_css")),
     "edit_style": (("profile", "name", "element_type"), ("dry_run", "settings_path", "map_type", "map_style", "custom_style", *VISUAL_STYLE_FIELDS)),
     "add_style_condition": (("profile", "name", "condition"), ("dry_run", "settings_path", *VISUAL_STYLE_FIELDS)),
     "reorder_style_states": (("profile", "name", "order"), ("dry_run", "settings_path")),
@@ -990,6 +990,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 FIELD_TYPES: dict[str, dict[str, Any]] = {
     "dry_run": {"type": "boolean", "default": True},
     "execute": {"type": "boolean", "default": False},
+    "rendered_html": {"type": "boolean", "default": True},
     "calculate_derived": {"type": "boolean", "default": False},
     "confirm": {"type": "boolean", "default": False},
     "force": {"type": "boolean"},

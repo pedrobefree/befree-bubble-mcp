@@ -1549,6 +1549,7 @@ def html_import_tools() -> list[ToolSchema]:
             "Create Bubble style definitions from HTML/CSS selectors without creating page elements. Extracts base styles plus hover, focus, disabled, and active/pressed pseudo-state rules, maps supported CSS into Bubble style fields, and returns create_style/add_style_condition/reorder_style_states operations for preview or execution.",
             [
                 "profile",
+                "url",
                 "html_file",
                 "file",
                 "html",
@@ -1556,12 +1557,14 @@ def html_import_tools() -> list[ToolSchema]:
                 "style_name",
                 "element_type",
                 "execute",
+                "rendered_html",
                 "include_states",
                 "states",
                 "extra_css",
             ],
             required=["profile", "style_name", "element_type"],
             any_of=[
+                {"required": ["url"]},
                 {"required": ["html_file"]},
                 {"required": ["file"]},
                 {"required": ["html"]},
