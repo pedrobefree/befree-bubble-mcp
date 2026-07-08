@@ -132,3 +132,45 @@ reviewed and re-entered by the project owner.
 - Live database record migration is not executed by default.
 - Successful Bubble write responses must still be verified with refreshed
   context or the Bubble editor.
+
+## Technical Evolution Plan
+
+The transfer module should evolve toward deterministic project-to-project
+copies without changing the current safety limits: API Connector secrets are
+not copied, and live database records are not migrated by default.
+
+Implementation order:
+
+1. Deep-remap copied element payloads.
+   - Use `dependency_decisions` as the only authority for cross-project
+     replacement.
+   - Replace source dependency keys, labels, and Bubble ids with the mapped or
+     reused target references.
+   - Replace source element ids inside copied properties with the newly created
+     target element ids.
+   - Leave unresolved values unchanged when the plan intentionally skips or
+     creates later resources.
+2. Enforce conflict policies consistently.
+   - `fail` blocks conflicting target resources.
+   - `rename` creates non-conflicting target names.
+   - `reuse_existing` maps compatible existing resources.
+   - `replace` remains explicit and must not silently delete or overwrite
+     destructive structures.
+3. Add first-class dependency compilers where they are safe.
+   - Create missing styles, colors, fonts, option sets, data schema resources,
+     and API Connector structure when the selected policy allows it.
+   - Keep plugin installation and API credentials as manual review items unless
+     Bubble exposes safe, non-secret editor operations for them.
+4. Add asset staging only after there is a reliable upload path.
+   - Until then, `reference_url` and `skip` remain the safe asset policies.
+   - `stage_and_upload` should either perform a real upload or block with a
+     clear reason; it must not pretend assets were copied.
+5. Add post-execute verification.
+   - Refresh target context after execution.
+   - Verify created shells, element counts, schema resources, API Connector
+     structures, and remapped dependency references.
+   - Return missing artifacts as actionable warnings, not as a generic success.
+6. Add cross-project smoke coverage.
+   - Run source-to-target transfer with two real profiles.
+   - Verify through refreshed context and editor-visible artifacts.
+   - Keep synthetic unit fixtures for deterministic regression coverage.

@@ -5,7 +5,12 @@ from bubble_mcp.transfer.compiler import (
     compile_collection_actions_to_payloads,
     compile_inventory_to_target_payloads,
 )
-from bubble_mcp.transfer.models import TransferInventory, TransferObjectRef
+from bubble_mcp.transfer.models import (
+    TransferDependency,
+    TransferInventory,
+    TransferMappingDecision,
+    TransferObjectRef,
+)
 
 
 def test_compile_element_inventory_targets_target_app_and_parent_path() -> None:
@@ -122,6 +127,121 @@ def test_compile_inventory_preserves_child_parent_order() -> None:
 
     parent_id = payload["changes"][0]["body"]["id"]
     assert payload["changes"][1]["path_array"] == ["%p3", "bTargetPage", "%el", parent_id]
+
+
+def test_compile_inventory_remaps_dependencies_and_internal_element_refs() -> None:
+    style_dependency = TransferDependency(
+        kind="style",
+        key="source_button",
+        label="Source Button",
+        source_id="sty_source",
+        metadata={"key": "source_button", "name": "Source Button", "bubble_id": "sty_source"},
+    )
+    data_type_dependency = TransferDependency(
+        kind="data_type",
+        key="source_customer",
+        label="Source Customer",
+        metadata={"data_type": "source_customer"},
+    )
+    inventory = TransferInventory(
+        source=TransferObjectRef(
+            profile="source",
+            app_id="source-app",
+            app_version="test",
+            source_type="element",
+            ref="gp_Card",
+        ),
+        root={"id": "element:bParent", "label": "gp_Card", "type": "element", "metadata": {"bubble_id": "bParent"}},
+        nodes=[
+            {
+                "id": "element:bParent",
+                "label": "gp_Card",
+                "type": "element",
+                "metadata": {
+                    "bubble_id": "bParent",
+                    "properties": {
+                        "%x": "Group",
+                        "%p": {
+                            "%nm": "gp_Card",
+                            "button_style_key": "source_button",
+                            "button_style_label": "Source Button",
+                            "style_id": "sty_source",
+                            "data_source_type": "source_customer",
+                            "linked_element": "bChild",
+                            "nested_refs": ["source_button", {"element": "bChild"}],
+                        },
+                    },
+                },
+            },
+            {
+                "id": "element:bChild",
+                "label": "tx_Child",
+                "type": "element",
+                "metadata": {
+                    "bubble_id": "bChild",
+                    "path": ["%p3", "bSourcePage", "%el", "bParent", "%el", "bChild"],
+                    "properties": {"%x": "Text", "%p": {"%nm": "tx_Child", "%3": "Hello"}},
+                },
+            },
+        ],
+        dependencies=[style_dependency, data_type_dependency],
+    )
+    target_context = BubbleProjectContext(
+        app_id="target-app",
+        source="test",
+        nodes=[BubbleContextNode(id="page:index", label="index", type="page", metadata={"bubble_id": "bTargetPage"})],
+        edges=[],
+    )
+
+    payload = compile_inventory_to_target_payloads(
+        inventory=inventory,
+        target_context=target_context,
+        target_app_id="target-app",
+        target_app_version="test",
+        target_context_ref="index",
+        target_parent_ref="root",
+        dependency_decisions=[
+            TransferMappingDecision(
+                dependency=style_dependency,
+                action="map_existing",
+                target_id="style:target_button",
+                target_label="Target Button",
+                metadata={
+                    "target_reference": {
+                        "id": "style:target_button",
+                        "key": "target_button",
+                        "label": "Target Button",
+                        "name": "Target Button",
+                        "bubble_id": "sty_target",
+                    }
+                },
+            ),
+            TransferMappingDecision(
+                dependency=data_type_dependency,
+                action="map_existing",
+                target_id="datatype:target_customer",
+                target_label="Target Customer",
+                metadata={
+                    "target_reference": {
+                        "id": "datatype:target_customer",
+                        "data_type": "target_customer",
+                        "label": "Target Customer",
+                    }
+                },
+            ),
+        ],
+    )[0]
+
+    parent_body = payload["changes"][0]["body"]
+    child_body = payload["changes"][1]["body"]
+    parent_props = parent_body["%p"]
+    child_id = child_body["id"]
+    assert parent_props["button_style_key"] == "target_button"
+    assert parent_props["button_style_label"] == "Target Button"
+    assert parent_props["style_id"] == "sty_target"
+    assert parent_props["data_source_type"] == "target_customer"
+    assert parent_props["linked_element"] == child_id
+    assert parent_props["nested_refs"] == ["target_button", {"element": child_id}]
 
 
 def test_compile_collection_actions_creates_data_type_and_fields() -> None:

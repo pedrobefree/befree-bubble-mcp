@@ -233,6 +233,7 @@ def create_transfer_plan(
             target_parent_ref=target_parent,
             target_name=target_name,
             target_context_type=effective_target_context_type,
+            dependency_decisions=decisions,
         ),
     ]
     plan = TransferPlan(

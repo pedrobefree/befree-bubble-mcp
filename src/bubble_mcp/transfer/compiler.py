@@ -15,7 +15,7 @@ from bubble_mcp.compiler.payload import (
     update_index_change,
 )
 from bubble_mcp.context.models import BubbleProjectContext
-from bubble_mcp.transfer.models import TransferInventory
+from bubble_mcp.transfer.models import TransferInventory, TransferMappingDecision
 
 
 def _obj(value: Any) -> dict[str, Any]:
@@ -41,7 +41,83 @@ def _source_parent_id(node: dict[str, Any]) -> str | None:
     return None
 
 
-def _element_body(node: dict[str, Any], *, new_id: str, target_name: str | None) -> dict[str, Any]:
+def _target_ref(decision: TransferMappingDecision, *keys: str) -> str | None:
+    reference = _obj(decision.metadata.get("target_reference"))
+    for key in keys:
+        value = reference.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _add_remap(remap: dict[str, str], source: Any, target: Any) -> None:
+    if not isinstance(source, str) or not isinstance(target, str):
+        return
+    source_value = source.strip()
+    target_value = target.strip()
+    if source_value and target_value and source_value != target_value:
+        remap[source_value] = target_value
+
+
+def _dependency_remap(decisions: list[TransferMappingDecision] | None) -> dict[str, str]:
+    remap: dict[str, str] = {}
+    for decision in decisions or []:
+        if decision.action != "map_existing":
+            continue
+        dependency = decision.dependency
+        target_id = decision.target_id or _target_ref(decision, "id")
+        target_label = decision.target_label or _target_ref(decision, "label", "name")
+        target_key = _target_ref(
+            decision,
+            "key",
+            "bubble_id",
+            "data_type",
+            "field_key",
+            "option_set",
+            "value_key",
+            "api_id",
+            "call_id",
+            "context",
+            "id",
+        )
+        target_bubble_id = _target_ref(decision, "bubble_id", "id")
+        source_metadata = _obj(dependency.metadata)
+        _add_remap(remap, dependency.key, target_key or target_label or target_id)
+        _add_remap(remap, dependency.label, target_label or target_key or target_id)
+        _add_remap(remap, dependency.source_id, target_bubble_id or target_id)
+        for source_key, target_keys in {
+            "api_id": ("api_id", "key", "id"),
+            "bubble_id": ("bubble_id", "id"),
+            "call_id": ("call_id", "key", "id"),
+            "context": ("context", "key", "id"),
+            "data_type": ("data_type", "key", "id"),
+            "field_key": ("field_key", "key", "id"),
+            "key": ("key", "id"),
+            "name": ("name", "label"),
+            "option_set": ("option_set", "key", "id"),
+            "value_key": ("value_key", "key", "id"),
+        }.items():
+            _add_remap(remap, source_metadata.get(source_key), _target_ref(decision, *target_keys))
+    return remap
+
+
+def _remap_value(value: Any, remap: dict[str, str]) -> Any:
+    if isinstance(value, str):
+        return remap.get(value, value)
+    if isinstance(value, list):
+        return [_remap_value(item, remap) for item in value]
+    if isinstance(value, dict):
+        return {key: _remap_value(item, remap) for key, item in value.items()}
+    return value
+
+
+def _element_body(
+    node: dict[str, Any],
+    *,
+    new_id: str,
+    target_name: str | None,
+    remap: dict[str, str] | None = None,
+) -> dict[str, Any]:
     metadata = _obj(node.get("metadata"))
     raw_properties = _obj(metadata.get("properties"))
     element_type = str(raw_properties.get("%x") or metadata.get("element_type") or "Group")
@@ -49,6 +125,8 @@ def _element_body(node: dict[str, Any], *, new_id: str, target_name: str | None)
     if not props:
         props = {key: value for key, value in raw_properties.items() if key != "%x"}
     props = json.loads(json.dumps(props))
+    if remap:
+        props = _remap_value(props, remap)
     if target_name:
         props["%nm"] = target_name
     elif "%nm" not in props:
@@ -66,6 +144,7 @@ def compile_inventory_to_target_payloads(
     target_parent_ref: str | None = "root",
     target_name: str | None = None,
     target_context_type: str = "page",
+    dependency_decisions: list[TransferMappingDecision] | None = None,
 ) -> list[dict[str, Any]]:
     """Compile element transfer inventory into an ordered target write payload."""
 
@@ -74,7 +153,8 @@ def compile_inventory_to_target_payloads(
         return []
 
     session_id = bubble_session_id()
-    id_map: dict[str, str] = {}
+    id_map = {_source_element_id(node): bubble_element_id() for node in element_nodes}
+    remap = {**_dependency_remap(dependency_decisions), **id_map}
     changes: list[dict[str, Any]] = []
     base_parent_path = resolve_parent_path(
         {
@@ -87,13 +167,17 @@ def compile_inventory_to_target_payloads(
 
     for index, node in enumerate(element_nodes):
         source_id = _source_element_id(node)
-        target_id = bubble_element_id()
-        id_map[source_id] = target_id
+        target_id = id_map[source_id]
         source_parent = _source_parent_id(node)
         parent_path = [*base_parent_path]
         if source_parent and source_parent in id_map:
             parent_path = [*base_parent_path, "%el", id_map[source_parent]]
-        body = _element_body(node, new_id=target_id, target_name=target_name if index == 0 else None)
+        body = _element_body(
+            node,
+            new_id=target_id,
+            target_name=target_name if index == 0 else None,
+            remap=remap,
+        )
         changes.append(create_change(parent_path, body, session_id))
 
     return [

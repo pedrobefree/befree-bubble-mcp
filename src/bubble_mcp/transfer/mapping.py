@@ -27,6 +27,26 @@ def _candidate_values(node: BubbleContextNode) -> set[str]:
     return {_normalize(value) for value in values if value}
 
 
+def _target_reference(node: BubbleContextNode) -> dict[str, str]:
+    reference: dict[str, str] = {"id": node.id, "label": node.label}
+    for key in (
+        "api_id",
+        "bubble_id",
+        "call_id",
+        "context",
+        "data_type",
+        "field_key",
+        "key",
+        "name",
+        "option_set",
+        "value_key",
+    ):
+        value = node.metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            reference[key] = value.strip()
+    return reference
+
+
 def _find_target_dependency(
     target_context: BubbleProjectContext,
     *,
@@ -77,7 +97,7 @@ def build_dependency_decisions(
                         target_label=target.label,
                         reason="Matched existing target dependency.",
                         confidence=1.0,
-                        metadata={"match_type": "exact"},
+                        metadata={"match_type": "exact", "target_reference": _target_reference(target)},
                     )
                 )
                 continue

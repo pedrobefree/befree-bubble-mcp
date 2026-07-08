@@ -167,6 +167,26 @@ def node_signature(kind: str, node: BubbleContextNode) -> dict[str, Any]:
     return {}
 
 
+def _target_reference(node: BubbleContextNode) -> dict[str, str]:
+    reference: dict[str, str] = {"id": node.id, "label": node.label}
+    for key in (
+        "api_id",
+        "bubble_id",
+        "call_id",
+        "context",
+        "data_type",
+        "field_key",
+        "key",
+        "name",
+        "option_set",
+        "value_key",
+    ):
+        value = node.metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            reference[key] = value.strip()
+    return reference
+
+
 def find_compatible_target_dependency(
     dependency: TransferDependency,
     target_context: BubbleProjectContext,
@@ -193,6 +213,7 @@ def find_compatible_target_dependency(
                 "match_type": "compatible",
                 "signature_digest": source_digest,
                 "signature_fields": fields,
+                "target_reference": _target_reference(node),
             },
         )
     return None
