@@ -277,3 +277,33 @@ def test_box_shadow_accepts_inset_after_color() -> None:
     assert candidate.base["shadow_blur"] == 6
     assert candidate.base["shadow_spread"] == 0
     assert candidate.base["shadow_color"] == "#000000"
+
+
+def test_box_shadow_uses_first_nonzero_shadow_layer() -> None:
+    rules = extract_style_rules_from_html(
+        """
+        <style>
+          .card {
+            box-shadow:
+              rgba(0, 0, 0, 0) 0px 0px 0px 0px,
+              rgba(0, 0, 0, 0.1) 0px 1px 3px 0px,
+              rgba(0, 0, 0, 0.1) 0px 1px 2px -1px;
+          }
+        </style>
+        """,
+        selector=".card",
+    )
+
+    candidate = map_rules_to_style_candidate(
+        rules,
+        style_prefix="HTML",
+        element_type="Group",
+        selector=".card",
+    )
+
+    assert candidate.base["shadow_style"] == "outset"
+    assert candidate.base["shadow_h"] == 0
+    assert candidate.base["shadow_v"] == 1
+    assert candidate.base["shadow_blur"] == 3
+    assert candidate.base["shadow_spread"] == 0
+    assert candidate.base["shadow_color"] == "rgba(0, 0, 0, 0.1)"

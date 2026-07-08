@@ -347,8 +347,66 @@ def _split_border_radius(value: str) -> dict[str, int]:
     }
 
 
-def _split_box_shadow(value: str) -> dict[str, object]:
-    parts = value.split()
+def _split_css_top_level(value: str, separator: str) -> list[str]:
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for char in value:
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth > 0:
+            depth -= 1
+        if char == separator and depth == 0:
+            part = "".join(current).strip()
+            if part:
+                parts.append(part)
+            current = []
+            continue
+        current.append(char)
+    part = "".join(current).strip()
+    if part:
+        parts.append(part)
+    return parts
+
+
+def _split_css_tokens(value: str) -> list[str]:
+    tokens: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for char in value.strip():
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth > 0:
+            depth -= 1
+        if char.isspace() and depth == 0:
+            token = "".join(current).strip()
+            if token:
+                tokens.append(token)
+            current = []
+            continue
+        current.append(char)
+    token = "".join(current).strip()
+    if token:
+        tokens.append(token)
+    return tokens
+
+
+def _css_color_alpha(value: str) -> float | None:
+    color = _css_color(value)
+    if color is None:
+        return None
+    match = re.fullmatch(
+        r"rgba\(\s*[0-9]{1,3}\s*,\s*[0-9]{1,3}\s*,\s*[0-9]{1,3}\s*,\s*([0-9.]+)\s*\)",
+        color,
+        flags=re.I,
+    )
+    if match is None:
+        return 1.0
+    return float(match.group(1))
+
+
+def _parse_single_box_shadow(value: str) -> dict[str, object]:
+    parts = _split_css_tokens(value)
     if not parts:
         return {}
     shadow_style = "outset"
@@ -360,13 +418,16 @@ def _split_box_shadow(value: str) -> dict[str, object]:
     color_parts: list[str] = []
     for part in parts:
         pixel = _css_length_int(part)
-        if pixel is not None and not color_parts and len(lengths) < 4:
+        if pixel is not None and len(lengths) < 4:
             lengths.append(pixel)
         else:
             color_parts.append(part)
     if len(lengths) < 2:
         return {}
     color = " ".join(color_parts).strip()
+    parsed_color = _css_color(color) if color else None
+    if all(length == 0 for length in lengths) or (parsed_color is not None and _css_color_alpha(parsed_color) == 0):
+        return {}
     mapped: dict[str, object] = {
         "shadow_style": shadow_style,
         "shadow_h": lengths[0],
@@ -376,9 +437,19 @@ def _split_box_shadow(value: str) -> dict[str, object]:
         mapped["shadow_blur"] = lengths[2]
     if len(lengths) >= 4:
         mapped["shadow_spread"] = lengths[3]
-    if color:
+    if parsed_color:
+        mapped["shadow_color"] = parsed_color
+    elif color:
         mapped["shadow_color"] = color.lower()
     return mapped
+
+
+def _split_box_shadow(value: str) -> dict[str, object]:
+    for shadow in _split_css_top_level(value, ","):
+        mapped = _parse_single_box_shadow(shadow)
+        if mapped:
+            return mapped
+    return {}
 
 
 def _text_line_height(value: str, font_size_px: float | None) -> float | None:
