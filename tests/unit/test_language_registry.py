@@ -1,6 +1,7 @@
 from bubble_mcp.language.registry import build_language_index
 from bubble_mcp.language.query import language_query, language_tool_detail
 from bubble_mcp.language.diff import language_diff, save_language_snapshot
+from bubble_mcp.language.framework_pack import framework_language_pack
 
 
 def test_language_index_is_compact_versioned_and_counts_dynamic_sources(tmp_path, monkeypatch) -> None:
@@ -69,3 +70,23 @@ def test_language_diff_reports_added_changed_removed_entries(tmp_path, monkeypat
     assert result["added"] == ["new_tool"]
     assert result["changed"] == ["create_button"]
     assert result["removed"] == ["removed_tool"]
+
+
+def test_framework_language_pack_filters_context_for_framework_and_scope(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = framework_language_pack(
+        framework="bmad",
+        profile="cliente2",
+        scope="create checkout page with button and workflow",
+        max_tools=10,
+    )
+
+    assert result["ok"] is True
+    assert result["framework"] == "bmad"
+    assert result["registry_version"].startswith("sha256:")
+    assert result["language_index"]["counts"]["tools"] > 250
+    assert result["runtime_rules"]
+    assert result["tool_matches"]
+    assert len(result["tool_matches"]) <= 10
+    assert "full_catalog" not in result
