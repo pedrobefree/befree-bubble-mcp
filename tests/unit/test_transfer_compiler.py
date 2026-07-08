@@ -473,6 +473,17 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
             "type": "reusable",
             "metadata": {
                 "bubble_id": "bSourceReusable",
+                "raw_styles": {
+                    "FileInput_source_": {
+                        "id": "FileInput_source_",
+                        "display": "File input source",
+                        "properties": {
+                            "background_style": "none",
+                            "border_roundness": 12,
+                            "font_color": "rgba(var(--color_text_default_rgb), 0)",
+                        },
+                    }
+                },
                 "raw_definition": {
                     "id": "bSourceRoot",
                     "name": "fileUploader",
@@ -484,6 +495,7 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
                             "id": "bGroupRoot",
                             "name": "gp file",
                             "type": "Group",
+                            "style": "FileInput_source_",
                             "properties": {"is_visible": False},
                             "states": {
                                 "0": {
@@ -514,18 +526,50 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
             },
         },
         nodes=[],
-        dependencies=[],
+        dependencies=[
+            TransferDependency(
+                kind="style",
+                key="FileInput_source_",
+                label="File input source",
+                source_id="FileInput_source_",
+                metadata={
+                    "style_id": "FileInput_source_",
+                    "raw_definition": {
+                        "id": "FileInput_source_",
+                        "display": "File input source",
+                        "properties": {
+                            "background_style": "none",
+                            "border_roundness": 12,
+                            "font_color": "rgba(var(--color_text_default_rgb), 0)",
+                        },
+                    },
+                },
+            )
+        ],
     )
+    style_dependency = inventory.dependencies[0]
 
     compiled = compile_reusable_inventory_to_payload(
         inventory=inventory,
         target_app_id="target-app",
         target_app_version="test",
         target_name="fileUploaderCopy",
+        dependency_decisions=[
+            TransferMappingDecision(
+                dependency=style_dependency,
+                action="create_copy",
+                reason="Missing target style will be created.",
+            )
+        ],
     )
 
     assert compiled is not None
     payload, reusable_ref = compiled
+    assert payload["changes"][0]["intent"]["name"] == "CreateStyle"
+    assert payload["changes"][0]["path_array"] == ["styles", "FileInput_source_"]
+    assert payload["changes"][0]["body"]["properties"]["background_style"] == "none"
+    assert payload["changes"][0]["body"]["properties"]["font_color"] == "rgba(var(--color_text_default_rgb), 0)"
+    assert payload["changes"][0]["body"]["properties"]["border_roundness"] == 12
     root_change = next(change for change in payload["changes"] if change["intent"]["name"] == "CreateElement")
     root_body = root_change["body"]
     assert root_change["path_array"] == ["%ed", reusable_ref]
@@ -546,6 +590,7 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
     }
     child_body = next(iter(root_body["%el"].values()))
     assert child_body["%nm"] == "gp file"
+    assert child_body["%s1"] == "FileInput_source_"
     assert child_body["%s"]
     serialized = str(root_body)
     assert "bSourceRoot" not in serialized

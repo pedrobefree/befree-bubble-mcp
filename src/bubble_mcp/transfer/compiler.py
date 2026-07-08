@@ -118,6 +118,44 @@ def _raw_reusable_definition(inventory: TransferInventory) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _raw_style_definitions(inventory: TransferInventory) -> dict[str, dict[str, Any]]:
+    metadata = _obj(inventory.root.get("metadata"))
+    raw_styles = metadata.get("raw_styles")
+    if not isinstance(raw_styles, dict):
+        return {}
+    return {str(style_id): style_body for style_id, style_body in raw_styles.items() if isinstance(style_body, dict)}
+
+
+def _style_definitions_to_create(
+    inventory: TransferInventory,
+    decisions: list[TransferMappingDecision] | None,
+) -> list[tuple[str, dict[str, Any]]]:
+    raw_styles = _raw_style_definitions(inventory)
+    if not raw_styles:
+        return []
+    if not decisions:
+        return list(raw_styles.items())
+    styles: list[tuple[str, dict[str, Any]]] = []
+    seen: set[str] = set()
+    for decision in decisions:
+        if decision.action != "create_copy" or decision.dependency.kind != "style":
+            continue
+        style_id = str(
+            decision.dependency.metadata.get("style_id")
+            or decision.dependency.metadata.get("key")
+            or decision.dependency.key
+        ).strip()
+        if not style_id or style_id in seen:
+            continue
+        style_body = decision.dependency.metadata.get("raw_definition")
+        if not isinstance(style_body, dict):
+            style_body = raw_styles.get(style_id)
+        if isinstance(style_body, dict):
+            styles.append((style_id, style_body))
+            seen.add(style_id)
+    return styles
+
+
 def _is_custom_state_like(value: Any) -> bool:
     if not isinstance(value, dict):
         return False
@@ -363,12 +401,18 @@ def compile_reusable_inventory_to_payload(
         resolved_name = target_name or inventory.source.ref
         slot_id = bubble_element_id()
         builder = PayloadBuilder(appname=target_app_id, app_version=target_app_version or "test")
+        remap = _dependency_remap(dependency_decisions)
+        clone_definition = json.loads(json.dumps(raw_definition))
+        if remap:
+            clone_definition = _remap_value(clone_definition, remap)
+        for style_id, style_body in _style_definitions_to_create(inventory, dependency_decisions):
+            builder.add_create_style(style_id, json.loads(json.dumps(style_body)))
         source_slot_id = inventory.source.bubble_id or str(inventory.root.get("id", "")).split(":", 1)[-1]
-        builder.add_clone_reusable(source_slot_id, slot_id, resolved_name, raw_definition)
+        builder.add_clone_reusable(source_slot_id, slot_id, resolved_name, clone_definition)
         _append_reusable_custom_state_changes(
             builder=builder,
             reusable_id=slot_id,
-            raw_definition=raw_definition,
+            raw_definition=clone_definition,
         )
         payload = builder.build()
         _remove_custom_states_from_root_conditionals(payload, slot_id)

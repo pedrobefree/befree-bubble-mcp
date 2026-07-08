@@ -327,6 +327,58 @@ def test_create_transfer_plan_uses_profile_bubble_raw_for_reusable_clone(tmp_pat
     assert custom_state_change["path_array"][-2:] == ["custom_states", "file_"]
 
 
+def test_create_transfer_plan_creates_raw_reusable_styles_from_bubble_export(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    bubble_path = tmp_path / "contexts" / "source" / "source-app.bubble"
+    bubble_path.parent.mkdir(parents=True, exist_ok=True)
+    bubble_path.write_text(
+        (
+            '{"styles":{"FileInput_source_":{"id":"FileInput_source_","display":"File input source",'
+            '"properties":{"background_style":"none","font_color":"rgba(var(--color_text_default_rgb), 0)",'
+            '"border_roundness":12}}},'
+            '"element_definitions":{"bSrcReusable":{"id":"bSrcRoot","name":"fileUploader",'
+            '"type":"CustomDefinition","properties":{"group_type":"file"},'
+            '"elements":{"bHero":{"id":"bHeroRoot","name":"FileUploader A","type":"FileInput",'
+            '"style":"FileInput_source_","properties":{"is_visible":true}}}}}}'
+        ),
+        encoding="utf-8",
+    )
+    _settings(tmp_path, source_app_json_path="contexts/source/source-app.bubble")
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="reusable",
+        source_ref="fileUploader",
+        target_name="fileUploader",
+        conflict_policy="rename",
+        dependency_policy="map_or_create",
+    )
+
+    assert result["ok"] is True
+    plan = load_transfer_plan(result["transfer_id"])
+    style_decision = next(
+        decision
+        for decision in plan["dependency_decisions"]
+        if decision["dependency"]["kind"] == "style" and decision["dependency"]["key"] == "FileInput_source_"
+    )
+    assert style_decision["action"] == "create_copy"
+    payload = plan["write_payloads"][0]
+    style_change = payload["changes"][0]
+    assert style_change["intent"]["name"] == "CreateStyle"
+    assert style_change["path_array"] == ["styles", "FileInput_source_"]
+    assert style_change["body"]["properties"]["background_style"] == "none"
+    assert style_change["body"]["properties"]["font_color"] == "rgba(var(--color_text_default_rgb), 0)"
+    assert style_change["body"]["properties"]["border_roundness"] == 12
+    root_body = next(
+        change["body"]
+        for change in payload["changes"]
+        if change["intent"]["name"] == "CreateElement"
+    )
+    child_body = next(iter(root_body["%el"].values()))
+    assert child_body["%s1"] == "FileInput_source_"
+
+
 def test_create_transfer_plan_blocks_missing_plugin_element_dependency(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     _settings(tmp_path, source_has_plugin_element=True)

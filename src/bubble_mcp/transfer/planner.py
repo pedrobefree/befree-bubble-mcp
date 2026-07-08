@@ -28,7 +28,7 @@ from bubble_mcp.transfer.compiler import (
 )
 from bubble_mcp.transfer.inventory import inventory_source_object
 from bubble_mcp.transfer.mapping import build_dependency_decisions
-from bubble_mcp.transfer.models import TransferInventory, TransferPlan
+from bubble_mcp.transfer.models import TransferDependency, TransferInventory, TransferPlan
 from bubble_mcp.transfer.profiles import resolve_transfer_profiles
 from bubble_mcp.transfer.store import save_transfer_plan
 
@@ -74,6 +74,76 @@ def _load_reusable_definition(profile: Any, reusable_id: str | None) -> dict[str
     return raw if isinstance(raw, dict) else {}
 
 
+def _load_style_definitions(profile: Any, style_ids: set[str]) -> dict[str, dict[str, Any]]:
+    if not style_ids:
+        return {}
+    path = _configured_bubble_path(profile)
+    if path is None:
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    styles = _obj(payload.get("styles"))
+    found: dict[str, dict[str, Any]] = {}
+    for style_id in style_ids:
+        style_body = styles.get(style_id)
+        if isinstance(style_body, dict):
+            found[style_id] = style_body
+    return found
+
+
+def _collect_raw_style_ids(value: Any) -> set[str]:
+    style_ids: set[str] = set()
+    if isinstance(value, dict):
+        style_value = value.get("style")
+        if isinstance(style_value, str) and style_value.strip():
+            style_ids.add(style_value.strip())
+        for item in value.values():
+            style_ids.update(_collect_raw_style_ids(item))
+    elif isinstance(value, list):
+        for item in value:
+            style_ids.update(_collect_raw_style_ids(item))
+    return style_ids
+
+
+def _with_raw_style_dependencies(
+    inventory: TransferInventory,
+    profile: Any,
+    raw_definition: dict[str, Any],
+) -> TransferInventory:
+    style_ids = _collect_raw_style_ids(raw_definition)
+    style_definitions = _load_style_definitions(profile, style_ids)
+    if not style_definitions:
+        return inventory
+
+    root = dict(inventory.root)
+    metadata = dict(_obj(root.get("metadata")))
+    metadata["raw_styles"] = style_definitions
+    root["metadata"] = metadata
+
+    existing_keys = {(dependency.kind, dependency.key) for dependency in inventory.dependencies}
+    dependencies = list(inventory.dependencies)
+    for style_id, style_body in style_definitions.items():
+        if ("style", style_id) in existing_keys:
+            continue
+        dependencies.append(
+            TransferDependency(
+                kind="style",
+                key=style_id,
+                label=str(style_body.get("display") or style_body.get("id") or style_id),
+                source_id=style_id,
+                metadata={
+                    "key": style_id,
+                    "style_id": style_id,
+                    "raw_definition": style_body,
+                    "element_type": style_body.get("type"),
+                },
+            )
+        )
+    return replace(inventory, root=root, dependencies=dependencies)
+
+
 def _with_raw_reusable_definition(inventory: TransferInventory, profile: Any) -> TransferInventory:
     if inventory.source.source_type != "reusable":
         return inventory
@@ -84,7 +154,7 @@ def _with_raw_reusable_definition(inventory: TransferInventory, profile: Any) ->
     metadata = dict(_obj(root.get("metadata")))
     metadata["raw_definition"] = raw_definition
     root["metadata"] = metadata
-    return replace(inventory, root=root)
+    return _with_raw_style_dependencies(replace(inventory, root=root), profile, raw_definition)
 
 
 def _normalize_name(value: str) -> str:
@@ -306,6 +376,8 @@ def _unsupported_create_copy_blocked(decisions: list[Any]) -> list[str]:
             continue
         kind = str(getattr(dependency, "kind", ""))
         if kind in compiler_supported:
+            continue
+        if kind == "style" and isinstance(getattr(dependency, "metadata", {}).get("raw_definition"), dict):
             continue
         key = str(getattr(dependency, "key", "") or getattr(dependency, "label", "") or kind)
         if kind == "plugin":
