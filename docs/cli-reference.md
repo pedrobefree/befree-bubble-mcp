@@ -203,6 +203,58 @@ Planning policy options:
 
 See [Project transfer](transfer.md) for the full workflow and current limits.
 
+## `bubble-mcp language`
+
+Inspects the dynamic Bubble MCP language registry and runs V2 framework program
+helpers from the CLI. Use these commands when a framework needs targeted
+language slices, text-to-program planning, preview/execution of a structured
+program, or workspace artifact synchronization.
+
+Inspect cached registry metadata for a framework/profile pair:
+
+```bash
+bubble-mcp language cache-status --framework bmad --profile cliente2
+```
+
+Create a structured framework program from text:
+
+```bash
+bubble-mcp language text-plan \
+  --framework bmad \
+  --profile cliente2 \
+  --text "Objective: Add CTA\n- Add button labeled Start inside root"
+```
+
+Use `--text-file /path/to/story.md` instead of `--text` when the source text
+already exists as a framework artifact.
+
+Preview or execute a structured framework program:
+
+```bash
+bubble-mcp language execute-program \
+  --framework bmad \
+  --profile cliente2 \
+  --program '{"objective":"Inspect","steps":[{"intent":"verify_context","query":"page:index"}]}' \
+  --mode preview
+```
+
+Use `--program-file /path/to/program.json` for larger programs. Execution mode
+requires `--mode execute --approved`; without approval the command stays in
+preview-oriented gating.
+
+Copy generated artifacts into a framework workspace:
+
+```bash
+bubble-mcp language workspace-sync \
+  --framework bmad \
+  --artifact-dir /path/to/generated/artifacts \
+  --workspace-dir /path/to/project
+```
+
+For registry discovery, prefer `language index`, `language query`,
+`language detail`, `language framework-pack`, and `language cache-status` over
+using an MCP `tools/list` response as the framework's primary language source.
+
 ## `bubble-mcp plan`
 
 Creates and semantically validates a local Bubble plan from a message.

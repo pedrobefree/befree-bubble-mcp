@@ -72,6 +72,39 @@ Inspect generated artifacts:
 }
 ```
 
+## V2 Program Runtime
+
+The V2 runtime lets BMAD, Superpowers, SDD, and other framework adapters treat
+Bubble MCP as a dynamic implementation language without loading the full tool
+catalog for every step.
+
+The runtime flow is:
+
+1. `bubble_framework_plan_from_text` converts framework text artifacts such as
+   stories, PRDs, specs, and acceptance notes into a structured framework
+   program when the framework does not already provide one.
+2. `bubble_framework_compile_program` validates program syntax, resolves intent
+   aliases, applies step dependencies and placeholders, injects the active
+   profile where supported, adds preview flags, and runs deterministic quality
+   gates before any execution.
+3. `bubble_framework_execute_program` runs the compiled call sequence in
+   preview mode or in approved execution mode.
+4. After approved mutations, the runner refreshes the profile cache and records
+   evidence with `bubble_framework_sync_evidence`.
+5. `bubble_framework_workspace_sync` copies generated artifacts into an
+   external BMAD, Superpowers, or SDD workspace when the caller wants framework
+   files updated in place.
+
+For incremental language updates, frameworks should use
+`bubble_language_cache_status`, `bubble_language_diff`, and
+`bubble_language_query` to refresh only the registry slices needed for the
+current objective instead of requesting the complete catalog.
+
+Frameworks should not use `tools/list` as their primary Bubble MCP language
+source. Use `bubble_language_index`, `bubble_language_query`,
+`bubble_language_tool_detail`, and `bubble_language_diff` for low-token
+discovery, targeted lookup, lazy schema detail, and cache-aware updates.
+
 ## Dynamic Language Registry
 
 Framework adapters should not request the full MCP catalog by default. The
