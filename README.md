@@ -258,6 +258,7 @@ The bridge listens on `http://localhost:3333`.
 - [Knowledge sources](docs/knowledge-sources.md)
 - [Tool authoring](docs/tool-authoring.md)
 - [Skills](docs/skills.md)
+- [Framework adapters](docs/framework-adapters.md)
 
 ## Safety Defaults
 

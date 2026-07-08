@@ -134,6 +134,34 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Natural-language objective for a new MCP skill.",
         examples=["Review API Connector security and produce a risk summary."],
     ),
+    "framework": _prop(
+        "string",
+        "Framework adapter id.",
+        enum=["bmad", "superpowers", "sdd"],
+        examples=["bmad", "superpowers", "sdd"],
+    ),
+    "scope": _prop(
+        "string",
+        "Optional planning or implementation scope for generated framework artifacts.",
+        examples=["checkout page", "API Connector security", "database migration"],
+    ),
+    "context_summary": _prop(
+        "object",
+        "Optional compact Bubble context signals to include in generated framework artifacts.",
+        additional_properties=True,
+        examples=[{"pages": 5, "workflows": 12, "data_types": 7}],
+    ),
+    "artifact_dir": _prop(
+        "string",
+        "Local framework artifact directory returned by bubble_framework_generate_artifacts.",
+        examples=["/Users/me/.config/bubble-mcp/frameworks/bmad/cliente2/20260707-120000-checkout"],
+    ),
+    "evidence": _prop(
+        "object",
+        "Structured implementation or validation evidence to append to framework artifacts. Sensitive values are redacted.",
+        additional_properties=True,
+        examples=[{"summary": "Preview passed", "run_id": "skillrun_20260707_123456"}],
+    ),
     "risk": _prop(
         "string",
         "Skill risk level.",
@@ -1536,6 +1564,27 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "Generate and validate a skill contract from a skill-authoring session.",
             ["session_id", "skill_id", "output_dir"],
             required=["session_id"],
+        ),
+        _empty_tool(
+            "bubble_framework_list",
+            "List supported AI development framework adapters such as BMAD, Superpowers, and SDD. Read-only.",
+        ),
+        tool_schema(
+            "bubble_framework_generate_artifacts",
+            "Generate local framework artifacts from Bubble MCP context for BMAD, Superpowers, or SDD. This does not execute Bubble writes.",
+            ["framework", "profile", "objective", "scope", "context_summary", "output_dir"],
+            required=["framework", "profile", "objective"],
+        ),
+        tool_schema(
+            "bubble_framework_sync_evidence",
+            "Append redacted implementation or validation evidence to a generated framework artifact directory.",
+            ["framework", "profile", "evidence", "artifact_dir", "output_dir"],
+            required=["framework", "profile", "evidence"],
+        ),
+        tool_schema(
+            "bubble_framework_status",
+            "Inspect local generated framework artifacts and evidence counts.",
+            ["framework", "profile", "output_dir"],
         ),
         tool_schema(
             "bubble_tool_wizard_start",

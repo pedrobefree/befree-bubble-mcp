@@ -56,6 +56,12 @@ from bubble_mcp.extension_companion import (
     start_extension_companion_background,
     stop_extension_companion_background,
 )
+from bubble_mcp.frameworks import (
+    framework_status,
+    generate_framework_artifacts,
+    list_frameworks,
+    sync_framework_evidence,
+)
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -375,6 +381,44 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         return generate_skill_from_authoring_session(
             _required_string_arg(args, "session_id", name),
             skill_id=str(args.get("skill_id") or "") or None,
+            output_dir=Path(output_dir) if output_dir else None,
+        )
+    if name == "bubble_framework_list":
+        return list_frameworks()
+    if name == "bubble_framework_generate_artifacts":
+        args = arguments or {}
+        raw_context_summary = args.get("context_summary")
+        if raw_context_summary is not None and not isinstance(raw_context_summary, dict):
+            raise ValueError("bubble_framework_generate_artifacts requires context_summary to be an object.")
+        output_dir = str(args.get("output_dir") or "").strip()
+        return generate_framework_artifacts(
+            framework=_required_string_arg(args, "framework", name),
+            profile=_required_string_arg(args, "profile", name),
+            objective=_required_string_arg(args, "objective", name),
+            scope=str(args.get("scope") or "") or None,
+            context_summary=raw_context_summary,
+            output_dir=Path(output_dir) if output_dir else None,
+        )
+    if name == "bubble_framework_sync_evidence":
+        args = arguments or {}
+        raw_evidence = args.get("evidence")
+        if not isinstance(raw_evidence, dict):
+            raise ValueError("bubble_framework_sync_evidence requires evidence to be an object.")
+        artifact_dir = str(args.get("artifact_dir") or "").strip()
+        output_dir = str(args.get("output_dir") or "").strip()
+        return sync_framework_evidence(
+            framework=_required_string_arg(args, "framework", name),
+            profile=_required_string_arg(args, "profile", name),
+            evidence=raw_evidence,
+            artifact_dir=Path(artifact_dir) if artifact_dir else None,
+            output_dir=Path(output_dir) if output_dir else None,
+        )
+    if name == "bubble_framework_status":
+        args = arguments or {}
+        output_dir = str(args.get("output_dir") or "").strip()
+        return framework_status(
+            framework=str(args.get("framework") or "") or None,
+            profile=str(args.get("profile") or "") or None,
             output_dir=Path(output_dir) if output_dir else None,
         )
     if name == "bubble_tool_wizard_start":

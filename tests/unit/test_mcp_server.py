@@ -2704,6 +2704,90 @@ def test_knowledge_tools_are_listed_with_annotations() -> None:
     assert tools["bubble_knowledge_refresh_source"]["inputSchema"]["required"] == ["source", "file"]
 
 
+def test_framework_tools_are_listed_with_annotations() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 113, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    assert tools["bubble_framework_list"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_framework_status"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_framework_generate_artifacts"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_framework_sync_evidence"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_framework_generate_artifacts"]["inputSchema"]["required"] == [
+        "framework",
+        "profile",
+        "objective",
+    ]
+    assert tools["bubble_framework_sync_evidence"]["inputSchema"]["required"] == [
+        "framework",
+        "profile",
+        "evidence",
+    ]
+
+
+def test_framework_tools_generate_sync_and_status(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    generate_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 114,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_framework_generate_artifacts",
+                "arguments": {
+                    "framework": "bmad",
+                    "profile": "cliente2",
+                    "objective": "Plan checkout",
+                    "context_summary": {"pages": 2},
+                },
+            },
+        }
+    )
+
+    assert generate_response is not None
+    generated = json.loads(generate_response["result"]["content"][0]["text"])
+    assert generated["ok"] is True
+    assert generated["framework"] == "bmad"
+    assert generated["artifacts"]
+
+    sync_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 115,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_framework_sync_evidence",
+                "arguments": {
+                    "framework": "bmad",
+                    "profile": "cliente2",
+                    "artifact_dir": generated["artifact_dir"],
+                    "evidence": {"summary": "Preview passed", "token": "secret"},
+                },
+            },
+        }
+    )
+
+    assert sync_response is not None
+    synced = json.loads(sync_response["result"]["content"][0]["text"])
+    assert synced["ok"] is True
+
+    status_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 116,
+            "method": "tools/call",
+            "params": {"name": "bubble_framework_status", "arguments": {"framework": "bmad", "profile": "cliente2"}},
+        }
+    )
+
+    assert status_response is not None
+    status = json.loads(status_response["result"]["content"][0]["text"])
+    assert status["ok"] is True
+    assert status["status"][0]["artifact_count"] == 1
+    assert status["status"][0]["evidence_count"] == 1
+
+
 def test_high_potential_tools_include_docs_enrichment_metadata() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 111, "method": "tools/list"})
 

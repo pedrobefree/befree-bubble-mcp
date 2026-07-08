@@ -263,6 +263,60 @@ def test_cli_profile_status_reports_existing_profile(tmp_path, monkeypatch, caps
     assert payload["profile"]["app_id"] == "client-app"
 
 
+def test_cli_framework_list_generate_and_status(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+
+    assert main(["framework", "list"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert {item["id"] for item in listed["frameworks"]} == {"bmad", "sdd", "superpowers"}
+
+    output_dir = tmp_path / "framework-output"
+    assert (
+        main(
+            [
+                "framework",
+                "generate",
+                "--framework",
+                "superpowers",
+                "--profile",
+                "cliente2",
+                "--objective",
+                "Implement checkout",
+                "--scope",
+                "checkout page",
+                "--context-summary",
+                '{"pages":2}',
+                "--output-dir",
+                str(output_dir),
+            ]
+        )
+        == 0
+    )
+    generated = json.loads(capsys.readouterr().out)
+    assert generated["ok"] is True
+    assert generated["framework"] == "superpowers"
+    assert (output_dir / "superpowers" / "cliente2").exists()
+
+    assert (
+        main(
+            [
+                "framework",
+                "status",
+                "--framework",
+                "superpowers",
+                "--profile",
+                "cliente2",
+                "--output-dir",
+                str(output_dir),
+            ]
+        )
+        == 0
+    )
+    status = json.loads(capsys.readouterr().out)
+    assert status["ok"] is True
+    assert status["status"][0]["artifact_count"] == 1
+
+
 def test_cli_plan_outputs_validated_plan(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["plan", 'Create text saying "Hello"']) == 0
 

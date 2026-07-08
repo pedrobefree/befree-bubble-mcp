@@ -595,6 +595,36 @@ Skill run responses summarize steps and next actions for the user. Raw write
 payloads are not included in the user-facing response; redacted audit records
 are stored locally under `skills/runs/`.
 
+## `bubble-mcp framework`
+
+Generates local BMAD, Superpowers, or SDD artifacts from Bubble MCP context and
+keeps framework evidence synchronized with MCP runs. Framework commands create
+planning/spec/evidence files only; Bubble writes still go through normal MCP
+tools or executable skills.
+
+List supported adapters:
+
+```bash
+bubble-mcp framework list
+```
+
+Generate artifacts:
+
+```bash
+bubble-mcp framework generate \
+  --framework bmad \
+  --profile my-app \
+  --objective "Plan checkout" \
+  --scope "checkout page" \
+  --context-summary '{"pages":5,"workflows":12}'
+```
+
+Inspect generated artifacts:
+
+```bash
+bubble-mcp framework status --framework bmad --profile my-app
+```
+
 ## `bubble-mcp tools runbook`
 
 Returns a one-call compact agent runbook for a Bubble task: route intents,
@@ -849,3 +879,7 @@ Implemented tools:
 - `bubble_skill_disable`
 - `bubble_skill_describe`
 - `bubble_skill_run`
+- `bubble_framework_list`
+- `bubble_framework_generate_artifacts`
+- `bubble_framework_sync_evidence`
+- `bubble_framework_status`

@@ -749,6 +749,21 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Generate and validate a skill contract from a skill-authoring session, returning next calls for import, "
         "enable, and preview run."
     ),
+    "bubble_framework_list": (
+        "List supported development-framework adapters for BMAD, Superpowers, and SDD. Use before generating "
+        "framework artifacts or when the user asks what framework integrations exist."
+    ),
+    "bubble_framework_generate_artifacts": (
+        "Generate local BMAD, Superpowers, or SDD artifacts from Bubble MCP context and the user's objective. "
+        "This creates planning/spec/evidence files only; it does not execute Bubble writes."
+    ),
+    "bubble_framework_sync_evidence": (
+        "Append redacted implementation or validation evidence to a generated framework artifact directory. Use "
+        "after a preview, skill run, context refresh, or Bubble execution to keep framework artifacts synchronized."
+    ),
+    "bubble_framework_status": (
+        "Inspect local generated framework artifact directories and evidence counts for BMAD, Superpowers, or SDD."
+    ),
     "bubble_learning_record": (
         "Append one local consultative learning record with scope metadata, provenance, and confidence. Use only when "
         "the user explicitly declares or confirms durable guidance. Records are advisory storage and do not influence "
@@ -1492,6 +1507,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_workflow_runs_get",
         "bubble_storage_usage_get",
         "bubble_time_series_read",
+        "bubble_framework_list",
+        "bubble_framework_status",
     }
     read_only = _is_read_only(name) or name in agent_read_only
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete"}

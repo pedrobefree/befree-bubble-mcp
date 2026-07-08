@@ -1,0 +1,121 @@
+# Framework Adapters
+
+Framework adapters connect real Bubble MCP context to external development
+methods without making those methods hard dependencies of the MCP core.
+
+The v1 adapters generate local artifacts and synchronize evidence for:
+
+- `bmad`: project brief, PRD, architecture, epics, stories, and validation evidence.
+- `superpowers`: spec, implementation plan, execution gates, and verification checklist.
+- `sdd`: behavioral specification, fixtures, acceptance tests, and traceability.
+
+These adapters do not execute Bubble writes. Implementation still goes through
+normal Bubble MCP tools or executable skills with preview-first validation and
+explicit approval for mutations.
+
+## MCP Flow
+
+List available adapters:
+
+```json
+{
+  "tool": "bubble_framework_list",
+  "arguments": {}
+}
+```
+
+Generate artifacts:
+
+```json
+{
+  "tool": "bubble_framework_generate_artifacts",
+  "arguments": {
+    "framework": "bmad",
+    "profile": "cliente2",
+    "objective": "Plan the checkout flow",
+    "scope": "checkout page",
+    "context_summary": {
+      "pages": 5,
+      "workflows": 12,
+      "data_types": 7
+    }
+  }
+}
+```
+
+Append evidence after a preview, execution, context refresh, or validation:
+
+```json
+{
+  "tool": "bubble_framework_sync_evidence",
+  "arguments": {
+    "framework": "bmad",
+    "profile": "cliente2",
+    "artifact_dir": "/Users/me/.config/bubble-mcp/frameworks/bmad/cliente2/20260707-120000-checkout",
+    "evidence": {
+      "summary": "Preview passed and context refresh confirmed the target page.",
+      "run_id": "skillrun_20260707_123456"
+    }
+  }
+}
+```
+
+Inspect generated artifacts:
+
+```json
+{
+  "tool": "bubble_framework_status",
+  "arguments": {
+    "framework": "bmad",
+    "profile": "cliente2"
+  }
+}
+```
+
+## CLI Flow
+
+```bash
+bubble-mcp framework list
+
+bubble-mcp framework generate \
+  --framework bmad \
+  --profile cliente2 \
+  --objective "Plan the checkout flow" \
+  --scope "checkout page" \
+  --context-summary '{"pages":5,"workflows":12}'
+
+bubble-mcp framework status \
+  --framework bmad \
+  --profile cliente2
+```
+
+## Storage
+
+Artifacts are stored under:
+
+```text
+${BUBBLE_MCP_CONFIG_DIR:-~/.config/bubble-mcp}/frameworks/
+  <framework>/
+    <profile>/
+      <timestamp>-<objective>/
+        framework.json
+        *.md
+        evidence.jsonl
+        evidence.md
+```
+
+The generated `framework.json` stores the objective, scope, framework id,
+context summary, and execution policy. Evidence records are redacted before
+being persisted.
+
+## Current Boundary
+
+V1 is artifact-first:
+
+- It gives BMAD, Superpowers, and SDD a stable MCP entrypoint.
+- It keeps generated plans grounded in Bubble context supplied by the agent.
+- It lets later MCP runs append validation and implementation evidence.
+- It does not yet update an existing external framework repository layout in
+  place.
+- It does not auto-transform stories into mutations; use executable skills or
+  regular MCP tools for implementation.

@@ -47,6 +47,7 @@ from bubble_mcp.execution.structural import validate_structure
 from bubble_mcp.extensions.store import disable_extension, enable_extension, import_extension, list_extensions
 from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.extension_companion import ExtensionCompanionConfig, serve_extension_companion
+from bubble_mcp.frameworks import framework_status, generate_framework_artifacts, list_frameworks
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -1005,6 +1006,43 @@ def command_skill_author_generate(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def command_framework_list(_args: argparse.Namespace) -> int:
+    emit_json(list_frameworks())
+    return 0
+
+
+def command_framework_generate(args: argparse.Namespace) -> int:
+    try:
+        context_summary = _load_optional_json_object(args.context_summary) if args.context_summary else None
+        result = generate_framework_artifacts(
+            framework=args.framework,
+            profile=args.profile,
+            objective=args.objective,
+            scope=args.scope or None,
+            context_summary=context_summary,
+            output_dir=Path(args.output_dir) if args.output_dir else None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("framework-generate", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_framework_status(args: argparse.Namespace) -> int:
+    try:
+        result = framework_status(
+            framework=args.framework or None,
+            profile=args.profile or None,
+            output_dir=Path(args.output_dir) if args.output_dir else None,
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit_skill_error("framework-status", exc)
+        return 1
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def emit_tool_wizard_error(action: str, exc: Exception) -> None:
     emit_json(
         {
@@ -1910,6 +1948,36 @@ def build_parser() -> argparse.ArgumentParser:
     skill_author_generate_parser.add_argument("--skill-id", default="")
     skill_author_generate_parser.add_argument("--output-dir", default="")
     skill_author_generate_parser.set_defaults(func=command_skill_author_generate)
+
+    framework_parser = subparsers.add_parser(
+        "framework",
+        help="Generate BMAD, Superpowers, or SDD artifacts from Bubble MCP context.",
+    )
+    framework_subparsers = framework_parser.add_subparsers(dest="framework_command", required=True)
+
+    framework_list_parser = framework_subparsers.add_parser("list", help="List supported framework adapters.")
+    framework_list_parser.set_defaults(func=command_framework_list)
+
+    framework_generate_parser = framework_subparsers.add_parser(
+        "generate",
+        help="Generate local framework artifacts.",
+    )
+    framework_generate_parser.add_argument("--framework", choices=["bmad", "superpowers", "sdd"], required=True)
+    framework_generate_parser.add_argument("--profile", required=True)
+    framework_generate_parser.add_argument("--objective", required=True)
+    framework_generate_parser.add_argument("--scope", default="")
+    framework_generate_parser.add_argument("--context-summary", default="", help="JSON object text or path.")
+    framework_generate_parser.add_argument("--output-dir", default="")
+    framework_generate_parser.set_defaults(func=command_framework_generate)
+
+    framework_status_parser = framework_subparsers.add_parser(
+        "status",
+        help="Inspect generated framework artifacts.",
+    )
+    framework_status_parser.add_argument("--framework", choices=["bmad", "superpowers", "sdd"], default="")
+    framework_status_parser.add_argument("--profile", default="")
+    framework_status_parser.add_argument("--output-dir", default="")
+    framework_status_parser.set_defaults(func=command_framework_status)
 
     tool_wizard_parser = subparsers.add_parser(
         "tool-wizard",
