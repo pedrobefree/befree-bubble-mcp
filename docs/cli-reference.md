@@ -595,6 +595,19 @@ Skill run responses summarize steps and next actions for the user. Raw write
 payloads are not included in the user-facing response; redacted audit records
 are stored locally under `skills/runs/`.
 
+## `bubble-mcp language`
+
+Diagnostic commands for the dynamic Bubble MCP language registry. Frameworks
+should use the equivalent MCP tools instead of reading the full `tools/list`
+catalog.
+
+```bash
+bubble-mcp language index --profile my-app
+bubble-mcp language query "create checkout button" --family visual_editor --limit 8
+bubble-mcp language detail create_button bubble_context_find --detail full
+bubble-mcp language framework-pack --framework bmad --profile my-app --scope "checkout flow"
+```
+
 ## `bubble-mcp framework`
 
 Generates local BMAD, Superpowers, or SDD artifacts from Bubble MCP context and

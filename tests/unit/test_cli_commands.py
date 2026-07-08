@@ -317,6 +317,41 @@ def test_cli_framework_list_generate_and_status(tmp_path, monkeypatch, capsys) -
     assert status["status"][0]["artifact_count"] == 1
 
 
+def test_cli_language_index_query_detail_and_pack(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    assert main(["language", "index", "--profile", "cliente2"]) == 0
+    index = json.loads(capsys.readouterr().out)
+    assert index["registry_version"].startswith("sha256:")
+
+    assert main(["language", "query", "create button", "--family", "visual_editor", "--limit", "5"]) == 0
+    query = json.loads(capsys.readouterr().out)
+    assert query["matches"]
+
+    assert main(["language", "detail", "create_button", "--detail", "full"]) == 0
+    detail = json.loads(capsys.readouterr().out)
+    assert detail["tools"][0]["name"] == "create_button"
+    assert "inputSchema" in detail["tools"][0]
+
+    assert (
+        main(
+            [
+                "language",
+                "framework-pack",
+                "--framework",
+                "bmad",
+                "--profile",
+                "cliente2",
+                "--scope",
+                "create checkout button",
+            ]
+        )
+        == 0
+    )
+    pack = json.loads(capsys.readouterr().out)
+    assert pack["framework"] == "bmad"
+
+
 def test_cli_plan_outputs_validated_plan(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["plan", 'Create text saying "Hello"']) == 0
 

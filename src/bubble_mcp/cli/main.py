@@ -48,6 +48,7 @@ from bubble_mcp.extensions.store import disable_extension, enable_extension, imp
 from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.extension_companion import ExtensionCompanionConfig, serve_extension_companion
 from bubble_mcp.frameworks import framework_status, generate_framework_artifacts, list_frameworks
+from bubble_mcp.language import build_language_index, framework_language_pack, language_query, language_tool_detail
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -1043,6 +1044,42 @@ def command_framework_status(args: argparse.Namespace) -> int:
     return 0 if result.get("ok") else 1
 
 
+def command_language_index(args: argparse.Namespace) -> int:
+    emit_json(build_language_index(profile=args.profile or None))
+    return 0
+
+
+def command_language_query(args: argparse.Namespace) -> int:
+    emit_json(
+        language_query(
+            query=args.query,
+            families=args.family or None,
+            sources=args.source or None,
+            risks=args.risk or None,
+            limit=args.limit,
+            profile=args.profile or None,
+        )
+    )
+    return 0
+
+
+def command_language_detail(args: argparse.Namespace) -> int:
+    emit_json(language_tool_detail(args.tools, detail=args.detail))
+    return 0
+
+
+def command_language_framework_pack(args: argparse.Namespace) -> int:
+    emit_json(
+        framework_language_pack(
+            framework=args.framework,
+            profile=args.profile or None,
+            scope=args.scope or "",
+            max_tools=args.limit,
+        )
+    )
+    return 0
+
+
 def emit_tool_wizard_error(action: str, exc: Exception) -> None:
     emit_json(
         {
@@ -1948,6 +1985,34 @@ def build_parser() -> argparse.ArgumentParser:
     skill_author_generate_parser.add_argument("--skill-id", default="")
     skill_author_generate_parser.add_argument("--output-dir", default="")
     skill_author_generate_parser.set_defaults(func=command_skill_author_generate)
+
+    language_parser = subparsers.add_parser("language", help="Inspect the dynamic Bubble MCP language registry.")
+    language_subparsers = language_parser.add_subparsers(dest="language_command", required=True)
+
+    language_index_parser = language_subparsers.add_parser("index", help="Return compact registry index.")
+    language_index_parser.add_argument("--profile", default="")
+    language_index_parser.set_defaults(func=command_language_index)
+
+    language_query_parser = language_subparsers.add_parser("query", help="Query compact language entries.")
+    language_query_parser.add_argument("query")
+    language_query_parser.add_argument("--family", action="append", default=[])
+    language_query_parser.add_argument("--source", action="append", default=[])
+    language_query_parser.add_argument("--risk", action="append", default=[])
+    language_query_parser.add_argument("--limit", type=int, default=12)
+    language_query_parser.add_argument("--profile", default="")
+    language_query_parser.set_defaults(func=command_language_query)
+
+    language_detail_parser = language_subparsers.add_parser("detail", help="Lazy-load selected tool detail.")
+    language_detail_parser.add_argument("tools", nargs="+")
+    language_detail_parser.add_argument("--detail", choices=["compact", "full"], default="compact")
+    language_detail_parser.set_defaults(func=command_language_detail)
+
+    language_pack_parser = language_subparsers.add_parser("framework-pack", help="Return framework-shaped language pack.")
+    language_pack_parser.add_argument("--framework", choices=["bmad", "superpowers", "sdd"], required=True)
+    language_pack_parser.add_argument("--profile", default="")
+    language_pack_parser.add_argument("--scope", default="")
+    language_pack_parser.add_argument("--limit", type=int, default=12)
+    language_pack_parser.set_defaults(func=command_language_framework_pack)
 
     framework_parser = subparsers.add_parser(
         "framework",

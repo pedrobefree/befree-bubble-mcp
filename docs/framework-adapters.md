@@ -72,6 +72,61 @@ Inspect generated artifacts:
 }
 ```
 
+## Dynamic Language Registry
+
+Framework adapters should not request the full MCP catalog by default. The
+Bubble MCP language is dynamic because native tools, enabled extension-pack
+tools, installed skills, learning records, and runtime coverage can change over
+time.
+
+Use the low-token language APIs in this order:
+
+1. `bubble_language_index` returns `registry_version`, family counts, source
+   counts, risk counts, and runtime rules.
+2. `bubble_language_query` returns scoped tools for the current objective,
+   family, source, or risk.
+3. `bubble_language_tool_detail` lazy-loads schema details only for selected
+   tools.
+4. `bubble_language_diff` returns added, changed, and removed entries since a
+   previous `registry_version`.
+5. `bubble_framework_language_pack` returns a BMAD, Superpowers, or SDD shaped
+   low-token package.
+6. `bubble_framework_compile_program` turns framework-authored compact programs
+   into preview-safe MCP calls.
+
+Example:
+
+```json
+{
+  "tool": "bubble_framework_language_pack",
+  "arguments": {
+    "framework": "bmad",
+    "profile": "cliente2",
+    "scope": "create checkout button",
+    "limit": 12
+  }
+}
+```
+
+Compile a framework program:
+
+```json
+{
+  "tool": "bubble_framework_compile_program",
+  "arguments": {
+    "framework": "superpowers",
+    "profile": "cliente2",
+    "program": {
+      "objective": "Create checkout CTA",
+      "steps": [
+        {"intent": "resolve_context", "query": "page checkout"},
+        {"tool": "create_button", "arguments": {"context": "checkout", "parent": "root", "label": "Start checkout"}}
+      ]
+    }
+  }
+}
+```
+
 ## CLI Flow
 
 ```bash
