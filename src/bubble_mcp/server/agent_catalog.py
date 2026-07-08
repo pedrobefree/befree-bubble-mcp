@@ -1549,6 +1549,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_language_diff",
         "bubble_framework_language_pack",
         "bubble_framework_compile_program",
+        "bubble_framework_plan_from_text",
+        "bubble_language_cache_status",
         "bubble_framework_list",
         "bubble_framework_status",
     }

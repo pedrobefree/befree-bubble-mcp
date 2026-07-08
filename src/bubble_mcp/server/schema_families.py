@@ -61,6 +61,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Local Bubble MCP profile to use. This resolves the app id, default branch/version, local context, and stored editor session.",
         examples=["smoke", "dev", "my-client-app"],
     ),
+    "text": _prop(
+        "string",
+        "Framework-authored natural-language text to convert into a compact Bubble MCP program.",
+        examples=["Objective: Create checkout CTA\n- Add button labeled Start inside root"],
+    ),
     "app_id": _prop(
         "string",
         "Bubble app id/appname. Omit when the selected profile already targets the correct Bubble app.",
@@ -156,6 +161,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Local framework artifact directory returned by bubble_framework_generate_artifacts.",
         examples=["/Users/me/.config/bubble-mcp/frameworks/bmad/cliente2/20260707-120000-checkout"],
     ),
+    "workspace_dir": _prop(
+        "string",
+        "Local workspace directory where framework artifacts should be synchronized.",
+        examples=["/Users/me/project"],
+    ),
     "evidence": _prop(
         "object",
         "Structured implementation or validation evidence to append to framework artifacts. Sensitive values are redacted.",
@@ -206,6 +216,17 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "object",
         "Framework-authored compact Bubble MCP program to compile into preview-safe MCP calls.",
         additional_properties=True,
+    ),
+    "mode": _prop(
+        "string",
+        "Framework program run mode. Preview compiles without writes; execute requires explicit approval.",
+        enum=["preview", "execute"],
+        default="preview",
+    ),
+    "approved": _prop(
+        "boolean",
+        "Set true only after reviewing the compiled framework program and approving execute mode.",
+        default=False,
     ),
     "risk": _prop(
         "string",
@@ -1870,6 +1891,30 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "Compile a compact framework program into preview-safe Bubble MCP tool calls. This does not execute writes.",
             ["framework", "profile", "program"],
             required=["framework", "profile", "program"],
+        ),
+        tool_schema(
+            "bubble_framework_plan_from_text",
+            "Convert framework-authored natural-language text into a compact Bubble MCP program. This does not execute writes.",
+            ["framework", "profile", "text"],
+            required=["framework", "profile", "text"],
+        ),
+        tool_schema(
+            "bubble_framework_execute_program",
+            "Compile and preview or execute a compact framework program. Execute mode requires explicit approval.",
+            ["framework", "profile", "program", "mode", "approved", "artifact_dir"],
+            required=["framework", "profile", "program"],
+        ),
+        tool_schema(
+            "bubble_framework_workspace_sync",
+            "Copy generated framework artifacts into an external framework workspace layout.",
+            ["framework", "artifact_dir", "workspace_dir"],
+            required=["framework", "artifact_dir", "workspace_dir"],
+        ),
+        tool_schema(
+            "bubble_language_cache_status",
+            "Return the cached framework/profile language index status without rebuilding the registry.",
+            ["framework", "profile"],
+            required=["framework", "profile"],
         ),
         _empty_tool(
             "bubble_framework_list",

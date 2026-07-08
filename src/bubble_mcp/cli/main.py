@@ -49,6 +49,7 @@ from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.extension_companion import ExtensionCompanionConfig, serve_extension_companion
 from bubble_mcp.frameworks import framework_status, generate_framework_artifacts, list_frameworks
 from bubble_mcp.language import build_language_index, framework_language_pack, language_query, language_tool_detail
+from bubble_mcp.language.cache import cached_language_index
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -1164,6 +1165,16 @@ def command_language_framework_pack(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_language_cache_status(args: argparse.Namespace) -> int:
+    emit_json(
+        {
+            "ok": True,
+            "language_cache": cached_language_index(args.framework, args.profile),
+        }
+    )
+    return 0
+
+
 def emit_tool_wizard_error(action: str, exc: Exception) -> None:
     emit_json(
         {
@@ -2163,6 +2174,14 @@ def build_parser() -> argparse.ArgumentParser:
     language_pack_parser.add_argument("--scope", default="")
     language_pack_parser.add_argument("--limit", type=int, default=12)
     language_pack_parser.set_defaults(func=command_language_framework_pack)
+
+    language_cache_status_parser = language_subparsers.add_parser(
+        "cache-status",
+        help="Return cached framework/profile language index status.",
+    )
+    language_cache_status_parser.add_argument("--framework", choices=["bmad", "superpowers", "sdd"], required=True)
+    language_cache_status_parser.add_argument("--profile", required=True)
+    language_cache_status_parser.set_defaults(func=command_language_cache_status)
 
     framework_parser = subparsers.add_parser(
         "framework",

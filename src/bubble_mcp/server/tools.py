@@ -63,6 +63,8 @@ from bubble_mcp.frameworks import (
     list_frameworks,
     sync_framework_evidence,
 )
+from bubble_mcp.frameworks.text_planner import plan_framework_text
+from bubble_mcp.frameworks.workspace import sync_artifacts_to_workspace
 from bubble_mcp.language import (
     build_language_index,
     compile_framework_program,
@@ -71,6 +73,7 @@ from bubble_mcp.language import (
     language_query,
     language_tool_detail,
 )
+from bubble_mcp.language.cache import cached_language_index
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -701,6 +704,42 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             framework=_required_string_arg(args, "framework", name),
             profile=_required_string_arg(args, "profile", name),
             program=raw_program,
+        )
+    if name == "bubble_framework_plan_from_text":
+        args = arguments or {}
+        return plan_framework_text(
+            _required_string_arg(args, "framework", name),
+            _required_string_arg(args, "profile", name),
+            _required_string_arg(args, "text", name),
+        )
+    if name == "bubble_framework_execute_program":
+        from bubble_mcp.frameworks.program_runner import execute_framework_program
+
+        args = arguments or {}
+        raw_program = args.get("program")
+        if not isinstance(raw_program, dict):
+            raise ValueError("bubble_framework_execute_program requires program to be an object.")
+        artifact_dir = str(args.get("artifact_dir") or "").strip()
+        return execute_framework_program(
+            framework=_required_string_arg(args, "framework", name),
+            profile=_required_string_arg(args, "profile", name),
+            program=raw_program,
+            mode=str(args.get("mode") or "") or None,
+            approved=bool(args.get("approved")),
+            artifact_dir=Path(artifact_dir) if artifact_dir else None,
+        )
+    if name == "bubble_framework_workspace_sync":
+        args = arguments or {}
+        return sync_artifacts_to_workspace(
+            framework=_required_string_arg(args, "framework", name),
+            artifact_dir=Path(_required_string_arg(args, "artifact_dir", name)),
+            workspace_dir=Path(_required_string_arg(args, "workspace_dir", name)),
+        )
+    if name == "bubble_language_cache_status":
+        args = arguments or {}
+        return cached_language_index(
+            _required_string_arg(args, "framework", name),
+            _required_string_arg(args, "profile", name),
         )
     if name == "bubble_framework_list":
         return list_frameworks()

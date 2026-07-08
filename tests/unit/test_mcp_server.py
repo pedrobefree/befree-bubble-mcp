@@ -3156,6 +3156,10 @@ def test_language_tools_are_listed_with_annotations() -> None:
         "bubble_language_diff",
         "bubble_framework_language_pack",
         "bubble_framework_compile_program",
+        "bubble_framework_plan_from_text",
+        "bubble_framework_execute_program",
+        "bubble_framework_workspace_sync",
+        "bubble_language_cache_status",
     ):
         assert name in tools
     assert tools["bubble_language_index"]["annotations"]["readOnlyHint"] is True
@@ -3169,6 +3173,25 @@ def test_language_tools_are_listed_with_annotations() -> None:
         "profile",
         "program",
     ]
+    assert tools["bubble_framework_plan_from_text"]["inputSchema"]["required"] == ["framework", "profile", "text"]
+    assert tools["bubble_framework_plan_from_text"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_framework_execute_program"]["inputSchema"]["required"] == [
+        "framework",
+        "profile",
+        "program",
+    ]
+    assert "mode" in tools["bubble_framework_execute_program"]["inputSchema"]["properties"]
+    assert "approved" in tools["bubble_framework_execute_program"]["inputSchema"]["properties"]
+    assert "artifact_dir" in tools["bubble_framework_execute_program"]["inputSchema"]["properties"]
+    assert tools["bubble_framework_execute_program"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_framework_workspace_sync"]["inputSchema"]["required"] == [
+        "framework",
+        "artifact_dir",
+        "workspace_dir",
+    ]
+    assert tools["bubble_framework_workspace_sync"]["annotations"]["readOnlyHint"] is False
+    assert tools["bubble_language_cache_status"]["inputSchema"]["required"] == ["framework", "profile"]
+    assert tools["bubble_language_cache_status"]["annotations"]["readOnlyHint"] is True
 
 
 def test_language_tools_dispatch_index_query_pack_and_compile(tmp_path, monkeypatch) -> None:
@@ -3252,6 +3275,30 @@ def test_language_tools_dispatch_index_query_pack_and_compile(tmp_path, monkeypa
     compile_payload = json.loads(compile_response["result"]["content"][0]["text"])
     assert compile_payload["ok"] is True
     assert compile_payload["compiled_calls"][0]["arguments"]["execute"] is False
+
+
+def test_language_cache_status_dispatch(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        tools_module,
+        "cached_language_index",
+        lambda framework, profile: {"ok": True, "framework": framework, "profile": profile},
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 206,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_language_cache_status",
+                "arguments": {"framework": "bmad", "profile": "cliente2"},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload == {"ok": True, "framework": "bmad", "profile": "cliente2"}
 
 
 def test_high_potential_tools_include_docs_enrichment_metadata() -> None:

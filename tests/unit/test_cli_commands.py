@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
+import bubble_mcp.cli.main as cli_module
 from bubble_mcp.cli.main import main
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.sessions.store import session_from_payload
@@ -402,6 +403,22 @@ def test_cli_language_index_query_detail_and_pack(tmp_path, monkeypatch, capsys)
     )
     pack = json.loads(capsys.readouterr().out)
     assert pack["framework"] == "bmad"
+
+
+def test_cli_language_cache_status(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        cli_module,
+        "cached_language_index",
+        lambda framework, profile: {"ok": True, "framework": framework, "profile": profile},
+    )
+
+    assert main(["language", "cache-status", "--framework", "bmad", "--profile", "cliente2"]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "ok": True,
+        "language_cache": {"ok": True, "framework": "bmad", "profile": "cliente2"},
+    }
 
 
 def test_cli_plan_outputs_validated_plan(capsys) -> None:  # type: ignore[no-untyped-def]
