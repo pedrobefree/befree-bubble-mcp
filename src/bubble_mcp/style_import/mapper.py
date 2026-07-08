@@ -60,6 +60,52 @@ def _lower_hex(value: str) -> str | None:
     return None
 
 
+def _linear_rgb_to_srgb(channel: float) -> float:
+    if channel <= 0.0031308:
+        return 12.92 * channel
+    return 1.055 * (channel ** (1 / 2.4)) - 0.055
+
+
+def _lab_to_css_color(value: str) -> str | None:
+    match = re.fullmatch(
+        r"lab\(\s*(-?[0-9.]+)%?\s+(-?[0-9.]+)\s+(-?[0-9.]+)(?:\s*/\s*([0-9.]+%?))?\s*\)",
+        value.strip(),
+        flags=re.I,
+    )
+    if match is None:
+        return None
+
+    lightness = float(match.group(1))
+    a_axis = float(match.group(2))
+    b_axis = float(match.group(3))
+    fy = (lightness + 16) / 116
+    fx = fy + a_axis / 500
+    fz = fy - b_axis / 200
+
+    def inverse_lab(t: float) -> float:
+        delta = 6 / 29
+        return t**3 if t > delta else 3 * delta**2 * (t - 4 / 29)
+
+    # CSS Lab uses D50. Convert to sRGB through the standard D50 -> D65 matrix.
+    x = 0.96422 * inverse_lab(fx)
+    y = 1.00000 * inverse_lab(fy)
+    z = 0.82521 * inverse_lab(fz)
+    red_linear = 3.1338561 * x - 1.6168667 * y - 0.4906146 * z
+    green_linear = -0.9787684 * x + 1.9161415 * y + 0.0334540 * z
+    blue_linear = 0.0719453 * x - 0.2289914 * y + 1.4052427 * z
+    red, green, blue = [
+        max(0, min(255, round(_linear_rgb_to_srgb(channel) * 255)))
+        for channel in (red_linear, green_linear, blue_linear)
+    ]
+    alpha = match.group(4)
+    if alpha is None:
+        return f"#{red:02x}{green:02x}{blue:02x}"
+    alpha_value = alpha.strip()
+    if alpha_value.endswith("%"):
+        alpha_value = str(float(alpha_value.removesuffix("%")) / 100)
+    return f"rgba({red}, {green}, {blue}, {alpha_value})"
+
+
 def _css_color(value: str) -> str | None:
     hex_color = _lower_hex(value)
     if hex_color is not None:
@@ -90,6 +136,9 @@ def _css_color(value: str) -> str | None:
         if alpha is None:
             return f"#{red:02x}{green:02x}{blue:02x}"
         return f"rgba({red}, {green}, {blue}, {alpha})"
+    lab_color = _lab_to_css_color(value)
+    if lab_color is not None:
+        return lab_color
     return None
 
 

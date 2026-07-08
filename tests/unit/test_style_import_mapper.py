@@ -77,6 +77,28 @@ def test_map_complex_css_colors_and_rejects_multiple_backgrounds() -> None:
     } in candidate.unsupported
 
 
+def test_map_css_lab_color_to_hex() -> None:
+    rules = extract_style_rules_from_html(
+        """
+        <style>
+          .title { color: lab(43.0902 -3.01164 -12.293); }
+        </style>
+        <h1 class="title">Title</h1>
+        """,
+        selector=".title",
+    )
+
+    candidate = map_rules_to_style_candidate(
+        rules,
+        style_prefix="HTML",
+        element_type="Text",
+        selector=".title",
+    )
+
+    assert candidate.base["font_color"] == "#57687a"
+    assert candidate.unsupported == []
+
+
 def test_map_independent_border_fields() -> None:
     rules = extract_style_rules_from_html(
         """

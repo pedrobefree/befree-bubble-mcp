@@ -18,6 +18,8 @@ def test_rendered_payload_to_html_injects_state_css() -> None:
         selector=".btn-primary",
     )
 
+    assert ".btn-primary {" in html
+    assert "background-color: rgb(21, 94, 239);" in html
     assert ".btn-primary:hover" in html
     assert "background-color: rgb(0, 78, 235);" in html
     assert ".btn-primary:active" in html

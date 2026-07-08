@@ -2104,6 +2104,66 @@ def test_html_style_import_verification_reads_refreshed_context(tmp_path, monkey
     assert result["state_check"]["properties"]["hover"]["checked"] is True
 
 
+def test_html_style_import_verification_checks_normalized_context_properties(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    context_path = tmp_path / "context.json"
+    context_path.write_text(
+        json.dumps(
+            {
+                "app_id": "synthetic-app",
+                "source": "test",
+                "metadata": {
+                    "styles": {
+                        "Text_htmltitle_": {
+                            "display": "html-title",
+                            "type": "Text",
+                            "properties": {
+                                "bgcolor": "rgba(0, 0, 0, 0)",
+                                "font_size": 72,
+                                "font_weight": "700",
+                                "border_roundness": 0,
+                            },
+                        }
+                    }
+                },
+                "nodes": [],
+                "edges": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        tools_module,
+        "_profile_cache_refresh",
+        lambda _args: {
+            "ok": True,
+            "source": "bubble",
+            "app_id": "synthetic-app",
+            "app_version": "test",
+            "context_detection": {"context_path": str(context_path)},
+        },
+    )
+
+    result = tools_module._verify_html_style_import(
+        "smoke",
+        {
+            "name": "html-title",
+            "element_type": "Text",
+            "base": {
+                "bg_color": "rgba(0, 0, 0, 0)",
+                "font_size": 72,
+                "font_weight": "700",
+                "border_radius": 0,
+            },
+            "states": {},
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["property_check"]["checked"] is True
+    assert result["property_check"]["missing"] == []
+
+
 def test_legacy_catalog_tool_dispatches_to_aria_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     calls = []
 

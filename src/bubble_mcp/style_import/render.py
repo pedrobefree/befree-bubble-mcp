@@ -20,6 +20,15 @@ STATE_PSEUDOS = {
 
 def _style_state_css(selector: str, style_states: dict[str, Any]) -> str:
     blocks: list[str] = []
+    base_declarations = style_states.get("base")
+    if isinstance(base_declarations, dict) and base_declarations:
+        lines = [
+            f"  {str(property_name).strip().lower()}: {str(value).strip()};"
+            for property_name, value in base_declarations.items()
+            if str(property_name).strip() and str(value).strip()
+        ]
+        if lines:
+            blocks.append(f"{selector} {{\n" + "\n".join(lines) + "\n}")
     for state, pseudo in STATE_PSEUDOS.items():
         declarations = style_states.get(state)
         if not isinstance(declarations, dict) or not declarations:

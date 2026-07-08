@@ -224,13 +224,13 @@ def _style_metadata_type(style_id: str, style_data: dict[str, Any]) -> str:
 
 
 STYLE_IMPORT_PROPERTY_ALIASES: dict[str, tuple[str, ...]] = {
-    "bg_color": ("%bgc", "background_color", "bg_color"),
+    "bg_color": ("%bgc", "background_color", "bg_color", "bgcolor"),
     "font_color": ("%fc", "font_color"),
     "font_size": ("%fs", "font_size"),
     "font_weight": ("font_weight",),
     "border_color": ("%bc", "border_color"),
     "border_width": ("%bw", "border_width"),
-    "border_radius": ("%br", "border_radius"),
+    "border_radius": ("%br", "border_radius", "border_roundness"),
     "border_style": ("%bos", "border_style"),
     "shadow_style": ("%bs", "shadow_style"),
     "shadow_h": ("%bh", "shadow_h"),
@@ -429,9 +429,15 @@ def _verify_html_style_import(profile: str, candidate: dict[str, Any]) -> dict[s
             continue
         match = {"id": str(style_id), **style_data}
         break
+    actual_properties = None
+    if isinstance(match, dict):
+        if isinstance(match.get("%p"), dict):
+            actual_properties = match.get("%p")
+        elif isinstance(match.get("properties"), dict):
+            actual_properties = match.get("properties")
     property_check = _compare_style_properties(
         candidate.get("base") if isinstance(candidate.get("base"), dict) else {},
-        match.get("%p") if isinstance(match, dict) else None,
+        actual_properties,
     )
     state_check = _verify_style_states(expected_states_map, match.get("%s") if isinstance(match, dict) else None)
     verification_ok = match is not None and bool(property_check.get("ok")) and bool(state_check.get("ok"))
