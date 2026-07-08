@@ -124,8 +124,9 @@ reviewed and re-entered by the project owner.
 - Element subtree payloads are supported for transfer execution.
 - Collection schema can generate data type, field, option set/value, and
   privacy rule target payloads when `collection_policy=create_missing`.
-- API Connector structures are inventoried and mapped in the local plan, but
-  credentials/secrets are not copied and execution remains conservative.
+- API Connector structures can generate target payloads for collections and
+  calls, but credentials/secrets are never copied and must be re-entered by the
+  project owner.
 - Live database record migration is not executed by default.
 - Successful Bubble write responses must still be verified with refreshed
   context or the Bubble editor.

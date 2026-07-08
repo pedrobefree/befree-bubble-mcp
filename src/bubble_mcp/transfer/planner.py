@@ -7,8 +7,17 @@ from datetime import datetime, timezone
 from typing import Any
 
 from bubble_mcp.context.freshness import load_context_with_overlay
+from bubble_mcp.transfer.api_connector import (
+    extract_api_connector_bundle,
+    plan_api_connector_bundle,
+    redact_api_connector_bundle,
+)
 from bubble_mcp.transfer.collections import extract_collection_bundle, plan_collection_bundle
-from bubble_mcp.transfer.compiler import compile_collection_actions_to_payloads, compile_inventory_to_target_payloads
+from bubble_mcp.transfer.compiler import (
+    compile_api_connector_actions_to_payloads,
+    compile_collection_actions_to_payloads,
+    compile_inventory_to_target_payloads,
+)
 from bubble_mcp.transfer.inventory import inventory_source_object
 from bubble_mcp.transfer.mapping import build_dependency_decisions
 from bubble_mcp.transfer.models import TransferPlan
@@ -41,6 +50,26 @@ def _data_type_keys_to_create(decisions: list[Any]) -> list[str]:
     return list(dict.fromkeys(keys))
 
 
+def _api_connector_refs_to_create(decisions: list[Any]) -> list[str]:
+    refs: list[str] = []
+    for decision in decisions:
+        dependency = getattr(decision, "dependency", None)
+        if getattr(decision, "action", "") != "create_copy" or dependency is None:
+            continue
+        kind = str(getattr(dependency, "kind", ""))
+        key = str(getattr(dependency, "key", "")).strip()
+        metadata = getattr(dependency, "metadata", {}) or {}
+        if kind == "api_connector" and key:
+            refs.append(key)
+        elif kind == "api_connector_call":
+            api_id = str(metadata.get("api_id") or "").strip()
+            if api_id:
+                refs.append(api_id)
+            elif "." in key:
+                refs.append(key.split(".", 1)[0])
+    return list(dict.fromkeys(refs))
+
+
 def _compile_collection_payloads(
     *,
     source_ctx: Any,
@@ -69,6 +98,34 @@ def _compile_collection_payloads(
                 compile_collection_actions_to_payloads(
                     actions=list(collection_plan.get("actions", [])),
                     target_context=target_ctx,
+                    target_app_id=target_app_id,
+                    target_app_version=target_app_version,
+                )
+            )
+    return payloads, blocked
+
+
+def _compile_api_connector_payloads(
+    *,
+    source_ctx: Any,
+    target_ctx: Any,
+    decisions: list[Any],
+    target_app_id: str,
+    target_app_version: str,
+    api_connector_policy: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if api_connector_policy == "skip":
+        return [], []
+    payloads: list[dict[str, Any]] = []
+    blocked: list[str] = []
+    for api_ref in _api_connector_refs_to_create(decisions):
+        bundle = redact_api_connector_bundle(extract_api_connector_bundle(source_ctx, api_ref))
+        api_plan = plan_api_connector_bundle(bundle, target_ctx, policy=api_connector_policy)
+        blocked.extend(str(reason) for reason in api_plan.get("blocked_reasons", []))
+        if api_plan.get("ok"):
+            payloads.extend(
+                compile_api_connector_actions_to_payloads(
+                    actions=list(api_plan.get("actions", [])),
                     target_app_id=target_app_id,
                     target_app_version=target_app_version,
                 )
@@ -137,7 +194,17 @@ def create_transfer_plan(
         data_records_policy=data_records_policy,
     )
     blocked.extend(collection_blocked)
+    api_payloads, api_blocked = _compile_api_connector_payloads(
+        source_ctx=source_ctx,
+        target_ctx=target_ctx,
+        decisions=decisions,
+        target_app_id=resolved.target.app_id,
+        target_app_version=resolved.target.app_version or "test",
+        api_connector_policy=api_connector_policy,
+    )
+    blocked.extend(api_blocked)
     payloads = [] if blocked else [
+        *api_payloads,
         *collection_payloads,
         *compile_inventory_to_target_payloads(
             inventory=inventory,

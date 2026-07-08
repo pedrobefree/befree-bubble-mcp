@@ -203,3 +203,70 @@ def compile_collection_actions_to_payloads(
             payload["appVersion"] = target_app_version or "test"
             payloads.append(payload)
     return payloads
+
+
+def _create_api_call_change(path_array: list[str], body: dict[str, Any], session_id: str) -> dict[str, Any]:
+    return {
+        "intent": {"name": "CreateApiCall"},
+        "path_array": path_array,
+        "body": body,
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": session_id,
+    }
+
+
+def compile_api_connector_actions_to_payloads(
+    *,
+    actions: list[dict[str, Any]],
+    target_app_id: str,
+    target_app_version: str,
+) -> list[dict[str, Any]]:
+    """Compile structure-only API Connector actions into target write payloads."""
+
+    payloads: list[dict[str, Any]] = []
+    for action in actions:
+        action_name = str(action.get("action") or "")
+        api_id = str(action.get("api_id") or "").strip()
+        if not api_id:
+            continue
+        session_id = bubble_session_id()
+        if action_name == "create_api_connector":
+            changes = [
+                change_app_setting_change(
+                    ["settings", "client_safe", "apiconnector2", api_id],
+                    {"human": str(action.get("name") or api_id), "calls": {}},
+                    session_id,
+                )
+            ]
+        elif action_name == "create_api_connector_call":
+            call_id = str(action.get("call_id") or "").strip()
+            if not call_id:
+                continue
+            method = str(action.get("method") or "GET").strip().lower()
+            url = str(action.get("url") or "").strip()
+            call_path = ["settings", "client_safe", "apiconnector2", api_id, "calls", call_id]
+            call_body = {
+                "%nm": str(action.get("name") or call_id),
+                "method": method,
+                "publish_as": str(action.get("publish_as") or "data"),
+                "rank": int(action.get("rank") or 0),
+                "url_cant_be_private": True,
+            }
+            changes = [_create_api_call_change(call_path, call_body, session_id)]
+            if url:
+                changes.append(change_app_setting_change([*call_path, "url"], url, session_id))
+            if method:
+                changes.append(change_app_setting_change([*call_path, "method"], method, session_id))
+        else:
+            continue
+        payloads.append(
+            {
+                "v": 1,
+                "appname": target_app_id,
+                "app_version": target_app_version or "test",
+                "appVersion": target_app_version or "test",
+                "changes": changes,
+            }
+        )
+    return payloads
