@@ -254,7 +254,8 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_transfer_inventory`: inspects a source profile page, reusable, or
   element subtree before project-to-project transfer. Read-only.
 - `bubble_transfer_plan`: creates a local preview-first transfer plan from a
-  source profile to a target profile.
+  source profile to a target profile. By default, it reuses exact or
+  structurally compatible target resources before planning new copies.
 - `bubble_transfer_preview`: previews an existing local transfer plan against
   the target profile session. Use `include_payloads=true` only for payload
   review.

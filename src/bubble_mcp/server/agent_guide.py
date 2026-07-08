@@ -550,6 +550,7 @@ RECIPES: dict[str, dict[str, Any]] = {
                     "target_parent": "$target_parent",
                     "target_name": "$target_name",
                     "conflict_policy": "fail",
+                    "reuse_policy": "prefer_existing",
                     "collection_policy": "map_existing",
                     "api_connector_policy": "structure_only",
                     "data_records_policy": "skip",
@@ -1112,6 +1113,7 @@ RECIPE_CONTRACTS: dict[str, dict[str, list[str]]] = {
         "quality_gates": [
             "Inventory the source object before creating a transfer plan.",
             "Create and review a local transfer plan before any target write.",
+            "Prefer reusing exact or structurally compatible target resources unless the user asks for fresh copies.",
             "Preview the plan with the target profile session before execute=true.",
             "Do not copy API Connector secrets; require the project owner to review credentials in the target app.",
         ],

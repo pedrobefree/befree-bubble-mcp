@@ -979,6 +979,12 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         enum=["map_only", "map_or_create", "skip_optional"],
         default="map_or_create",
     ),
+    "reuse_policy": _prop(
+        "string",
+        "How the transfer planner should reuse target resources that are exact or structurally compatible with the source.",
+        enum=["prefer_existing", "exact_only", "create_new"],
+        default="prefer_existing",
+    ),
     "include_collections": _prop(
         "boolean",
         "Include Bubble database collection schema dependencies: data types, fields, privacy rules, and option sets.",
@@ -1437,6 +1443,7 @@ def transfer_tools() -> list[ToolSchema]:
                 "conflict_policy",
                 "asset_policy",
                 "dependency_policy",
+                "reuse_policy",
                 "include_collections",
                 "collection_policy",
                 "include_api_connector",

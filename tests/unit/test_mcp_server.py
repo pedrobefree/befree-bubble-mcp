@@ -134,6 +134,11 @@ def test_tools_list_includes_profile_list() -> None:
         "source_type",
         "source_ref",
     ]
+    assert tools["bubble_transfer_plan"]["inputSchema"]["properties"]["reuse_policy"]["enum"] == [
+        "prefer_existing",
+        "exact_only",
+        "create_new",
+    ]
     assert tools["bubble_transfer_execute"]["inputSchema"]["required"] == ["transfer_id", "execute", "confirm"]
 
 

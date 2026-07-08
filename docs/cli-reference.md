@@ -194,6 +194,7 @@ Planning policy options:
 - `--conflict-policy`: `fail`, `rename`, `replace`, `reuse_existing`
 - `--asset-policy`: `reference_url`, `stage_and_upload`, `skip`
 - `--dependency-policy`: `map_only`, `map_or_create`, `skip_optional`
+- `--reuse-policy`: `prefer_existing`, `exact_only`, `create_new`
 - `--collection-policy`: `skip`, `map_existing`, `create_missing`,
   `replace_schema`
 - `--api-connector-policy`: `skip`, `map_existing`, `structure_only`

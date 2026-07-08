@@ -225,6 +225,7 @@ def command_transfer_plan(args: argparse.Namespace) -> int:
         conflict_policy=args.conflict_policy,
         asset_policy=args.asset_policy,
         dependency_policy=args.dependency_policy,
+        reuse_policy=args.reuse_policy,
         collection_policy=args.collection_policy,
         api_connector_policy=args.api_connector_policy,
         data_records_policy=args.data_records_policy,
@@ -1565,6 +1566,7 @@ def build_parser() -> argparse.ArgumentParser:
     transfer_plan_parser.add_argument("--conflict-policy", choices=["fail", "rename", "replace", "reuse_existing"], default="fail")
     transfer_plan_parser.add_argument("--asset-policy", choices=["reference_url", "stage_and_upload", "skip"], default="reference_url")
     transfer_plan_parser.add_argument("--dependency-policy", choices=["map_only", "map_or_create", "skip_optional"], default="map_or_create")
+    transfer_plan_parser.add_argument("--reuse-policy", choices=["prefer_existing", "exact_only", "create_new"], default="prefer_existing")
     transfer_plan_parser.add_argument("--collection-policy", choices=["skip", "map_existing", "create_missing", "replace_schema"], default="map_existing")
     transfer_plan_parser.add_argument("--api-connector-policy", choices=["skip", "map_existing", "structure_only"], default="structure_only")
     transfer_plan_parser.add_argument("--data-records-policy", choices=["skip", "export_manifest_only", "data_api_import_preview"], default="skip")

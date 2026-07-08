@@ -99,11 +99,21 @@ when the request is broad or the source object may have dependencies.
 - `conflict_policy`: `fail`, `rename`, `replace`, or `reuse_existing`.
 - `asset_policy`: `reference_url`, `stage_and_upload`, or `skip`.
 - `dependency_policy`: `map_only`, `map_or_create`, or `skip_optional`.
+- `reuse_policy`: `prefer_existing`, `exact_only`, or `create_new`.
 - `collection_policy`: `skip`, `map_existing`, `create_missing`, or
   `replace_schema`.
 - `api_connector_policy`: `skip`, `map_existing`, or `structure_only`.
 - `data_records_policy`: `skip`, `export_manifest_only`, or
   `data_api_import_preview`.
+
+`reuse_policy=prefer_existing` is the default. It first maps exact target
+resources, then reuses structurally compatible target resources when the source
+and target context contain enough non-secret metadata to compare them. This is
+intended for styles, option sets, API Connector calls, colors, fonts, assets,
+and plugins, so a transfer can reuse an equivalent target resource instead of
+duplicating it. Use `exact_only` when only same-key/same-label mappings should
+be accepted, or `create_new` when the migration must create a fresh copy even if
+the target already has a compatible resource.
 
 API Connector transfer never copies secrets. Shared headers, call definitions,
 and parameter structure can be mapped or recreated, but credentials must be

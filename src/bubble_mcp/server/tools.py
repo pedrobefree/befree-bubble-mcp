@@ -1149,6 +1149,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             conflict_policy=str(args.get("conflict_policy") or "fail"),
             asset_policy=str(args.get("asset_policy") or "reference_url"),
             dependency_policy=str(args.get("dependency_policy") or "map_or_create"),
+            reuse_policy=str(args.get("reuse_policy") or "prefer_existing"),
             collection_policy=(
                 "skip" if args.get("include_collections") is False else str(args.get("collection_policy") or "map_existing")
             ),
