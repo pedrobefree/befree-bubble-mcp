@@ -36,6 +36,8 @@ def _compact_entry(entry: dict[str, Any]) -> dict[str, Any]:
             "properties",
             "description",
             "coverage",
+            "capabilities",
+            "status",
             "schema_hash",
         )
         if key in entry

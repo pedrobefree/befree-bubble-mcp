@@ -18,6 +18,7 @@ def test_language_index_is_compact_versioned_and_counts_dynamic_sources(tmp_path
     assert "visual_editor" in result["families"]
     assert result["runtime_rules_digest"]
     assert "bubble_language_query" in result["entrypoints"]
+    assert isinstance(result["skills_digest"], list)
     assert "tools" not in result
 
 
@@ -32,6 +33,10 @@ def test_language_query_returns_scoped_compact_matches_without_full_schema(tmp_p
     assert len(result["matches"]) <= 8
     assert any(match["name"] == "create_button" for match in result["matches"])
     assert all(match["family"] == "visual_editor" for match in result["matches"])
+    button = next(match for match in result["matches"] if match["name"] == "create_button")
+    assert button["capabilities"]["supports_preview"] is True
+    assert button["capabilities"]["requires_approval"] is True
+    assert button["status"]["state"] == "available"
     assert all("inputSchema" not in match for match in result["matches"])
 
 
@@ -103,7 +108,10 @@ def test_compile_framework_program_outputs_preview_safe_calls(tmp_path, monkeypa
             "objective": "Create checkout CTA",
             "steps": [
                 {"intent": "resolve_context", "query": "page checkout"},
-                {"tool": "create_group", "arguments": {"context": "checkout", "parent": "root"}},
+                {
+                    "tool": "create_group",
+                    "arguments": {"context": "checkout", "parent": "root", "name": "Checkout section"},
+                },
                 {
                     "tool": "create_button",
                     "arguments": {
@@ -127,6 +135,80 @@ def test_compile_framework_program_outputs_preview_safe_calls(tmp_path, monkeypa
     assert result["compiled_calls"][1]["arguments"]["execute"] is False
     assert result["compiled_calls"][2]["arguments"]["profile"] == "cliente2"
     assert result["validation_plan"]
+
+
+def test_compile_framework_program_maps_common_intents_to_preview_safe_tools(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "objective": "Create a compact login form",
+            "steps": [
+                {
+                    "intent": "create_container",
+                    "context": "login",
+                    "parent": "root",
+                    "label": "Login form",
+                },
+                {
+                    "intent": "headline",
+                    "context": "login",
+                    "parent": "<group>",
+                    "text": "Welcome back",
+                },
+                {
+                    "intent": "cta_button",
+                    "context": "login",
+                    "parent": "<group>",
+                    "text": "Continue",
+                },
+                {
+                    "intent": "sync_evidence",
+                    "evidence": {"preview": "compiled"},
+                },
+            ],
+        },
+    )
+
+    assert result["ok"] is True
+    assert [call["tool"] for call in result["compiled_calls"]] == [
+        "create_group",
+        "create_text",
+        "create_button",
+        "bubble_framework_sync_evidence",
+    ]
+    assert result["compiled_calls"][0]["arguments"]["name"] == "Login form"
+    assert result["compiled_calls"][1]["arguments"]["content"] == "Welcome back"
+    assert result["compiled_calls"][2]["arguments"]["label"] == "Continue"
+    assert result["compiled_calls"][2]["arguments"]["execute"] is False
+    assert "execute" not in result["compiled_calls"][3]["arguments"]
+    assert result["compiled_calls"][3]["arguments"]["framework"] == "bmad"
+
+
+def test_compile_framework_program_reports_missing_required_arguments(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="sdd",
+        profile="cliente2",
+        program={
+            "objective": "Incomplete button",
+            "steps": [{"intent": "create_button", "context": "home", "text": "Save"}],
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "framework_program_missing_required_arguments"
+    assert result["missing_arguments"] == [
+        {
+            "step": 1,
+            "tool": "create_button",
+            "missing": ["parent"],
+            "required": ["profile", "context", "parent", "label"],
+        }
+    ]
 
 
 def test_compile_framework_program_rejects_unknown_tool(tmp_path, monkeypatch) -> None:

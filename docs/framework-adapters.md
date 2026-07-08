@@ -82,9 +82,11 @@ time.
 Use the low-token language APIs in this order:
 
 1. `bubble_language_index` returns `registry_version`, family counts, source
-   counts, risk counts, and runtime rules.
+   counts, risk counts, compact installed-skill digest, and runtime rules.
 2. `bubble_language_query` returns scoped tools for the current objective,
-   family, source, or risk.
+   family, source, or risk. Each match includes compact capability and status
+   signals such as preview support, execution support, approval requirement,
+   execution surface, and enabled extension metadata when applicable.
 3. `bubble_language_tool_detail` lazy-loads schema details only for selected
    tools.
 4. `bubble_language_diff` returns added, changed, and removed entries since a
@@ -93,6 +95,16 @@ Use the low-token language APIs in this order:
    low-token package.
 6. `bubble_framework_compile_program` turns framework-authored compact programs
    into preview-safe MCP calls.
+
+Frameworks should treat `bubble_framework_compile_program` as a syntax checker
+for the Bubble MCP language. It maps common high-level intents such as
+`create_container`, `headline`, `cta_button`, `create_input`,
+`verify_context`, `query_language`, and `sync_evidence` to concrete MCP tools,
+injects the active `profile` where the schema supports it, and adds
+`execute=false` only for tools that actually expose that argument. If a compiled
+step is missing required schema arguments, the compiler returns
+`framework_program_missing_required_arguments` with the exact step, tool, and
+missing fields instead of producing an unsafe plan.
 
 Example:
 
@@ -120,7 +132,8 @@ Compile a framework program:
       "objective": "Create checkout CTA",
       "steps": [
         {"intent": "resolve_context", "query": "page checkout"},
-        {"tool": "create_button", "arguments": {"context": "checkout", "parent": "root", "label": "Start checkout"}}
+        {"intent": "create_container", "context": "checkout", "parent": "root", "label": "Checkout controls"},
+        {"intent": "cta_button", "context": "checkout", "parent": "<created_group_id>", "text": "Start checkout"}
       ]
     }
   }
