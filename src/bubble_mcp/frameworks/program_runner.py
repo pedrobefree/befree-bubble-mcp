@@ -148,7 +148,7 @@ def execute_framework_program(
             break
 
     refresh_result: dict[str, Any] | None = None
-    if ok:
+    if step_results:
         refresh_result = call_tool("bubble_profile_cache_refresh", {"profile": profile, "force": True})
         if refresh_result.get("ok") is False:
             ok = False
