@@ -22,6 +22,14 @@ def test_language_index_is_compact_versioned_and_counts_dynamic_sources(tmp_path
     assert "tools" not in result
 
 
+def test_language_index_includes_dynamic_intent_families(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = build_language_index(profile="cliente2")
+
+    assert {"visual", "data", "workflow", "verification"}.issubset(result["intent_families"])
+
+
 def test_language_query_returns_scoped_compact_matches_without_full_schema(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 

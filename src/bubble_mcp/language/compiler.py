@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from bubble_mcp.frameworks.adapters import get_adapter
+from bubble_mcp.language.intents import normalize_intent_arguments, tool_for_intent
+from bubble_mcp.language.program import FrameworkProgramStep, parse_framework_program
 from bubble_mcp.language.query import language_tool_detail
 from bubble_mcp.server.schemas import list_tool_schemas
 
@@ -20,29 +22,6 @@ READ_ONLY_TOOLS = {
     "bubble_language_tool_detail",
     "bubble_language_diff",
 }
-
-INTENT_TOOL_ALIASES = {
-    "create_group": "create_group",
-    "create_container": "create_group",
-    "create_section": "create_group",
-    "create_card": "create_group",
-    "create_text": "create_text",
-    "add_text": "create_text",
-    "headline": "create_text",
-    "create_heading": "create_text",
-    "create_button": "create_button",
-    "add_button": "create_button",
-    "cta_button": "create_button",
-    "create_cta": "create_button",
-    "create_input": "create_input",
-    "add_input": "create_input",
-    "text_input": "create_input",
-    "verify_context": "bubble_context_find",
-    "sync_evidence": "bubble_framework_sync_evidence",
-    "query_language": "bubble_language_query",
-    "find_tool": "bubble_language_query",
-}
-
 
 def _available_tool_schemas() -> dict[str, dict[str, Any]]:
     return {str(tool.get("name") or ""): tool for tool in list_tool_schemas()}
@@ -77,84 +56,47 @@ def _with_profile_and_preview(
     return compiled
 
 
-def _step_arguments(step: dict[str, Any]) -> dict[str, Any]:
-    ignored = {"intent", "tool", "description", "arguments"}
-    args = {str(key): value for key, value in step.items() if key not in ignored}
-    raw_arguments = step.get("arguments")
-    if isinstance(raw_arguments, dict):
-        args.update(raw_arguments)
-    return args
-
-
-def _copy_first_available(args: dict[str, Any], target: str, candidates: tuple[str, ...]) -> None:
-    if args.get(target) not in (None, ""):
-        return
-    for candidate in candidates:
-        value = args.get(candidate)
-        if value not in (None, ""):
-            args[target] = value
-            return
-
-
-def _normalize_args_for_tool(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(args)
-    if tool_name == "create_text":
-        _copy_first_available(normalized, "content", ("text", "label", "title", "name"))
-    elif tool_name == "create_button":
-        _copy_first_available(normalized, "label", ("text", "content", "title", "name"))
-    elif tool_name in {"create_group", "create_input"}:
-        _copy_first_available(normalized, "name", ("label", "title", "text", "content"))
-    elif tool_name == "bubble_context_find":
-        _copy_first_available(normalized, "query", ("target", "selector", "description", "name"))
-        if "include_metadata" not in normalized:
-            normalized["include_metadata"] = False
-        if "limit" not in normalized:
-            normalized["limit"] = 5
-    elif tool_name == "bubble_language_query":
-        _copy_first_available(normalized, "query", ("target", "selector", "description", "name"))
-        if "limit" not in normalized:
-            normalized["limit"] = 8
-    elif tool_name == "bubble_framework_sync_evidence":
-        if "evidence" not in normalized:
-            evidence = normalized.get("result") or normalized.get("summary") or normalized.get("description")
-            if evidence not in (None, ""):
-                normalized["evidence"] = evidence
-    return normalized
+def _compiled_call(
+    *,
+    step: FrameworkProgramStep,
+    tool_name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    call: dict[str, Any] = {
+        "step_id": step.step_id,
+        "tool": tool_name,
+        "arguments": arguments,
+    }
+    if step.intent:
+        call["intent"] = step.intent
+    return call
 
 
 def _compile_intent_step(
-    step: dict[str, Any],
+    step: FrameworkProgramStep,
     profile: str,
     framework_id: str,
     tool_schemas: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
-    intent = str(step.get("intent") or "")
-    if intent == "resolve_context":
-        args = _normalize_args_for_tool("bubble_context_find", _step_arguments(step))
-        return {
-            "tool": "bubble_context_find",
-            "arguments": {
-                "profile": profile,
-                "query": str(args.get("query") or ""),
-                "limit": int(args.get("limit") or 5),
-                "include_metadata": bool(args.get("include_metadata", False)),
-            },
-        }
-    if intent == "refresh_context":
-        return {"tool": "bubble_profile_cache_refresh", "arguments": {"profile": profile, "force": True}}
-    tool_name = INTENT_TOOL_ALIASES.get(intent)
+    intent = step.intent
+    tool_name = tool_for_intent(intent)
     if tool_name:
-        raw_args = _step_arguments(step)
+        raw_args = dict(step.arguments)
+        if step.description:
+            raw_args.setdefault("description", step.description)
         if tool_name == "bubble_framework_sync_evidence":
-            raw_args.setdefault("framework", str(step.get("framework") or framework_id))
-        args = _normalize_args_for_tool(tool_name, raw_args)
-        return {
-            "tool": tool_name,
-            "arguments": _with_profile_and_preview(tool_name, args, profile, tool_schemas.get(tool_name)),
-        }
+            raw_args.setdefault("framework", framework_id)
+        args = normalize_intent_arguments(intent, raw_args)
+        return _compiled_call(
+            step=step,
+            tool_name=tool_name,
+            arguments=_with_profile_and_preview(tool_name, args, profile, tool_schemas.get(tool_name)),
+        )
     return {
+        "step_id": step.step_id,
         "tool": "bubble_tool_search",
-        "arguments": {"query": intent or str(step.get("description") or ""), "limit": 8},
+        "arguments": {"query": intent or step.description, "limit": 8},
+        "intent": intent,
         "unresolved_intent": intent,
     }
 
@@ -189,36 +131,37 @@ def compile_framework_program(
     program: dict[str, Any],
 ) -> dict[str, Any]:
     adapter = get_adapter(framework)
-    if not isinstance(program, dict):
-        raise ValueError("framework program must be an object.")
-    raw_steps = program.get("steps")
-    steps = raw_steps if isinstance(raw_steps, list) else []
+    parsed = parse_framework_program(program)
+    if not parsed.ok:
+        return {
+            "ok": False,
+            "error": parsed.error,
+            "framework": adapter.framework_id,
+            "profile": profile,
+        }
     tool_schemas = _available_tool_schemas()
     available = set(tool_schemas)
     compiled_calls: list[dict[str, Any]] = []
     unavailable: list[str] = []
     unresolved: list[str] = []
-    for step in steps:
-        if not isinstance(step, dict):
-            continue
-        if step.get("tool"):
-            tool_name = str(step.get("tool") or "")
+    for step in parsed.steps:
+        if step.tool:
+            tool_name = step.tool
             if tool_name not in available:
                 unavailable.append(tool_name)
                 continue
-            raw_args = step.get("arguments")
-            args = raw_args if isinstance(raw_args, dict) else {}
-            normalized_args = _normalize_args_for_tool(tool_name, args)
+            normalized_args = normalize_intent_arguments(tool_name, step.arguments)
             compiled_calls.append(
-                {
-                    "tool": tool_name,
-                    "arguments": _with_profile_and_preview(
+                _compiled_call(
+                    step=step,
+                    tool_name=tool_name,
+                    arguments=_with_profile_and_preview(
                         tool_name,
                         normalized_args,
                         profile,
                         tool_schemas.get(tool_name),
                     ),
-                }
+                )
             )
         else:
             compiled = _compile_intent_step(step, profile, adapter.framework_id, tool_schemas)
@@ -257,7 +200,7 @@ def compile_framework_program(
         "ok": True,
         "framework": adapter.framework_id,
         "profile": profile,
-        "objective": str(program.get("objective") or ""),
+        "objective": parsed.objective,
         "mode": "preview",
         "compiled_calls": compiled_calls,
         "unresolved_intents": unresolved,

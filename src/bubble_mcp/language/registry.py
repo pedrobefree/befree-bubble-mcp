@@ -7,6 +7,7 @@ import json
 from datetime import UTC, datetime
 from typing import Any
 
+from bubble_mcp.language.intents import language_intent_families
 from bubble_mcp.learning.store import list_learning_records
 from bubble_mcp.runtime_coverage import catalog_coverage_report, classify_tool
 from bubble_mcp.server.agent_catalog import _documentation_family_for_name
@@ -276,6 +277,7 @@ def build_language_index(*, profile: str | None = None) -> dict[str, Any]:
         "families": family_counts,
         "sources": source_counts,
         "risks": risk_counts,
+        "intent_families": language_intent_families(),
         "skills_digest": _skill_digest(skills),
         "runtime_rules_digest": RUNTIME_RULES_DIGEST,
         "entrypoints": LANGUAGE_ENTRYPOINTS,

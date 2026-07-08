@@ -1,3 +1,5 @@
+from bubble_mcp.language.compiler import compile_framework_program
+from bubble_mcp.language.intents import INTENT_CATALOG, normalize_intent_arguments
 from bubble_mcp.language.program import (
     FrameworkProgram,
     FrameworkProgramStep,
@@ -62,3 +64,72 @@ def test_framework_program_step_keeps_direct_tool_calls() -> None:
     assert step.tool == "bubble_profile_cache_refresh"
     assert step.intent == ""
     assert step.arguments == {"force": True}
+
+
+def test_intent_catalog_covers_v2_families() -> None:
+    families = {entry.family for entry in INTENT_CATALOG.values()}
+
+    assert {
+        "visual",
+        "workflow",
+        "data",
+        "api_connector",
+        "style",
+        "reusable",
+        "migration",
+        "performance",
+        "verification",
+    }.issubset(families)
+
+
+def test_compile_framework_program_maps_data_workflow_and_verification_intents(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "objective": "Add enrollment data and event",
+            "steps": [
+                {"intent": "create_data_type", "name": "Enrollment"},
+                {
+                    "intent": "create_field",
+                    "data_type": "Enrollment",
+                    "name": "student",
+                    "field_type": "User",
+                },
+                {"intent": "create_custom_event", "context": "checkout", "name": "Enroll student"},
+                {"intent": "refresh_context"},
+                {"intent": "verify_context", "query": "Enrollment", "exact": True},
+            ],
+        },
+    )
+
+    assert result["ok"] is True
+    assert [call["tool"] for call in result["compiled_calls"]] == [
+        "create_data_type",
+        "create_data_field",
+        "create_event",
+        "bubble_profile_cache_refresh",
+        "bubble_context_find",
+    ]
+    assert result["compiled_calls"][0]["arguments"]["profile"] == "cliente2"
+    assert result["compiled_calls"][0]["arguments"]["execute"] is False
+    assert result["compiled_calls"][4]["arguments"]["exact"] is True
+
+
+def test_normalize_intent_arguments_maps_api_connector_aliases() -> None:
+    args = normalize_intent_arguments(
+        "create_api_call",
+        {
+            "label": "CRM create contact",
+            "verb": "POST",
+            "endpoint": "https://example.com/contacts",
+        },
+    )
+
+    assert args["name"] == "CRM create contact"
+    assert args["method"] == "POST"
+    assert args["url"] == "https://example.com/contacts"
