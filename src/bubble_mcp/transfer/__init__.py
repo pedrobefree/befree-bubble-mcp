@@ -14,6 +14,7 @@ from bubble_mcp.transfer.collections import (
     extract_collection_bundle,
     plan_collection_bundle,
 )
+from bubble_mcp.transfer.compiler import compile_inventory_to_target_payloads
 from bubble_mcp.transfer.models import (
     TransferDependency,
     TransferInventory,
@@ -39,6 +40,7 @@ __all__ = [
     "TransferObjectRef",
     "TransferPlan",
     "build_dependency_decisions",
+    "compile_inventory_to_target_payloads",
     "extract_api_connector_bundle",
     "extract_collection_bundle",
     "inventory_source_object",
