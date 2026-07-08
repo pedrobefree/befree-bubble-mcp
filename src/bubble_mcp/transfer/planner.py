@@ -220,6 +220,27 @@ def _api_connector_refs_to_create(decisions: list[Any]) -> list[str]:
     return list(dict.fromkeys(refs))
 
 
+def _asset_policy_blocked(decisions: list[Any], *, asset_policy: str) -> list[str]:
+    if asset_policy not in {"reference_url", "stage_and_upload", "skip"}:
+        raise ValueError("asset_policy must be one of: reference_url, stage_and_upload, skip.")
+    blocked: list[str] = []
+    for decision in decisions:
+        dependency = getattr(decision, "dependency", None)
+        if dependency is None or str(getattr(dependency, "kind", "")) != "asset":
+            continue
+        if getattr(decision, "action", "") not in {"create_copy", "map_existing"}:
+            continue
+        label = str(getattr(dependency, "label", "") or getattr(dependency, "key", "") or "asset")
+        if asset_policy == "stage_and_upload":
+            blocked.append(
+                f"Asset staging/upload is not implemented yet for transfer asset '{label}'. "
+                "Use asset_policy=reference_url or skip."
+            )
+        elif asset_policy == "skip" and bool(getattr(dependency, "required", True)):
+            blocked.append(f"Required transfer asset cannot be skipped: {label}")
+    return blocked
+
+
 def _compile_collection_payloads(
     *,
     source_ctx: Any,
@@ -348,6 +369,7 @@ def create_transfer_plan(
     )
     blocked = _blocked_reasons(decisions)
     blocked.extend(conflict_blocked)
+    blocked.extend(_asset_policy_blocked(decisions, asset_policy=asset_policy))
     collection_payloads, collection_blocked = _compile_collection_payloads(
         source_ctx=source_ctx,
         target_ctx=target_ctx,

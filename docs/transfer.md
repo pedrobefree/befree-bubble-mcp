@@ -131,6 +131,11 @@ reviewed and re-entered by the project owner.
 - `replace` remains blocked for existing targets until a dedicated destructive
   confirmation path exists.
 
+`asset_policy=reference_url` keeps source asset URLs in copied properties.
+`asset_policy=stage_and_upload` is intentionally blocked until the MCP has a
+verified Bubble upload path. `asset_policy=skip` blocks when the source asset is
+required by the transferred object.
+
 ## Current Limits
 
 - Element subtree payloads are supported for transfer execution. Page and

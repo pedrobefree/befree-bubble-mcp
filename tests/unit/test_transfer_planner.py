@@ -5,7 +5,7 @@ from bubble_mcp.transfer.planner import create_transfer_plan
 from bubble_mcp.transfer.store import load_transfer_plan
 
 
-def _source_context(*, include_api_connector: bool = False) -> BubbleProjectContext:
+def _source_context(*, include_api_connector: bool = False, include_asset: bool = False) -> BubbleProjectContext:
     element_metadata = {
         "bubble_id": "bHero",
         "path": ["%p3", "bSrcPage", "%el", "bHero"],
@@ -34,6 +34,8 @@ def _source_context(*, include_api_connector: bool = False) -> BubbleProjectCont
                 }
             }
         }
+    if include_asset:
+        element_metadata["image_url"] = "https://example.com/source-hero.png"
     return BubbleProjectContext(
         app_id="source-app",
         source="test",
@@ -74,10 +76,16 @@ def _target_context(include_user: bool = True) -> BubbleProjectContext:
     return BubbleProjectContext(app_id="target-app", source="test", nodes=nodes, edges=[])
 
 
-def _settings(tmp_path, *, target_has_user: bool = True, source_has_api_connector: bool = False) -> None:  # type: ignore[no-untyped-def]
+def _settings(  # type: ignore[no-untyped-def]
+    tmp_path,
+    *,
+    target_has_user: bool = True,
+    source_has_api_connector: bool = False,
+    source_has_asset: bool = False,
+) -> None:
     source_path = tmp_path / "contexts" / "source" / "source-app-context.json"
     target_path = tmp_path / "contexts" / "target" / "target-app-context.json"
-    save_context(_source_context(include_api_connector=source_has_api_connector), source_path)
+    save_context(_source_context(include_api_connector=source_has_api_connector, include_asset=source_has_asset), source_path)
     save_context(_target_context(include_user=target_has_user), target_path)
     save_settings(
         BubbleMcpSettings(
@@ -385,3 +393,43 @@ def test_create_transfer_plan_renames_root_element_conflict(tmp_path, monkeypatc
     plan = load_transfer_plan(result["transfer_id"])
     assert plan["target_name"] == "gp_Hero_copy"
     assert plan["write_payloads"][0]["changes"][0]["body"]["%p"]["%nm"] == "gp_Hero_copy"
+
+
+def test_create_transfer_plan_blocks_unimplemented_asset_upload_policy(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path, source_has_asset=True)
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="element",
+        source_ref="gp_Hero",
+        target_context="index",
+        target_parent="root",
+        asset_policy="stage_and_upload",
+        dependency_policy="map_or_create",
+    )
+
+    assert result["ok"] is False
+    assert result["payload_count"] == 0
+    assert "Asset staging/upload is not implemented yet" in result["blocked_reasons"][0]
+
+
+def test_create_transfer_plan_allows_asset_reference_policy(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path, source_has_asset=True)
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="element",
+        source_ref="gp_Hero",
+        target_context="index",
+        target_parent="root",
+        asset_policy="reference_url",
+        dependency_policy="map_or_create",
+    )
+
+    assert result["ok"] is True
+    plan = load_transfer_plan(result["transfer_id"])
+    assert plan["blocked_reasons"] == []
