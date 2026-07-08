@@ -83,3 +83,11 @@ def test_plan_collection_bundle_create_missing_describes_schema_actions() -> Non
         "score_number",
         "author_user",
     }
+    assert {action["action"] for action in plan["actions"]} >= {
+        "create_option_set",
+        "create_option_value",
+        "ensure_privacy_rule",
+    }
+    privacy = [action for action in plan["actions"] if action["action"] == "ensure_privacy_rule"]
+    assert {action["rule_key"] for action in privacy} == {"everyone", "public_rule"}
+    assert privacy[0]["payload"]["permissions"]

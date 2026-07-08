@@ -141,3 +141,41 @@ def test_compile_collection_actions_creates_data_type_and_fields() -> None:
     assert payloads[0]["changes"][0]["path_array"] == ["data_types", "testimonial"]
     assert payloads[1]["changes"][0]["path_array"] == ["data_types", "testimonial", "fields", "quote_text"]
     assert payloads[1]["changes"][0]["body"]["type"] == "text"
+
+
+def test_compile_collection_actions_creates_options_and_privacy_rules() -> None:
+    target_context = BubbleProjectContext(app_id="target-app", source="test", nodes=[], edges=[])
+
+    payloads = compile_collection_actions_to_payloads(
+        actions=[
+            {"action": "create_option_set", "option_set": "status", "label": "Status"},
+            {
+                "action": "create_option_value",
+                "option_set": "status",
+                "value_key": "active",
+                "label": "Active",
+                "db_value": "active",
+            },
+            {
+                "action": "ensure_privacy_rule",
+                "data_type": "testimonial",
+                "rule_key": "public_rule",
+                "label": "public_testimonial",
+                "payload": {"%d": "public_testimonial", "permissions": {"view_all": True}},
+            },
+        ],
+        target_context=target_context,
+        target_app_id="target-app",
+        target_app_version="test",
+    )
+
+    paths = [payload["changes"][0]["path_array"] for payload in payloads]
+    intents = [payload["changes"][0]["intent"]["name"] for payload in payloads]
+
+    assert paths == [
+        ["option_sets", "status"],
+        ["option_sets", "status", "values", "active"],
+        ["user_types", "testimonial", "privacy_role", "public_rule"],
+    ]
+    assert intents == ["SetData", "SetData", "ChangeAppSetting"]
+    assert payloads[2]["changes"][0]["body"]["%d"] == "public_testimonial"

@@ -8,6 +8,7 @@ from typing import Any
 from bubble_mcp.compiler.payload import (
     bubble_element_id,
     bubble_session_id,
+    change_app_setting_change,
     compile_step_to_payload,
     create_change,
     resolve_parent_path,
@@ -140,6 +141,62 @@ def compile_collection_actions_to_payloads(
                 app_version=target_app_version,
                 context=target_context,
             )
+        elif action_name == "create_option_set":
+            payload = compile_step_to_payload(
+                {
+                    "tool_name": "create_option_set",
+                    "args": {
+                        "name": str(action.get("label") or action.get("option_set") or ""),
+                        "key": str(action.get("option_set") or ""),
+                    },
+                },
+                app_id=target_app_id,
+                app_version=target_app_version,
+                context=target_context,
+            )
+        elif action_name == "create_option_value":
+            payload = compile_step_to_payload(
+                {
+                    "tool_name": "create_option_value",
+                    "args": {
+                        "option_set_key": str(action.get("option_set") or ""),
+                        "label": str(action.get("label") or ""),
+                        "value_key": str(action.get("value_key") or ""),
+                        "db_value": str(action.get("db_value") or ""),
+                    },
+                },
+                app_id=target_app_id,
+                app_version=target_app_version,
+                context=target_context,
+            )
+        elif action_name == "ensure_privacy_rule":
+            session_id = bubble_session_id()
+            data_type = str(action.get("data_type") or "")
+            rule_key = str(action.get("rule_key") or "")
+            body = _obj(action.get("payload"))
+            if not body:
+                body = {
+                    "%d": str(action.get("label") or rule_key or "New rule"),
+                    "permissions": {
+                        "view_all": True,
+                        "view_attachments": True,
+                        "search_for": True,
+                        "auto_binding": False,
+                    },
+                }
+            payload = {
+                "v": 1,
+                "appname": target_app_id,
+                "app_version": target_app_version or "test",
+                "appVersion": target_app_version or "test",
+                "changes": [
+                    change_app_setting_change(
+                        ["user_types", data_type, "privacy_role", rule_key],
+                        body,
+                        session_id,
+                    )
+                ],
+            }
         else:
             payload = None
         if payload is not None:

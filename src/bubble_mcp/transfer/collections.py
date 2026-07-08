@@ -101,6 +101,21 @@ def _option_sets(context: BubbleProjectContext) -> list[dict[str, Any]]:
     return bundles
 
 
+def _option_values(option_set: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    metadata = _obj(option_set.get("metadata"))
+    raw_values = _obj(_obj(metadata.get("properties")).get("values") or metadata.get("values"))
+    values: dict[str, dict[str, Any]] = {}
+    for key, raw in raw_values.items():
+        value = _obj(raw)
+        values[str(key)] = {
+            "key": str(key),
+            "label": str(value.get("%d") or value.get("label") or value.get("name") or key),
+            "db_value": str(value.get("db_value") or value.get("value") or key),
+            "metadata": value,
+        }
+    return values
+
+
 def extract_collection_bundle(source_context: BubbleProjectContext, data_type: str) -> CollectionBundle:
     """Extract a Bubble data type schema bundle without live records."""
 
@@ -124,6 +139,26 @@ def _target_data_type_node(target_context: BubbleProjectContext, data_type: str)
         if node.type == "data_type" and _matches(node, data_type):
             return node
     return None
+
+
+def _target_option_set_node(target_context: BubbleProjectContext, option_set_key: str) -> BubbleContextNode | None:
+    for node in target_context.nodes:
+        if node.type == "option_set" and _matches(node, option_set_key):
+            return node
+    return None
+
+
+def _target_option_values(node: BubbleContextNode | None) -> dict[str, dict[str, Any]]:
+    if node is None:
+        return {}
+    return _option_values({"metadata": dict(node.metadata)})
+
+
+def _target_privacy_rules(target_node: BubbleContextNode | None) -> dict[str, Any]:
+    if target_node is None:
+        return {}
+    properties = _obj(target_node.metadata.get("properties"))
+    return _obj(properties.get("privacy_role") or properties.get("privacy_roles"))
 
 
 def plan_collection_bundle(
@@ -180,8 +215,56 @@ def plan_collection_bundle(
                     "field_type": field_item.field_type,
                 }
             )
+
+    for option_set in bundle.option_sets:
+        option_key = str(option_set.get("key") or "").strip()
+        if not option_key:
+            continue
+        target_option_set = _target_option_set_node(target_context, option_key)
+        if target_option_set is None:
+            if policy == "map_existing":
+                blocked.append(f"Target option set not found: {option_key}")
+                continue
+            actions.append(
+                {
+                    "action": "create_option_set",
+                    "option_set": option_key,
+                    "label": str(option_set.get("label") or option_key),
+                }
+            )
+        target_values = _target_option_values(target_option_set)
+        for value_key, value in _option_values(option_set).items():
+            if value_key in target_values:
+                continue
+            if policy == "map_existing":
+                blocked.append(f"Target option value not found: {option_key}.{value_key}")
+            else:
+                actions.append(
+                    {
+                        "action": "create_option_value",
+                        "option_set": option_key,
+                        "value_key": value_key,
+                        "label": value["label"],
+                        "db_value": value["db_value"],
+                    }
+                )
+
+    target_privacy_rules = _target_privacy_rules(target_node)
     for rule in bundle.privacy_rules:
-        actions.append({"action": "ensure_privacy_rule", "data_type": bundle.data_type, "rule_key": rule.key})
+        if rule.key in target_privacy_rules:
+            continue
+        if policy == "map_existing":
+            blocked.append(f"Target privacy rule not found: {bundle.data_type}.{rule.key}")
+        else:
+            actions.append(
+                {
+                    "action": "ensure_privacy_rule",
+                    "data_type": bundle.data_type,
+                    "rule_key": rule.key,
+                    "label": rule.label,
+                    "payload": dict(rule.metadata),
+                }
+            )
     return {
         "ok": not blocked,
         "policy": policy,
