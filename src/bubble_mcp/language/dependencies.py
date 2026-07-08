@@ -47,18 +47,15 @@ def _resolve_string(value: str, state: DependencyState) -> str:
     return PLACEHOLDER_RE.sub(replace, value)
 
 
+def _resolve_value(value: Any, state: DependencyState) -> Any:
+    if isinstance(value, str):
+        return _resolve_string(value, state)
+    if isinstance(value, dict):
+        return {key: _resolve_value(item, state) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolve_value(item, state) for item in value]
+    return value
+
+
 def resolve_step_arguments(args: dict[str, Any], state: DependencyState) -> dict[str, Any]:
-    resolved: dict[str, Any] = {}
-    for key, value in args.items():
-        if isinstance(value, str):
-            resolved[key] = _resolve_string(value, state)
-        elif isinstance(value, dict):
-            resolved[key] = resolve_step_arguments(value, state)
-        elif isinstance(value, list):
-            resolved[key] = [
-                _resolve_string(item, state) if isinstance(item, str) else item
-                for item in value
-            ]
-        else:
-            resolved[key] = value
-    return resolved
+    return {key: _resolve_value(value, state) for key, value in args.items()}

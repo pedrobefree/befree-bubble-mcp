@@ -5,7 +5,11 @@ from __future__ import annotations
 from typing import Any
 
 from bubble_mcp.frameworks.adapters import get_adapter
-from bubble_mcp.language.dependencies import DependencyState, resolve_step_arguments
+from bubble_mcp.language.dependencies import (
+    PLACEHOLDER_RE,
+    DependencyState,
+    resolve_step_arguments,
+)
 from bubble_mcp.language.intents import normalize_intent_arguments, tool_for_intent
 from bubble_mcp.language.program import FrameworkProgramStep, parse_framework_program
 from bubble_mcp.language.query import language_tool_detail
@@ -127,6 +131,27 @@ def _missing_required_arguments(
     return missing_items
 
 
+def _unresolved_placeholders_in(value: Any, known_unresolved: list[str]) -> list[str]:
+    known = set(known_unresolved)
+    found: list[str] = []
+
+    def visit(item: Any) -> None:
+        if isinstance(item, str):
+            for match in PLACEHOLDER_RE.finditer(item):
+                placeholder = match.group(0)
+                if placeholder in known and placeholder not in found:
+                    found.append(placeholder)
+        elif isinstance(item, dict):
+            for nested in item.values():
+                visit(nested)
+        elif isinstance(item, list):
+            for nested in item:
+                visit(nested)
+
+    visit(value)
+    return found
+
+
 def compile_framework_program(
     *,
     framework: str,
@@ -147,9 +172,14 @@ def compile_framework_program(
     compiled_calls: list[dict[str, Any]] = []
     unavailable: list[str] = []
     unresolved: list[str] = []
+    unresolved_dependency_mutations: list[dict[str, Any]] = []
     dependency_state = DependencyState()
     for step in parsed.steps:
         step_arguments = resolve_step_arguments(step.arguments, dependency_state)
+        step_unresolved_dependencies = _unresolved_placeholders_in(
+            step_arguments,
+            dependency_state.unresolved,
+        )
         if step.tool:
             tool_name = step.tool
             if tool_name not in available:
@@ -168,6 +198,8 @@ def compile_framework_program(
                     ),
                 )
             )
+            if tool_name not in READ_ONLY_TOOLS and step_unresolved_dependencies:
+                unresolved_dependency_mutations.append(compiled_calls[-1])
         else:
             compiled = _compile_intent_step(
                 step,
@@ -183,6 +215,8 @@ def compile_framework_program(
                 unresolved.append(str(compiled["unresolved_intent"]))
                 compiled.pop("unresolved_intent", None)
             compiled_calls.append(compiled)
+            if str(compiled.get("tool") or "") not in READ_ONLY_TOOLS and step_unresolved_dependencies:
+                unresolved_dependency_mutations.append(compiled)
     if unavailable:
         return {
             "ok": False,
@@ -191,11 +225,6 @@ def compile_framework_program(
             "profile": profile,
             "unavailable_tools": sorted(unavailable),
         }
-    unresolved_dependency_mutations = [
-        call
-        for call in compiled_calls
-        if str(call.get("tool") or "") not in READ_ONLY_TOOLS
-    ]
     if dependency_state.unresolved and unresolved_dependency_mutations:
         return {
             "ok": False,

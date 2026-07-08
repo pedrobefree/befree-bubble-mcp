@@ -168,6 +168,29 @@ def test_resolve_step_arguments_uses_prior_step_outputs() -> None:
     assert args == {"parent": "group_123", "context": "checkout"}
 
 
+def test_resolve_step_arguments_resolves_nested_lists_and_dicts() -> None:
+    state = DependencyState()
+    record_step_outputs(
+        state,
+        step_id="section",
+        declared_outputs={"element_id": "checkout_section"},
+        result={"element_id": "group_123"},
+    )
+
+    args = resolve_step_arguments(
+        {
+            "items": [{"parent": "{{steps.section.output.element_id}}"}],
+            "nested": [["{{steps.section.output.element_id}}"]],
+        },
+        state,
+    )
+
+    assert args == {
+        "items": [{"parent": "group_123"}],
+        "nested": [["group_123"]],
+    }
+
+
 def test_resolve_step_arguments_reports_unresolved_placeholders() -> None:
     state = DependencyState()
 
@@ -202,6 +225,32 @@ def test_compile_framework_program_rejects_unresolved_mutating_dependency(
     assert result["ok"] is False
     assert result["error"] == "framework_program_has_unresolved_dependencies"
     assert result["unresolved_dependencies"] == ["{{steps.section.output.element_id}}"]
+
+
+def test_compile_framework_program_allows_unresolved_read_only_dependency_with_mutation(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "objective": "Verify and create independent CTA",
+            "steps": [
+                {"intent": "verify_context", "query": "{{steps.missing.output.name}}"},
+                {
+                    "intent": "create_button",
+                    "context": "checkout",
+                    "parent": "root",
+                    "text": "Start checkout",
+                },
+            ],
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["unresolved_dependencies"] == ["{{steps.missing.output.name}}"]
 
 
 def test_normalize_intent_arguments_maps_api_connector_aliases() -> None:
