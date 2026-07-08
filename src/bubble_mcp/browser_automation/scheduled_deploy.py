@@ -281,9 +281,9 @@ def _editor_url(app_id: str) -> str:
 
 
 def _visible_deploy_button_script() -> str:
-    return f"""
-        () => {{
-          const textarea = document.querySelector('{DEPLOY_DESCRIPTION_SELECTOR}');
+    return """
+        () => {
+          const textarea = document.querySelector('__DEPLOY_DESCRIPTION_SELECTOR__');
           if (!textarea) throw new Error('Deploy description textarea not found before confirm click');
           const textareaRect = textarea.getBoundingClientRect();
           const buttons = Array.from(document.querySelectorAll('button[aria-label="Deploy"], button[arialabel="Deploy"], button'));
@@ -296,22 +296,22 @@ def _visible_deploy_button_script() -> str:
                 (candidate.innerText && candidate.innerText.trim() === 'Deploy')
               )
             )
-            .map((candidate) => ({{
+            .map((candidate) => ({
               node: candidate,
               rect: candidate.getBoundingClientRect(),
-            }}));
+            }));
           const buttonMatch = candidates.find((candidate) =>
             candidate.rect.top >= textareaRect.bottom - 8 &&
             candidate.rect.left >= textareaRect.left
           ) || candidates[candidates.length - 1];
           const button = buttonMatch ? buttonMatch.node : null;
           if (!button) throw new Error('Deploy confirm button not found');
-          if (button.disabled || button.getAttribute('aria-disabled') === 'true') {{
+          if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
             throw new Error('Deploy confirm button is disabled');
-          }}
+          }
           button.click();
-        }}
-    """
+        }
+    """.replace("__DEPLOY_DESCRIPTION_SELECTOR__", DEPLOY_DESCRIPTION_SELECTOR)
 
 
 def _deploy_completion_script() -> str:

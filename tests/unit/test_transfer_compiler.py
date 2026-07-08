@@ -491,6 +491,19 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
                     "properties": {"group_type": "file", "fit_height": True},
                     "custom_states": {"file_": {"display": "file", "value": "file", "make_static": True}},
                     "elements": {
+                        "bPluginSlot": {
+                            "id": "bPluginRoot",
+                            "name": "ProgressBar A",
+                            "type": "progressbar-ProgressBar",
+                            "properties": {"percent": 50},
+                        },
+                        "bFileInputSlot": {
+                            "id": "bFileInputRoot",
+                            "name": "FileUploader A",
+                            "type": "FileInput",
+                            "style": "FileInput_source_",
+                            "properties": {"height": 48, "width": 200},
+                        },
                         "bGroupSlot": {
                             "id": "bGroupRoot",
                             "name": "gp file",
@@ -544,10 +557,17 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
                         },
                     },
                 },
+            ),
+            TransferDependency(
+                kind="plugin",
+                key="progressbar-ProgressBar",
+                label="Bubble plugin element/action type progressbar-ProgressBar",
+                metadata={"install_key": "progressbar"},
             )
         ],
     )
     style_dependency = inventory.dependencies[0]
+    plugin_dependency = inventory.dependencies[1]
 
     compiled = compile_reusable_inventory_to_payload(
         inventory=inventory,
@@ -559,6 +579,13 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
                 dependency=style_dependency,
                 action="create_copy",
                 reason="Missing target style will be created.",
+            ),
+            TransferMappingDecision(
+                dependency=plugin_dependency,
+                action="map_existing",
+                target_id="plugin:progressbar",
+                target_label="progressbar",
+                metadata={"target_reference": {"key": "progressbar", "id": "plugin:progressbar"}},
             )
         ],
     )
@@ -588,10 +615,17 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
         "make_static": True,
         "rank": 0,
     }
-    child_body = next(iter(root_body["%el"].values()))
+    child_body = next(body for body in root_body["%el"].values() if body.get("%nm") == "gp file")
     assert child_body["%nm"] == "gp file"
     assert child_body["%s1"] == "FileInput_source_"
     assert child_body["%s"]
+    file_input_body = next(body for body in root_body["%el"].values() if body.get("%nm") == "FileUploader A")
+    assert file_input_body["%s1"] == "FileInput_source_"
+    assert file_input_body["%p"]["%bas"] == "none"
+    assert file_input_body["%p"]["%fc"] == "rgba(var(--color_text_default_rgb), 0)"
+    assert file_input_body["%p"]["%br"] == 12
+    plugin_body = next(body for body in root_body["%el"].values() if body.get("%nm") == "ProgressBar A")
+    assert plugin_body["%x"] == "progressbar-ProgressBar"
     serialized = str(root_body)
     assert "bSourceRoot" not in serialized
     assert "bGroupRoot" not in serialized

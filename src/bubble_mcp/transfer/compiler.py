@@ -66,6 +66,8 @@ def _dependency_remap(decisions: list[TransferMappingDecision] | None) -> dict[s
         if decision.action != "map_existing":
             continue
         dependency = decision.dependency
+        if dependency.kind == "plugin":
+            continue
         target_id = decision.target_id or _target_ref(decision, "id")
         target_label = decision.target_label or _target_ref(decision, "label", "name")
         target_key = _target_ref(
@@ -124,6 +126,51 @@ def _raw_style_definitions(inventory: TransferInventory) -> dict[str, dict[str, 
     if not isinstance(raw_styles, dict):
         return {}
     return {str(style_id): style_body for style_id, style_body in raw_styles.items() if isinstance(style_body, dict)}
+
+
+def _style_id_for_element(element: dict[str, Any]) -> str | None:
+    style_id = element.get("style") or element.get("%s1")
+    if isinstance(style_id, str) and style_id.strip():
+        return style_id.strip()
+    properties = _obj(element.get("properties") or element.get("%p"))
+    style_id = properties.get("style") or properties.get("%s1")
+    if isinstance(style_id, str) and style_id.strip():
+        return style_id.strip()
+    return None
+
+
+def _inline_style_properties_for_editor_fidelity(
+    raw_definition: dict[str, Any],
+    raw_styles: dict[str, dict[str, Any]],
+) -> None:
+    """Mirror copied style properties into cloned elements for editor-visible fidelity.
+
+    Bubble accepts copied style definitions, but some editor panels can still render
+    element defaults until style-backed visual props are also present on the cloned
+    element. Keep the style reference and only fill properties that are not explicit.
+    """
+
+    def visit(element: Any) -> None:
+        if not isinstance(element, dict):
+            return
+        style_id = _style_id_for_element(element)
+        style_body = raw_styles.get(style_id or "")
+        style_properties = _obj(style_body.get("properties")) if isinstance(style_body, dict) else {}
+        if style_properties:
+            target_properties = element.get("properties")
+            if not isinstance(target_properties, dict):
+                target_properties = element.get("%p")
+            if not isinstance(target_properties, dict):
+                target_properties = {}
+                element["properties"] = target_properties
+            for key, value in style_properties.items():
+                target_properties.setdefault(key, json.loads(json.dumps(value)))
+        children = element.get("elements") or element.get("%el")
+        if isinstance(children, dict):
+            for child in children.values():
+                visit(child)
+
+    visit(raw_definition)
 
 
 def _style_definitions_to_create(
@@ -403,6 +450,8 @@ def compile_reusable_inventory_to_payload(
         builder = PayloadBuilder(appname=target_app_id, app_version=target_app_version or "test")
         remap = _dependency_remap(dependency_decisions)
         clone_definition = json.loads(json.dumps(raw_definition))
+        raw_styles = _raw_style_definitions(inventory)
+        _inline_style_properties_for_editor_fidelity(clone_definition, raw_styles)
         if remap:
             clone_definition = _remap_value(clone_definition, remap)
         for style_id, style_body in _style_definitions_to_create(inventory, dependency_decisions):
