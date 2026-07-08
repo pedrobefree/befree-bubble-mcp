@@ -71,6 +71,7 @@ def test_transfer_plan_serializes_policies_and_blocked_reasons() -> None:
         collection_policy="map_existing",
         api_connector_policy="structure_only",
         data_records_policy="skip",
+        reuse_policy="prefer_existing",
         dependency_decisions=[decision],
         write_payloads=[],
         blocked_reasons=["Target schema is missing field user.email_text."],
@@ -81,6 +82,7 @@ def test_transfer_plan_serializes_policies_and_blocked_reasons() -> None:
     assert payload["collection_policy"] == "map_existing"
     assert payload["api_connector_policy"] == "structure_only"
     assert payload["data_records_policy"] == "skip"
+    assert payload["reuse_policy"] == "prefer_existing"
     assert payload["counts"] == {"dependency_decisions": 1, "write_payloads": 0, "blocked_reasons": 1}
     assert payload["dependency_decisions"][0]["dependency"]["kind"] == "data_field"
     assert json.dumps(payload)

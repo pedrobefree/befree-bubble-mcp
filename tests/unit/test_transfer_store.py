@@ -32,6 +32,7 @@ def _plan(transfer_id: str = "transfer_20260708_index") -> TransferPlan:
         collection_policy="map_existing",
         api_connector_policy="structure_only",
         data_records_policy="skip",
+        reuse_policy="prefer_existing",
         dependency_decisions=[],
         write_payloads=[{"v": 1, "appname": "target-app", "changes": []}],
     )

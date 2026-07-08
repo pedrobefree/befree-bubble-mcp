@@ -25,6 +25,25 @@ def _target_context() -> BubbleProjectContext:
         nodes=[
             BubbleContextNode(id="datatype:user", label="User", type="data_type"),
             BubbleContextNode(id="style:primary-button", label="Primary Button", type="style"),
+            BubbleContextNode(
+                id="style:brand-button",
+                label="Brand CTA",
+                type="style",
+                metadata={
+                    "element_type": "Button",
+                    "properties": {
+                        "background_color": "#5b37e8",
+                        "border_radius": 8,
+                        "font_weight": 700,
+                    },
+                },
+            ),
+            BubbleContextNode(
+                id="api:stripe.create-customer",
+                label="Stripe Create Customer",
+                type="api_connector_call",
+                metadata={"method": "POST", "url": "https://api.stripe.com/v1/customers"},
+            ),
         ],
         edges=[],
     )
@@ -78,3 +97,94 @@ def test_build_dependency_decisions_skips_optional_missing_dependencies() -> Non
 
     assert decisions[0].action == "skip"
     assert "optional" in decisions[0].reason
+
+
+def test_build_dependency_decisions_reuses_compatible_style_signature() -> None:
+    decisions = build_dependency_decisions(
+        _inventory(
+            [
+                TransferDependency(
+                    kind="style",
+                    key="Marketing Button",
+                    label="Marketing Button",
+                    metadata={
+                        "element_type": "Button",
+                        "properties": {
+                            "background_color": "#5b37e8",
+                            "border_radius": 8,
+                            "font_weight": 700,
+                        },
+                    },
+                )
+            ]
+        ),
+        _target_context(),
+        dependency_policy="map_or_create",
+        reuse_policy="prefer_existing",
+    )
+
+    assert decisions[0].action == "map_existing"
+    assert decisions[0].target_id == "style:brand-button"
+    assert decisions[0].confidence == 0.95
+    assert decisions[0].metadata["match_type"] == "compatible"
+
+
+def test_build_dependency_decisions_exact_only_does_not_reuse_compatible_style() -> None:
+    decisions = build_dependency_decisions(
+        _inventory(
+            [
+                TransferDependency(
+                    kind="style",
+                    key="Marketing Button",
+                    label="Marketing Button",
+                    metadata={
+                        "element_type": "Button",
+                        "properties": {"background_color": "#5b37e8", "border_radius": 8},
+                    },
+                )
+            ]
+        ),
+        _target_context(),
+        dependency_policy="map_or_create",
+        reuse_policy="exact_only",
+    )
+
+    assert decisions[0].action == "create_copy"
+
+
+def test_build_dependency_decisions_can_force_create_new_even_when_exact_exists() -> None:
+    decisions = build_dependency_decisions(
+        _inventory([TransferDependency(kind="style", key="Primary Button", label="Primary Button")]),
+        _target_context(),
+        dependency_policy="map_or_create",
+        reuse_policy="create_new",
+    )
+
+    assert decisions[0].action == "create_copy"
+
+
+def test_build_dependency_decisions_reuses_compatible_api_call_without_secret_metadata() -> None:
+    decisions = build_dependency_decisions(
+        _inventory(
+            [
+                TransferDependency(
+                    kind="api_connector_call",
+                    key="payments.create_customer",
+                    label="Create customer",
+                    secret=True,
+                    metadata={
+                        "method": "POST",
+                        "url": "https://api.stripe.com/v1/customers",
+                        "authorization_header": "Bearer source-secret",
+                    },
+                )
+            ]
+        ),
+        _target_context(),
+        dependency_policy="map_or_create",
+        reuse_policy="prefer_existing",
+    )
+
+    assert decisions[0].action == "map_existing"
+    assert decisions[0].target_id == "api:stripe.create-customer"
+    assert "authorization" not in decisions[0].metadata["signature_fields"]

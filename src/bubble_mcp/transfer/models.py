@@ -33,6 +33,7 @@ CollectionPolicy = Literal["skip", "map_existing", "create_missing", "replace_sc
 ApiConnectorPolicy = Literal["skip", "map_existing", "structure_only"]
 DataRecordsPolicy = Literal["skip", "export_manifest_only", "data_api_import_preview"]
 TransferStatus = Literal["planned", "previewed", "executed", "failed"]
+ReusePolicy = Literal["prefer_existing", "exact_only", "create_new"]
 
 
 def utc_now_iso() -> str:
@@ -120,11 +121,15 @@ class TransferMappingDecision:
     target_id: str | None = None
     target_label: str | None = None
     reason: str = ""
+    confidence: float | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
+            "confidence": self.confidence,
             "dependency": self.dependency.to_dict(),
             "action": self.action,
+            "metadata": dict(self.metadata),
             "target_id": self.target_id,
             "target_label": self.target_label,
             "reason": self.reason,
@@ -146,6 +151,7 @@ class TransferPlan:
     collection_policy: CollectionPolicy
     api_connector_policy: ApiConnectorPolicy
     data_records_policy: DataRecordsPolicy
+    reuse_policy: ReusePolicy
     dependency_decisions: list[TransferMappingDecision]
     write_payloads: list[dict[str, Any]]
     blocked_reasons: list[str] = field(default_factory=list)
@@ -167,6 +173,7 @@ class TransferPlan:
             "created_at": self.created_at,
             "data_records_policy": self.data_records_policy,
             "dependency_decisions": [item.to_dict() for item in self.dependency_decisions],
+            "reuse_policy": self.reuse_policy,
             "source": self.source.to_dict(),
             "status": self.status,
             "target_app_id": self.target_app_id,

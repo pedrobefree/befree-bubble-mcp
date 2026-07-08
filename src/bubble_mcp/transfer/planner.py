@@ -89,6 +89,7 @@ def create_transfer_plan(
     conflict_policy: str = "fail",
     asset_policy: str = "reference_url",
     dependency_policy: str = "map_or_create",
+    reuse_policy: str = "prefer_existing",
     collection_policy: str = "map_existing",
     api_connector_policy: str = "structure_only",
     data_records_policy: str = "skip",
@@ -123,6 +124,7 @@ def create_transfer_plan(
         inventory,
         target_ctx,
         dependency_policy=dependency_policy,
+        reuse_policy=reuse_policy,
     )
     blocked = _blocked_reasons(decisions)
     collection_payloads, collection_blocked = _compile_collection_payloads(
@@ -161,6 +163,7 @@ def create_transfer_plan(
         collection_policy=collection_policy,  # type: ignore[arg-type]
         api_connector_policy=api_connector_policy,  # type: ignore[arg-type]
         data_records_policy=data_records_policy,  # type: ignore[arg-type]
+        reuse_policy=reuse_policy,  # type: ignore[arg-type]
         dependency_decisions=decisions,
         write_payloads=payloads,
         blocked_reasons=blocked,
@@ -173,6 +176,7 @@ def create_transfer_plan(
         "blocked_reasons": blocked,
         "payload_count": len(payloads),
         "dependency_decisions": [decision.to_dict() for decision in decisions],
+        "reuse_policy": reuse_policy,
         "target_write_ready": resolved.target_write_ready,
         "next_action": "preview" if not blocked else "resolve_blocked_dependencies",
     }

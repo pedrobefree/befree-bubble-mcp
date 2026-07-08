@@ -87,6 +87,7 @@ def test_create_transfer_plan_saves_payloads_and_dependency_decisions(tmp_path, 
     assert result["payload_count"] == 1
     plan = load_transfer_plan(result["transfer_id"])
     assert plan["target_profile"] == "target"
+    assert plan["reuse_policy"] == "prefer_existing"
     assert plan["dependency_decisions"][0]["action"] == "map_existing"
     assert plan["write_payloads"][0]["changes"][0]["body"]["%p"]["%nm"] == "gp_Hero_Copy"
 
