@@ -1,6 +1,7 @@
 from bubble_mcp.context.models import BubbleContextNode, BubbleProjectContext
 from bubble_mcp.transfer.compiler import (
     compile_api_connector_actions_to_payloads,
+    compile_context_shell_payload,
     compile_collection_actions_to_payloads,
     compile_inventory_to_target_payloads,
 )
@@ -216,3 +217,33 @@ def test_compile_api_connector_actions_creates_structure_only_payloads() -> None
     ]
     assert call_payload["changes"][1]["body"] == "https://api.stripe.com/v1/customers"
     assert call_payload["changes"][2]["body"] == "post"
+
+
+def test_compile_context_shell_payload_creates_page_or_reusable_root() -> None:
+    page_shell = compile_context_shell_payload(
+        source_type="page",
+        source_root={"metadata": {"properties": {"%p": {"container_layout": "column"}}}},
+        target_app_id="target-app",
+        target_app_version="test",
+        target_name="mcp-copy",
+    )
+    reusable_shell = compile_context_shell_payload(
+        source_type="reusable",
+        source_root={"metadata": {"properties": {"%p": {"container_layout": "row"}}}},
+        target_app_id="target-app",
+        target_app_version="test",
+        target_name="Reusable Copy",
+    )
+
+    assert page_shell is not None
+    page_payload, page_ref, page_type = page_shell
+    assert page_type == "page"
+    assert page_payload["changes"][0]["path_array"][:2] == ["_index", "id_to_path"]
+    assert page_payload["changes"][1]["path_array"] == ["%p3", page_ref]
+    assert page_payload["changes"][1]["body"]["%x"] == "Page"
+
+    assert reusable_shell is not None
+    reusable_payload, reusable_ref, reusable_type = reusable_shell
+    assert reusable_type == "reusable"
+    assert reusable_payload["changes"][1]["path_array"] == ["%ed", reusable_ref]
+    assert reusable_payload["changes"][1]["body"]["%x"] == "CustomDefinition"

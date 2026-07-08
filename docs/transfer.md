@@ -121,7 +121,9 @@ reviewed and re-entered by the project owner.
 
 ## Current Limits
 
-- Element subtree payloads are supported for transfer execution.
+- Element subtree payloads are supported for transfer execution. Page and
+  reusable transfers create a target shell automatically when `target_context`
+  is omitted.
 - Collection schema can generate data type, field, option set/value, and
   privacy rule target payloads when `collection_policy=create_missing`.
 - API Connector structures can generate target payloads for collections and

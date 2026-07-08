@@ -182,3 +182,27 @@ def test_create_transfer_plan_compiles_api_connector_structure_before_elements(t
     assert plan["write_payloads"][0]["changes"][0]["path_array"] == ["settings", "client_safe", "apiconnector2", "stripe"]
     assert plan["write_payloads"][1]["changes"][0]["intent"]["name"] == "CreateApiCall"
     assert plan["write_payloads"][-1]["changes"][0]["intent"]["name"] == "CreateElement"
+
+
+def test_create_transfer_plan_creates_page_shell_when_target_context_is_omitted(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="page",
+        source_ref="index",
+        target_parent="root",
+        target_name="mcp-copy",
+        dependency_policy="map_only",
+    )
+
+    assert result["ok"] is True
+    plan = load_transfer_plan(result["transfer_id"])
+    shell_payload = plan["write_payloads"][0]
+    child_payload = plan["write_payloads"][1]
+    shell_ref = shell_payload["changes"][1]["path_array"][1]
+    assert shell_payload["changes"][1]["body"]["%x"] == "Page"
+    assert child_payload["changes"][0]["path_array"][:2] == ["%p3", shell_ref]
+    assert plan["target_context"] == shell_ref

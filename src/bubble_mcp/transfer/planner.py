@@ -15,6 +15,7 @@ from bubble_mcp.transfer.api_connector import (
 from bubble_mcp.transfer.collections import extract_collection_bundle, plan_collection_bundle
 from bubble_mcp.transfer.compiler import (
     compile_api_connector_actions_to_payloads,
+    compile_context_shell_payload,
     compile_collection_actions_to_payloads,
     compile_inventory_to_target_payloads,
 )
@@ -203,17 +204,35 @@ def create_transfer_plan(
         api_connector_policy=api_connector_policy,
     )
     blocked.extend(api_blocked)
+    effective_target_context = target_context or "index"
+    effective_target_context_type = "reusable" if source_type == "reusable" else "page"
+    shell_payloads: list[dict[str, Any]] = []
+    if source_type in {"page", "reusable"} and not target_context:
+        shell = compile_context_shell_payload(
+            source_type=source_type,
+            source_root=inventory.root,
+            target_app_id=resolved.target.app_id,
+            target_app_version=resolved.target.app_version or "test",
+            target_name=target_name or source_ref,
+        )
+        if shell is not None:
+            shell_payload, shell_context_ref, shell_context_type = shell
+            shell_payloads.append(shell_payload)
+            effective_target_context = shell_context_ref
+            effective_target_context_type = shell_context_type
     payloads = [] if blocked else [
         *api_payloads,
         *collection_payloads,
+        *shell_payloads,
         *compile_inventory_to_target_payloads(
             inventory=inventory,
             target_context=target_ctx,
             target_app_id=resolved.target.app_id,
             target_app_version=resolved.target.app_version or "test",
-            target_context_ref=target_context or "index",
+            target_context_ref=effective_target_context,
             target_parent_ref=target_parent,
             target_name=target_name,
+            target_context_type=effective_target_context_type,
         ),
     ]
     plan = TransferPlan(
@@ -222,7 +241,7 @@ def create_transfer_plan(
         target_profile=resolved.target.name,
         target_app_id=resolved.target.app_id,
         target_app_version=resolved.target.app_version or "test",
-        target_context=target_context,
+        target_context=target_context or effective_target_context,
         target_parent=target_parent,
         target_name=target_name,
         conflict_policy=conflict_policy,  # type: ignore[arg-type]

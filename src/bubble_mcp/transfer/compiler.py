@@ -12,6 +12,7 @@ from bubble_mcp.compiler.payload import (
     compile_step_to_payload,
     create_change,
     resolve_parent_path,
+    update_index_change,
 )
 from bubble_mcp.context.models import BubbleProjectContext
 from bubble_mcp.transfer.models import TransferInventory
@@ -64,6 +65,7 @@ def compile_inventory_to_target_payloads(
     target_context_ref: str,
     target_parent_ref: str | None = "root",
     target_name: str | None = None,
+    target_context_type: str = "page",
 ) -> list[dict[str, Any]]:
     """Compile element transfer inventory into an ordered target write payload."""
 
@@ -75,7 +77,11 @@ def compile_inventory_to_target_payloads(
     id_map: dict[str, str] = {}
     changes: list[dict[str, Any]] = []
     base_parent_path = resolve_parent_path(
-        {"context": target_context_ref, "parent": target_parent_ref or "root"},
+        {
+            "context": target_context_ref,
+            "context_type": "reusable" if target_context_type == "reusable" else "page",
+            "parent": target_parent_ref or "root",
+        },
         context=target_context,
     )
 
@@ -99,6 +105,52 @@ def compile_inventory_to_target_payloads(
             "changes": changes,
         }
     ]
+
+
+def compile_context_shell_payload(
+    *,
+    source_type: str,
+    source_root: dict[str, Any],
+    target_app_id: str,
+    target_app_version: str,
+    target_name: str,
+) -> tuple[dict[str, Any], str, str] | None:
+    """Compile a minimal target page/reusable shell and return its context ref."""
+
+    if source_type not in {"page", "reusable"}:
+        return None
+    context_type = "reusable" if source_type == "reusable" else "page"
+    prefix = "%ed" if context_type == "reusable" else "%p3"
+    element_type = "CustomDefinition" if context_type == "reusable" else "Page"
+    session_id = bubble_session_id()
+    slot_id = bubble_element_id()
+    object_id = bubble_element_id()
+    metadata = _obj(source_root.get("metadata"))
+    raw_properties = _obj(metadata.get("properties"))
+    props = _obj(raw_properties.get("%p")) or {key: value for key, value in raw_properties.items() if key != "%x"}
+    props = json.loads(json.dumps(props))
+    props["%nm"] = target_name
+    if context_type == "page":
+        props.setdefault("default_width", 1080)
+        props.setdefault("min_height_px", 767)
+    else:
+        props.setdefault("%w", 280)
+        props.setdefault("%h", 280)
+        props.setdefault("default_width", props.get("%w", 280))
+    body = {"id": object_id, "%x": element_type, "%p": props, "%nm": target_name}
+    payload = {
+        "v": 1,
+        "appname": target_app_id,
+        "app_version": target_app_version or "test",
+        "appVersion": target_app_version or "test",
+        "changes": [
+            update_index_change(["_index", "id_to_path", object_id], f"{prefix}.{slot_id}", session_id),
+            create_change([prefix, slot_id], body, session_id),
+            update_index_change(["_index", "issues_list", object_id], "[]", session_id),
+            update_index_change(["_index", "issues_sub", object_id], "[]", session_id),
+        ],
+    }
+    return payload, slot_id, context_type
 
 
 def compile_collection_actions_to_payloads(
