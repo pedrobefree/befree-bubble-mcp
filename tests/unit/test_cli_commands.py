@@ -519,6 +519,50 @@ def test_cli_import_html_runtime_accepts_url(monkeypatch, capsys) -> None:  # ty
     assert calls[0]["html_file"] == "https://example.test/page.html"
 
 
+def test_cli_import_html_styles_uses_style_runtime(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_create_styles_from_html_runtime(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "style_count": 1, "operation_count": 3}
+
+    monkeypatch.setattr("bubble_mcp.cli.main.create_styles_from_html_runtime", fake_create_styles_from_html_runtime)
+
+    assert (
+        main(
+            [
+                "import",
+                "html-styles",
+                "--file",
+                "tests/fixtures/html/style-states.html",
+                "--profile",
+                "smoke",
+                "--selector",
+                ".btn-primary",
+                "--style-name-prefix",
+                "HTML",
+                "--element-type",
+                "Button",
+                "--states",
+                "hover,focus",
+                "--extra-css",
+                ".btn-primary:focus { border-color: #84caff; }",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["style_count"] == 1
+    assert calls[0]["profile"] == "smoke"
+    assert calls[0]["html_file"] == "tests/fixtures/html/style-states.html"
+    assert calls[0]["selector"] == ".btn-primary"
+    assert calls[0]["style_name_prefix"] == "HTML"
+    assert calls[0]["element_type"] == "Button"
+    assert calls[0]["states"] == ["hover", "focus"]
+    assert calls[0]["extra_css"] == [".btn-primary:focus { border-color: #84caff; }"]
+
+
 def test_cli_smoke_runtime_runs_coverage_suite(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["smoke", "runtime", "--suite", "coverage"]) == 0
 

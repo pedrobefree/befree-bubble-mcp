@@ -75,6 +75,11 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "html": "Raw HTML snippet to convert into Bubble elements.",
     "selector": "CSS selector for the exact source component or section to convert.",
     "rendered_html": "Use a browser-rendered DOM with computed styles when importing HTML from pages or selectors.",
+    "style_name_prefix": "Prefix for Bubble style names generated from HTML selectors.",
+    "style_prefix": "Compatibility alias for style_name_prefix.",
+    "include_states": "Include supported HTML/CSS pseudo-states such as hover, focus, disabled, and pressed.",
+    "states": "Optional list of pseudo-states to import. Base style properties are always included.",
+    "extra_css": "Additional CSS strings to merge with style tags found in the HTML source.",
     "translate_to_existing_styles": "Try matching imported visuals to existing Bubble styles in the target app.",
     "style_match_threshold": "Minimum similarity score for matching imported visuals to existing Bubble styles.",
     "placement": "Optional placement instruction for where the generated element tree should be inserted.",
@@ -628,6 +633,10 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Bubble. Uses the advanced Aria HTML-to-Bubble runtime: browser hydration, rendered DOM extraction, computed "
         "styles, asset handling, Bubble mapping, validation, context resolution, and optional authenticated execution."
     ),
+    "create_styles_from_html": (
+        "Create Bubble style definitions from HTML/CSS selectors without creating page elements. Maps base styles and "
+        "hover/focus/disabled/pressed rules into create_style, add_style_condition, and reorder_style_states calls."
+    ),
     "bubble_eval_run": "Run deterministic Bubble planning eval datasets. Use for package validation, not user app edits.",
     "bubble_eval_export_expert": (
         "Export local captured Bubble editor writes into redacted eval cases with operation-family classification and "
@@ -941,6 +950,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "update_icon": (("profile", "context", "element_name", "new_icon"), ("dry_run", "settings_path", "prefer_last")),
     "update_layout": (("profile", "context", "element_name", "property", "value"), ("dry_run", "settings_path")),
     "create_style": (("profile", "name", "element_type"), ("dry_run", "settings_path", "default", "map_type", "map_style", "custom_style", *VISUAL_STYLE_FIELDS)),
+    "create_styles_from_html": (("profile",), ("html_file", "file", "html", "selector", "style_name_prefix", "style_prefix", "element_type", "execute", "include_states", "states", "extra_css")),
     "edit_style": (("profile", "name", "element_type"), ("dry_run", "settings_path", "map_type", "map_style", "custom_style", *VISUAL_STYLE_FIELDS)),
     "add_style_condition": (("profile", "name", "condition"), ("dry_run", "settings_path", *VISUAL_STYLE_FIELDS)),
     "reorder_style_states": (("profile", "name", "order"), ("dry_run", "settings_path")),
@@ -1015,6 +1025,7 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "limit_image_size_before_upload": {"type": "boolean"},
     "prefer_last": {"type": "boolean"},
     "include_cache": {"type": "boolean"},
+    "include_states": {"type": "boolean", "default": True},
     "rows": {"type": "integer"},
     "limit": {"type": "integer"},
     "match_index": {"type": "integer"},
@@ -1143,6 +1154,8 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "table_direction": {"type": "string", "enum": ["vertical", "horizontal"]},
     "change_path": {"type": ["string", "array"], "items": {"type": "string"}},
     "user_id": {"type": ["string", "array"], "items": {"type": "string"}},
+    "states": {"type": "array", "items": {"type": "string", "enum": ["hover", "focus", "disabled", "pressed"]}},
+    "extra_css": {"type": "array", "items": {"type": "string"}},
     "reference": {"type": "string"},
     "actual": {"type": "string"},
     "tolerance_px": {"type": "number", "minimum": 0, "default": 4},
@@ -1343,7 +1356,7 @@ def _documentation_family_for_name(name: str) -> str | None:
         return "extension_authoring"
     if _visual_element_family(name):
         return "visual_editor"
-    if name in {"create_from_html", "sync_figma_component", "sync_component", "sync_figma_style", "sync_figma_tokens", "upload_asset"}:
+    if name in {"create_from_html", "create_styles_from_html", "sync_figma_component", "sync_component", "sync_figma_style", "sync_figma_tokens", "upload_asset"}:
         return "visual_editor"
     return None
 

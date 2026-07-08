@@ -105,6 +105,7 @@ from bubble_mcp.skills.store import (
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
+from bubble_mcp.style_import.runtime import create_styles_from_html_runtime
 from bubble_mcp.tool_authoring.sessions import (
     append_capture_to_authoring_session,
     create_authoring_session,
@@ -1373,6 +1374,24 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             strict_validate=bool(args.get("strict_validate")),
             validation_out_dir=str(args.get("validation_out_dir") or "") or None,
             refresh_context=bool(args.get("refresh_context")),
+        )
+
+    if name == "create_styles_from_html":
+        html_file = str(args.get("url") or args.get("html_file") or args.get("file") or "").strip()
+        html = str(args.get("html") or "").strip()
+        return create_styles_from_html_runtime(
+            profile=str(args.get("profile") or ""),
+            selector=str(args.get("selector") or "") or None,
+            style_prefix=str(args.get("style_prefix") or "") or None,
+            style_name_prefix=str(args.get("style_name_prefix") or "") or None,
+            element_type=str(args.get("element_type") or "Group"),
+            html=html or None,
+            html_file=html_file or None,
+            execute=bool(args.get("execute")),
+            include_states=bool(args.get("include_states", True)),
+            states=args.get("states") if isinstance(args.get("states"), list) else None,
+            extra_css=args.get("extra_css") if isinstance(args.get("extra_css"), list) else None,
+            executor=lambda tool, tool_args: call_legacy_catalog_tool(tool, tool_args),
         )
 
     write_payload = args.get("write_payload") or args.get("payload")

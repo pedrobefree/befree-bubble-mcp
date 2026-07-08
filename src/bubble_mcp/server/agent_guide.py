@@ -62,6 +62,12 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "notes": "Use create_from_html directly, then capture reference/actual snapshots and run bubble_visual_audit when visual fidelity matters.",
     },
     {
+        "intent": "create_styles_from_html",
+        "when": "The user asks to create reusable Bubble styles from HTML/CSS, including hover, focus, disabled, or pressed states.",
+        "tools": ["create_styles_from_html", "create_style", "add_style_condition", "reorder_style_states"],
+        "notes": "Use create_styles_from_html first; it returns the create_style and state-condition operations needed for preview or execution.",
+    },
+    {
         "intent": "visual_quality_gate",
         "when": "The user asks to compare with the source, validate visual parity, review screenshots, or fix visual drift after an HTML/Figma/Bubble conversion.",
         "tools": ["bubble_visual_capture", "bubble_visual_capture_actual", "bubble_visual_compare", "bubble_visual_audit"],
@@ -1032,6 +1038,7 @@ RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
     "command_batch": "batch inline commands update_text update_color delete_multiline_input execute profile context",
     "data_schema": "data type field option set option value schema",
     "html_import": "create_from_html html selector url import visual audit compare",
+    "html_style_import": "create_styles_from_html html css style hover focus disabled pressed border radius",
     "page_or_reusable": "create page reusable clone delete context",
     "project_transfer": "project transfer copy reusable page element source target profile inventory preview execute",
     "quality_gate": "readiness coverage catalog smoke health",

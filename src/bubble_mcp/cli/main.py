@@ -56,6 +56,7 @@ from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
 from bubble_mcp.html_runtime import create_from_html_runtime
+from bubble_mcp.style_import.runtime import create_styles_from_html_runtime
 from bubble_mcp.knowledge.advisor import knowledge_advice
 from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
 from bubble_mcp.learning.store import append_learning_record, list_learning_records
@@ -403,6 +404,25 @@ def command_import_html(args: argparse.Namespace) -> int:
         payload = compile_plan_to_write_payloads(payload, app_id=args.app_id, app_version=args.app_version)
     emit_json({"ok": True, "plan": payload, "validation": validate_plan(payload)})
     return 0
+
+
+def command_import_html_styles(args: argparse.Namespace) -> int:
+    result = create_styles_from_html_runtime(
+        profile=args.profile,
+        selector=args.selector or None,
+        style_prefix=args.style_prefix or None,
+        style_name_prefix=args.style_name_prefix or None,
+        element_type=args.element_type,
+        html_file=args.file or None,
+        html=args.html or None,
+        execute=args.execute,
+        include_states=args.include_states,
+        states=[state.strip() for state in args.states.split(",") if state.strip()] if args.states else None,
+        extra_css=[args.extra_css] if args.extra_css else None,
+        executor=lambda tool, tool_args: call_tool(tool, tool_args),
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
 
 
 def command_eval_run(args: argparse.Namespace) -> int:
@@ -1667,6 +1687,24 @@ def build_parser() -> argparse.ArgumentParser:
     html_parser.add_argument("--app-id", default="")
     html_parser.add_argument("--app-version", default="test")
     html_parser.set_defaults(func=command_import_html)
+
+    html_styles_parser = import_subparsers.add_parser(
+        "html-styles",
+        help="Create Bubble style definitions from HTML/CSS selectors.",
+    )
+    html_styles_parser.add_argument("--file", default="", help="Path to an HTML file.")
+    html_styles_parser.add_argument("--html", default="", help="Raw HTML source.")
+    html_styles_parser.add_argument("--profile", required=True)
+    html_styles_parser.add_argument("--execute", action="store_true")
+    html_styles_parser.add_argument("--selector", default="")
+    html_styles_parser.add_argument("--style-name-prefix", default="")
+    html_styles_parser.add_argument("--style-prefix", default="")
+    html_styles_parser.add_argument("--element-type", default="Group")
+    html_styles_parser.add_argument("--no-states", dest="include_states", action="store_false")
+    html_styles_parser.set_defaults(include_states=True)
+    html_styles_parser.add_argument("--states", default="", help="Comma-separated pseudo-states to import.")
+    html_styles_parser.add_argument("--extra-css", default="", help="Additional CSS to merge with style tags.")
+    html_styles_parser.set_defaults(func=command_import_html_styles)
 
     eval_parser = subparsers.add_parser("eval", help="Run planning evals.")
     eval_subparsers = eval_parser.add_subparsers(dest="eval_command", required=True)

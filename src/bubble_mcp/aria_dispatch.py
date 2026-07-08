@@ -49,6 +49,8 @@ ARG_ALIASES = {
     "search_text": ("element_name", "name", "text"),
     "new_text": ("content", "new_content", "text"),
     "name": ("element_name",),
+    "style_name": ("name",),
+    "order_list": ("order",),
     "property_name": ("property",),
     "condition_json": ("only_when_json", "condition"),
     "query": ("message", "commands"),

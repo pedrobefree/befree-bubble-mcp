@@ -1947,6 +1947,93 @@ def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  
     assert calls[0]["refresh_context"] is True
 
 
+def test_create_styles_from_html_catalog_tool_uses_style_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_create_styles_from_html_runtime(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "style_count": 1, "operation_count": 3, "executed": kwargs["execute"]}
+
+    monkeypatch.setattr("bubble_mcp.server.tools.create_styles_from_html_runtime", fake_create_styles_from_html_runtime)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 11,
+            "method": "tools/call",
+            "params": {
+                "name": "create_styles_from_html",
+                "arguments": {
+                    "profile": "smoke",
+                    "html_file": "tests/fixtures/html/style-states.html",
+                    "execute": True,
+                    "selector": ".btn-primary",
+                    "style_name_prefix": "HTML",
+                    "element_type": "Button",
+                    "states": ["hover", "focus"],
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["style_count"] == 1
+    assert calls[0]["profile"] == "smoke"
+    assert calls[0]["html_file"] == "tests/fixtures/html/style-states.html"
+    assert calls[0]["execute"] is True
+    assert calls[0]["selector"] == ".btn-primary"
+    assert calls[0]["style_name_prefix"] == "HTML"
+    assert calls[0]["element_type"] == "Button"
+    assert calls[0]["states"] == ["hover", "focus"]
+
+
+def test_create_styles_from_html_execute_dispatches_style_operations(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_dispatch(tool_name, args):  # type: ignore[no-untyped-def]
+        calls.append((tool_name, args))
+        return {"ok": True, "tool": tool_name}
+
+    monkeypatch.setattr("bubble_mcp.server.tools.dispatch_aria_runtime_tool", fake_dispatch)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 12,
+            "method": "tools/call",
+            "params": {
+                "name": "create_styles_from_html",
+                "arguments": {
+                    "profile": "smoke",
+                    "html": """
+                    <style>
+                      .btn-primary { color: #ffffff; }
+                      .btn-primary:hover { color: #eeeeee; }
+                    </style>
+                    """,
+                    "execute": True,
+                    "selector": ".btn-primary",
+                    "style_name_prefix": "HTML",
+                    "element_type": "Button",
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["executed"] is True
+    assert [tool for tool, _args in calls] == [
+        "create_style",
+        "add_style_condition",
+        "reorder_style_states",
+    ]
+    assert calls[0][1]["execute"] is True
+    assert calls[0][1]["dry_run"] is False
+
+
 def test_legacy_catalog_tool_dispatches_to_aria_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     calls = []
 
@@ -2131,6 +2218,8 @@ def test_tools_list_exposes_only_advanced_html_importer() -> None:
     assert "bubble_import_html_dry_run" not in names
     create_schema = next(tool for tool in tools if tool["name"] == "create_from_html")
     assert "rendered DOM" in create_schema["description"]
+    style_schema = next(tool for tool in tools if tool["name"] == "create_styles_from_html")
+    assert "hover" in style_schema["description"]
 
 
 def test_tools_list_exposes_agent_usable_catalog_metadata() -> None:
@@ -2176,6 +2265,18 @@ def test_native_family_schemas_expose_agent_selection_constraints() -> None:
     assert html_import["properties"]["rendered_html"]["default"] is True
     assert html_import["properties"]["style_match_threshold"]["minimum"] == 0
     assert html_import["properties"]["style_match_threshold"]["maximum"] == 1
+
+    html_style_import = tools["create_styles_from_html"]["inputSchema"]
+    assert html_style_import["required"] == ["profile"]
+    assert html_style_import["anyOf"] == [
+        {"required": ["html_file"]},
+        {"required": ["file"]},
+        {"required": ["html"]},
+    ]
+    assert "Bubble element type" in html_style_import["properties"]["element_type"]["description"]
+    assert html_style_import["properties"]["include_states"]["type"] == "boolean"
+    assert html_style_import["properties"]["states"]["items"]["enum"] == ["hover", "focus", "disabled", "pressed"]
+    assert "rendered_html" not in html_style_import["properties"]
 
     session_import = tools["bubble_session_import"]["inputSchema"]
     assert session_import["properties"]["session"]["properties"]["headers"]["type"] == "object"
@@ -2523,7 +2624,7 @@ def test_tools_list_includes_full_aria_catalog() -> None:
 
     assert response is not None
     names = {tool["name"] for tool in response["result"]["tools"]}
-    assert len(ARIA_BUBBLE_TOOL_NAMES) == 212
+    assert len(ARIA_BUBBLE_TOOL_NAMES) == 213
     assert set(ARIA_BUBBLE_TOOL_NAMES).issubset(names)
     assert "delete_data_field" in names
     assert "create_privacy_rule" in names

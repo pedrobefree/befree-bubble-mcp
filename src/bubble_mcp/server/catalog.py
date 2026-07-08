@@ -157,6 +157,7 @@ ARIA_BUBBLE_TOOL_NAMES: tuple[str, ...] = (
     "set_custom_event_return_types",
     "add_custom_event_return_type",
     "create_from_html",
+    "create_styles_from_html",
     "list_colors",
     "update_color",
     "create_color",

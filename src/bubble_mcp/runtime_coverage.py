@@ -112,6 +112,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_manual_context_for_tool_authoring",
     "bubble_manual_context_for_validation",
     "create_from_html",
+    "create_styles_from_html",
 }
 
 COMPILER_FALLBACK_TOOLS = (

@@ -72,6 +72,44 @@ def test_delete_data_field_requires_calculate_derived_refresh() -> None:
     assert _requires_calculate_derived("create_data_field") is False
 
 
+def test_method_kwargs_maps_style_condition_aliases() -> None:
+    def add_style_condition(
+        style_name: str,
+        condition: str,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    def reorder_style_states(
+        style_name: str,
+        order_list: str,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    condition_kwargs = _method_kwargs(
+        add_style_condition,
+        {"name": "HTML Button Primary", "condition": "hover"},
+        execute=True,
+    )
+    reorder_kwargs = _method_kwargs(
+        reorder_style_states,
+        {"name": "HTML Button Primary", "order": "hover,focus"},
+        execute=True,
+    )
+
+    assert condition_kwargs == {
+        "style_name": "HTML Button Primary",
+        "condition": "hover",
+        "dry_run": False,
+    }
+    assert reorder_kwargs == {
+        "style_name": "HTML Button Primary",
+        "order_list": "hover,focus",
+        "dry_run": False,
+    }
+
+
 def test_method_kwargs_maps_visual_and_workflow_aliases() -> None:
     def create_image(context_name: str, parent_name: str, name: str, source: str, dry_run: bool = False) -> bool:
         return True

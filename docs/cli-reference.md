@@ -250,6 +250,25 @@ bubble-mcp import html \
 
 Add `--execute` to apply the generated writes to Bubble.
 
+## `bubble-mcp import html-styles`
+
+Extracts Bubble style definitions from HTML/CSS without creating page elements.
+The command returns generated `create_style`, `add_style_condition`, and
+`reorder_style_states` operations for preview. When `--execute` is set, it
+dispatches those operations through the existing style tools in sequence.
+
+```bash
+bubble-mcp import html-styles \
+  --file component.html \
+  --profile smoke \
+  --selector '.btn-primary' \
+  --style-name-prefix HTML \
+  --element-type Button
+```
+
+Supported pseudo-states are `:hover`, `:focus`, `:focus-visible`, `:disabled`,
+and `:active` mapped to Bubble hover, focus, disabled, and pressed states.
+
 ## `bubble-mcp session import`
 
 Imports local Bubble editor session headers/cookies.
