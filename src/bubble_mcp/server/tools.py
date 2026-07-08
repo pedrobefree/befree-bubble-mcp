@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, cast
 from pathlib import Path
 
 from bubble_mcp import __version__
@@ -403,10 +403,13 @@ def _verify_style_states(expected_states: dict[str, dict[str, Any]], actual_stat
 def _verify_html_style_import(profile: str, candidate: dict[str, Any]) -> dict[str, Any]:
     style_name = str(candidate.get("name") or "").strip()
     element_type = str(candidate.get("element_type") or "").strip()
-    expected_states_map = candidate.get("states") if isinstance(candidate.get("states"), dict) else {}
+    expected_states_map = cast(
+        dict[str, dict[str, Any]],
+        candidate.get("states") if isinstance(candidate.get("states"), dict) else {},
+    )
     expected_states = sorted(expected_states_map)
     refresh = _profile_cache_refresh({"profile": profile, "force": True})
-    detection = refresh.get("context_detection") if isinstance(refresh.get("context_detection"), dict) else {}
+    detection = cast(dict[str, Any], refresh.get("context_detection") if isinstance(refresh.get("context_detection"), dict) else {})
     context_path = str(detection.get("context_path") or "").strip()
     if not context_path:
         return {
@@ -418,7 +421,7 @@ def _verify_html_style_import(profile: str, candidate: dict[str, Any]) -> dict[s
             "expected_states": expected_states,
         }
     context = load_context(Path(context_path))
-    styles = context.metadata.get("styles") if isinstance(context.metadata.get("styles"), dict) else {}
+    styles = cast(dict[str, Any], context.metadata.get("styles") if isinstance(context.metadata.get("styles"), dict) else {})
     match: dict[str, Any] | None = None
     for style_id, style_data in styles.items():
         if not isinstance(style_data, dict):
@@ -429,14 +432,15 @@ def _verify_html_style_import(profile: str, candidate: dict[str, Any]) -> dict[s
             continue
         match = {"id": str(style_id), **style_data}
         break
-    actual_properties = None
+    actual_properties: dict[str, Any] | None = None
     if isinstance(match, dict):
         if isinstance(match.get("%p"), dict):
-            actual_properties = match.get("%p")
+            actual_properties = cast(dict[str, Any], match.get("%p"))
         elif isinstance(match.get("properties"), dict):
-            actual_properties = match.get("properties")
+            actual_properties = cast(dict[str, Any], match.get("properties"))
+    expected_base = cast(dict[str, Any], candidate.get("base") if isinstance(candidate.get("base"), dict) else {})
     property_check = _compare_style_properties(
-        candidate.get("base") if isinstance(candidate.get("base"), dict) else {},
+        expected_base,
         actual_properties,
     )
     state_check = _verify_style_states(expected_states_map, match.get("%s") if isinstance(match, dict) else None)
@@ -665,6 +669,8 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             risks=args.get("risks") if isinstance(args.get("risks"), list) else None,
             limit=int(args.get("limit") or 12),
             profile=str(args.get("profile") or "") or None,
+            framework=str(args.get("framework") or "") or None,
+            cached_registry_version=str(args.get("cached_registry_version") or "") or None,
         )
     if name == "bubble_language_tool_detail":
         args = arguments or {}

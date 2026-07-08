@@ -197,6 +197,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Previous language registry version for diff queries.",
         examples=["sha256:old"],
     ),
+    "cached_registry_version": _prop(
+        "string",
+        "Client-held language registry version for cache-hit metadata on language queries.",
+        examples=["sha256:abcd1234"],
+    ),
     "program": _prop(
         "object",
         "Framework-authored compact Bubble MCP program to compile into preview-safe MCP calls.",
@@ -1839,7 +1844,7 @@ def extension_kernel_tools() -> list[ToolSchema]:
         tool_schema(
             "bubble_language_query",
             "Return scoped compact Bubble MCP language entries by query, family, source, and risk filters.",
-            ["query", "families", "sources", "risks", "limit", "profile"],
+            ["query", "families", "sources", "risks", "limit", "profile", "framework", "cached_registry_version"],
             required=["query"],
         ),
         tool_schema(

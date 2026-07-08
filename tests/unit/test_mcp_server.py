@@ -3154,6 +3154,8 @@ def test_language_tools_are_listed_with_annotations() -> None:
         assert name in tools
     assert tools["bubble_language_index"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_language_query"]["inputSchema"]["required"] == ["query"]
+    assert "framework" in tools["bubble_language_query"]["inputSchema"]["properties"]
+    assert "cached_registry_version" in tools["bubble_language_query"]["inputSchema"]["properties"]
     assert tools["bubble_language_tool_detail"]["inputSchema"]["required"] == ["tools"]
     assert tools["bubble_framework_language_pack"]["inputSchema"]["required"] == ["framework"]
     assert tools["bubble_framework_compile_program"]["inputSchema"]["required"] == [
@@ -3185,13 +3187,22 @@ def test_language_tools_dispatch_index_query_pack_and_compile(tmp_path, monkeypa
             "method": "tools/call",
             "params": {
                 "name": "bubble_language_query",
-                "arguments": {"query": "create button", "families": ["visual_editor"], "limit": 5},
+                "arguments": {
+                    "query": "create button",
+                    "families": ["visual_editor"],
+                    "limit": 5,
+                    "profile": "cliente2",
+                    "framework": "bmad",
+                    "cached_registry_version": index_payload["registry_version"],
+                },
             },
         }
     )
     assert query_response is not None
     query_payload = json.loads(query_response["result"]["content"][0]["text"])
     assert query_payload["matches"]
+    assert query_payload["cache"]["hit"] is True
+    assert query_payload["cache"]["cached_registry_version"] == index_payload["registry_version"]
 
     pack_response = handle_request(
         {
