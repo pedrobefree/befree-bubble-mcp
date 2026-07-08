@@ -6,6 +6,7 @@ import pytest
 from bubble_mcp.browser_automation.scheduled_deploy import (
     DEPLOY_DESCRIPTION_SELECTOR,
     _deploy_blocker_error,
+    _deploy_completion_script,
     _visible_deploy_button_script,
     cancel_scheduled_deploy,
     deploy_history,
@@ -243,7 +244,13 @@ def test_deploy_modal_selectors_match_current_bubble_markup() -> None:
     script = _visible_deploy_button_script()
     assert 'button[aria-label="Deploy"]' in script
     assert 'button[arialabel="Deploy"]' in script
+    assert "textareaRect" in script
+    assert "Deploy description textarea not found before confirm click" in script
     assert "Deploy confirm button is disabled" in script
+
+    completion_script = _deploy_completion_script()
+    assert DEPLOY_DESCRIPTION_SELECTOR in completion_script
+    assert "visibleTextarea" in completion_script
 
 
 def test_deploy_blocker_error_reports_bubble_issues() -> None:

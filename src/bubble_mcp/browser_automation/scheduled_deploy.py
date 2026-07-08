@@ -281,23 +281,48 @@ def _editor_url(app_id: str) -> str:
 
 
 def _visible_deploy_button_script() -> str:
-    return """
-        () => {
+    return f"""
+        () => {{
+          const textarea = document.querySelector('{DEPLOY_DESCRIPTION_SELECTOR}');
+          if (!textarea) throw new Error('Deploy description textarea not found before confirm click');
+          const textareaRect = textarea.getBoundingClientRect();
           const buttons = Array.from(document.querySelectorAll('button[aria-label="Deploy"], button[arialabel="Deploy"], button'));
-          const button = buttons.find((candidate) =>
-            candidate.offsetParent !== null &&
-            (
-              candidate.getAttribute('aria-label') === 'Deploy' ||
-              candidate.getAttribute('arialabel') === 'Deploy' ||
-              (candidate.innerText && candidate.innerText.trim() === 'Deploy')
+          const candidates = buttons
+            .filter((candidate) =>
+              candidate.offsetParent !== null &&
+              (
+                candidate.getAttribute('aria-label') === 'Deploy' ||
+                candidate.getAttribute('arialabel') === 'Deploy' ||
+                (candidate.innerText && candidate.innerText.trim() === 'Deploy')
+              )
             )
-          );
+            .map((candidate) => ({{
+              node: candidate,
+              rect: candidate.getBoundingClientRect(),
+            }}));
+          const buttonMatch = candidates.find((candidate) =>
+            candidate.rect.top >= textareaRect.bottom - 8 &&
+            candidate.rect.left >= textareaRect.left
+          ) || candidates[candidates.length - 1];
+          const button = buttonMatch ? buttonMatch.node : null;
           if (!button) throw new Error('Deploy confirm button not found');
-          if (button.disabled || button.getAttribute('aria-disabled') === 'true') {
+          if (button.disabled || button.getAttribute('aria-disabled') === 'true') {{
             throw new Error('Deploy confirm button is disabled');
-          }
+          }}
           button.click();
-        }
+        }}
+    """
+
+
+def _deploy_completion_script() -> str:
+    return f"""
+        () => {{
+          const textarea = document.querySelector('{DEPLOY_DESCRIPTION_SELECTOR}');
+          const visibleTextarea = Boolean(textarea && textarea.offsetParent !== null);
+          const text = document.body ? document.body.innerText || '' : '';
+          const successText = /deployed|deployment|live|success/i.test(text);
+          return !visibleTextarea || successText;
+        }}
     """
 
 
@@ -442,7 +467,12 @@ def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
             page.fill(DEPLOY_DESCRIPTION_SELECTOR, record.message)
             page.wait_for_timeout(500)
             page.evaluate(_visible_deploy_button_script())
-            page.wait_for_timeout(1000)
+            try:
+                page.wait_for_function(_deploy_completion_script(), timeout=30_000)
+            except Exception as exc:
+                state = page.evaluate(_deploy_modal_state_script())
+                page.screenshot(path=str(evidence / "deploy-confirmation-timeout.png"), full_page=True)
+                raise RuntimeError(_deploy_blocker_error(state if isinstance(state, dict) else {})) from exc
             page.screenshot(path=str(evidence / "after-deploy.png"), full_page=True)
             cookie_header = _bubble_cookie_header(context)
             user_agent = str(page.evaluate("() => navigator.userAgent") or "befree-bubble-mcp")
