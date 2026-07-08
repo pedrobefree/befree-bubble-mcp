@@ -1,5 +1,6 @@
 from bubble_mcp.language.registry import build_language_index
 from bubble_mcp.language.query import language_query, language_tool_detail
+from bubble_mcp.language.diff import language_diff, save_language_snapshot
 
 
 def test_language_index_is_compact_versioned_and_counts_dynamic_sources(tmp_path, monkeypatch) -> None:
@@ -40,3 +41,31 @@ def test_language_tool_detail_lazy_loads_selected_schemas_only(tmp_path, monkeyp
     assert result["ok"] is True
     assert [tool["name"] for tool in result["tools"]] == ["create_button", "bubble_context_find"]
     assert all("inputSchema" in tool for tool in result["tools"])
+
+
+def test_language_diff_reports_added_changed_removed_entries(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    old = {
+        "registry_version": "sha256:old",
+        "entries": [
+            {"name": "create_button", "schema_hash": "a", "family": "visual_editor"},
+            {"name": "removed_tool", "schema_hash": "r", "family": "custom"},
+        ],
+    }
+    new = {
+        "registry_version": "sha256:new",
+        "entries": [
+            {"name": "create_button", "schema_hash": "b", "family": "visual_editor"},
+            {"name": "new_tool", "schema_hash": "n", "family": "extension"},
+        ],
+    }
+
+    save_language_snapshot(old)
+    save_language_snapshot(new)
+    result = language_diff(since="sha256:old", current="sha256:new")
+
+    assert result["ok"] is True
+    assert result["added"] == ["new_tool"]
+    assert result["changed"] == ["create_button"]
+    assert result["removed"] == ["removed_tool"]
