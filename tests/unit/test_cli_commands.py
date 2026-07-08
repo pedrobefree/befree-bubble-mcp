@@ -421,6 +421,100 @@ def test_cli_language_cache_status(monkeypatch, capsys) -> None:  # type: ignore
     }
 
 
+def test_cli_language_text_plan_returns_program(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert (
+        main(
+            [
+                "language",
+                "text-plan",
+                "--framework",
+                "bmad",
+                "--profile",
+                "cliente2",
+                "--text",
+                "Objective: Add CTA\n- Add button labeled Start inside root",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["framework"] == "bmad"
+    assert payload["program"]["steps"][0] == {
+        "intent": "create_button",
+        "context": "index",
+        "parent": "root",
+        "text": "Start",
+    }
+
+
+def test_cli_language_execute_program_preview(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    calls: list[dict] = []
+
+    def fake_execute_framework_program(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "mode": kwargs["mode"], "executed": False, "program": kwargs["program"]}
+
+    monkeypatch.setattr(cli_module, "execute_framework_program", fake_execute_framework_program)
+
+    assert (
+        main(
+            [
+                "language",
+                "execute-program",
+                "--framework",
+                "bmad",
+                "--profile",
+                "cliente2",
+                "--program",
+                '{"objective":"Inspect","steps":[{"intent":"verify_context","query":"page:index"}]}',
+                "--mode",
+                "preview",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["mode"] == "preview"
+    assert calls[0]["framework"] == "bmad"
+    assert calls[0]["profile"] == "cliente2"
+    assert calls[0]["program"]["steps"][0]["intent"] == "verify_context"
+    assert calls[0]["approved"] is False
+    assert calls[0]["artifact_dir"] is None
+
+
+def test_cli_language_workspace_sync_copies_artifact(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    artifact_dir = tmp_path / "artifacts"
+    artifact_dir.mkdir()
+    (artifact_dir / "prd.md").write_text("# PRD\n", encoding="utf-8")
+    workspace_dir = tmp_path / "workspace"
+
+    assert (
+        main(
+            [
+                "language",
+                "workspace-sync",
+                "--framework",
+                "bmad",
+                "--artifact-dir",
+                str(artifact_dir),
+                "--workspace-dir",
+                str(workspace_dir),
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    copied_path = workspace_dir / "_bmad-output" / "planning-artifacts" / "prd.md"
+    assert payload["ok"] is True
+    assert str(copied_path) in payload["copied"]
+    assert copied_path.read_text(encoding="utf-8") == "# PRD\n"
+
+
 def test_cli_plan_outputs_validated_plan(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["plan", 'Create text saying "Hello"']) == 0
 

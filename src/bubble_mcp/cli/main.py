@@ -48,6 +48,9 @@ from bubble_mcp.extensions.store import disable_extension, enable_extension, imp
 from bubble_mcp.extensions.validator import validate_extension_pack
 from bubble_mcp.extension_companion import ExtensionCompanionConfig, serve_extension_companion
 from bubble_mcp.frameworks import framework_status, generate_framework_artifacts, list_frameworks
+from bubble_mcp.frameworks.program_runner import execute_framework_program
+from bubble_mcp.frameworks.text_planner import plan_framework_text
+from bubble_mcp.frameworks.workspace import sync_artifacts_to_workspace
 from bubble_mcp.language import build_language_index, framework_language_pack, language_query, language_tool_detail
 from bubble_mcp.language.cache import cached_language_index
 from bubble_mcp.harness.expert import export_expert_eval_cases
@@ -1165,6 +1168,54 @@ def command_language_framework_pack(args: argparse.Namespace) -> int:
     return 0
 
 
+def _required_text_arg(args: argparse.Namespace) -> str:
+    text_file = str(getattr(args, "text_file", "") or "").strip()
+    text = str(getattr(args, "text", "") or "")
+    if text_file:
+        text = Path(text_file).expanduser().read_text(encoding="utf-8")
+    if not text.strip():
+        raise ValueError("Provide --text or --text-file.")
+    return text
+
+
+def _required_program_arg(args: argparse.Namespace) -> dict[str, object]:
+    program_file = str(getattr(args, "program_file", "") or "").strip()
+    program = str(getattr(args, "program", "") or "").strip()
+    if program_file:
+        program = Path(program_file).expanduser().read_text(encoding="utf-8")
+    if not program:
+        raise ValueError("Provide --program or --program-file.")
+    return _load_optional_json_object(program)
+
+
+def command_language_text_plan(args: argparse.Namespace) -> int:
+    emit_json(plan_framework_text(args.framework, args.profile, _required_text_arg(args)))
+    return 0
+
+
+def command_language_execute_program(args: argparse.Namespace) -> int:
+    result = execute_framework_program(
+        framework=args.framework,
+        profile=args.profile,
+        program=_required_program_arg(args),
+        mode=args.mode or None,
+        approved=args.approved,
+        artifact_dir=Path(args.artifact_dir).expanduser() if args.artifact_dir else None,
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_language_workspace_sync(args: argparse.Namespace) -> int:
+    result = sync_artifacts_to_workspace(
+        framework=args.framework,
+        artifact_dir=Path(args.artifact_dir),
+        workspace_dir=Path(args.workspace_dir),
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
 def command_language_cache_status(args: argparse.Namespace) -> int:
     emit_json(
         {
@@ -2174,6 +2225,38 @@ def build_parser() -> argparse.ArgumentParser:
     language_pack_parser.add_argument("--scope", default="")
     language_pack_parser.add_argument("--limit", type=int, default=12)
     language_pack_parser.set_defaults(func=command_language_framework_pack)
+
+    language_text_plan_parser = language_subparsers.add_parser(
+        "text-plan",
+        help="Plan a compact framework program from natural-language text.",
+    )
+    language_text_plan_parser.add_argument("--framework", choices=["bmad", "superpowers", "sdd"], required=True)
+    language_text_plan_parser.add_argument("--profile", required=True)
+    language_text_plan_parser.add_argument("--text", default="")
+    language_text_plan_parser.add_argument("--text-file", default="")
+    language_text_plan_parser.set_defaults(func=command_language_text_plan)
+
+    language_execute_program_parser = language_subparsers.add_parser(
+        "execute-program",
+        help="Preview or execute a compact framework program.",
+    )
+    language_execute_program_parser.add_argument("--framework", choices=["bmad", "superpowers", "sdd"], required=True)
+    language_execute_program_parser.add_argument("--profile", required=True)
+    language_execute_program_parser.add_argument("--program", default="")
+    language_execute_program_parser.add_argument("--program-file", default="")
+    language_execute_program_parser.add_argument("--mode", choices=["preview", "execute"], default="preview")
+    language_execute_program_parser.add_argument("--approved", action="store_true")
+    language_execute_program_parser.add_argument("--artifact-dir", default="")
+    language_execute_program_parser.set_defaults(func=command_language_execute_program)
+
+    language_workspace_sync_parser = language_subparsers.add_parser(
+        "workspace-sync",
+        help="Sync generated framework artifacts into a framework workspace.",
+    )
+    language_workspace_sync_parser.add_argument("--framework", choices=["bmad", "superpowers", "sdd"], required=True)
+    language_workspace_sync_parser.add_argument("--artifact-dir", required=True)
+    language_workspace_sync_parser.add_argument("--workspace-dir", required=True)
+    language_workspace_sync_parser.set_defaults(func=command_language_workspace_sync)
 
     language_cache_status_parser = language_subparsers.add_parser(
         "cache-status",
