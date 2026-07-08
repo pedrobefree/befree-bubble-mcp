@@ -241,6 +241,34 @@ def _asset_policy_blocked(decisions: list[Any], *, asset_policy: str) -> list[st
     return blocked
 
 
+def _unsupported_create_copy_blocked(decisions: list[Any]) -> list[str]:
+    compiler_supported = {
+        "api_connector",
+        "api_connector_call",
+        "asset",
+        "data_field",
+        "data_type",
+        "option_set",
+        "privacy_rule",
+    }
+    blocked: list[str] = []
+    for decision in decisions:
+        if getattr(decision, "action", "") != "create_copy":
+            continue
+        dependency = getattr(decision, "dependency", None)
+        if dependency is None:
+            continue
+        kind = str(getattr(dependency, "kind", ""))
+        if kind in compiler_supported:
+            continue
+        key = str(getattr(dependency, "key", "") or getattr(dependency, "label", "") or kind)
+        blocked.append(
+            f"Missing transfer dependency has no safe create compiler yet: {kind}:{key}. "
+            "Map or reuse it in the target project before executing the transfer."
+        )
+    return blocked
+
+
 def _compile_collection_payloads(
     *,
     source_ctx: Any,
@@ -369,6 +397,7 @@ def create_transfer_plan(
     )
     blocked = _blocked_reasons(decisions)
     blocked.extend(conflict_blocked)
+    blocked.extend(_unsupported_create_copy_blocked(decisions))
     blocked.extend(_asset_policy_blocked(decisions, asset_policy=asset_policy))
     collection_payloads, collection_blocked = _compile_collection_payloads(
         source_ctx=source_ctx,

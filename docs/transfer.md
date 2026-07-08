@@ -141,6 +141,12 @@ reviewed and re-entered by the project owner.
 verified Bubble upload path. `asset_policy=skip` blocks when the source asset is
 required by the transferred object.
 
+When `dependency_policy=map_or_create`, only dependencies with safe compilers
+are created automatically: collection schema resources, option sets, privacy
+rules, API Connector structure, and asset references according to
+`asset_policy`. Missing styles, colors, fonts, plugins, workflows, or custom
+states must be mapped or reused in the target project before execution.
+
 ## Current Limits
 
 - Element subtree payloads are supported for transfer execution. Page and

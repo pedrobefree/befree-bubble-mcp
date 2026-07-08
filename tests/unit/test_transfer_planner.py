@@ -5,7 +5,12 @@ from bubble_mcp.transfer.planner import create_transfer_plan
 from bubble_mcp.transfer.store import load_transfer_plan
 
 
-def _source_context(*, include_api_connector: bool = False, include_asset: bool = False) -> BubbleProjectContext:
+def _source_context(
+    *,
+    include_api_connector: bool = False,
+    include_asset: bool = False,
+    include_style: bool = False,
+) -> BubbleProjectContext:
     element_metadata = {
         "bubble_id": "bHero",
         "path": ["%p3", "bSrcPage", "%el", "bHero"],
@@ -36,6 +41,8 @@ def _source_context(*, include_api_connector: bool = False, include_asset: bool 
         }
     if include_asset:
         element_metadata["image_url"] = "https://example.com/source-hero.png"
+    if include_style:
+        element_metadata["style"] = "Primary Button"
     return BubbleProjectContext(
         app_id="source-app",
         source="test",
@@ -82,10 +89,18 @@ def _settings(  # type: ignore[no-untyped-def]
     target_has_user: bool = True,
     source_has_api_connector: bool = False,
     source_has_asset: bool = False,
+    source_has_style: bool = False,
 ) -> None:
     source_path = tmp_path / "contexts" / "source" / "source-app-context.json"
     target_path = tmp_path / "contexts" / "target" / "target-app-context.json"
-    save_context(_source_context(include_api_connector=source_has_api_connector, include_asset=source_has_asset), source_path)
+    save_context(
+        _source_context(
+            include_api_connector=source_has_api_connector,
+            include_asset=source_has_asset,
+            include_style=source_has_style,
+        ),
+        source_path,
+    )
     save_context(_target_context(include_user=target_has_user), target_path)
     save_settings(
         BubbleMcpSettings(
@@ -433,3 +448,54 @@ def test_create_transfer_plan_allows_asset_reference_policy(tmp_path, monkeypatc
     assert result["ok"] is True
     plan = load_transfer_plan(result["transfer_id"])
     assert plan["blocked_reasons"] == []
+
+
+def test_create_transfer_plan_blocks_missing_dependency_without_safe_compiler(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path, source_has_style=True)
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="element",
+        source_ref="gp_Hero",
+        target_context="index",
+        target_parent="root",
+        dependency_policy="map_or_create",
+    )
+
+    assert result["ok"] is False
+    assert result["payload_count"] == 0
+    assert "style:Primary Button" in result["blocked_reasons"][0]
+    assert "no safe create compiler yet" in result["blocked_reasons"][0]
+
+
+def test_create_transfer_plan_allows_missing_compiler_dependency_when_mapped(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path, source_has_style=True)
+    target = _target_context()
+    _save_target_context(
+        tmp_path,
+        BubbleProjectContext(
+            app_id=target.app_id,
+            source=target.source,
+            nodes=[
+                *target.nodes,
+                BubbleContextNode(id="style:primary-button", label="Primary Button", type="style"),
+            ],
+            edges=target.edges,
+        ),
+    )
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="element",
+        source_ref="gp_Hero",
+        target_context="index",
+        target_parent="root",
+        dependency_policy="map_or_create",
+    )
+
+    assert result["ok"] is True
+    assert result["blocked_reasons"] == []
