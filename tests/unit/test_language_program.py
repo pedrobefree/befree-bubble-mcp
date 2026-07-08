@@ -120,6 +120,32 @@ def test_compile_framework_program_maps_data_workflow_and_verification_intents(
     assert result["compiled_calls"][4]["arguments"]["exact"] is True
 
 
+def test_compile_framework_program_requires_data_field_type(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "objective": "Add enrollment field",
+            "steps": [
+                {"intent": "create_field", "data_type": "Enrollment", "name": "student"},
+            ],
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "framework_program_missing_required_arguments"
+    assert result["missing_arguments"] == [
+        {
+            "step": 1,
+            "tool": "create_data_field",
+            "missing": ["type"],
+            "required": ["profile", "data_type_ref", "name", "type"],
+        }
+    ]
+
+
 def test_normalize_intent_arguments_maps_api_connector_aliases() -> None:
     args = normalize_intent_arguments(
         "create_api_call",

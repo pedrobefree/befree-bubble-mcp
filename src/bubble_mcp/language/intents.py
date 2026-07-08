@@ -148,7 +148,7 @@ def normalize_intent_arguments(intent: str, args: dict[str, Any]) -> dict[str, A
         _copy_first_available(normalized, "name", ("label", "title", "text", "content"))
     elif tool_name == "create_data_field":
         _copy_first_available(normalized, "data_type_ref", ("data_type", "data_type_name"))
-        _copy_first_available(normalized, "type", ("field_type", "data_class", "data_type_ref"))
+        _copy_first_available(normalized, "type", ("field_type",))
     elif tool_name == "create_event":
         _copy_first_available(normalized, "name", ("label", "title", "event_name"))
         _copy_first_available(normalized, "custom_event_name", ("name", "label", "title", "event_name"))
