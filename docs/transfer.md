@@ -119,6 +119,18 @@ API Connector transfer never copies secrets. Shared headers, call definitions,
 and parameter structure can be mapped or recreated, but credentials must be
 reviewed and re-entered by the project owner.
 
+`conflict_policy` is applied before payload compilation:
+
+- `fail` blocks the plan when the target page/reusable shell or target root
+  element name already exists.
+- `rename` creates a non-conflicting name by adding `_copy`, `_copy_2`, and so
+  on.
+- `reuse_existing` can reuse an existing target page or reusable shell as the
+  destination context. Updating an existing element subtree in place is not
+  implemented yet, so element-name conflicts still block with a clear reason.
+- `replace` remains blocked for existing targets until a dedicated destructive
+  confirmation path exists.
+
 ## Current Limits
 
 - Element subtree payloads are supported for transfer execution. Page and

@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from bubble_mcp.context.models import BubbleContextNode, BubbleProjectContext
 from bubble_mcp.context.freshness import load_context_with_overlay
 from bubble_mcp.transfer.api_connector import (
     extract_api_connector_bundle,
@@ -34,6 +35,154 @@ def _transfer_id(source_ref: str) -> str:
 
 def _blocked_reasons(decisions: list[Any]) -> list[str]:
     return [str(decision.reason) for decision in decisions if decision.action == "block"]
+
+
+def _obj(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _normalize_name(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").strip().lower())
+
+
+def _node_display_name(node: BubbleContextNode) -> str:
+    metadata = _obj(node.metadata)
+    properties = _obj(metadata.get("properties"))
+    props = _obj(properties.get("%p"))
+    for value in (
+        props.get("%nm"),
+        properties.get("%nm"),
+        metadata.get("name"),
+        metadata.get("key"),
+        metadata.get("bubble_id"),
+        node.label,
+        node.id.rsplit(":", 1)[-1],
+    ):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return node.id
+
+
+def _context_ref(node: BubbleContextNode) -> str:
+    metadata = _obj(node.metadata)
+    for key in ("bubble_id", "key", "root_id"):
+        value = metadata.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return node.id.rsplit(":", 1)[-1]
+
+
+def _find_named_node(
+    context: BubbleProjectContext,
+    *,
+    node_type: str,
+    name: str,
+    context_ref: str | None = None,
+) -> BubbleContextNode | None:
+    wanted = _normalize_name(name)
+    if not wanted:
+        return None
+    context_wanted = _normalize_name(context_ref or "")
+    for node in context.nodes:
+        if node.type != node_type:
+            continue
+        if context_wanted and node_type == "element":
+            metadata = _obj(node.metadata)
+            node_context = _normalize_name(str(metadata.get("context") or ""))
+            path = metadata.get("path") or metadata.get("path_array")
+            path_values = {_normalize_name(str(item)) for item in path} if isinstance(path, list) else set()
+            if node_context and node_context != context_wanted:
+                continue
+            if not node_context and path_values and context_wanted not in path_values:
+                continue
+        candidates = {
+            _normalize_name(node.id),
+            _normalize_name(node.label),
+            _normalize_name(_node_display_name(node)),
+        }
+        if wanted in candidates:
+            return node
+    return None
+
+
+def _name_exists(context: BubbleProjectContext, *, node_type: str, name: str) -> bool:
+    wanted = _normalize_name(name)
+    for node in context.nodes:
+        if node.type != node_type:
+            continue
+        candidates = {
+            _normalize_name(node.id),
+            _normalize_name(node.label),
+            _normalize_name(_node_display_name(node)),
+        }
+        if wanted in candidates:
+            return True
+    return False
+
+
+def _unique_name(context: BubbleProjectContext, *, node_type: str, base_name: str) -> str:
+    base = str(base_name or "copy").strip() or "copy"
+    candidate = f"{base}_copy"
+    if not _name_exists(context, node_type=node_type, name=candidate):
+        return candidate
+    index = 2
+    while _name_exists(context, node_type=node_type, name=f"{candidate}_{index}"):
+        index += 1
+    return f"{candidate}_{index}"
+
+
+def _resolve_context_conflict(
+    *,
+    target_ctx: BubbleProjectContext,
+    source_type: str,
+    source_ref: str,
+    target_context: str | None,
+    target_name: str | None,
+    conflict_policy: str,
+) -> tuple[str | None, str | None, str | None, list[str]]:
+    if conflict_policy not in {"fail", "rename", "replace", "reuse_existing"}:
+        raise ValueError("conflict_policy must be one of: fail, rename, replace, reuse_existing.")
+    blocked: list[str] = []
+    effective_target_context = target_context
+    effective_target_name = target_name
+    reused_context_type: str | None = None
+    desired_name = str(target_name or source_ref or "").strip()
+    if source_type in {"page", "reusable"} and not target_context and desired_name:
+        existing = _find_named_node(target_ctx, node_type=source_type, name=desired_name)
+        if existing is None:
+            return effective_target_context, effective_target_name, reused_context_type, blocked
+        if conflict_policy == "fail":
+            blocked.append(f"Target {source_type} already exists: {desired_name}")
+        elif conflict_policy == "replace":
+            blocked.append(
+                f"Target {source_type} already exists and replace requires a dedicated destructive confirmation path: "
+                f"{desired_name}"
+            )
+        elif conflict_policy == "rename":
+            effective_target_name = _unique_name(target_ctx, node_type=source_type, base_name=desired_name)
+        elif conflict_policy == "reuse_existing":
+            effective_target_context = _context_ref(existing)
+            effective_target_name = desired_name
+            reused_context_type = "reusable" if source_type == "reusable" else "page"
+        return effective_target_context, effective_target_name, reused_context_type, blocked
+    if source_type == "element" and desired_name:
+        existing = _find_named_node(target_ctx, node_type="element", name=desired_name, context_ref=target_context)
+        if existing is None:
+            return effective_target_context, effective_target_name, reused_context_type, blocked
+        if conflict_policy == "fail":
+            blocked.append(f"Target element already exists: {desired_name}")
+        elif conflict_policy == "replace":
+            blocked.append(
+                f"Target element already exists and replace requires a dedicated destructive confirmation path: "
+                f"{desired_name}"
+            )
+        elif conflict_policy == "rename":
+            effective_target_name = _unique_name(target_ctx, node_type="element", base_name=desired_name)
+        elif conflict_policy == "reuse_existing":
+            blocked.append(
+                f"Target element already exists and reuse_existing cannot update element subtrees yet: {desired_name}"
+            )
+    return effective_target_context, effective_target_name, reused_context_type, blocked
 
 
 def _data_type_keys_to_create(decisions: list[Any]) -> list[str]:
@@ -178,6 +327,19 @@ def create_transfer_plan(
         source_ref=source_ref,
         source_context=source_context,
     )
+    (
+        effective_target_context,
+        effective_target_name,
+        reused_context_type,
+        conflict_blocked,
+    ) = _resolve_context_conflict(
+        target_ctx=target_ctx,
+        source_type=source_type,
+        source_ref=source_ref,
+        target_context=target_context,
+        target_name=target_name,
+        conflict_policy=conflict_policy,
+    )
     decisions = build_dependency_decisions(
         inventory,
         target_ctx,
@@ -185,6 +347,7 @@ def create_transfer_plan(
         reuse_policy=reuse_policy,
     )
     blocked = _blocked_reasons(decisions)
+    blocked.extend(conflict_blocked)
     collection_payloads, collection_blocked = _compile_collection_payloads(
         source_ctx=source_ctx,
         target_ctx=target_ctx,
@@ -204,16 +367,16 @@ def create_transfer_plan(
         api_connector_policy=api_connector_policy,
     )
     blocked.extend(api_blocked)
-    effective_target_context = target_context or "index"
-    effective_target_context_type = "reusable" if source_type == "reusable" else "page"
+    effective_target_context = effective_target_context or "index"
+    effective_target_context_type = reused_context_type or ("reusable" if source_type == "reusable" else "page")
     shell_payloads: list[dict[str, Any]] = []
-    if source_type in {"page", "reusable"} and not target_context:
+    if source_type in {"page", "reusable"} and not target_context and reused_context_type is None:
         shell = compile_context_shell_payload(
             source_type=source_type,
             source_root=inventory.root,
             target_app_id=resolved.target.app_id,
             target_app_version=resolved.target.app_version or "test",
-            target_name=target_name or source_ref,
+            target_name=effective_target_name or source_ref,
         )
         if shell is not None:
             shell_payload, shell_context_ref, shell_context_type = shell
@@ -231,7 +394,7 @@ def create_transfer_plan(
             target_app_version=resolved.target.app_version or "test",
             target_context_ref=effective_target_context,
             target_parent_ref=target_parent,
-            target_name=target_name,
+            target_name=effective_target_name,
             target_context_type=effective_target_context_type,
             dependency_decisions=decisions,
         ),
@@ -244,7 +407,7 @@ def create_transfer_plan(
         target_app_version=resolved.target.app_version or "test",
         target_context=target_context or effective_target_context,
         target_parent=target_parent,
-        target_name=target_name,
+        target_name=effective_target_name,
         conflict_policy=conflict_policy,  # type: ignore[arg-type]
         asset_policy=asset_policy,  # type: ignore[arg-type]
         collection_policy=collection_policy,  # type: ignore[arg-type]

@@ -91,6 +91,10 @@ def _settings(tmp_path, *, target_has_user: bool = True, source_has_api_connecto
     )
 
 
+def _save_target_context(tmp_path, context: BubbleProjectContext) -> None:  # type: ignore[no-untyped-def]
+    save_context(context, tmp_path / "contexts" / "target" / "target-app-context.json")
+
+
 def test_create_transfer_plan_saves_payloads_and_dependency_decisions(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
     _settings(tmp_path)
@@ -206,3 +210,178 @@ def test_create_transfer_plan_creates_page_shell_when_target_context_is_omitted(
     assert shell_payload["changes"][1]["body"]["%x"] == "Page"
     assert child_payload["changes"][0]["path_array"][:2] == ["%p3", shell_ref]
     assert plan["target_context"] == shell_ref
+
+
+def test_create_transfer_plan_blocks_page_shell_name_conflict_by_default(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+    target = _target_context()
+    _save_target_context(
+        tmp_path,
+        BubbleProjectContext(
+            app_id=target.app_id,
+            source=target.source,
+            nodes=[
+                *target.nodes,
+                BubbleContextNode(id="page:mcp-copy", label="mcp-copy", type="page", metadata={"bubble_id": "bExisting"}),
+            ],
+            edges=target.edges,
+        ),
+    )
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="page",
+        source_ref="index",
+        target_name="mcp-copy",
+        dependency_policy="map_only",
+    )
+
+    assert result["ok"] is False
+    assert result["payload_count"] == 0
+    assert result["blocked_reasons"] == ["Target page already exists: mcp-copy"]
+
+
+def test_create_transfer_plan_renames_page_shell_conflict(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+    target = _target_context()
+    _save_target_context(
+        tmp_path,
+        BubbleProjectContext(
+            app_id=target.app_id,
+            source=target.source,
+            nodes=[
+                *target.nodes,
+                BubbleContextNode(id="page:mcp-copy", label="mcp-copy", type="page", metadata={"bubble_id": "bExisting"}),
+                BubbleContextNode(
+                    id="page:mcp-copy-copy",
+                    label="mcp-copy_copy",
+                    type="page",
+                    metadata={"bubble_id": "bExistingCopy"},
+                ),
+            ],
+            edges=target.edges,
+        ),
+    )
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="page",
+        source_ref="index",
+        target_name="mcp-copy",
+        conflict_policy="rename",
+        dependency_policy="map_only",
+    )
+
+    assert result["ok"] is True
+    plan = load_transfer_plan(result["transfer_id"])
+    assert plan["target_name"] == "mcp-copy_copy_2"
+    assert plan["write_payloads"][0]["changes"][1]["body"]["%p"]["%nm"] == "mcp-copy_copy_2"
+
+
+def test_create_transfer_plan_reuses_existing_page_context_on_conflict(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+    target = _target_context()
+    _save_target_context(
+        tmp_path,
+        BubbleProjectContext(
+            app_id=target.app_id,
+            source=target.source,
+            nodes=[
+                *target.nodes,
+                BubbleContextNode(id="page:mcp-copy", label="mcp-copy", type="page", metadata={"bubble_id": "bExisting"}),
+            ],
+            edges=target.edges,
+        ),
+    )
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="page",
+        source_ref="index",
+        target_name="mcp-copy",
+        conflict_policy="reuse_existing",
+        dependency_policy="map_only",
+    )
+
+    assert result["ok"] is True
+    plan = load_transfer_plan(result["transfer_id"])
+    assert plan["target_context"] == "bExisting"
+    assert len(plan["write_payloads"]) == 1
+    assert plan["write_payloads"][0]["changes"][0]["path_array"][:2] == ["%p3", "bExisting"]
+
+
+def test_create_transfer_plan_blocks_replace_conflict_until_destructive_path_exists(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+    target = _target_context()
+    _save_target_context(
+        tmp_path,
+        BubbleProjectContext(
+            app_id=target.app_id,
+            source=target.source,
+            nodes=[
+                *target.nodes,
+                BubbleContextNode(id="page:mcp-copy", label="mcp-copy", type="page", metadata={"bubble_id": "bExisting"}),
+            ],
+            edges=target.edges,
+        ),
+    )
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="page",
+        source_ref="index",
+        target_name="mcp-copy",
+        conflict_policy="replace",
+        dependency_policy="map_only",
+    )
+
+    assert result["ok"] is False
+    assert result["payload_count"] == 0
+    assert "replace requires a dedicated destructive confirmation path" in result["blocked_reasons"][0]
+
+
+def test_create_transfer_plan_renames_root_element_conflict(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+    target = _target_context()
+    _save_target_context(
+        tmp_path,
+        BubbleProjectContext(
+            app_id=target.app_id,
+            source=target.source,
+            nodes=[
+                *target.nodes,
+                BubbleContextNode(
+                    id="element:bExistingHero",
+                    label="gp_Hero",
+                    type="element",
+                    metadata={"bubble_id": "bExistingHero", "context": "index"},
+                ),
+            ],
+            edges=target.edges,
+        ),
+    )
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="element",
+        source_ref="gp_Hero",
+        target_context="index",
+        target_parent="root",
+        conflict_policy="rename",
+        dependency_policy="map_only",
+    )
+
+    assert result["ok"] is True
+    plan = load_transfer_plan(result["transfer_id"])
+    assert plan["target_name"] == "gp_Hero_copy"
+    assert plan["write_payloads"][0]["changes"][0]["body"]["%p"]["%nm"] == "gp_Hero_copy"
