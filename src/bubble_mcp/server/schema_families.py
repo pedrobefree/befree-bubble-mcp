@@ -914,6 +914,109 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Include Jetstream log sampling in performance audit output. Logs default to the live app version unless app_version is provided.",
         default=True,
     ),
+    "source_profile": _prop(
+        "string",
+        "Local Bubble MCP profile used as the transfer source. This profile is only read during project-to-project transfer.",
+        examples=["source-app", "template-app"],
+    ),
+    "target_profile": _prop(
+        "string",
+        "Local Bubble MCP profile used as the transfer target. Transfer execution writes only through this profile session.",
+        examples=["client-app", "target-app"],
+    ),
+    "source_type": _prop(
+        "string",
+        "Source object type to transfer from the source project.",
+        enum=["page", "reusable", "element"],
+        examples=["page", "reusable", "element"],
+    ),
+    "source_ref": _prop(
+        "string",
+        "Source object name, Bubble id, or context id to inventory or transfer.",
+        examples=["index", "Header", "gp_Hero"],
+    ),
+    "source_context": _prop(
+        "string",
+        "Optional source page or reusable context used to disambiguate element transfers.",
+        examples=["index", "Header"],
+    ),
+    "target_context": _prop(
+        "string",
+        "Target page or reusable context where the transferred object should be placed.",
+        examples=["index", "mcp-01"],
+    ),
+    "target_parent": _prop(
+        "string",
+        "Target parent element id/name, or root for page/reusable root insertion.",
+        default="root",
+        examples=["root", "gp_Content"],
+    ),
+    "target_name": _prop(
+        "string",
+        "Optional target object name override for the transferred root object.",
+        examples=["Header Copy", "gp_Hero_Client"],
+    ),
+    "transfer_id": _prop(
+        "string",
+        "Local transfer plan id returned by bubble_transfer_plan.",
+        examples=["transfer_20260708_120000_header"],
+    ),
+    "conflict_policy": _prop(
+        "string",
+        "How to handle target name conflicts during transfer planning.",
+        enum=["fail", "rename", "replace", "reuse_existing"],
+        default="fail",
+    ),
+    "asset_policy": _prop(
+        "string",
+        "How to handle source asset URLs in transfer planning.",
+        enum=["reference_url", "stage_and_upload", "skip"],
+        default="reference_url",
+    ),
+    "dependency_policy": _prop(
+        "string",
+        "How to handle dependencies not found in the target app.",
+        enum=["map_only", "map_or_create", "skip_optional"],
+        default="map_or_create",
+    ),
+    "include_collections": _prop(
+        "boolean",
+        "Include Bubble database collection schema dependencies: data types, fields, privacy rules, and option sets.",
+        default=True,
+    ),
+    "collection_policy": _prop(
+        "string",
+        "How to transfer Bubble database collection schema.",
+        enum=["skip", "map_existing", "create_missing", "replace_schema"],
+        default="map_existing",
+    ),
+    "include_api_connector": _prop(
+        "boolean",
+        "Include API Connector API/call structure dependencies without copying secrets.",
+        default=True,
+    ),
+    "api_connector_policy": _prop(
+        "string",
+        "How to transfer API Connector APIs and calls.",
+        enum=["skip", "map_existing", "structure_only"],
+        default="structure_only",
+    ),
+    "data_records_policy": _prop(
+        "string",
+        "How to handle live database records. Default skips record migration.",
+        enum=["skip", "export_manifest_only", "data_api_import_preview"],
+        default="skip",
+    ),
+    "include_payloads": _prop(
+        "boolean",
+        "Include redacted write payloads in transfer preview output.",
+        default=False,
+    ),
+    "max_steps": _prop(
+        "integer",
+        "Optional maximum number of ordered transfer payloads to execute.",
+        minimum=1,
+    ),
 }
 
 
@@ -1307,6 +1410,58 @@ def planning_execution_tools() -> list[ToolSchema]:
             "Execute a Bubble plan whose steps include args.write_payload. Set execute=true to mutate Bubble; otherwise it previews the plan.",
             ["profile", "plan", "execute", "compile", "app_id", "app_version", "context_file"],
             required=["profile", "plan"],
+        ),
+    ]
+
+
+def transfer_tools() -> list[ToolSchema]:
+    return [
+        tool_schema(
+            "bubble_transfer_inventory",
+            "Inspect a source Bubble page, reusable, or element subtree for project-to-project transfer. This is read-only and returns dependency warnings before planning.",
+            ["source_profile", "source_type", "source_ref", "source_context", "include_raw"],
+            required=["source_profile", "source_type", "source_ref"],
+        ),
+        tool_schema(
+            "bubble_transfer_plan",
+            "Create a local preview-first transfer plan from one Bubble project profile to another. This writes only a local plan artifact, never Bubble.",
+            [
+                "source_profile",
+                "target_profile",
+                "source_type",
+                "source_ref",
+                "source_context",
+                "target_context",
+                "target_parent",
+                "target_name",
+                "conflict_policy",
+                "asset_policy",
+                "dependency_policy",
+                "include_collections",
+                "collection_policy",
+                "include_api_connector",
+                "api_connector_policy",
+                "data_records_policy",
+            ],
+            required=["source_profile", "target_profile", "source_type", "source_ref"],
+        ),
+        tool_schema(
+            "bubble_transfer_preview",
+            "Dry-run an existing local Bubble transfer plan against the target profile session before execution.",
+            ["transfer_id", "include_payloads"],
+            required=["transfer_id"],
+        ),
+        tool_schema(
+            "bubble_transfer_execute",
+            "Execute a reviewed Bubble cross-project transfer plan against the target profile. Requires execute=true and confirm=true.",
+            ["transfer_id", "execute", "confirm", "max_steps"],
+            required=["transfer_id", "execute", "confirm"],
+        ),
+        tool_schema(
+            "bubble_transfer_status",
+            "Read a local Bubble transfer plan by id. This does not contact Bubble.",
+            ["transfer_id"],
+            required=["transfer_id"],
         ),
     ]
 
@@ -1884,6 +2039,7 @@ def native_tool_schemas() -> list[ToolSchema]:
     return [
         *profile_session_context_tools(),
         *planning_execution_tools(),
+        *transfer_tools(),
         *html_import_tools(),
         *branch_changelog_tools(),
         *performance_metrics_tools(),

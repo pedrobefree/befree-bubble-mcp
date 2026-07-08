@@ -14,6 +14,7 @@ from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import (
     default_bubble_export_path,
     default_bubble_modules_dir,
+    default_context_path,
     default_crawler_index_path,
     detect_project_context,
 )
@@ -112,6 +113,10 @@ from bubble_mcp.tool_authoring.sessions import (
     generate_authoring_extension_pack,
     set_active_authoring_session,
 )
+from bubble_mcp.transfer.executor import execute_transfer_plan, preview_transfer_plan
+from bubble_mcp.transfer.inventory import inventory_source_object
+from bubble_mcp.transfer.planner import create_transfer_plan
+from bubble_mcp.transfer.store import load_transfer_plan
 from bubble_mcp.validators.semantic import validate_plan
 
 
@@ -1091,6 +1096,86 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             compile_missing=bool(args.get("compile")),
             context=execution_context,
         )
+    if name == "bubble_transfer_inventory":
+        args = arguments or {}
+        settings = load_settings()
+        requested_source_profile = _required_string_arg(args, "source_profile", name)
+        resolved_source_profile = resolve_profile(settings, requested_source_profile)
+        if resolved_source_profile is None:
+            raise ValueError(f"source_profile not configured: {requested_source_profile}")
+        configured_path = Path(resolved_source_profile.app_json_path).expanduser() if resolved_source_profile.app_json_path else None
+        if configured_path is not None and not configured_path.is_absolute():
+            configured_path = settings.config_dir / configured_path
+        source_context_path = (
+            configured_path
+            if configured_path and configured_path.exists() and configured_path.name.endswith("-context.json")
+            else default_context_path(
+                resolved_source_profile.name,
+                resolved_source_profile.app_id,
+            )
+        )
+        if not source_context_path.exists():
+            raise ValueError(f"Source context is missing for profile '{resolved_source_profile.name}'. Run bubble-mcp context detect.")
+        transfer_context = load_context_with_overlay(
+            source_context_path,
+            profile=resolved_source_profile.name,
+            app_id=resolved_source_profile.app_id,
+        )
+        inventory = inventory_source_object(
+            context=transfer_context,
+            profile=resolved_source_profile.name,
+            app_version=resolved_source_profile.app_version or "test",
+            source_type=_required_string_arg(args, "source_type", name),
+            source_ref=_required_string_arg(args, "source_ref", name),
+            source_context=str(args.get("source_context") or "") or None,
+        )
+        payload = inventory.to_dict()
+        payload["ok"] = True
+        if not bool(args.get("include_raw")):
+            payload.pop("nodes", None)
+            payload.pop("root", None)
+        return payload
+    if name == "bubble_transfer_plan":
+        args = arguments or {}
+        return create_transfer_plan(
+            source_profile=_required_string_arg(args, "source_profile", name),
+            target_profile=_required_string_arg(args, "target_profile", name),
+            source_type=_required_string_arg(args, "source_type", name),
+            source_ref=_required_string_arg(args, "source_ref", name),
+            source_context=str(args.get("source_context") or "") or None,
+            target_context=str(args.get("target_context") or "") or None,
+            target_parent=str(args.get("target_parent") or "root"),
+            target_name=str(args.get("target_name") or "") or None,
+            conflict_policy=str(args.get("conflict_policy") or "fail"),
+            asset_policy=str(args.get("asset_policy") or "reference_url"),
+            dependency_policy=str(args.get("dependency_policy") or "map_or_create"),
+            collection_policy=(
+                "skip" if args.get("include_collections") is False else str(args.get("collection_policy") or "map_existing")
+            ),
+            api_connector_policy=(
+                "skip"
+                if args.get("include_api_connector") is False
+                else str(args.get("api_connector_policy") or "structure_only")
+            ),
+            data_records_policy=str(args.get("data_records_policy") or "skip"),
+        )
+    if name == "bubble_transfer_preview":
+        args = arguments or {}
+        return preview_transfer_plan(
+            _required_string_arg(args, "transfer_id", name),
+            include_payloads=bool(args.get("include_payloads")),
+        )
+    if name == "bubble_transfer_execute":
+        args = arguments or {}
+        return execute_transfer_plan(
+            _required_string_arg(args, "transfer_id", name),
+            execute=bool(args.get("execute")),
+            confirm=bool(args.get("confirm")),
+            max_steps=int(args["max_steps"]) if args.get("max_steps") else None,
+        )
+    if name == "bubble_transfer_status":
+        args = arguments or {}
+        return {"ok": True, "transfer": load_transfer_plan(_required_string_arg(args, "transfer_id", name))}
     if name == "bubble_branch_list":
         args = arguments or {}
         return list_bubble_branches(

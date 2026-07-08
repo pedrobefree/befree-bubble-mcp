@@ -263,6 +263,58 @@ def test_cli_profile_status_reports_existing_profile(tmp_path, monkeypatch, caps
     assert payload["profile"]["app_id"] == "client-app"
 
 
+def test_cli_transfer_inventory_uses_source_profile_context(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    context_path = tmp_path / "contexts" / "source" / "source-app-context.json"
+    context_path.parent.mkdir(parents=True)
+    context_path.write_text(
+        json.dumps(
+            {
+                "app_id": "source-app",
+                "source": "test",
+                "nodes": [
+                    {"id": "page:index", "label": "index", "type": "page", "metadata": {"bubble_id": "bPage"}},
+                    {
+                        "id": "element:bHero",
+                        "label": "gp_Hero",
+                        "type": "element",
+                        "metadata": {"bubble_id": "bHero", "properties": {"%x": "Group", "%p": {"%nm": "gp_Hero"}}},
+                    },
+                ],
+                "edges": [{"source": "page:index", "target": "element:bHero", "type": "contains"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile=None,
+            profiles={"source": BubbleProfile(name="source", app_id="source-app", appname="source-app")},
+        )
+    )
+
+    assert main(
+        [
+            "transfer",
+            "inventory",
+            "--source-profile",
+            "source",
+            "--source-type",
+            "element",
+            "--source-ref",
+            "gp_Hero",
+        ]
+    ) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["source"]["profile"] == "source"
+    assert payload["counts"]["nodes"] == 1
+    assert payload["counts"]["dependencies"] == 0
+    assert payload["dependencies"] == []
+
+
 def test_cli_framework_list_generate_and_status(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
 

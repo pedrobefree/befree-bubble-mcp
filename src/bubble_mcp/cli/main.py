@@ -90,6 +90,9 @@ from bubble_mcp.tool_authoring.sessions import (
     generate_authoring_extension_pack,
     set_active_authoring_session,
 )
+from bubble_mcp.transfer.executor import execute_transfer_plan, preview_transfer_plan
+from bubble_mcp.transfer.planner import create_transfer_plan
+from bubble_mcp.transfer.store import load_transfer_plan
 from bubble_mcp.validators.semantic import validate_plan
 
 
@@ -192,6 +195,64 @@ def command_profile_bootstrap(args: argparse.Namespace) -> int:
     )
     emit_json(result)
     return 0 if result.get("ok") else 1
+
+
+def command_transfer_inventory(args: argparse.Namespace) -> int:
+    result = call_tool(
+        "bubble_transfer_inventory",
+        {
+            "source_profile": args.source_profile,
+            "source_type": args.source_type,
+            "source_ref": args.source_ref,
+            "source_context": args.source_context,
+            "include_raw": args.include_raw,
+        },
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_transfer_plan(args: argparse.Namespace) -> int:
+    result = create_transfer_plan(
+        source_profile=args.source_profile,
+        target_profile=args.target_profile,
+        source_type=args.source_type,
+        source_ref=args.source_ref,
+        source_context=args.source_context or None,
+        target_context=args.target_context or None,
+        target_parent=args.target_parent,
+        target_name=args.target_name or None,
+        conflict_policy=args.conflict_policy,
+        asset_policy=args.asset_policy,
+        dependency_policy=args.dependency_policy,
+        collection_policy=args.collection_policy,
+        api_connector_policy=args.api_connector_policy,
+        data_records_policy=args.data_records_policy,
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_transfer_preview(args: argparse.Namespace) -> int:
+    result = preview_transfer_plan(args.transfer_id, include_payloads=args.include_payloads)
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_transfer_execute(args: argparse.Namespace) -> int:
+    result = execute_transfer_plan(
+        args.transfer_id,
+        execute=args.execute,
+        confirm=args.confirm,
+        max_steps=args.max_steps,
+    )
+    emit_json(result)
+    return 0 if result.get("ok") else 1
+
+
+def command_transfer_status(args: argparse.Namespace) -> int:
+    emit_json({"ok": True, "transfer": load_transfer_plan(args.transfer_id)})
+    return 0
 
 
 def command_context_summary(args: argparse.Namespace) -> int:
@@ -1480,6 +1541,50 @@ def build_parser() -> argparse.ArgumentParser:
     bootstrap_parser.add_argument("--force-context", action="store_true")
     bootstrap_parser.add_argument("--max-age-hours", type=int, default=24)
     bootstrap_parser.set_defaults(func=command_profile_bootstrap)
+
+    transfer_parser = subparsers.add_parser("transfer", help="Plan, preview, and execute Bubble project-to-project transfers.")
+    transfer_subparsers = transfer_parser.add_subparsers(dest="transfer_command", required=True)
+
+    transfer_inventory_parser = transfer_subparsers.add_parser("inventory", help="Inspect a source object before transfer.")
+    transfer_inventory_parser.add_argument("--source-profile", required=True)
+    transfer_inventory_parser.add_argument("--source-type", choices=["page", "reusable", "element"], required=True)
+    transfer_inventory_parser.add_argument("--source-ref", required=True)
+    transfer_inventory_parser.add_argument("--source-context", default="")
+    transfer_inventory_parser.add_argument("--include-raw", action="store_true")
+    transfer_inventory_parser.set_defaults(func=command_transfer_inventory)
+
+    transfer_plan_parser = transfer_subparsers.add_parser("plan", help="Create a local transfer plan.")
+    transfer_plan_parser.add_argument("--source-profile", required=True)
+    transfer_plan_parser.add_argument("--target-profile", required=True)
+    transfer_plan_parser.add_argument("--source-type", choices=["page", "reusable", "element"], required=True)
+    transfer_plan_parser.add_argument("--source-ref", required=True)
+    transfer_plan_parser.add_argument("--source-context", default="")
+    transfer_plan_parser.add_argument("--target-context", default="")
+    transfer_plan_parser.add_argument("--target-parent", default="root")
+    transfer_plan_parser.add_argument("--target-name", default="")
+    transfer_plan_parser.add_argument("--conflict-policy", choices=["fail", "rename", "replace", "reuse_existing"], default="fail")
+    transfer_plan_parser.add_argument("--asset-policy", choices=["reference_url", "stage_and_upload", "skip"], default="reference_url")
+    transfer_plan_parser.add_argument("--dependency-policy", choices=["map_only", "map_or_create", "skip_optional"], default="map_or_create")
+    transfer_plan_parser.add_argument("--collection-policy", choices=["skip", "map_existing", "create_missing", "replace_schema"], default="map_existing")
+    transfer_plan_parser.add_argument("--api-connector-policy", choices=["skip", "map_existing", "structure_only"], default="structure_only")
+    transfer_plan_parser.add_argument("--data-records-policy", choices=["skip", "export_manifest_only", "data_api_import_preview"], default="skip")
+    transfer_plan_parser.set_defaults(func=command_transfer_plan)
+
+    transfer_preview_parser = transfer_subparsers.add_parser("preview", help="Preview a transfer plan.")
+    transfer_preview_parser.add_argument("--transfer-id", required=True)
+    transfer_preview_parser.add_argument("--include-payloads", action="store_true")
+    transfer_preview_parser.set_defaults(func=command_transfer_preview)
+
+    transfer_execute_parser = transfer_subparsers.add_parser("execute", help="Execute a reviewed transfer plan.")
+    transfer_execute_parser.add_argument("--transfer-id", required=True)
+    transfer_execute_parser.add_argument("--execute", action="store_true")
+    transfer_execute_parser.add_argument("--confirm", action="store_true")
+    transfer_execute_parser.add_argument("--max-steps", type=int, default=None)
+    transfer_execute_parser.set_defaults(func=command_transfer_execute)
+
+    transfer_status_parser = transfer_subparsers.add_parser("status", help="Show a local transfer plan.")
+    transfer_status_parser.add_argument("--transfer-id", required=True)
+    transfer_status_parser.set_defaults(func=command_transfer_status)
 
     context_parser = subparsers.add_parser("context", help="Inspect compact Bubble context.")
     context_subparsers = context_parser.add_subparsers(dest="context_command", required=True)

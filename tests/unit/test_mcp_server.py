@@ -115,6 +115,26 @@ def test_tools_list_includes_profile_list() -> None:
     ]
     assert "exact" in tools["bubble_context_find"]["inputSchema"]["properties"]
     assert "include_metadata" in tools["bubble_context_find"]["inputSchema"]["properties"]
+    for transfer_tool in [
+        "bubble_transfer_inventory",
+        "bubble_transfer_plan",
+        "bubble_transfer_preview",
+        "bubble_transfer_execute",
+        "bubble_transfer_status",
+    ]:
+        assert transfer_tool in tools
+    assert tools["bubble_transfer_inventory"]["inputSchema"]["required"] == [
+        "source_profile",
+        "source_type",
+        "source_ref",
+    ]
+    assert tools["bubble_transfer_plan"]["inputSchema"]["required"] == [
+        "source_profile",
+        "target_profile",
+        "source_type",
+        "source_ref",
+    ]
+    assert tools["bubble_transfer_execute"]["inputSchema"]["required"] == ["transfer_id", "execute", "confirm"]
 
 
 def test_profile_cache_refresh_tool_forces_context_detection(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -189,6 +209,57 @@ def test_profile_cache_refresh_tool_forces_context_detection(tmp_path, monkeypat
     assert calls[0]["profile"] == "cliente2"
     assert calls[0]["app_id"] == "courselaunch"
     assert calls[0]["force"] is True
+
+
+def test_transfer_inventory_tool_uses_source_profile_context(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    context_path = tmp_path / "contexts" / "source" / "source-app-context.json"
+    context_path.parent.mkdir(parents=True)
+    context_path.write_text(
+        json.dumps(
+            {
+                "app_id": "source-app",
+                "source": "test",
+                "nodes": [
+                    {"id": "page:index", "label": "index", "type": "page", "metadata": {"bubble_id": "bPage"}},
+                    {
+                        "id": "element:bHero",
+                        "label": "gp_Hero",
+                        "type": "element",
+                        "metadata": {"bubble_id": "bHero", "properties": {"%x": "Group", "%p": {"%nm": "gp_Hero"}}},
+                    },
+                ],
+                "edges": [{"source": "page:index", "target": "element:bHero", "type": "contains"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile=None,
+            profiles={"source": BubbleProfile(name="source", app_id="source-app", appname="source-app")},
+        )
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 802,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_transfer_inventory",
+                "arguments": {"source_profile": "source", "source_type": "element", "source_ref": "gp_Hero"},
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["source"]["profile"] == "source"
+    assert payload["counts"]["nodes"] == 1
+    assert "nodes" not in payload
 
 
 def test_visual_compare_tool_returns_structured_report() -> None:
