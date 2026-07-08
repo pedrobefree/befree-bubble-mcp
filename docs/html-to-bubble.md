@@ -38,7 +38,7 @@ bubble-mcp import html-styles \
   --file component.html \
   --profile smoke \
   --selector '.btn-primary' \
-  --style-name-prefix HTML \
+  --style-name 'Primary Button' \
   --element-type Button
 ```
 
@@ -46,7 +46,13 @@ The style workflow maps supported CSS into `create_style`, `add_style_condition`
 and `reorder_style_states` operations. It preserves independent border width,
 style, color, and corner radius fields when they are present, and imports
 `:hover`, `:focus`/`:focus-visible`, `:disabled`, and `:active` as Bubble hover,
-focus, disabled, and pressed style states.
+focus, disabled, and pressed style states. Style identity is explicit:
+`style_name + element_type`. If a style with the same name and element type
+already exists, the existing Bubble style runtime updates it; otherwise it
+creates a new style. Property-equivalent styles with different names are not
+reused. With `--execute`, the workflow refreshes context/cache and verifies the
+style identity, plus base/state properties when the refreshed export exposes
+raw Bubble style fields.
 
 Execute the advanced import against Bubble:
 
@@ -90,7 +96,7 @@ definitions from an HTML file or raw HTML snippet:
   "profile": "smoke",
   "html_file": "component.html",
   "selector": ".btn-primary",
-  "style_name_prefix": "HTML",
+  "style_name": "Primary Button",
   "element_type": "Button",
   "execute": false
 }
@@ -101,7 +107,7 @@ Implemented stages:
 ```text
 Conservative: HTML -> Bubble plan -> semantic validation -> optional write_payload compilation -> execute-plan
 Advanced: HTML/file/URL -> Aria parser -> mapper -> BubbleCLI create-from-html -> optional /appeditor/write
-Styles: HTML/file/snippet -> CSS state extractor -> Bubble style mapper -> style operation preview
+Styles: HTML/file/snippet -> CSS state extractor -> Bubble style mapper -> style upsert -> optional verification
 ```
 
 Supported conservative mapping:

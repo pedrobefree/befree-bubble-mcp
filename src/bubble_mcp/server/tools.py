@@ -204,6 +204,256 @@ def _write_payload_for_target_version(payload: dict[str, Any], args: dict[str, A
     return normalized
 
 
+def _style_metadata_name(style_id: str, style_data: dict[str, Any]) -> str:
+    return str(
+        style_data.get("name")
+        or style_data.get("%nm")
+        or style_data.get("%d")
+        or style_data.get("display")
+        or style_id
+    ).strip()
+
+
+def _style_metadata_type(style_id: str, style_data: dict[str, Any]) -> str:
+    raw_type = str(style_data.get("type") or style_data.get("%x") or "").strip()
+    if raw_type:
+        return raw_type
+    if "_" in style_id:
+        return style_id.split("_", 1)[0]
+    return ""
+
+
+STYLE_IMPORT_PROPERTY_ALIASES: dict[str, tuple[str, ...]] = {
+    "bg_color": ("%bgc", "background_color", "bg_color"),
+    "font_color": ("%fc", "font_color"),
+    "font_size": ("%fs", "font_size"),
+    "font_weight": ("font_weight",),
+    "border_color": ("%bc", "border_color"),
+    "border_width": ("%bw", "border_width"),
+    "border_radius": ("%br", "border_radius"),
+    "border_style": ("%bos", "border_style"),
+    "shadow_style": ("%bs", "shadow_style"),
+    "shadow_h": ("%bh", "shadow_h"),
+    "shadow_v": ("%bv", "shadow_v"),
+    "shadow_blur": ("%bsb", "shadow_blur"),
+    "shadow_spread": ("%bsp", "shadow_spread"),
+    "shadow_color": ("%bsc", "shadow_color"),
+    "padding_top": ("padding_top",),
+    "padding_bottom": ("padding_bottom",),
+    "padding_left": ("padding_left",),
+    "padding_right": ("padding_right",),
+    "border_style_top": ("border_style_top",),
+    "border_style_bottom": ("border_style_bottom",),
+    "border_style_left": ("border_style_left",),
+    "border_style_right": ("border_style_right",),
+    "border_color_top": ("border_color_top",),
+    "border_color_bottom": ("border_color_bottom",),
+    "border_color_left": ("border_color_left",),
+    "border_color_right": ("border_color_right",),
+    "border_width_top": ("border_width_top",),
+    "border_width_bottom": ("border_width_bottom",),
+    "border_width_left": ("border_width_left",),
+    "border_width_right": ("border_width_right",),
+    "radius_top_left": ("border_roundness_top", "radius_top_left"),
+    "radius_top_right": ("border_roundness_right", "radius_top_right"),
+    "radius_bottom_right": ("border_roundness_bottom", "radius_bottom_right"),
+    "radius_bottom_left": ("border_roundness_left", "radius_bottom_left"),
+}
+
+STYLE_IMPORT_STATE_TRIGGERS = {
+    "hover": "is_hovered",
+    "focus": "is_focused",
+    "pressed": "is_pressed",
+    "disabled": "isnt_clickable",
+}
+
+
+def _expanded_style_properties(properties: dict[str, Any]) -> dict[str, Any]:
+    expanded = dict(properties)
+    padding = expanded.pop("padding", None)
+    if padding is not None:
+        expanded.setdefault("padding_top", padding)
+        expanded.setdefault("padding_bottom", padding)
+        expanded.setdefault("padding_left", padding)
+        expanded.setdefault("padding_right", padding)
+    border_type = expanded.pop("border_type", None)
+    if border_type == "independent":
+        expanded["four_border_style"] = True
+    elif border_type == "shared":
+        expanded["four_border_style"] = False
+    return expanded
+
+
+def _style_property_aliases(property_name: str) -> tuple[str, ...]:
+    aliases = STYLE_IMPORT_PROPERTY_ALIASES.get(property_name)
+    if aliases is not None:
+        return aliases
+    return (property_name,)
+
+
+def _style_values_equal(expected: Any, actual: Any) -> bool:
+    if expected == actual:
+        return True
+    if expected is None and actual in (None, ""):
+        return True
+    if actual is None and expected in (None, ""):
+        return True
+    try:
+        return float(expected) == float(actual)
+    except (TypeError, ValueError):
+        return str(expected).strip().lower() == str(actual).strip().lower()
+
+
+def _compare_style_properties(expected: dict[str, Any], actual: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(actual, dict):
+        return {
+            "ok": True,
+            "checked": False,
+            "reason": "style_properties_unavailable",
+            "missing": [],
+            "mismatched": [],
+        }
+    missing: list[dict[str, Any]] = []
+    mismatched: list[dict[str, Any]] = []
+    for property_name, expected_value in _expanded_style_properties(expected).items():
+        aliases = _style_property_aliases(property_name)
+        actual_key = next((alias for alias in aliases if alias in actual), None)
+        if actual_key is None:
+            missing.append({"property": property_name, "aliases": list(aliases), "expected": expected_value})
+            continue
+        actual_value = actual.get(actual_key)
+        if not _style_values_equal(expected_value, actual_value):
+            mismatched.append(
+                {
+                    "property": property_name,
+                    "actual_key": actual_key,
+                    "expected": expected_value,
+                    "actual": actual_value,
+                }
+            )
+    return {
+        "ok": not missing and not mismatched,
+        "checked": True,
+        "reason": None if not missing and not mismatched else "style_properties_mismatch",
+        "missing": missing,
+        "mismatched": mismatched,
+    }
+
+
+def _deep_string_values(value: Any) -> list[str]:
+    if isinstance(value, dict):
+        values: list[str] = []
+        for item in value.values():
+            values.extend(_deep_string_values(item))
+        return values
+    if isinstance(value, list):
+        values = []
+        for item in value:
+            values.extend(_deep_string_values(item))
+        return values
+    if isinstance(value, str):
+        return [value]
+    return []
+
+
+def _style_state_matches(state_name: str, state_data: dict[str, Any]) -> bool:
+    trigger = STYLE_IMPORT_STATE_TRIGGERS.get(state_name)
+    if not trigger:
+        return False
+    condition = state_data.get("%c") if isinstance(state_data.get("%c"), dict) else state_data.get("condition")
+    return trigger in {value.strip() for value in _deep_string_values(condition)}
+
+
+def _verify_style_states(expected_states: dict[str, dict[str, Any]], actual_states: Any) -> dict[str, Any]:
+    if not expected_states:
+        return {"ok": True, "checked": True, "missing": [], "properties": {}}
+    if not isinstance(actual_states, dict):
+        return {
+            "ok": True,
+            "checked": False,
+            "reason": "style_states_unavailable",
+            "missing": [],
+            "properties": {},
+        }
+    missing: list[str] = []
+    property_checks: dict[str, Any] = {}
+    for state_name, expected_properties in expected_states.items():
+        actual_state = next(
+            (
+                state_data
+                for state_data in actual_states.values()
+                if isinstance(state_data, dict) and _style_state_matches(state_name, state_data)
+            ),
+            None,
+        )
+        if actual_state is None:
+            missing.append(state_name)
+            continue
+        actual_properties = actual_state.get("%p") if isinstance(actual_state.get("%p"), dict) else actual_state.get("properties")
+        property_checks[state_name] = _compare_style_properties(expected_properties, actual_properties)
+    return {
+        "ok": not missing and all(check.get("ok") for check in property_checks.values()),
+        "checked": True,
+        "reason": None if not missing else "style_states_missing",
+        "missing": missing,
+        "properties": property_checks,
+    }
+
+
+def _verify_html_style_import(profile: str, candidate: dict[str, Any]) -> dict[str, Any]:
+    style_name = str(candidate.get("name") or "").strip()
+    element_type = str(candidate.get("element_type") or "").strip()
+    expected_states_map = candidate.get("states") if isinstance(candidate.get("states"), dict) else {}
+    expected_states = sorted(expected_states_map)
+    refresh = _profile_cache_refresh({"profile": profile, "force": True})
+    detection = refresh.get("context_detection") if isinstance(refresh.get("context_detection"), dict) else {}
+    context_path = str(detection.get("context_path") or "").strip()
+    if not context_path:
+        return {
+            "ok": False,
+            "reason": "context_path_missing",
+            "refresh": refresh,
+            "style_name": style_name,
+            "element_type": element_type,
+            "expected_states": expected_states,
+        }
+    context = load_context(Path(context_path))
+    styles = context.metadata.get("styles") if isinstance(context.metadata.get("styles"), dict) else {}
+    match: dict[str, Any] | None = None
+    for style_id, style_data in styles.items():
+        if not isinstance(style_data, dict):
+            continue
+        if _style_metadata_name(str(style_id), style_data).lower() != style_name.lower():
+            continue
+        if _style_metadata_type(str(style_id), style_data).lower() != element_type.lower():
+            continue
+        match = {"id": str(style_id), **style_data}
+        break
+    property_check = _compare_style_properties(
+        candidate.get("base") if isinstance(candidate.get("base"), dict) else {},
+        match.get("%p") if isinstance(match, dict) else None,
+    )
+    state_check = _verify_style_states(expected_states_map, match.get("%s") if isinstance(match, dict) else None)
+    verification_ok = match is not None and bool(property_check.get("ok")) and bool(state_check.get("ok"))
+    return {
+        "ok": verification_ok,
+        "reason": None if verification_ok else "style_verification_failed",
+        "context_path": context_path,
+        "style_name": style_name,
+        "element_type": element_type,
+        "expected_states": expected_states,
+        "property_check": property_check,
+        "state_check": state_check,
+        "style": match,
+        "refresh": {
+            "ok": bool(refresh.get("ok")),
+            "source": refresh.get("source"),
+            "app_id": refresh.get("app_id"),
+            "app_version": refresh.get("app_version"),
+        },
+    }
+
+
 def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
     args = _arguments_with_profile_defaults(arguments)
     requested_profile = _required_string_arg(args, "profile", "bubble_profile_cache_refresh")
@@ -1382,9 +1632,10 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
         return create_styles_from_html_runtime(
             profile=str(args.get("profile") or ""),
             selector=str(args.get("selector") or "") or None,
+            style_name=str(args.get("style_name") or args.get("name") or "") or None,
             style_prefix=str(args.get("style_prefix") or "") or None,
             style_name_prefix=str(args.get("style_name_prefix") or "") or None,
-            element_type=str(args.get("element_type") or "Group"),
+            element_type=str(args.get("element_type") or ""),
             html=html or None,
             html_file=html_file or None,
             execute=bool(args.get("execute")),
@@ -1392,6 +1643,7 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
             states=args.get("states") if isinstance(args.get("states"), list) else None,
             extra_css=args.get("extra_css") if isinstance(args.get("extra_css"), list) else None,
             executor=lambda tool, tool_args: call_legacy_catalog_tool(tool, tool_args),
+            verifier=lambda candidate: _verify_html_style_import(str(args.get("profile") or ""), candidate),
         )
 
     write_payload = args.get("write_payload") or args.get("payload")

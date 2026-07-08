@@ -1968,7 +1968,7 @@ def test_create_styles_from_html_catalog_tool_uses_style_runtime(monkeypatch) ->
                     "html_file": "tests/fixtures/html/style-states.html",
                     "execute": True,
                     "selector": ".btn-primary",
-                    "style_name_prefix": "HTML",
+                    "style_name": "Primary Button",
                     "element_type": "Button",
                     "states": ["hover", "focus"],
                 },
@@ -1983,7 +1983,7 @@ def test_create_styles_from_html_catalog_tool_uses_style_runtime(monkeypatch) ->
     assert calls[0]["html_file"] == "tests/fixtures/html/style-states.html"
     assert calls[0]["execute"] is True
     assert calls[0]["selector"] == ".btn-primary"
-    assert calls[0]["style_name_prefix"] == "HTML"
+    assert calls[0]["style_name"] == "Primary Button"
     assert calls[0]["element_type"] == "Button"
     assert calls[0]["states"] == ["hover", "focus"]
 
@@ -1996,6 +1996,14 @@ def test_create_styles_from_html_execute_dispatches_style_operations(monkeypatch
         return {"ok": True, "tool": tool_name}
 
     monkeypatch.setattr("bubble_mcp.server.tools.dispatch_aria_runtime_tool", fake_dispatch)
+    monkeypatch.setattr(
+        "bubble_mcp.server.tools._verify_html_style_import",
+        lambda _profile, candidate: {
+            "ok": True,
+            "style_name": candidate["name"],
+            "element_type": candidate["element_type"],
+        },
+    )
 
     response = handle_request(
         {
@@ -2014,7 +2022,7 @@ def test_create_styles_from_html_execute_dispatches_style_operations(monkeypatch
                     """,
                     "execute": True,
                     "selector": ".btn-primary",
-                    "style_name_prefix": "HTML",
+                    "style_name": "Primary Button",
                     "element_type": "Button",
                 },
             },
@@ -2025,6 +2033,7 @@ def test_create_styles_from_html_execute_dispatches_style_operations(monkeypatch
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["ok"] is True
     assert payload["executed"] is True
+    assert payload["verified"] is True
     assert [tool for tool, _args in calls] == [
         "create_style",
         "add_style_condition",
@@ -2032,6 +2041,67 @@ def test_create_styles_from_html_execute_dispatches_style_operations(monkeypatch
     ]
     assert calls[0][1]["execute"] is True
     assert calls[0][1]["dry_run"] is False
+
+
+def test_html_style_import_verification_reads_refreshed_context(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    context_path = tmp_path / "context.json"
+    context_path.write_text(
+        json.dumps(
+            {
+                "app_id": "synthetic-app",
+                "source": "test",
+                "metadata": {
+                    "styles": {
+                        "Button_primary_button_": {
+                            "name": "Primary Button",
+                            "type": "Button",
+                            "%p": {"%bgc": "#155eef", "%fc": "#ffffff"},
+                            "%s": {
+                                "hover_state": {
+                                    "%c": {
+                                        "%x": "ThisElement",
+                                        "%n": {"%x": "Message", "%nm": "is_hovered"},
+                                    },
+                                    "%p": {"%bgc": "#004eeb"},
+                                }
+                            },
+                        }
+                    }
+                },
+                "nodes": [],
+                "edges": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        tools_module,
+        "_profile_cache_refresh",
+        lambda _args: {
+            "ok": True,
+            "source": "bubble",
+            "app_id": "synthetic-app",
+            "app_version": "test",
+            "context_detection": {"context_path": str(context_path)},
+        },
+    )
+
+    result = tools_module._verify_html_style_import(
+        "smoke",
+        {
+            "name": "Primary Button",
+            "element_type": "Button",
+            "base": {"bg_color": "#155eef", "font_color": "#ffffff"},
+            "states": {"hover": {"bg_color": "#004eeb"}},
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["style"]["id"] == "Button_primary_button_"
+    assert result["expected_states"] == ["hover"]
+    assert result["property_check"]["checked"] is True
+    assert result["state_check"]["properties"]["hover"]["checked"] is True
 
 
 def test_legacy_catalog_tool_dispatches_to_aria_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -2267,13 +2337,14 @@ def test_native_family_schemas_expose_agent_selection_constraints() -> None:
     assert html_import["properties"]["style_match_threshold"]["maximum"] == 1
 
     html_style_import = tools["create_styles_from_html"]["inputSchema"]
-    assert html_style_import["required"] == ["profile"]
+    assert html_style_import["required"] == ["profile", "style_name", "element_type"]
     assert html_style_import["anyOf"] == [
         {"required": ["html_file"]},
         {"required": ["file"]},
         {"required": ["html"]},
     ]
     assert "Bubble element type" in html_style_import["properties"]["element_type"]["description"]
+    assert "style_name" in html_style_import["properties"]
     assert html_style_import["properties"]["include_states"]["type"] == "boolean"
     assert html_style_import["properties"]["states"]["items"]["enum"] == ["hover", "focus", "disabled", "pressed"]
     assert "rendered_html" not in html_style_import["properties"]

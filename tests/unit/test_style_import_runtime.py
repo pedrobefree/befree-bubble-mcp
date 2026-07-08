@@ -13,6 +13,7 @@ def test_build_style_import_plan_returns_preview_candidate_and_operations() -> N
         html,
         profile="smoke",
         selector=".btn-primary",
+        style_name="Primary Button",
         style_name_prefix="HTML",
         element_type="Button",
         execute=False,
@@ -27,7 +28,14 @@ def test_build_style_import_plan_returns_preview_candidate_and_operations() -> N
         "state_count": 4,
         "unsupported_count": 0,
     }
-    assert result["candidates"][0]["name"] == "HTML Button Primary"
+    assert result["style_name"] == "Primary Button"
+    assert result["identity"] == {
+        "style_name": "Primary Button",
+        "element_type": "Button",
+        "match": "name_and_element_type",
+        "mode": "upsert",
+    }
+    assert result["candidates"][0]["name"] == "Primary Button"
     assert result["candidates"][0]["base"]["border_width"] == 1
     assert result["candidates"][0]["states"]["hover"]["bg_color"] == "#004eeb"
     assert result["candidates"][0]["states"]["pressed"]["border_color"] == "#00359e"
@@ -59,6 +67,7 @@ def test_build_style_import_plan_aggregates_mapper_unsupported() -> None:
         """,
         profile="smoke",
         selector=".btn-primary",
+        style_name="Primary Button",
         style_name_prefix="HTML",
         element_type="Button",
         execute=False,
@@ -75,6 +84,7 @@ def test_build_style_import_plan_aggregates_mapper_unsupported() -> None:
 def test_create_styles_from_html_runtime_accepts_html_file() -> None:
     result = create_styles_from_html_runtime(
         profile="smoke",
+        style_name="Primary Button",
         style_prefix="HTML",
         element_type="Button",
         html_file="tests/fixtures/html/style-states.html",
@@ -95,14 +105,19 @@ def test_create_styles_from_html_runtime_executes_operations_with_executor() -> 
         calls.append((tool, arguments))
         return {"ok": True, "tool": tool}
 
+    def fake_verifier(candidate: dict[str, object]) -> dict[str, object]:
+        return {"ok": True, "style_name": candidate["name"], "element_type": candidate["element_type"]}
+
     result = create_styles_from_html_runtime(
         profile="smoke",
+        style_name="Primary Button",
         style_prefix="HTML",
         element_type="Button",
         html_file="tests/fixtures/html/style-states.html",
         selector=".btn-primary",
         execute=True,
         executor=fake_executor,
+        verifier=fake_verifier,
     )
 
     assert result["ok"] is True
@@ -117,12 +132,15 @@ def test_create_styles_from_html_runtime_executes_operations_with_executor() -> 
     ]
     assert calls[0][1]["execute"] is True
     assert result["execution_results"][0]["tool"] == "create_style"
+    assert result["verified"] is True
+    assert result["verification"]["style_name"] == "Primary Button"
 
 
 def test_create_styles_from_html_runtime_rejects_execute_without_executor() -> None:
     try:
         create_styles_from_html_runtime(
             profile="smoke",
+            style_name="Primary Button",
             style_prefix="HTML",
             element_type="Button",
             html_file="tests/fixtures/html/style-states.html",
@@ -135,6 +153,46 @@ def test_create_styles_from_html_runtime_rejects_execute_without_executor() -> N
         raise AssertionError("Expected execute=true without executor to fail.")
 
 
+def test_create_styles_from_html_runtime_rejects_execute_without_verifier() -> None:
+    try:
+        create_styles_from_html_runtime(
+            profile="smoke",
+            style_name="Primary Button",
+            style_prefix="HTML",
+            element_type="Button",
+            html_file="tests/fixtures/html/style-states.html",
+            selector=".btn-primary",
+            execute=True,
+            executor=lambda _tool, _arguments: {"ok": True},
+        )
+    except ValueError as exc:
+        assert "requires a verifier" in str(exc)
+    else:
+        raise AssertionError("Expected execute=true without verifier to fail.")
+
+
+def test_build_style_import_plan_requires_style_identity() -> None:
+    html = Path("tests/fixtures/html/style-states.html").read_text(encoding="utf-8")
+
+    try:
+        build_style_import_plan(html, profile="smoke", selector=".btn-primary", element_type="Button")
+    except ValueError as exc:
+        assert "requires style_name" in str(exc)
+    else:
+        raise AssertionError("Expected missing style_name to fail.")
+
+
+def test_build_style_import_plan_requires_element_type() -> None:
+    html = Path("tests/fixtures/html/style-states.html").read_text(encoding="utf-8")
+
+    try:
+        build_style_import_plan(html, profile="smoke", selector=".btn-primary", style_name="Primary Button")
+    except ValueError as exc:
+        assert "requires element_type" in str(exc)
+    else:
+        raise AssertionError("Expected missing element_type to fail.")
+
+
 def test_build_style_import_plan_can_infer_selector() -> None:
     result = build_style_import_plan(
         """
@@ -145,6 +203,7 @@ def test_build_style_import_plan_can_infer_selector() -> None:
         <button class="btn-primary">Save</button>
         """,
         profile="smoke",
+        style_name="Primary Button",
         style_name_prefix="HTML",
         element_type="Button",
         execute=False,

@@ -32,6 +32,7 @@ def test_build_style_operations_uses_existing_state_tools() -> None:
         "element_type": "Button",
         "dry_run": True,
         "execute": False,
+        "allow_property_match": False,
         "bg_color": "#155eef",
         "font_color": "#ffffff",
     }
@@ -63,6 +64,7 @@ def test_build_style_operations_sets_execute_dry_run_false() -> None:
                 "element_type": "Button",
                 "dry_run": False,
                 "execute": True,
+                "allow_property_match": False,
                 "bg_color": "#155eef",
             },
         }

@@ -243,7 +243,7 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_plan`: creates a validated deterministic plan.
 - `bubble_plan_dry_run`: compatibility alias for `bubble_plan`.
 - `create_from_html`: Aria's advanced HTML importer. Pass `profile`, `app_id`, `context`, `parent`, and `url`, `html_file`, or `html`; set `selector` for targeted imports and `execute=true` to write to Bubble.
-- `create_styles_from_html`: extracts Bubble style definitions from an HTML file or raw HTML snippet. Use it before `create_from_html` when hover, focus, disabled, pressed, or reusable component style definitions should be created separately.
+- `create_styles_from_html`: extracts Bubble style definitions from an HTML file or raw HTML snippet. Pass explicit `style_name` and `element_type`; existing styles with the same identity are updated, otherwise a new style is created. Use it before `create_from_html` when hover, focus, disabled, pressed, or reusable component style definitions should be created separately.
 - `bubble_compile_plan`: compiles supported abstract plan steps into Bubble write payloads.
 - `bubble_eval_run`: runs a deterministic planning eval dataset. Pass `compile=true` and `app_id` to include compiler coverage, token estimates, parser summary, and fallback reasons; pass `filter`, `failed_from`, `offset`, or `limit` for focused reruns.
 - `bubble_session_list`: lists locally imported Bubble editor sessions.

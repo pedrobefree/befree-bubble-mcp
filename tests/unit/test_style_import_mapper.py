@@ -42,6 +42,41 @@ def test_map_rules_to_button_style_candidate_with_states() -> None:
     assert candidate.states["pressed"]["bg_color"] == "#00359e"
 
 
+def test_map_complex_css_colors_and_rejects_multiple_backgrounds() -> None:
+    rules = extract_style_rules_from_html(
+        """
+        <style>
+          .card {
+            background-color: rgb(21, 94, 239);
+            color: hsl(0, 0%, 100%);
+            border-color: rgba(132, 202, 255, 0.35);
+          }
+          .card:hover {
+            background: linear-gradient(red, blue), #ffffff;
+          }
+        </style>
+        """,
+        selector=".card",
+    )
+
+    candidate = map_rules_to_style_candidate(
+        rules,
+        style_prefix="HTML",
+        element_type="Group",
+        selector=".card",
+    )
+
+    assert candidate.base["bg_color"] == "#155eef"
+    assert candidate.base["font_color"] == "#ffffff"
+    assert candidate.base["border_color"] == "rgba(132, 202, 255, 0.35)"
+    assert {
+        "state": "hover",
+        "property": "background",
+        "value": "linear-gradient(red, blue), #ffffff",
+        "reason": "multiple_backgrounds",
+    } in candidate.unsupported
+
+
 def test_map_independent_border_fields() -> None:
     rules = extract_style_rules_from_html(
         """

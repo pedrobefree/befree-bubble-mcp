@@ -65,7 +65,7 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "intent": "create_styles_from_html",
         "when": "The user asks to create reusable Bubble styles from HTML/CSS, including hover, focus, disabled, or pressed states.",
         "tools": ["create_styles_from_html", "create_style", "add_style_condition", "reorder_style_states"],
-        "notes": "Use create_styles_from_html first; it returns the create_style and state-condition operations needed for preview or execution.",
+        "notes": "Use create_styles_from_html first with explicit style_name and element_type; it upserts the style by that identity and applies state-condition operations.",
     },
     {
         "intent": "visual_quality_gate",

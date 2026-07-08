@@ -705,6 +705,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         default="HTML",
         examples=["HTML", "Marketing", "Imported"],
     ),
+    "style_name": _prop(
+        "string",
+        "Exact Bubble style name to create or update. Identity is style_name plus element_type.",
+        examples=["Primary Button", "Card Surface"],
+    ),
     "style_prefix": _prop(
         "string",
         "Compatibility alias for style_name_prefix when generating Bubble style names from HTML.",
@@ -713,7 +718,6 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     "element_type": _prop(
         "string",
         "Bubble element type the generated style targets.",
-        default="Group",
         examples=["Button", "Text", "Group"],
     ),
     "include_states": _prop(
@@ -1549,15 +1553,14 @@ def html_import_tools() -> list[ToolSchema]:
                 "file",
                 "html",
                 "selector",
-                "style_name_prefix",
-                "style_prefix",
+                "style_name",
                 "element_type",
                 "execute",
                 "include_states",
                 "states",
                 "extra_css",
             ],
-            required=["profile"],
+            required=["profile", "style_name", "element_type"],
             any_of=[
                 {"required": ["html_file"]},
                 {"required": ["file"]},

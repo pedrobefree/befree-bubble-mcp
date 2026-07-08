@@ -49,3 +49,22 @@ def test_extract_style_rules_matches_compound_selectors_for_selected_element() -
     assert rules[0].source_selector == "button.btn-primary"
     assert rules[1].source_selector == ".card .btn-primary:hover"
     assert rules[2].source_selector == "button.btn-primary:focus"
+
+
+def test_extract_style_rules_resolves_simple_css_variables() -> None:
+    html = """
+    <style>
+      :root { --primary: rgb(21, 94, 239); }
+      .btn-primary { background-color: var(--primary); }
+      .btn-primary:hover {
+        --hover-bg: #004eeb;
+        background-color: var(--hover-bg, #000000);
+      }
+    </style>
+    <button class="btn-primary">Save</button>
+    """
+
+    rules = extract_style_rules_from_html(html, ".btn-primary")
+
+    assert rules[0].declarations["background-color"] == "rgb(21, 94, 239)"
+    assert rules[1].declarations["background-color"] == "#004eeb"

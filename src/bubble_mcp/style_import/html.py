@@ -16,6 +16,7 @@ PSEUDO_TO_STATE: dict[str, StyleState] = {
     "active": "pressed",
 }
 PSEUDO_PATTERN = re.compile(r":(focus-visible|hover|focus|disabled|active)\b")
+VAR_PATTERN = re.compile(r"var\(\s*(--[A-Za-z0-9_-]+)\s*(?:,\s*([^)]+))?\)")
 
 
 def _strip_css_comments(css: str) -> str:
@@ -31,6 +32,33 @@ def _parse_declarations(body: str) -> dict[str, str]:
         key, value = part.split(":", 1)
         declarations[key.strip().lower()] = value.strip()
     return declarations
+
+
+def _resolve_css_vars(value: str, variables: dict[str, str]) -> str:
+    def replace(match: re.Match[str]) -> str:
+        name = match.group(1)
+        fallback = match.group(2)
+        if name in variables:
+            return variables[name]
+        return fallback.strip() if fallback else match.group(0)
+
+    previous = value
+    for _ in range(5):
+        resolved = VAR_PATTERN.sub(replace, previous)
+        if resolved == previous:
+            return resolved
+        previous = resolved
+    return previous
+
+
+def _visible_declarations(declarations: dict[str, str], variables: dict[str, str]) -> dict[str, str]:
+    scoped_variables = dict(variables)
+    scoped_variables.update({key: value for key, value in declarations.items() if key.startswith("--")})
+    return {
+        key: _resolve_css_vars(value, scoped_variables)
+        for key, value in declarations.items()
+        if not key.startswith("--")
+    }
 
 
 def _iter_css_blocks(html: str, extra_css: Iterable[str] = ()) -> Iterable[str]:
@@ -100,6 +128,7 @@ def extract_style_rules_from_html(
 ) -> list[ExtractedStyleRule]:
     rules: list[ExtractedStyleRule] = []
     soup = BeautifulSoup(html, "html.parser")
+    variables: dict[str, str] = {}
     for css in _iter_css_blocks(html, extra_css):
         clean_css = _strip_css_comments(css)
         for match in re.finditer(r"([^{}]+)\{([^{}]+)\}", clean_css, flags=re.S):
@@ -110,14 +139,19 @@ def extract_style_rules_from_html(
             for raw_selector in selector_group.split(","):
                 source_selector = raw_selector.strip()
                 state = _state_for_selector(source_selector, selector, soup)
+                if state == "base" or source_selector in {":root", "html", "body"}:
+                    variables.update({key: value for key, value in declarations.items() if key.startswith("--")})
                 if state is None:
+                    continue
+                visible_declarations = _visible_declarations(declarations, variables)
+                if not visible_declarations:
                     continue
                 rules.append(
                     ExtractedStyleRule(
                         selector=selector,
                         source_selector=source_selector,
                         state=state,
-                        declarations=declarations,
+                        declarations=visible_declarations,
                     )
                 )
     rules.extend(_iter_inline_style_rules(html, selector))

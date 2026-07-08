@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from colorsys import hls_to_rgb
 from collections.abc import Iterable
 
 from bubble_mcp.style_import.models import BubbleStyleCandidate, ExtractedStyleRule
@@ -59,6 +60,57 @@ def _lower_hex(value: str) -> str | None:
     return None
 
 
+def _css_color(value: str) -> str | None:
+    hex_color = _lower_hex(value)
+    if hex_color is not None:
+        return hex_color
+    rgb_match = re.fullmatch(
+        r"rgba?\(\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})\s*,\s*([0-9]{1,3})(?:\s*,\s*([0-9.]+))?\s*\)",
+        value.strip(),
+        flags=re.I,
+    )
+    if rgb_match is not None:
+        red, green, blue = [max(0, min(255, int(rgb_match.group(index)))) for index in range(1, 4)]
+        alpha = rgb_match.group(4)
+        if alpha is None:
+            return f"#{red:02x}{green:02x}{blue:02x}"
+        return f"rgba({red}, {green}, {blue}, {alpha})"
+    hsl_match = re.fullmatch(
+        r"hsla?\(\s*([0-9.]+)(?:deg)?\s*,\s*([0-9.]+)%\s*,\s*([0-9.]+)%(?:\s*,\s*([0-9.]+))?\s*\)",
+        value.strip(),
+        flags=re.I,
+    )
+    if hsl_match is not None:
+        hue = (float(hsl_match.group(1)) % 360) / 360
+        saturation = max(0.0, min(1.0, float(hsl_match.group(2)) / 100))
+        lightness = max(0.0, min(1.0, float(hsl_match.group(3)) / 100))
+        red_float, green_float, blue_float = hls_to_rgb(hue, lightness, saturation)
+        red, green, blue = [round(channel * 255) for channel in (red_float, green_float, blue_float)]
+        alpha = hsl_match.group(4)
+        if alpha is None:
+            return f"#{red:02x}{green:02x}{blue:02x}"
+        return f"rgba({red}, {green}, {blue}, {alpha})"
+    return None
+
+
+def _has_top_level_comma(value: str) -> bool:
+    depth = 0
+    for char in value:
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth:
+            depth -= 1
+        elif char == "," and depth == 0:
+            return True
+    return False
+
+
+def _background_color(value: str) -> str | None:
+    if _has_top_level_comma(value):
+        return None
+    return _css_color(value)
+
+
 def _split_border(value: str) -> tuple[dict[str, object], bool, list[str]]:
     mapped: dict[str, object] = {}
     recognized_any = False
@@ -77,7 +129,7 @@ def _split_border(value: str) -> tuple[dict[str, object], bool, list[str]]:
             recognized_any = True
             continue
 
-        color = _lower_hex(part)
+        color = _css_color(part)
         if color is not None:
             mapped["border_color"] = color
             recognized_any = True
@@ -153,7 +205,10 @@ def _split_border_styles(value: str) -> dict[str, str]:
 
 
 def _split_border_colors(value: str) -> dict[str, str]:
-    colors = [_lower_hex(part) for part in value.split()]
+    single_color = _css_color(value)
+    if single_color is not None:
+        return {"border_color": single_color}
+    colors = [_css_color(part) for part in value.split()]
     if not colors or any(color is None for color in colors):
         return {}
     parsed = [str(color) for color in colors if color is not None]
@@ -228,12 +283,23 @@ def _map_declarations(declarations: dict[str, str]) -> tuple[dict[str, object], 
         value = raw_value.strip()
 
         if property_name == "background-color":
-            color = _lower_hex(value)
+            color = _background_color(value)
             if color is not None:
                 mapped["bg_color"] = color
                 continue
+        elif property_name == "background":
+            color = _background_color(value)
+            if color is not None:
+                mapped["bg_color"] = color
+                continue
+            if _has_top_level_comma(value):
+                unsupported.append({"property": property_name, "value": value, "reason": "multiple_backgrounds"})
+                continue
+            if "gradient(" in value.lower():
+                unsupported.append({"property": property_name, "value": value, "reason": "gradient_not_mapped"})
+                continue
         elif property_name == "color":
-            color = _lower_hex(value)
+            color = _css_color(value)
             if color is not None:
                 mapped["font_color"] = color
                 continue
@@ -289,7 +355,7 @@ def _map_declarations(declarations: dict[str, str]) -> tuple[dict[str, object], 
             "border-bottom-color",
             "border-left-color",
         }:
-            color = _lower_hex(value)
+            color = _css_color(value)
             if color is not None:
                 side = property_name.removeprefix("border-").removesuffix("-color")
                 mapped[f"border_color_{SIDE_SUFFIXES[side]}"] = color

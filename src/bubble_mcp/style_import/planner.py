@@ -21,6 +21,7 @@ def _create_style_args(
         "element_type": candidate.element_type,
         "dry_run": dry_run,
         "execute": execute,
+        "allow_property_match": False,
         **candidate.base,
     }
 

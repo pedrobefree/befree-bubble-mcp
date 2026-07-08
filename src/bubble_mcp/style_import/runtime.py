@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -11,11 +12,13 @@ from bubble_mcp.style_import.html import extract_style_rules_from_html
 from bubble_mcp.style_import.mapper import map_rules_to_style_candidate
 from bubble_mcp.style_import.models import BubbleStyleCandidate
 from bubble_mcp.style_import.planner import build_style_operations
+from bubble_mcp.style_import.render import fetch_url_html, render_url_to_html
 
 
 DEFAULT_ELEMENT_TYPE = "Group"
 DEFAULT_STYLE_NAME_PREFIX = "HTML"
 StyleOperationExecutor = Callable[[str, dict[str, Any]], dict[str, Any]]
+StylePostExecutionVerifier = Callable[[dict[str, Any]], dict[str, Any]]
 
 
 def _read_html_source(*, html: str | None, html_file: str | None, file: str | None) -> str:
@@ -74,13 +77,20 @@ def build_style_import_plan(
     *,
     profile: str,
     selector: str | None = None,
+    style_name: str | None = None,
     style_name_prefix: str | None = None,
-    element_type: str = DEFAULT_ELEMENT_TYPE,
+    element_type: str = "",
     execute: bool = False,
     extra_css: list[str] | None = None,
     include_states: bool = True,
     states: list[str] | None = None,
 ) -> dict[str, Any]:
+    resolved_style_name = str(style_name or "").strip()
+    if not resolved_style_name:
+        raise ValueError("build_style_import_plan requires style_name.")
+    resolved_element_type = str(element_type or "").strip()
+    if not resolved_element_type:
+        raise ValueError("build_style_import_plan requires element_type.")
     resolved_selector = selector or _infer_selector(html)
     rules = extract_style_rules_from_html(
         html,
@@ -97,9 +107,10 @@ def build_style_import_plan(
     candidate = map_rules_to_style_candidate(
         rules,
         style_prefix=style_name_prefix or DEFAULT_STYLE_NAME_PREFIX,
-        element_type=element_type,
+        element_type=resolved_element_type,
         selector=resolved_selector,
     )
+    candidate = replace(candidate, name=resolved_style_name)
     candidates = [candidate]
     operations = build_style_operations(profile, candidates, execute)
     unsupported = [item for candidate_item in candidates for item in candidate_item.unsupported]
@@ -112,6 +123,14 @@ def build_style_import_plan(
         "profile": profile,
         "execute": execute,
         "selector": resolved_selector,
+        "style_name": resolved_style_name,
+        "element_type": resolved_element_type,
+        "identity": {
+            "style_name": resolved_style_name,
+            "element_type": resolved_element_type,
+            "match": "name_and_element_type",
+            "mode": "upsert",
+        },
         "candidates": candidate_dicts,
         "styles": candidate_dicts,
         "operations": operations,
@@ -143,28 +162,55 @@ def create_styles_from_html_runtime(
     *,
     profile: str,
     selector: str | None = None,
+    style_name: str | None = None,
     style_prefix: str | None = None,
     style_name_prefix: str | None = None,
-    element_type: str = DEFAULT_ELEMENT_TYPE,
+    element_type: str = "",
     html: str | None = None,
     html_file: str | None = None,
     file: str | None = None,
     url: str | None = None,
+    rendered_html: bool | None = None,
+    render_timeout_ms: int = 35000,
     execute: bool = False,
     include_states: bool = True,
     states: list[str] | None = None,
     extra_css: list[str] | None = None,
     executor: StyleOperationExecutor | None = None,
+    verifier: StylePostExecutionVerifier | None = None,
     **_: Any,
 ) -> dict[str, Any]:
+    source: dict[str, Any]
     if url is not None:
-        raise ValueError("URL rendering for create_styles_from_html is not available yet.")
-
-    source_html = _read_html_source(html=html, html_file=html_file, file=file)
+        resolved_url = str(url or "").strip()
+        if not resolved_url:
+            raise ValueError("create_styles_from_html_runtime requires a non-empty url.")
+        if not str(selector or "").strip():
+            raise ValueError("create_styles_from_html_runtime requires selector when url is provided.")
+        use_rendered_html = True if rendered_html is None else bool(rendered_html)
+        source_html = (
+            render_url_to_html(url=resolved_url, selector=str(selector), timeout_ms=render_timeout_ms)
+            if use_rendered_html
+            else fetch_url_html(url=resolved_url, timeout_ms=render_timeout_ms)
+        )
+        source = {
+            "type": "url",
+            "url": resolved_url,
+            "rendered_html": use_rendered_html,
+            "selector": selector,
+        }
+    else:
+        source_html = _read_html_source(html=html, html_file=html_file, file=file)
+        source = {
+            "type": "html" if html is not None else "file",
+            "html_file": html_file or file,
+            "rendered_html": False,
+        }
     result = build_style_import_plan(
         source_html,
         profile=profile,
         selector=selector,
+        style_name=style_name,
         style_name_prefix=style_name_prefix or style_prefix,
         element_type=element_type,
         execute=execute,
@@ -172,14 +218,21 @@ def create_styles_from_html_runtime(
         include_states=include_states,
         states=states,
     )
+    result["source"] = source
     result["executed"] = False
     if execute:
         if executor is None:
             raise ValueError("create_styles_from_html_runtime requires an executor when execute=true.")
+        if verifier is None:
+            raise ValueError("create_styles_from_html_runtime requires a verifier when execute=true.")
         execution_results = _execute_style_operations(result["operations"], executor)
         result["execution_results"] = execution_results
         result["executed"] = all(item["ok"] for item in execution_results)
         result["ok"] = result["executed"]
+        verification = verifier(result["candidates"][0])
+        result["verification"] = verification
+        result["verified"] = bool(verification.get("ok"))
+        result["ok"] = bool(result["ok"] and result["verified"])
     return result
 
 

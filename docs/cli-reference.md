@@ -262,12 +262,14 @@ bubble-mcp import html-styles \
   --file component.html \
   --profile smoke \
   --selector '.btn-primary' \
-  --style-name-prefix HTML \
+  --style-name 'Primary Button' \
   --element-type Button
 ```
 
 Supported pseudo-states are `:hover`, `:focus`, `:focus-visible`, `:disabled`,
 and `:active` mapped to Bubble hover, focus, disabled, and pressed states.
+Style identity is `--style-name` plus `--element-type`; matching existing
+styles are updated, otherwise a new style is created.
 
 ## `bubble-mcp session import`
 

@@ -66,7 +66,7 @@ from bubble_mcp.readiness import run_readiness_check
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.runtime_smoke import run_runtime_smoke
 from bubble_mcp.server.agent_guide import agent_guide, search_tool_catalog, task_recipe, task_runbook
-from bubble_mcp.server.tools import call_tool
+from bubble_mcp.server.tools import _verify_html_style_import, call_tool
 from bubble_mcp.skills.authoring import (
     create_skill_authoring_session,
     generate_skill_from_authoring_session,
@@ -410,8 +410,7 @@ def command_import_html_styles(args: argparse.Namespace) -> int:
     result = create_styles_from_html_runtime(
         profile=args.profile,
         selector=args.selector or None,
-        style_prefix=args.style_prefix or None,
-        style_name_prefix=args.style_name_prefix or None,
+        style_name=args.style_name or None,
         element_type=args.element_type,
         html_file=args.file or None,
         html=args.html or None,
@@ -420,6 +419,7 @@ def command_import_html_styles(args: argparse.Namespace) -> int:
         states=[state.strip() for state in args.states.split(",") if state.strip()] if args.states else None,
         extra_css=[args.extra_css] if args.extra_css else None,
         executor=lambda tool, tool_args: call_tool(tool, tool_args),
+        verifier=lambda candidate: _verify_html_style_import(args.profile, candidate),
     )
     emit_json(result)
     return 0 if result.get("ok") else 1
@@ -1697,9 +1697,8 @@ def build_parser() -> argparse.ArgumentParser:
     html_styles_parser.add_argument("--profile", required=True)
     html_styles_parser.add_argument("--execute", action="store_true")
     html_styles_parser.add_argument("--selector", default="")
-    html_styles_parser.add_argument("--style-name-prefix", default="")
-    html_styles_parser.add_argument("--style-prefix", default="")
-    html_styles_parser.add_argument("--element-type", default="Group")
+    html_styles_parser.add_argument("--style-name", required=True)
+    html_styles_parser.add_argument("--element-type", required=True)
     html_styles_parser.add_argument("--no-states", dest="include_states", action="store_false")
     html_styles_parser.set_defaults(include_states=True)
     html_styles_parser.add_argument("--states", default="", help="Comma-separated pseudo-states to import.")

@@ -539,8 +539,8 @@ def test_cli_import_html_styles_uses_style_runtime(monkeypatch, capsys) -> None:
                 "smoke",
                 "--selector",
                 ".btn-primary",
-                "--style-name-prefix",
-                "HTML",
+                "--style-name",
+                "Primary Button",
                 "--element-type",
                 "Button",
                 "--states",
@@ -557,7 +557,7 @@ def test_cli_import_html_styles_uses_style_runtime(monkeypatch, capsys) -> None:
     assert calls[0]["profile"] == "smoke"
     assert calls[0]["html_file"] == "tests/fixtures/html/style-states.html"
     assert calls[0]["selector"] == ".btn-primary"
-    assert calls[0]["style_name_prefix"] == "HTML"
+    assert calls[0]["style_name"] == "Primary Button"
     assert calls[0]["element_type"] == "Button"
     assert calls[0]["states"] == ["hover", "focus"]
     assert calls[0]["extra_css"] == [".btn-primary:focus { border-color: #84caff; }"]
