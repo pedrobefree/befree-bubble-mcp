@@ -227,6 +227,37 @@ def test_compile_framework_program_rejects_unresolved_mutating_dependency(
     assert result["unresolved_dependencies"] == ["{{steps.section.output.element_id}}"]
 
 
+def test_compile_framework_program_rejects_dependency_from_unresolved_producer(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "objective": "Create dependent CTA from unknown producer",
+            "steps": [
+                {
+                    "id": "producer",
+                    "intent": "unknown_make",
+                    "outputs": {"element_id": "made_id"},
+                },
+                {
+                    "intent": "create_button",
+                    "context": "checkout",
+                    "parent": "{{steps.producer.output.element_id}}",
+                    "text": "Start",
+                },
+            ],
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "framework_program_has_unresolved_dependencies"
+    assert result["unresolved_dependencies"] == ["{{steps.producer.output.element_id}}"]
+
+
 def test_compile_framework_program_allows_declared_runtime_dependency(
     tmp_path, monkeypatch
 ) -> None:

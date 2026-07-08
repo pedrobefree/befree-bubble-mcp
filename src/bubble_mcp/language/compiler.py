@@ -201,6 +201,11 @@ def compile_framework_program(
             )
             if tool_name not in READ_ONLY_TOOLS and step_unresolved_dependencies:
                 unresolved_dependency_mutations.append(compiled_calls[-1])
+            record_declared_outputs(
+                dependency_state,
+                step_id=step.step_id,
+                declared_outputs=step.outputs,
+            )
         else:
             compiled = _compile_intent_step(
                 step,
@@ -212,17 +217,19 @@ def compile_framework_program(
             if compiled["tool"] not in available:
                 unavailable.append(str(compiled["tool"]))
                 continue
+            is_unresolved_intent = bool(compiled.get("unresolved_intent"))
             if compiled.get("unresolved_intent"):
                 unresolved.append(str(compiled["unresolved_intent"]))
                 compiled.pop("unresolved_intent", None)
             compiled_calls.append(compiled)
             if str(compiled.get("tool") or "") not in READ_ONLY_TOOLS and step_unresolved_dependencies:
                 unresolved_dependency_mutations.append(compiled)
-        record_declared_outputs(
-            dependency_state,
-            step_id=step.step_id,
-            declared_outputs=step.outputs,
-        )
+            if not is_unresolved_intent:
+                record_declared_outputs(
+                    dependency_state,
+                    step_id=step.step_id,
+                    declared_outputs=step.outputs,
+                )
     if unavailable:
         return {
             "ok": False,
