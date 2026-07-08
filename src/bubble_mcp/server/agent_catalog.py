@@ -757,13 +757,15 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Return scoped Bubble MCP language entries for a task, family, source, or risk without full schemas."
     ),
     "bubble_language_tool_detail": (
-        "Lazy-load compact or full schema details only for selected Bubble MCP tools."
+        "Lazy-load compact or full schema details only for selected Bubble MCP tools when a framework needs exact "
+        "arguments before compilation."
     ),
     "bubble_language_diff": (
         "Report language registry changes since a previous version so frameworks can refresh cached context cheaply."
     ),
     "bubble_framework_language_pack": (
-        "Return BMAD, Superpowers, or SDD shaped low-token Bubble MCP language context."
+        "Return BMAD, Superpowers, or SDD shaped low-token Bubble MCP language context with scoped tools, rules, "
+        "recipes, and next actions."
     ),
     "bubble_framework_compile_program": (
         "Compile framework-authored compact programs into preview-safe Bubble MCP tool calls without execution."

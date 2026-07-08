@@ -52,7 +52,8 @@ def _schema_properties(tool: dict[str, Any]) -> tuple[str, ...]:
 
 
 def _risk_from_annotations(tool: dict[str, Any]) -> str:
-    annotations = tool.get("annotations") if isinstance(tool.get("annotations"), dict) else {}
+    raw_annotations = tool.get("annotations")
+    annotations: dict[str, Any] = raw_annotations if isinstance(raw_annotations, dict) else {}
     if bool(annotations.get("destructiveHint")):
         return "destructive"
     if bool(annotations.get("readOnlyHint")):
@@ -67,8 +68,9 @@ def _schema_hash(tool: dict[str, Any]) -> str:
 
 def _tool_entry(tool: dict[str, Any], coverage_by_name: dict[str, dict[str, Any]]) -> dict[str, Any]:
     name = str(tool.get("name") or "")
-    annotations = tool.get("annotations") if isinstance(tool.get("annotations"), dict) else {}
-    coverage = coverage_by_name.get(name) or classify_tool(name)
+    raw_annotations = tool.get("annotations")
+    annotations: dict[str, Any] = raw_annotations if isinstance(raw_annotations, dict) else {}
+    coverage: dict[str, Any] = coverage_by_name.get(name) or classify_tool(name)
     source = "extension" if coverage.get("coverage") == "extension_preview" else "native"
     family = _documentation_family_for_name(name)
     return {
