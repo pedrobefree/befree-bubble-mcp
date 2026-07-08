@@ -162,6 +162,46 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         additional_properties=True,
         examples=[{"summary": "Preview passed", "run_id": "skillrun_20260707_123456"}],
     ),
+    "families": _prop(
+        "array",
+        "Optional tool-family filters for language registry queries.",
+        items={"type": "string"},
+        examples=[["visual_editor", "workflow"]],
+    ),
+    "sources": _prop(
+        "array",
+        "Optional source filters such as native or extension.",
+        items={"type": "string"},
+        examples=[["native"], ["extension"]],
+    ),
+    "risks": _prop(
+        "array",
+        "Optional risk filters such as read_only, mutating, or destructive.",
+        items={"type": "string"},
+        examples=[["read_only", "mutating"]],
+    ),
+    "tools": _prop(
+        "array",
+        "Exact Bubble MCP tool names for lazy language detail lookup.",
+        items={"type": "string"},
+        examples=[["create_button", "bubble_context_find"]],
+    ),
+    "detail": _prop(
+        "string",
+        "Language registry detail level.",
+        enum=["index", "compact", "full"],
+        default="compact",
+    ),
+    "since": _prop(
+        "string",
+        "Previous language registry version for diff queries.",
+        examples=["sha256:old"],
+    ),
+    "program": _prop(
+        "object",
+        "Framework-authored compact Bubble MCP program to compile into preview-safe MCP calls.",
+        additional_properties=True,
+    ),
     "risk": _prop(
         "string",
         "Skill risk level.",
@@ -1564,6 +1604,41 @@ def extension_kernel_tools() -> list[ToolSchema]:
             "Generate and validate a skill contract from a skill-authoring session.",
             ["session_id", "skill_id", "output_dir"],
             required=["session_id"],
+        ),
+        tool_schema(
+            "bubble_language_index",
+            "Return a compact versioned Bubble MCP language index. This is the preferred low-token entrypoint instead of dumping the full tools/list catalog.",
+            ["profile"],
+        ),
+        tool_schema(
+            "bubble_language_query",
+            "Return scoped compact Bubble MCP language entries by query, family, source, and risk filters.",
+            ["query", "families", "sources", "risks", "limit", "profile"],
+            required=["query"],
+        ),
+        tool_schema(
+            "bubble_language_tool_detail",
+            "Lazy-load compact or full schema details for selected Bubble MCP tools only.",
+            ["tools", "detail"],
+            required=["tools"],
+        ),
+        tool_schema(
+            "bubble_language_diff",
+            "Return added, changed, and removed language entries since a previous registry version.",
+            ["since", "profile"],
+            required=["since"],
+        ),
+        tool_schema(
+            "bubble_framework_language_pack",
+            "Return a framework-shaped low-token Bubble MCP language pack for BMAD, Superpowers, or SDD.",
+            ["framework", "profile", "scope", "limit"],
+            required=["framework"],
+        ),
+        tool_schema(
+            "bubble_framework_compile_program",
+            "Compile a compact framework program into preview-safe Bubble MCP tool calls. This does not execute writes.",
+            ["framework", "profile", "program"],
+            required=["framework", "profile", "program"],
         ),
         _empty_tool(
             "bubble_framework_list",

@@ -62,6 +62,14 @@ from bubble_mcp.frameworks import (
     list_frameworks,
     sync_framework_evidence,
 )
+from bubble_mcp.language import (
+    build_language_index,
+    compile_framework_program,
+    framework_language_pack,
+    language_diff,
+    language_query,
+    language_tool_detail,
+)
 from bubble_mcp.harness.expert import export_expert_eval_cases
 from bubble_mcp.harness.eval_runner import run_eval
 from bubble_mcp.harness.visual import compare_visual_snapshot_files
@@ -382,6 +390,46 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             _required_string_arg(args, "session_id", name),
             skill_id=str(args.get("skill_id") or "") or None,
             output_dir=Path(output_dir) if output_dir else None,
+        )
+    if name == "bubble_language_index":
+        args = arguments or {}
+        return build_language_index(profile=str(args.get("profile") or "") or None)
+    if name == "bubble_language_query":
+        args = arguments or {}
+        return language_query(
+            query=_required_string_arg(args, "query", name),
+            families=args.get("families") if isinstance(args.get("families"), list) else None,
+            sources=args.get("sources") if isinstance(args.get("sources"), list) else None,
+            risks=args.get("risks") if isinstance(args.get("risks"), list) else None,
+            limit=int(args.get("limit") or 12),
+            profile=str(args.get("profile") or "") or None,
+        )
+    if name == "bubble_language_tool_detail":
+        args = arguments or {}
+        raw_tools = args.get("tools")
+        if not isinstance(raw_tools, list):
+            raise ValueError("bubble_language_tool_detail requires tools to be an array.")
+        return language_tool_detail([str(tool) for tool in raw_tools], detail=str(args.get("detail") or "compact"))
+    if name == "bubble_language_diff":
+        args = arguments or {}
+        return language_diff(since=_required_string_arg(args, "since", name), profile=str(args.get("profile") or "") or None)
+    if name == "bubble_framework_language_pack":
+        args = arguments or {}
+        return framework_language_pack(
+            framework=_required_string_arg(args, "framework", name),
+            profile=str(args.get("profile") or "") or None,
+            scope=str(args.get("scope") or ""),
+            max_tools=int(args.get("limit") or args.get("max_tools") or 12),
+        )
+    if name == "bubble_framework_compile_program":
+        args = arguments or {}
+        raw_program = args.get("program")
+        if not isinstance(raw_program, dict):
+            raise ValueError("bubble_framework_compile_program requires program to be an object.")
+        return compile_framework_program(
+            framework=_required_string_arg(args, "framework", name),
+            profile=_required_string_arg(args, "profile", name),
+            program=raw_program,
         )
     if name == "bubble_framework_list":
         return list_frameworks()

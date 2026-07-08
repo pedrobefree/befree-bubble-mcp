@@ -749,6 +749,25 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Generate and validate a skill contract from a skill-authoring session, returning next calls for import, "
         "enable, and preview run."
     ),
+    "bubble_language_index": (
+        "Return compact dynamic Bubble MCP language metadata, registry version, family counts, source counts, and "
+        "runtime rules. Use this before framework planning instead of dumping tools/list."
+    ),
+    "bubble_language_query": (
+        "Return scoped Bubble MCP language entries for a task, family, source, or risk without full schemas."
+    ),
+    "bubble_language_tool_detail": (
+        "Lazy-load compact or full schema details only for selected Bubble MCP tools."
+    ),
+    "bubble_language_diff": (
+        "Report language registry changes since a previous version so frameworks can refresh cached context cheaply."
+    ),
+    "bubble_framework_language_pack": (
+        "Return BMAD, Superpowers, or SDD shaped low-token Bubble MCP language context."
+    ),
+    "bubble_framework_compile_program": (
+        "Compile framework-authored compact programs into preview-safe Bubble MCP tool calls without execution."
+    ),
     "bubble_framework_list": (
         "List supported development-framework adapters for BMAD, Superpowers, and SDD. Use before generating "
         "framework artifacts or when the user asks what framework integrations exist."
@@ -1507,6 +1526,12 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_workflow_runs_get",
         "bubble_storage_usage_get",
         "bubble_time_series_read",
+        "bubble_language_index",
+        "bubble_language_query",
+        "bubble_language_tool_detail",
+        "bubble_language_diff",
+        "bubble_framework_language_pack",
+        "bubble_framework_compile_program",
         "bubble_framework_list",
         "bubble_framework_status",
     }

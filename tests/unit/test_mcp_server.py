@@ -2788,6 +2788,105 @@ def test_framework_tools_generate_sync_and_status(tmp_path, monkeypatch) -> None
     assert status["status"][0]["evidence_count"] == 1
 
 
+def test_language_tools_are_listed_with_annotations() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 201, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    for name in (
+        "bubble_language_index",
+        "bubble_language_query",
+        "bubble_language_tool_detail",
+        "bubble_language_diff",
+        "bubble_framework_language_pack",
+        "bubble_framework_compile_program",
+    ):
+        assert name in tools
+    assert tools["bubble_language_index"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_language_query"]["inputSchema"]["required"] == ["query"]
+    assert tools["bubble_language_tool_detail"]["inputSchema"]["required"] == ["tools"]
+    assert tools["bubble_framework_language_pack"]["inputSchema"]["required"] == ["framework"]
+    assert tools["bubble_framework_compile_program"]["inputSchema"]["required"] == [
+        "framework",
+        "profile",
+        "program",
+    ]
+
+
+def test_language_tools_dispatch_index_query_pack_and_compile(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    index_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 202,
+            "method": "tools/call",
+            "params": {"name": "bubble_language_index", "arguments": {"profile": "cliente2"}},
+        }
+    )
+    assert index_response is not None
+    index_payload = json.loads(index_response["result"]["content"][0]["text"])
+    assert index_payload["registry_version"].startswith("sha256:")
+
+    query_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 203,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_language_query",
+                "arguments": {"query": "create button", "families": ["visual_editor"], "limit": 5},
+            },
+        }
+    )
+    assert query_response is not None
+    query_payload = json.loads(query_response["result"]["content"][0]["text"])
+    assert query_payload["matches"]
+
+    pack_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 204,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_framework_language_pack",
+                "arguments": {"framework": "bmad", "profile": "cliente2", "scope": "create checkout button"},
+            },
+        }
+    )
+    assert pack_response is not None
+    pack_payload = json.loads(pack_response["result"]["content"][0]["text"])
+    assert pack_payload["framework"] == "bmad"
+
+    compile_response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 205,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_framework_compile_program",
+                "arguments": {
+                    "framework": "bmad",
+                    "profile": "cliente2",
+                    "program": {
+                        "objective": "Create CTA",
+                        "steps": [
+                            {
+                                "tool": "create_button",
+                                "arguments": {"context": "index", "parent": "root", "label": "Start"},
+                            }
+                        ],
+                    },
+                },
+            },
+        }
+    )
+    assert compile_response is not None
+    compile_payload = json.loads(compile_response["result"]["content"][0]["text"])
+    assert compile_payload["ok"] is True
+    assert compile_payload["compiled_calls"][0]["arguments"]["execute"] is False
+
+
 def test_high_potential_tools_include_docs_enrichment_metadata() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 111, "method": "tools/list"})
 
