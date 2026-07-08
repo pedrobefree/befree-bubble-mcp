@@ -127,6 +127,18 @@ def list_scheduled_records(profile: str) -> list[ScheduledDeployRecord]:
     return records
 
 
+def list_all_scheduled_records() -> list[ScheduledDeployRecord]:
+    root = get_config_dir() / "profiles"
+    if not root.exists():
+        return []
+    records: list[ScheduledDeployRecord] = []
+    for deploy_file in sorted(root.glob("*/deploys/scheduled/*.json")):
+        payload = json.loads(deploy_file.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            records.append(ScheduledDeployRecord.from_dict(payload))
+    return records
+
+
 def list_history_records(profile: str, *, limit: int = 50, include_cancelled: bool = True) -> list[dict[str, Any]]:
     path = history_path(profile)
     if not path.exists():

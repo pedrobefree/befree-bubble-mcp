@@ -16,6 +16,7 @@ from bubble_mcp.browser_automation.store import (
     delete_preview,
     delete_scheduled_record,
     evidence_dir,
+    list_all_scheduled_records,
     list_history_records,
     list_scheduled_records,
     load_preview,
@@ -24,6 +25,9 @@ from bubble_mcp.browser_automation.store import (
     save_scheduled_record,
 )
 from bubble_mcp.core.config import load_settings, resolve_profile
+from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.sessions.browser import _bubble_cookie_header
+from bubble_mcp.sessions.store import save_session, session_from_payload
 
 APP_VERSION = "test"
 
@@ -118,6 +122,16 @@ def _arm_timer(record: ScheduledDeployRecord, executor: Callable[[ScheduledDeplo
     timer.start()
 
 
+def rearm_scheduled_deploys(
+    executor: Callable[[ScheduledDeployRecord], dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    resolved_executor = executor or execute_scheduled_deploy
+    records = list_all_scheduled_records()
+    for record in records:
+        _arm_timer(record, resolved_executor)
+    return {"ok": True, "armed": len(records), "deploy_ids": [record.deploy_id for record in records]}
+
+
 def schedule_deploy(
     *,
     profile: str,
@@ -204,7 +218,7 @@ def schedule_deploy(
     path = save_scheduled_record(record)
     append_history(resolved_profile, {**record.to_dict(), "event": "scheduled"})
     delete_preview(resolved_profile, preview.preview_id)
-    _arm_timer(record, executor)
+    _arm_timer(record, executor or execute_scheduled_deploy)
     return {
         "ok": True,
         "mode": "scheduled",
@@ -253,3 +267,146 @@ def write_evidence(profile: str, deploy_id: str, payload: dict[str, Any]) -> Pat
     path = directory / "result.json"
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+def _editor_url(app_id: str) -> str:
+    return f"https://bubble.io/page?name=index&id={app_id}&version={APP_VERSION}"
+
+
+def _visible_deploy_button_script() -> str:
+    return """
+        () => {
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const button = buttons.find((candidate) =>
+            candidate.innerText && candidate.innerText.includes('Deploy') && candidate.offsetParent !== null
+          );
+          if (!button) throw new Error('Deploy confirm button not found');
+          button.click();
+        }
+    """
+
+
+def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
+    """Execute the stored browser-assisted deploy workflow with Playwright."""
+
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        return {
+            "ok": False,
+            "deploy_id": record.deploy_id,
+            "error": (
+                "Playwright is required for scheduled deploy. Install with: "
+                'python -m pip install "befree-bubble-mcp[browser]" && python -m playwright install chromium'
+            ),
+            "error_class": exc.__class__.__name__,
+        }
+
+    settings = load_settings()
+    user_data_dir = settings.config_dir / "browser-profiles" / record.profile
+    evidence = evidence_dir(record.profile, record.deploy_id)
+    evidence.mkdir(parents=True, exist_ok=True)
+    editor_url = _editor_url(record.app_id)
+    captured_headers: dict[str, str] = {}
+    network_events: list[dict[str, Any]] = []
+
+    try:
+        with sync_playwright() as playwright:
+            context = playwright.chromium.launch_persistent_context(
+                str(user_data_dir),
+                headless=record.headless,
+            )
+            page = context.pages[0] if context.pages else context.new_page()
+
+            def remember_request(request: Any) -> None:
+                try:
+                    url = str(request.url)
+                    method = str(request.method)
+                    headers = {str(key).lower(): str(value) for key, value in request.headers.items()}
+                except Exception:
+                    return
+                if "bubble.io/" not in url:
+                    return
+                network_events.append({"url": url, "method": method})
+                for key, value in headers.items():
+                    if key.startswith("x-bubble-") or key in {
+                        "accept",
+                        "accept-language",
+                        "origin",
+                        "referer",
+                        "sec-ch-ua",
+                        "sec-ch-ua-mobile",
+                        "sec-ch-ua-platform",
+                        "user-agent",
+                        "x-csrf-token",
+                        "x-requested-with",
+                        "x-xsrf-token",
+                    }:
+                        captured_headers[key] = value
+
+            context.on("request", remember_request)
+            page.goto(editor_url, wait_until="domcontentloaded", timeout=record.wait_seconds * 1000)
+            page.screenshot(path=str(evidence / "before-deploy.png"), full_page=True)
+            page.wait_for_selector('[itemid="deploy-to-live"]', timeout=20_000)
+            page.click('[itemid="deploy-to-live"]')
+            textarea = 'textarea[placeholder*="description"], textarea[placeholder*="short"]'
+            page.wait_for_selector(textarea, timeout=8_000)
+            page.fill(textarea, record.message)
+            page.wait_for_timeout(500)
+            page.evaluate(_visible_deploy_button_script())
+            page.wait_for_timeout(1000)
+            page.screenshot(path=str(evidence / "after-deploy.png"), full_page=True)
+            cookie_header = _bubble_cookie_header(context)
+            user_agent = str(page.evaluate("() => navigator.userAgent") or "befree-bubble-mcp")
+            context.close()
+
+        if cookie_header:
+            session = session_from_payload(
+                {
+                    "appId": record.app_id,
+                    "url": editor_url,
+                    "headers": {
+                        "Cookie": cookie_header,
+                        "User-Agent": user_agent,
+                        **captured_headers,
+                    },
+                    "appVersion": APP_VERSION,
+                    "source": "scheduled_deploy_browser",
+                }
+            )
+            session_path = save_session(record.profile, session)
+        else:
+            session_path = None
+
+        result = {
+            "ok": True,
+            "deploy_id": record.deploy_id,
+            "profile": record.profile,
+            "app_id": record.app_id,
+            "app_version": APP_VERSION,
+            "deployed_at": _now_iso(),
+            "evidence_dir": str(evidence),
+            "screenshots": {
+                "before": str(evidence / "before-deploy.png"),
+                "after": str(evidence / "after-deploy.png"),
+            },
+            "session_refreshed": session_path is not None,
+            "session_path": str(session_path) if session_path else None,
+            "network_events": network_events[-25:],
+        }
+        write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
+        return result
+    except Exception as exc:
+        result = {
+            "ok": False,
+            "deploy_id": record.deploy_id,
+            "profile": record.profile,
+            "app_id": record.app_id,
+            "app_version": APP_VERSION,
+            "error": str(exc),
+            "error_class": exc.__class__.__name__,
+            "evidence_dir": str(evidence),
+            "network_events": network_events[-25:],
+        }
+        write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
+        return result

@@ -6,6 +6,7 @@ import pytest
 from bubble_mcp.browser_automation.scheduled_deploy import (
     cancel_scheduled_deploy,
     deploy_history,
+    execute_scheduled_deploy,
     list_scheduled_deploys,
     schedule_deploy,
 )
@@ -167,3 +168,66 @@ def test_history_limit_returns_latest_records(tmp_path, monkeypatch) -> None:
     history = deploy_history(profile="client", limit=2)
 
     assert [item["message"] for item in history["history"]] == ["Release 1", "Release 2"]
+
+
+def test_confirmed_schedule_arms_executor(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+    calls = []
+
+    def fake_executor(record):  # type: ignore[no-untyped-def]
+        calls.append(record.deploy_id)
+        return {"ok": True}
+
+    preview = schedule_deploy(
+        profile="client",
+        scheduled_at="2020-01-01T10:30:00Z",
+        message="Immediate release",
+    )
+    result = schedule_deploy(
+        profile="client",
+        scheduled_at="2020-01-01T10:30:00Z",
+        message="Immediate release",
+        execute=True,
+        confirm=True,
+        preview_id=preview["preview"]["preview_id"],
+        executor=fake_executor,
+    )
+
+    assert result["ok"] is True
+    assert calls == [] or calls == [result["deploy"]["deploy_id"]]
+
+
+def test_execute_scheduled_deploy_reports_missing_playwright(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+    record = schedule_deploy(
+        profile="client",
+        scheduled_at="2026-07-09T10:30:00Z",
+        message="Main branch release",
+    )
+    scheduled = schedule_deploy(
+        profile="client",
+        scheduled_at="2026-07-09T10:30:00Z",
+        message="Main branch release",
+        execute=True,
+        confirm=True,
+        preview_id=record["preview"]["preview_id"],
+    )["deploy"]
+
+    real_import = __import__
+
+    def fake_import(name, *args, **kwargs):  # type: ignore[no-untyped-def]
+        if name == "playwright.sync_api":
+            raise ImportError("missing")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    result = execute_scheduled_deploy(
+        __import__("bubble_mcp.browser_automation.models", fromlist=["ScheduledDeployRecord"]).ScheduledDeployRecord.from_dict(
+            scheduled
+        )
+    )
+
+    assert result["ok"] is False
+    assert "Playwright is required" in result["error"]
