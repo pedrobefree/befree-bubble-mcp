@@ -318,9 +318,13 @@ def test_create_transfer_plan_uses_profile_bubble_raw_for_reusable_clone(tmp_pat
         for change in plan["write_payloads"][0]["changes"]
         if change["intent"]["name"] == "CreateElement"
     )
-    assert root_body["%s"]
+    assert "%s" not in root_body
     assert root_body["%wf"]
     assert next(iter(root_body["%el"].values()))["%s"]
+    custom_state_change = next(
+        change for change in plan["write_payloads"][0]["changes"] if change["intent"]["name"] == "CreateCustomState"
+    )
+    assert custom_state_change["path_array"][-2:] == ["custom_states", "file_"]
 
 
 def test_create_transfer_plan_blocks_missing_plugin_element_dependency(tmp_path, monkeypatch) -> None:

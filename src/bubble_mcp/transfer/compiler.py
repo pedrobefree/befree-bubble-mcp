@@ -118,6 +118,81 @@ def _raw_reusable_definition(inventory: TransferInventory) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _is_custom_state_like(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    if "%c" in value or "condition" in value or "properties" in value:
+        return False
+    return any(key in value for key in ("%d", "display", "%v", "value", "type", "make_static", "rank", "default_val"))
+
+
+def _iter_reusable_custom_states(raw_definition: dict[str, Any]) -> list[tuple[str, dict[str, Any]]]:
+    states: list[tuple[str, dict[str, Any]]] = []
+    seen: set[str] = set()
+    raw_custom_states = raw_definition.get("custom_states")
+    if isinstance(raw_custom_states, dict):
+        for state_key, state_body in raw_custom_states.items():
+            if isinstance(state_body, dict):
+                key = str(state_key)
+                states.append((key, state_body))
+                seen.add(key)
+    wire_states = raw_definition.get("%s")
+    if isinstance(wire_states, dict):
+        for state_key, state_body in wire_states.items():
+            key = str(state_key)
+            if key in seen or not _is_custom_state_like(state_body):
+                continue
+            states.append((key, state_body))
+            seen.add(key)
+    return states
+
+
+def _remove_custom_states_from_root_conditionals(payload: dict[str, Any], reusable_id: str) -> None:
+    for change in payload.get("changes", []):
+        if not isinstance(change, dict):
+            continue
+        intent_name = _obj(change.get("intent")).get("name")
+        if intent_name != "CreateElement" or change.get("path_array") != ["%ed", reusable_id]:
+            continue
+        body = change.get("body")
+        if not isinstance(body, dict):
+            return
+        root_states = body.get("%s")
+        if not isinstance(root_states, dict):
+            return
+        kept_states = {
+            str(state_key): state_body
+            for state_key, state_body in root_states.items()
+            if not _is_custom_state_like(state_body)
+        }
+        if kept_states:
+            body["%s"] = kept_states
+        else:
+            body.pop("%s", None)
+        return
+
+
+def _append_reusable_custom_state_changes(
+    *,
+    builder: PayloadBuilder,
+    reusable_id: str,
+    raw_definition: dict[str, Any],
+) -> None:
+    for state_key, state_body in _iter_reusable_custom_states(raw_definition):
+        display_name = state_body.get("display") or state_body.get("%d") or state_key
+        value_type = state_body.get("value") or state_body.get("%v") or state_body.get("type") or "text"
+        builder.add_custom_state(
+            reusable_id,
+            str(display_name),
+            {
+                "type": value_type,
+                "default_val": state_body.get("default_val"),
+                "rank": state_body.get("rank", 0),
+            },
+            compressed=True,
+        )
+
+
 def _child_ids_by_parent(element_nodes: list[dict[str, Any]]) -> dict[str, list[str]]:
     source_ids = {_source_element_id(node) for node in element_nodes}
     children: dict[str, list[str]] = {}
@@ -290,7 +365,13 @@ def compile_reusable_inventory_to_payload(
         builder = PayloadBuilder(appname=target_app_id, app_version=target_app_version or "test")
         source_slot_id = inventory.source.bubble_id or str(inventory.root.get("id", "")).split(":", 1)[-1]
         builder.add_clone_reusable(source_slot_id, slot_id, resolved_name, raw_definition)
+        _append_reusable_custom_state_changes(
+            builder=builder,
+            reusable_id=slot_id,
+            raw_definition=raw_definition,
+        )
         payload = builder.build()
+        _remove_custom_states_from_root_conditionals(payload, slot_id)
         payload["appVersion"] = target_app_version or "test"
         return payload, slot_id
 

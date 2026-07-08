@@ -531,8 +531,19 @@ def test_compile_reusable_inventory_uses_raw_definition_for_high_fidelity_clone(
     assert root_change["path_array"] == ["%ed", reusable_ref]
     assert root_body["%x"] == "CustomDefinition"
     assert root_body["%nm"] == "fileUploaderCopy"
-    assert root_body["%s"]
+    assert "%s" not in root_body
     assert root_body["%wf"]
+    custom_state_changes = [
+        change for change in payload["changes"] if change["intent"]["name"] == "CreateCustomState"
+    ]
+    assert len(custom_state_changes) == 1
+    assert custom_state_changes[0]["path_array"] == ["%ed", reusable_ref, "custom_states", "file_"]
+    assert custom_state_changes[0]["body"] == {
+        "%d": "file",
+        "%v": "file",
+        "make_static": True,
+        "rank": 0,
+    }
     child_body = next(iter(root_body["%el"].values()))
     assert child_body["%nm"] == "gp file"
     assert child_body["%s"]
