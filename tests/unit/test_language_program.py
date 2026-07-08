@@ -10,6 +10,7 @@ from bubble_mcp.language.program import (
     FrameworkProgramStep,
     parse_framework_program,
 )
+from bubble_mcp.language.quality import evaluate_compiled_calls
 
 
 def test_parse_framework_program_normalizes_steps_and_execution_policy() -> None:
@@ -71,6 +72,49 @@ def test_framework_program_step_keeps_direct_tool_calls() -> None:
     assert step.arguments == {"force": True}
 
 
+def test_quality_requires_preview_for_mutating_calls() -> None:
+    result = evaluate_compiled_calls(
+        [
+            {
+                "tool": "create_button",
+                "arguments": {
+                    "profile": "cliente2",
+                    "context": "index",
+                    "parent": "root",
+                    "label": "Start",
+                    "execute": True,
+                },
+            }
+        ],
+        profile="cliente2",
+    )
+
+    assert result["ok"] is False
+    assert result["violations"][0]["code"] == "mutating_call_must_start_as_preview"
+
+
+def test_quality_applies_button_defaults_when_missing() -> None:
+    result = evaluate_compiled_calls(
+        [
+            {
+                "tool": "create_button",
+                "arguments": {
+                    "profile": "cliente2",
+                    "context": "index",
+                    "parent": "root",
+                    "label": "Start",
+                    "execute": False,
+                },
+            }
+        ],
+        profile="cliente2",
+    )
+
+    assert result["ok"] is True
+    assert result["normalized_calls"][0]["arguments"]["fit_width"] is True
+    assert result["normalized_calls"][0]["arguments"]["fit_height"] is True
+
+
 def test_intent_catalog_covers_v2_families() -> None:
     families = {entry.family for entry in INTENT_CATALOG.values()}
 
@@ -123,6 +167,27 @@ def test_compile_framework_program_maps_data_workflow_and_verification_intents(
     assert result["compiled_calls"][0]["arguments"]["profile"] == "cliente2"
     assert result["compiled_calls"][0]["arguments"]["execute"] is False
     assert result["compiled_calls"][4]["arguments"]["exact"] is True
+
+
+def test_compile_framework_program_includes_quality_defaults(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "objective": "Create CTA",
+            "steps": [
+                {"intent": "create_button", "context": "index", "parent": "root", "text": "Start"},
+            ],
+        },
+    )
+
+    assert result["ok"] is True
+    args = result["compiled_calls"][0]["arguments"]
+    assert args["fit_width"] is True
+    assert args["fit_height"] is True
+    assert result["quality"]["policy_version"] == "framework_quality_v2"
 
 
 def test_compile_framework_program_requires_data_field_type(tmp_path, monkeypatch) -> None:

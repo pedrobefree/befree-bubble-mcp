@@ -13,6 +13,7 @@ from bubble_mcp.language.dependencies import (
 )
 from bubble_mcp.language.intents import normalize_intent_arguments, tool_for_intent
 from bubble_mcp.language.program import FrameworkProgramStep, parse_framework_program
+from bubble_mcp.language.quality import evaluate_compiled_calls
 from bubble_mcp.language.query import language_tool_detail
 from bubble_mcp.server.schemas import list_tool_schemas
 
@@ -257,6 +258,17 @@ def compile_framework_program(
             "missing_arguments": missing_required,
             "compiled_calls": compiled_calls,
         }
+    quality = evaluate_compiled_calls(compiled_calls, profile=profile)
+    if not quality["ok"]:
+        return {
+            "ok": False,
+            "error": "framework_program_quality_gate_failed",
+            "framework": adapter.framework_id,
+            "profile": profile,
+            "quality": quality,
+            "compiled_calls": compiled_calls,
+        }
+    compiled_calls = quality["normalized_calls"]
     detail = language_tool_detail([call["tool"] for call in compiled_calls], detail="compact")
     mutating = [
         tool
@@ -270,6 +282,7 @@ def compile_framework_program(
         "objective": parsed.objective,
         "mode": "preview",
         "compiled_calls": compiled_calls,
+        "quality": quality,
         "unresolved_intents": unresolved,
         "unresolved_dependencies": dependency_state.unresolved,
         "deferred_dependencies": dependency_state.deferred,
