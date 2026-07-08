@@ -8,6 +8,7 @@ from bubble_mcp.frameworks.adapters import get_adapter
 from bubble_mcp.language.dependencies import (
     PLACEHOLDER_RE,
     DependencyState,
+    record_declared_outputs,
     resolve_step_arguments,
 )
 from bubble_mcp.language.intents import normalize_intent_arguments, tool_for_intent
@@ -131,8 +132,8 @@ def _missing_required_arguments(
     return missing_items
 
 
-def _unresolved_placeholders_in(value: Any, known_unresolved: list[str]) -> list[str]:
-    known = set(known_unresolved)
+def _known_placeholders_in(value: Any, known_placeholders: list[str]) -> list[str]:
+    known = set(known_placeholders)
     found: list[str] = []
 
     def visit(item: Any) -> None:
@@ -176,7 +177,7 @@ def compile_framework_program(
     dependency_state = DependencyState()
     for step in parsed.steps:
         step_arguments = resolve_step_arguments(step.arguments, dependency_state)
-        step_unresolved_dependencies = _unresolved_placeholders_in(
+        step_unresolved_dependencies = _known_placeholders_in(
             step_arguments,
             dependency_state.unresolved,
         )
@@ -217,6 +218,11 @@ def compile_framework_program(
             compiled_calls.append(compiled)
             if str(compiled.get("tool") or "") not in READ_ONLY_TOOLS and step_unresolved_dependencies:
                 unresolved_dependency_mutations.append(compiled)
+        record_declared_outputs(
+            dependency_state,
+            step_id=step.step_id,
+            declared_outputs=step.outputs,
+        )
     if unavailable:
         return {
             "ok": False,
@@ -259,6 +265,7 @@ def compile_framework_program(
         "compiled_calls": compiled_calls,
         "unresolved_intents": unresolved,
         "unresolved_dependencies": dependency_state.unresolved,
+        "deferred_dependencies": dependency_state.deferred,
         "approval_required": bool(mutating),
         "validation_plan": [
             "Review compiled calls before execution.",

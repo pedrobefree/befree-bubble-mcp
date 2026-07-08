@@ -12,7 +12,20 @@ PLACEHOLDER_RE = re.compile(r"\{\{steps\.([a-zA-Z0-9_-]+)\.output\.([a-zA-Z0-9_-
 @dataclass
 class DependencyState:
     outputs: dict[str, dict[str, Any]] = field(default_factory=dict)
+    declared_outputs: dict[str, set[str]] = field(default_factory=dict)
     unresolved: list[str] = field(default_factory=list)
+    deferred: list[str] = field(default_factory=list)
+
+
+def record_declared_outputs(
+    state: DependencyState,
+    *,
+    step_id: str,
+    declared_outputs: dict[str, str],
+) -> None:
+    output_names = {str(output_name) for output_name in declared_outputs if str(output_name)}
+    if output_names:
+        state.declared_outputs.setdefault(step_id, set()).update(output_names)
 
 
 def record_step_outputs(
@@ -22,6 +35,7 @@ def record_step_outputs(
     declared_outputs: dict[str, str],
     result: dict[str, Any],
 ) -> None:
+    record_declared_outputs(state, step_id=step_id, declared_outputs=declared_outputs)
     output_values: dict[str, Any] = {}
     for output_name in declared_outputs:
         if output_name in result:
@@ -39,7 +53,10 @@ def _resolve_string(value: str, state: DependencyState) -> str:
         step_outputs = state.outputs.get(step_id, {})
         if output_name not in step_outputs:
             placeholder = match.group(0)
-            if placeholder not in state.unresolved:
+            if output_name in state.declared_outputs.get(step_id, set()):
+                if placeholder not in state.deferred:
+                    state.deferred.append(placeholder)
+            elif placeholder not in state.unresolved:
                 state.unresolved.append(placeholder)
             return placeholder
         return str(step_outputs[output_name])

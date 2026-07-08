@@ -227,6 +227,43 @@ def test_compile_framework_program_rejects_unresolved_mutating_dependency(
     assert result["unresolved_dependencies"] == ["{{steps.section.output.element_id}}"]
 
 
+def test_compile_framework_program_allows_declared_runtime_dependency(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "objective": "Create dependent CTA",
+            "steps": [
+                {
+                    "id": "section",
+                    "intent": "create_container",
+                    "context": "checkout",
+                    "parent": "root",
+                    "label": "Checkout section",
+                    "outputs": {"element_id": "checkout_section"},
+                },
+                {
+                    "id": "cta",
+                    "intent": "create_button",
+                    "context": "checkout",
+                    "parent": "{{steps.section.output.element_id}}",
+                    "text": "Start checkout",
+                },
+            ],
+        },
+    )
+
+    assert result["ok"] is True
+    assert result["compiled_calls"][1]["arguments"]["parent"] == (
+        "{{steps.section.output.element_id}}"
+    )
+    assert result["deferred_dependencies"] == ["{{steps.section.output.element_id}}"]
+
+
 def test_compile_framework_program_allows_unresolved_read_only_dependency_with_mutation(
     tmp_path, monkeypatch
 ) -> None:
