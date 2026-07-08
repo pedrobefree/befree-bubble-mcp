@@ -8,6 +8,7 @@ from typing import Any
 from bubble_mcp.compiler.payload import (
     bubble_element_id,
     bubble_session_id,
+    compile_step_to_payload,
     create_change,
     resolve_parent_path,
 )
@@ -97,3 +98,51 @@ def compile_inventory_to_target_payloads(
             "changes": changes,
         }
     ]
+
+
+def compile_collection_actions_to_payloads(
+    *,
+    actions: list[dict[str, Any]],
+    target_context: BubbleProjectContext,
+    target_app_id: str,
+    target_app_version: str,
+) -> list[dict[str, Any]]:
+    """Compile planned collection schema actions into target write payloads."""
+
+    payloads: list[dict[str, Any]] = []
+    for action in actions:
+        action_name = str(action.get("action") or "")
+        if action_name == "create_data_type":
+            payload = compile_step_to_payload(
+                {
+                    "tool_name": "create_data_type",
+                    "args": {
+                        "name": str(action.get("label") or action.get("data_type") or ""),
+                        "key": str(action.get("data_type") or ""),
+                    },
+                },
+                app_id=target_app_id,
+                app_version=target_app_version,
+                context=target_context,
+            )
+        elif action_name == "create_data_field":
+            payload = compile_step_to_payload(
+                {
+                    "tool_name": "create_data_field",
+                    "args": {
+                        "data_type_key": str(action.get("data_type") or ""),
+                        "field_name": str(action.get("field_key") or ""),
+                        "field_key": str(action.get("field_key") or ""),
+                        "field_type": str(action.get("field_type") or "text"),
+                    },
+                },
+                app_id=target_app_id,
+                app_version=target_app_version,
+                context=target_context,
+            )
+        else:
+            payload = None
+        if payload is not None:
+            payload["appVersion"] = target_app_version or "test"
+            payloads.append(payload)
+    return payloads

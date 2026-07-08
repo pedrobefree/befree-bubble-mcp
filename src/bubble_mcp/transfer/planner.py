@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from bubble_mcp.context.freshness import load_context_with_overlay
-from bubble_mcp.transfer.compiler import compile_inventory_to_target_payloads
+from bubble_mcp.transfer.collections import extract_collection_bundle, plan_collection_bundle
+from bubble_mcp.transfer.compiler import compile_collection_actions_to_payloads, compile_inventory_to_target_payloads
 from bubble_mcp.transfer.inventory import inventory_source_object
 from bubble_mcp.transfer.mapping import build_dependency_decisions
 from bubble_mcp.transfer.models import TransferPlan
@@ -23,6 +24,56 @@ def _transfer_id(source_ref: str) -> str:
 
 def _blocked_reasons(decisions: list[Any]) -> list[str]:
     return [str(decision.reason) for decision in decisions if decision.action == "block"]
+
+
+def _data_type_keys_to_create(decisions: list[Any]) -> list[str]:
+    keys: list[str] = []
+    for decision in decisions:
+        dependency = getattr(decision, "dependency", None)
+        if getattr(decision, "action", "") != "create_copy" or dependency is None:
+            continue
+        kind = str(getattr(dependency, "kind", ""))
+        key = str(getattr(dependency, "key", "")).strip()
+        if kind == "data_type" and key:
+            keys.append(key)
+        elif kind == "data_field" and "." in key:
+            keys.append(key.split(".", 1)[0])
+    return list(dict.fromkeys(keys))
+
+
+def _compile_collection_payloads(
+    *,
+    source_ctx: Any,
+    target_ctx: Any,
+    decisions: list[Any],
+    target_app_id: str,
+    target_app_version: str,
+    collection_policy: str,
+    data_records_policy: str,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    if collection_policy != "create_missing":
+        return [], []
+    payloads: list[dict[str, Any]] = []
+    blocked: list[str] = []
+    for data_type in _data_type_keys_to_create(decisions):
+        bundle = extract_collection_bundle(source_ctx, data_type)
+        collection_plan = plan_collection_bundle(
+            bundle,
+            target_ctx,
+            policy=collection_policy,
+            data_records_policy=data_records_policy,
+        )
+        blocked.extend(str(reason) for reason in collection_plan.get("blocked_reasons", []))
+        if collection_plan.get("ok"):
+            payloads.extend(
+                compile_collection_actions_to_payloads(
+                    actions=list(collection_plan.get("actions", [])),
+                    target_context=target_ctx,
+                    target_app_id=target_app_id,
+                    target_app_version=target_app_version,
+                )
+            )
+    return payloads, blocked
 
 
 def create_transfer_plan(
@@ -74,15 +125,28 @@ def create_transfer_plan(
         dependency_policy=dependency_policy,
     )
     blocked = _blocked_reasons(decisions)
-    payloads = [] if blocked else compile_inventory_to_target_payloads(
-        inventory=inventory,
-        target_context=target_ctx,
+    collection_payloads, collection_blocked = _compile_collection_payloads(
+        source_ctx=source_ctx,
+        target_ctx=target_ctx,
+        decisions=decisions,
         target_app_id=resolved.target.app_id,
         target_app_version=resolved.target.app_version or "test",
-        target_context_ref=target_context or "index",
-        target_parent_ref=target_parent,
-        target_name=target_name,
+        collection_policy=collection_policy,
+        data_records_policy=data_records_policy,
     )
+    blocked.extend(collection_blocked)
+    payloads = [] if blocked else [
+        *collection_payloads,
+        *compile_inventory_to_target_payloads(
+            inventory=inventory,
+            target_context=target_ctx,
+            target_app_id=resolved.target.app_id,
+            target_app_version=resolved.target.app_version or "test",
+            target_context_ref=target_context or "index",
+            target_parent_ref=target_parent,
+            target_name=target_name,
+        ),
+    ]
     plan = TransferPlan(
         transfer_id=_transfer_id(source_ref),
         source=inventory.source,

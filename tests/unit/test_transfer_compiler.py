@@ -1,5 +1,5 @@
 from bubble_mcp.context.models import BubbleContextNode, BubbleProjectContext
-from bubble_mcp.transfer.compiler import compile_inventory_to_target_payloads
+from bubble_mcp.transfer.compiler import compile_collection_actions_to_payloads, compile_inventory_to_target_payloads
 from bubble_mcp.transfer.models import TransferInventory, TransferObjectRef
 
 
@@ -117,3 +117,27 @@ def test_compile_inventory_preserves_child_parent_order() -> None:
 
     parent_id = payload["changes"][0]["body"]["id"]
     assert payload["changes"][1]["path_array"] == ["%p3", "bTargetPage", "%el", parent_id]
+
+
+def test_compile_collection_actions_creates_data_type_and_fields() -> None:
+    target_context = BubbleProjectContext(app_id="target-app", source="test", nodes=[], edges=[])
+
+    payloads = compile_collection_actions_to_payloads(
+        actions=[
+            {"action": "create_data_type", "data_type": "testimonial", "label": "Testimonial"},
+            {
+                "action": "create_data_field",
+                "data_type": "testimonial",
+                "field_key": "quote_text",
+                "field_type": "text",
+            },
+        ],
+        target_context=target_context,
+        target_app_id="target-app",
+        target_app_version="test",
+    )
+
+    assert [payload["changes"][0]["intent"]["name"] for payload in payloads] == ["SetData", "SetData"]
+    assert payloads[0]["changes"][0]["path_array"] == ["data_types", "testimonial"]
+    assert payloads[1]["changes"][0]["path_array"] == ["data_types", "testimonial", "fields", "quote_text"]
+    assert payloads[1]["changes"][0]["body"]["type"] == "text"

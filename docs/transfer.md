@@ -112,8 +112,10 @@ reviewed and re-entered by the project owner.
 ## Current Limits
 
 - Element subtree payloads are supported for transfer execution.
-- Collection schema and API Connector structures are inventoried and mapped in
-  the local plan, with conservative execution defaults.
+- Collection schema can generate target payloads when
+  `collection_policy=create_missing`.
+- API Connector structures are inventoried and mapped in the local plan, but
+  credentials/secrets are not copied and execution remains conservative.
 - Live database record migration is not executed by default.
 - Successful Bubble write responses must still be verified with refreshed
   context or the Bubble editor.

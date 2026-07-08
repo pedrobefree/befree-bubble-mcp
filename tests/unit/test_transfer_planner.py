@@ -22,6 +22,20 @@ def _source_context() -> BubbleProjectContext:
                     "data_type": "User",
                 },
             ),
+            BubbleContextNode(
+                id="datatype:user",
+                label="User",
+                type="data_type",
+                metadata={
+                    "bubble_id": "User",
+                    "properties": {
+                        "fields": {
+                            "name_text": {"type": "text"},
+                            "email_text": {"type": "text"},
+                        }
+                    },
+                },
+            ),
         ],
         edges=[BubbleContextEdge(source="page:index", target="element:bHero", type="contains")],
     )
@@ -94,3 +108,30 @@ def test_create_transfer_plan_blocks_when_required_dependency_missing(tmp_path, 
     assert result["ok"] is False
     assert "data_type:User" in result["blocked_reasons"][0]
     assert result["payload_count"] == 0
+
+
+def test_create_transfer_plan_create_missing_collection_payloads_before_element(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path, target_has_user=False)
+
+    result = create_transfer_plan(
+        source_profile="source",
+        target_profile="target",
+        source_type="element",
+        source_ref="gp_Hero",
+        target_context="index",
+        target_parent="root",
+        dependency_policy="map_or_create",
+        collection_policy="create_missing",
+    )
+
+    assert result["ok"] is True
+    assert result["payload_count"] == 4
+    plan = load_transfer_plan(result["transfer_id"])
+    paths = [payload["changes"][0]["path_array"] for payload in plan["write_payloads"]]
+    assert paths[0] == ["data_types", "User"]
+    assert {tuple(path) for path in paths[1:3]} == {
+        ("data_types", "User", "fields", "name_text"),
+        ("data_types", "User", "fields", "email_text"),
+    }
+    assert plan["write_payloads"][3]["changes"][0]["intent"]["name"] == "CreateElement"
