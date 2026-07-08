@@ -65,6 +65,7 @@ INTENT_ENTRIES = (
         "create_api_connector_resource",
         "api_connector",
         "Create an API Connector resource call.",
+        aliases=("create_api_connector_resource", "api_call"),
     ),
     IntentEntry("update_style", "update_style", "style", "Update an existing Bubble style."),
     IntentEntry("create_reusable", "create_reusable", "reusable", "Create a reusable element."),

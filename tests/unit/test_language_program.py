@@ -1,5 +1,5 @@
 from bubble_mcp.language.compiler import compile_framework_program
-from bubble_mcp.language.intents import INTENT_CATALOG, normalize_intent_arguments
+from bubble_mcp.language.intents import INTENT_CATALOG, normalize_intent_arguments, tool_for_intent
 from bubble_mcp.language.program import (
     FrameworkProgram,
     FrameworkProgramStep,
@@ -133,3 +133,8 @@ def test_normalize_intent_arguments_maps_api_connector_aliases() -> None:
     assert args["name"] == "CRM create contact"
     assert args["method"] == "POST"
     assert args["url"] == "https://example.com/contacts"
+
+
+def test_tool_for_intent_maps_api_connector_aliases() -> None:
+    assert tool_for_intent("create_api_connector_resource") == "create_api_connector_resource"
+    assert tool_for_intent("api_call") == "create_api_connector_resource"
