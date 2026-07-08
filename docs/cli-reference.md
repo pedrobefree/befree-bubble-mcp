@@ -162,6 +162,46 @@ include `match_field` and `match_value` so agents can distinguish direct node
 matches from references such as `context`. The response also includes `count`,
 `limit`, `truncated`, `exact`, and `include_metadata` for low-token verification.
 
+## `bubble-mcp transfer`
+
+Plans, previews, and executes project-to-project transfers. Source profiles are
+read-only; target profiles need a captured session for preview and execution.
+
+```bash
+bubble-mcp transfer inventory --source-profile source-app --source-type reusable --source-ref Header
+
+bubble-mcp transfer plan \
+  --source-profile source-app \
+  --target-profile target-app \
+  --source-type reusable \
+  --source-ref Header \
+  --target-context index \
+  --target-parent root
+
+bubble-mcp transfer preview --transfer-id TRANSFER_ID --include-payloads
+bubble-mcp transfer execute --transfer-id TRANSFER_ID --execute --confirm
+bubble-mcp transfer status --transfer-id TRANSFER_ID
+```
+
+Available source types:
+
+- `page`
+- `reusable`
+- `element`
+
+Planning policy options:
+
+- `--conflict-policy`: `fail`, `rename`, `replace`, `reuse_existing`
+- `--asset-policy`: `reference_url`, `stage_and_upload`, `skip`
+- `--dependency-policy`: `map_only`, `map_or_create`, `skip_optional`
+- `--collection-policy`: `skip`, `map_existing`, `create_missing`,
+  `replace_schema`
+- `--api-connector-policy`: `skip`, `map_existing`, `structure_only`
+- `--data-records-policy`: `skip`, `export_manifest_only`,
+  `data_api_import_preview`
+
+See [Project transfer](transfer.md) for the full workflow and current limits.
+
 ## `bubble-mcp plan`
 
 Creates and semantically validates a local Bubble plan from a message.

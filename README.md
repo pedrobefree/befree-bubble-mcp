@@ -253,6 +253,7 @@ The bridge listens on `http://localhost:3333`.
 - [CLI reference](docs/cli-reference.md)
 - [Context engine](docs/context-engine.md)
 - [Session capture](docs/session-capture.md)
+- [Project transfer](docs/transfer.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Extension packs](docs/extension-packs.md)
 - [Knowledge sources](docs/knowledge-sources.md)

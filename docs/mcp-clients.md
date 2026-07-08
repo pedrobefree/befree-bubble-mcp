@@ -251,6 +251,16 @@ families or `write_payload` for exact Bubble editor writes.
 - `bubble_session_import`: imports session headers/cookies into local storage.
 - `bubble_editor_write`: posts an exact Bubble `/appeditor/write` payload. Set `execute=true` to mutate Bubble.
 - `bubble_execute_plan`: executes plan steps. Set `compile=true` with `app_id` to compile supported abstract steps before execution. Set `execute=true` to mutate Bubble.
+- `bubble_transfer_inventory`: inspects a source profile page, reusable, or
+  element subtree before project-to-project transfer. Read-only.
+- `bubble_transfer_plan`: creates a local preview-first transfer plan from a
+  source profile to a target profile.
+- `bubble_transfer_preview`: previews an existing local transfer plan against
+  the target profile session. Use `include_payloads=true` only for payload
+  review.
+- `bubble_transfer_execute`: executes a reviewed transfer plan against the
+  target profile. Requires `execute=true` and `confirm=true`.
+- `bubble_transfer_status`: reads a stored local transfer plan by id.
 - `batch`: runs multiple explicit Bubble catalog commands with inline `commands`. Use the `command_batch` recipe from `bubble_task_runbook` for requests that combine edits such as text updates, color token changes, and element deletion in one prompt.
 - `bubble_branch_list`: lists Bubble editor branches/versions for the selected profile.
 - `bubble_branch_contributors`: lists collaborators who contributed to a branch/version.
