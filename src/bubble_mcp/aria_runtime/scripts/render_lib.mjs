@@ -117,6 +117,14 @@ async function captureStyleImportStates(page, selector, sleep) {
 
   await resetElementState(page, safeSelector);
   const base = (await styleSubsetForSelector(page, safeSelector)) || {};
+  const headingTag = await page.evaluate((sel) => {
+    const el = document.querySelector(sel || "body");
+    const heading = el && typeof el.closest === "function" ? el.closest("h1,h2,h3,h4,h5,h6") : null;
+    return heading ? String(heading.tagName || "").toLowerCase() : "";
+  }, safeSelector).catch(() => "");
+  if (headingTag) {
+    base["bubble-tag"] = headingTag;
+  }
   const states = { base, hover: {}, focus: {}, pressed: {}, disabled: {} };
 
   try {

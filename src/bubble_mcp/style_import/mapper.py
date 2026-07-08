@@ -44,6 +44,24 @@ def _pixel_int(value: str) -> int | None:
     return int(round(float(match.group(1))))
 
 
+def _pixel_float(value: str) -> float | None:
+    match = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)px\s*", value)
+    if match is None:
+        return None
+    return float(match.group(1))
+
+
+def _css_number(value: str) -> float | None:
+    match = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)\s*", value)
+    if match is None:
+        return None
+    return float(match.group(1))
+
+
+def _round_metric(value: float) -> float:
+    return round(value, 4)
+
+
 def _css_length_int(value: str) -> int | None:
     pixel = _pixel_int(value)
     if pixel is not None:
@@ -316,6 +334,37 @@ def _split_box_shadow(value: str) -> dict[str, object]:
     return mapped
 
 
+def _text_line_height(value: str, font_size_px: float | None) -> float | None:
+    numeric = _css_number(value)
+    if numeric is not None:
+        return _round_metric(numeric)
+    pixel = _pixel_float(value)
+    if pixel is not None and font_size_px and font_size_px > 0:
+        return _round_metric(pixel / font_size_px)
+    percent_match = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)%\s*", value)
+    if percent_match is not None:
+        return _round_metric(float(percent_match.group(1)) / 100)
+    return None
+
+
+def _text_letter_spacing(value: str, font_size_px: float | None) -> float | None:
+    lowered = value.strip().lower()
+    if lowered == "normal":
+        return 0
+    numeric = _css_number(lowered)
+    if numeric is not None:
+        return _round_metric(numeric)
+    em_match = re.fullmatch(r"\s*(-?\d+(?:\.\d+)?)em\s*", lowered)
+    if em_match is not None:
+        return _round_metric(float(em_match.group(1)))
+    pixel = _pixel_float(lowered)
+    if pixel is not None:
+        if font_size_px and font_size_px > 0:
+            return _round_metric(pixel / font_size_px)
+        return _round_metric(pixel)
+    return None
+
+
 def _selector_label(selector: str, element_type: str) -> str:
     cleaned = selector.strip().lstrip(".#")
     parts = [part for part in re.split(r"[^A-Za-z0-9]+", cleaned) if part]
@@ -327,6 +376,7 @@ def _selector_label(selector: str, element_type: str) -> str:
 def _map_declarations(declarations: dict[str, str]) -> tuple[dict[str, object], list[dict[str, str]]]:
     mapped: dict[str, object] = {}
     unsupported: list[dict[str, str]] = []
+    font_size_px = _pixel_float(declarations.get("font-size", ""))
 
     for property_name, raw_value in declarations.items():
         value = raw_value.strip()
@@ -439,6 +489,21 @@ def _map_declarations(declarations: dict[str, str]) -> tuple[dict[str, object], 
         elif property_name == "font-weight":
             mapped["font_weight"] = value
             continue
+        elif property_name == "line-height":
+            line_height = _text_line_height(value, font_size_px)
+            if line_height is not None:
+                mapped["line_height"] = line_height
+                continue
+        elif property_name == "letter-spacing":
+            letter_spacing = _text_letter_spacing(value, font_size_px)
+            if letter_spacing is not None:
+                mapped["letter_spacing"] = letter_spacing
+                continue
+        elif property_name in {"bubble-tag", "tag", "html-tag"}:
+            tag = value.lower()
+            if tag in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                mapped["tag"] = tag
+                continue
         elif property_name == "box-shadow":
             shadow = _split_box_shadow(value)
             if shadow:

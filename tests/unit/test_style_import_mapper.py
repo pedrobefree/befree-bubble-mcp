@@ -99,6 +99,35 @@ def test_map_css_lab_color_to_hex() -> None:
     assert candidate.unsupported == []
 
 
+def test_map_rendered_text_metrics_and_heading_tag() -> None:
+    rules = extract_style_rules_from_html(
+        """
+        <style>
+          .title {
+            font-size: 72px;
+            line-height: 75.6px;
+            letter-spacing: -1.44px;
+            bubble-tag: h1;
+          }
+        </style>
+        <span class="title">Title</span>
+        """,
+        selector=".title",
+    )
+
+    candidate = map_rules_to_style_candidate(
+        rules,
+        style_prefix="HTML",
+        element_type="Text",
+        selector=".title",
+    )
+
+    assert candidate.base["font_size"] == 72
+    assert candidate.base["line_height"] == 1.05
+    assert candidate.base["letter_spacing"] == -0.02
+    assert candidate.base["tag"] == "h1"
+
+
 def test_map_independent_border_fields() -> None:
     rules = extract_style_rules_from_html(
         """

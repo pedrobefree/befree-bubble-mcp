@@ -10,7 +10,7 @@ def test_rendered_payload_to_html_injects_state_css() -> None:
         {
             "html": '<button class="btn-primary" style="background-color: rgb(21, 94, 239);">Save</button>',
             "styleStates": {
-                "base": {"background-color": "rgb(21, 94, 239)"},
+                "base": {"background-color": "rgb(21, 94, 239)", "bubble-tag": "h1"},
                 "hover": {"background-color": "rgb(0, 78, 235)"},
                 "pressed": {"border-color": "rgb(0, 53, 158)"},
             },
@@ -20,6 +20,7 @@ def test_rendered_payload_to_html_injects_state_css() -> None:
 
     assert ".btn-primary {" in html
     assert "background-color: rgb(21, 94, 239);" in html
+    assert "bubble-tag: h1;" in html
     assert ".btn-primary:hover" in html
     assert "background-color: rgb(0, 78, 235);" in html
     assert ".btn-primary:active" in html
