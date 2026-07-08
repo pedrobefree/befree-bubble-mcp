@@ -1,4 +1,9 @@
 from bubble_mcp.language.compiler import compile_framework_program
+from bubble_mcp.language.dependencies import (
+    DependencyState,
+    record_step_outputs,
+    resolve_step_arguments,
+)
 from bubble_mcp.language.intents import INTENT_CATALOG, normalize_intent_arguments, tool_for_intent
 from bubble_mcp.language.program import (
     FrameworkProgram,
@@ -144,6 +149,59 @@ def test_compile_framework_program_requires_data_field_type(tmp_path, monkeypatc
             "required": ["profile", "data_type_ref", "name", "type"],
         }
     ]
+
+
+def test_resolve_step_arguments_uses_prior_step_outputs() -> None:
+    state = DependencyState()
+    record_step_outputs(
+        state,
+        step_id="section",
+        declared_outputs={"element_id": "checkout_section"},
+        result={"element_id": "group_123"},
+    )
+
+    args = resolve_step_arguments(
+        {"parent": "{{steps.section.output.element_id}}", "context": "checkout"},
+        state,
+    )
+
+    assert args == {"parent": "group_123", "context": "checkout"}
+
+
+def test_resolve_step_arguments_reports_unresolved_placeholders() -> None:
+    state = DependencyState()
+
+    args = resolve_step_arguments({"parent": "{{steps.missing.output.element_id}}"}, state)
+
+    assert args == {"parent": "{{steps.missing.output.element_id}}"}
+    assert state.unresolved == ["{{steps.missing.output.element_id}}"]
+
+
+def test_compile_framework_program_rejects_unresolved_mutating_dependency(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+
+    result = compile_framework_program(
+        framework="bmad",
+        profile="cliente2",
+        program={
+            "objective": "Create dependent CTA",
+            "steps": [
+                {
+                    "id": "cta",
+                    "intent": "create_button",
+                    "context": "checkout",
+                    "parent": "{{steps.section.output.element_id}}",
+                    "text": "Start checkout",
+                }
+            ],
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "framework_program_has_unresolved_dependencies"
+    assert result["unresolved_dependencies"] == ["{{steps.section.output.element_id}}"]
 
 
 def test_normalize_intent_arguments_maps_api_connector_aliases() -> None:

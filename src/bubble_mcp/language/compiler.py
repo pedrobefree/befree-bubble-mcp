@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from bubble_mcp.frameworks.adapters import get_adapter
+from bubble_mcp.language.dependencies import DependencyState, resolve_step_arguments
 from bubble_mcp.language.intents import normalize_intent_arguments, tool_for_intent
 from bubble_mcp.language.program import FrameworkProgramStep, parse_framework_program
 from bubble_mcp.language.query import language_tool_detail
@@ -22,6 +23,7 @@ READ_ONLY_TOOLS = {
     "bubble_language_tool_detail",
     "bubble_language_diff",
 }
+
 
 def _available_tool_schemas() -> dict[str, dict[str, Any]]:
     return {str(tool.get("name") or ""): tool for tool in list_tool_schemas()}
@@ -74,6 +76,7 @@ def _compiled_call(
 
 def _compile_intent_step(
     step: FrameworkProgramStep,
+    step_arguments: dict[str, Any],
     profile: str,
     framework_id: str,
     tool_schemas: dict[str, dict[str, Any]],
@@ -81,7 +84,7 @@ def _compile_intent_step(
     intent = step.intent
     tool_name = tool_for_intent(intent)
     if tool_name:
-        raw_args = dict(step.arguments)
+        raw_args = dict(step_arguments)
         if step.description:
             raw_args.setdefault("description", step.description)
         if tool_name == "bubble_framework_sync_evidence":
@@ -144,13 +147,15 @@ def compile_framework_program(
     compiled_calls: list[dict[str, Any]] = []
     unavailable: list[str] = []
     unresolved: list[str] = []
+    dependency_state = DependencyState()
     for step in parsed.steps:
+        step_arguments = resolve_step_arguments(step.arguments, dependency_state)
         if step.tool:
             tool_name = step.tool
             if tool_name not in available:
                 unavailable.append(tool_name)
                 continue
-            normalized_args = normalize_intent_arguments(tool_name, step.arguments)
+            normalized_args = normalize_intent_arguments(tool_name, step_arguments)
             compiled_calls.append(
                 _compiled_call(
                     step=step,
@@ -164,7 +169,13 @@ def compile_framework_program(
                 )
             )
         else:
-            compiled = _compile_intent_step(step, profile, adapter.framework_id, tool_schemas)
+            compiled = _compile_intent_step(
+                step,
+                step_arguments,
+                profile,
+                adapter.framework_id,
+                tool_schemas,
+            )
             if compiled["tool"] not in available:
                 unavailable.append(str(compiled["tool"]))
                 continue
@@ -179,6 +190,20 @@ def compile_framework_program(
             "framework": adapter.framework_id,
             "profile": profile,
             "unavailable_tools": sorted(unavailable),
+        }
+    unresolved_dependency_mutations = [
+        call
+        for call in compiled_calls
+        if str(call.get("tool") or "") not in READ_ONLY_TOOLS
+    ]
+    if dependency_state.unresolved and unresolved_dependency_mutations:
+        return {
+            "ok": False,
+            "error": "framework_program_has_unresolved_dependencies",
+            "framework": adapter.framework_id,
+            "profile": profile,
+            "unresolved_dependencies": dependency_state.unresolved,
+            "compiled_calls": compiled_calls,
         }
     missing_required = _missing_required_arguments(compiled_calls, tool_schemas)
     if missing_required:
@@ -204,6 +229,7 @@ def compile_framework_program(
         "mode": "preview",
         "compiled_calls": compiled_calls,
         "unresolved_intents": unresolved,
+        "unresolved_dependencies": dependency_state.unresolved,
         "approval_required": bool(mutating),
         "validation_plan": [
             "Review compiled calls before execution.",
