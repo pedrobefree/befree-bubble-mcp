@@ -7,7 +7,7 @@ from typing import Any
 from bubble_mcp.context.mutation_overlay import record_mutation_overlay
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.store import load_session
-from bubble_mcp.transfer.store import load_transfer_plan
+from bubble_mcp.transfer.store import load_transfer_plan, save_transfer_execution
 
 
 def _payloads(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -44,6 +44,35 @@ def preview_transfer_plan(
         "target_profile": target_profile,
         "payload_count": len(results),
         "results": results if include_payloads else [{"ok": item.get("ok"), "dry_run": item.get("dry_run")} for item in results],
+    }
+
+
+def _execution_verification(
+    *,
+    plan: dict[str, Any],
+    payload_count: int,
+    executed_count: int,
+    results: list[dict[str, Any]],
+    max_steps: int | None,
+) -> dict[str, Any]:
+    writes_ok = all(bool(item.get("ok")) for item in results)
+    complete = max_steps is None and executed_count == payload_count
+    warnings: list[str] = []
+    if not complete:
+        warnings.append("Transfer execution was partial; remaining payloads were not executed.")
+    if writes_ok and complete:
+        warnings.append("Refresh target context and verify editor-visible artifacts before treating the transfer as final.")
+    return {
+        "complete": complete,
+        "expected_payload_count": payload_count,
+        "executed_payload_count": executed_count,
+        "ok": writes_ok and complete,
+        "requires_context_refresh": writes_ok,
+        "target_app_id": plan.get("target_app_id"),
+        "target_context": plan.get("target_context"),
+        "target_profile": plan.get("target_profile"),
+        "warnings": warnings,
+        "writes_ok": writes_ok,
     }
 
 
@@ -90,11 +119,29 @@ def execute_transfer_plan(
         results.append({"ok": bool(result.get("ok")), "result": result})
         if not result.get("ok"):
             break
+    verification = _execution_verification(
+        plan=plan,
+        payload_count=len(payloads),
+        executed_count=len(results),
+        results=results,
+        max_steps=max_steps,
+    )
+    evidence = {
+        "executed": True,
+        "result_count": len(results),
+        "results": results,
+        "target_profile": target_profile,
+        "transfer_id": transfer_id,
+        "verification": verification,
+    }
+    evidence_path = save_transfer_execution(transfer_id, evidence)
     return {
-        "ok": all(item.get("ok") for item in results),
+        "evidence_path": str(evidence_path),
+        "ok": bool(verification.get("ok")),
         "executed": True,
         "transfer_id": transfer_id,
         "target_profile": target_profile,
         "result_count": len(results),
         "results": results,
+        "verification": verification,
     }

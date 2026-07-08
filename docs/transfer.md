@@ -66,6 +66,11 @@ Execute only after review:
 bubble-mcp transfer execute --transfer-id TRANSFER_ID --execute --confirm
 ```
 
+Execution stores local evidence at
+`$BUBBLE_MCP_CONFIG_DIR/transfers/TRANSFER_ID/execution.json`. A successful
+execution still reports `requires_context_refresh=true`; refresh the target
+context before treating the transfer as final.
+
 Check the stored plan:
 
 ```bash
