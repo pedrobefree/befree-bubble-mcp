@@ -37,6 +37,7 @@ from bubble_mcp.execution.editor_api import (
     confirm_bubble_branch_merge,
     create_bubble_branch,
     delete_bubble_branch,
+    describe_bubble_branch_merge_conflicts,
     fetch_jetstream_logs,
     fetch_changelog_entries,
     fetch_plan_usage,
@@ -1743,6 +1744,12 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             session_id=str(args.get("session_id") or "") or None,
             execute=bool(args.get("execute")),
         )
+    if name == "bubble_branch_merge_conflicts_describe":
+        args = arguments or {}
+        payload = args.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("bubble_branch_merge_conflicts_describe requires a payload object.")
+        return describe_bubble_branch_merge_conflicts(payload=payload)
     if name == "bubble_performance_audit":
         args = arguments or {}
         return performance_audit(

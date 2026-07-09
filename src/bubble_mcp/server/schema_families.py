@@ -1854,6 +1854,12 @@ def branch_changelog_tools() -> list[ToolSchema]:
             ],
             required=["profile", "merge_app_version"],
         ),
+        tool_schema(
+            "bubble_branch_merge_conflicts_describe",
+            "Describe Bubble merge conflict write payloads as manual decision cards. This is read-only and does not choose ours/theirs or execute any conflict-selection write.",
+            ["payload"],
+            required=["payload"],
+        ),
     ]
 
 

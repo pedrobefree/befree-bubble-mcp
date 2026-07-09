@@ -66,6 +66,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_branch_delete",
     "bubble_branch_merge_start",
     "bubble_branch_merge_confirm",
+    "bubble_branch_merge_conflicts_describe",
     "bubble_performance_audit",
     "bubble_workload_usage_by_date",
     "bubble_workload_usage_breakdown",

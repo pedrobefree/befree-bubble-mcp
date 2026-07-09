@@ -2710,13 +2710,25 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
         "bubble_branch_delete",
         "bubble_branch_merge_start",
         "bubble_branch_merge_confirm",
+        "bubble_branch_merge_conflicts_describe",
     ]:
         assert name in tools
+    for name in [
+        "bubble_branch_list",
+        "bubble_branch_contributors",
+        "bubble_changelog_fetch",
+        "bubble_branch_create",
+        "bubble_branch_delete",
+        "bubble_branch_merge_start",
+        "bubble_branch_merge_confirm",
+    ]:
         assert tools[name]["inputSchema"]["properties"]["profile"]["description"]
+    assert tools["bubble_branch_merge_conflicts_describe"]["inputSchema"]["properties"]["payload"]["description"]
 
     assert tools["bubble_branch_list"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_branch_contributors"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_changelog_fetch"]["annotations"]["readOnlyHint"] is True
+    assert tools["bubble_branch_merge_conflicts_describe"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_eval_export_expert"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_branch_create"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_branch_create"]["annotations"]["openWorldHint"] is True
@@ -2732,6 +2744,7 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
         "savepoint_message",
     ]
     assert tools["bubble_branch_merge_confirm"]["inputSchema"]["required"] == ["profile", "merge_app_version"]
+    assert tools["bubble_branch_merge_conflicts_describe"]["inputSchema"]["required"] == ["payload"]
     assert "change_type" in tools["bubble_changelog_fetch"]["inputSchema"]["properties"]
 
 
@@ -2840,6 +2853,37 @@ def test_branch_merge_confirm_tool_routes_conflict_mode(monkeypatch) -> None:  #
     assert calls[0]["conflicts_resolved"] is True
     assert calls[0]["session_id"] == "1783611260020x32"
     assert calls[0]["execute"] is True
+
+
+def test_branch_merge_conflicts_describe_tool_routes_payload() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 19,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_branch_merge_conflicts_describe",
+                "arguments": {
+                    "payload": {
+                        "changes": [
+                            {
+                                "body": {"0": {"%x": "TriggerCustomEvent", "id": "action-1"}},
+                                "path_array": ["%ed", "event-1", "%wf", "workflow-1", "actions"],
+                                "intent": {"name": "MergeConflict"},
+                            }
+                        ]
+                    }
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["conflict_count"] == 1
+    assert payload["decision_policy"] == "manual_user_selection_required"
+    assert payload["conflicts"][0]["context"]["category"] == "workflow_actions"
 
 
 def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

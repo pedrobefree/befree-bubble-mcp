@@ -732,6 +732,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Soft-delete a Bubble branch/version using the stored editor session. Use only when the user asks to remove a "
         "branch; execute=true also requires confirm=true because this is destructive."
     ),
+    "bubble_branch_merge_conflicts_describe": (
+        "Describe captured Bubble merge conflict write payloads as manual decision cards. Use after merge-start when "
+        "Bubble presents conflicts and the agent needs to explain affected paths, workflow actions, or auxiliary writes "
+        "before asking the developer what to keep. Read-only; never chooses ours/theirs."
+    ),
     "bubble_extension_list": (
         "List Bubble MCP extension packs and their enabled state before validate/import/enable/disable workflows. "
         "Use when the user asks which extension packs are installed or active."
@@ -1744,6 +1749,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_branch_list",
         "bubble_branch_contributors",
         "bubble_changelog_fetch",
+        "bubble_branch_merge_conflicts_describe",
         "bubble_extension_list",
         "bubble_extension_validate",
         "bubble_extension_call",

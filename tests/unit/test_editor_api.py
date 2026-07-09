@@ -11,6 +11,7 @@ from bubble_mcp.execution.editor_api import (
     confirm_bubble_branch_merge,
     create_bubble_branch,
     delete_bubble_branch,
+    describe_bubble_branch_merge_conflicts,
     deploy_app_test_and_hotfix,
     fetch_jetstream_logs,
     fetch_changelog_entries,
@@ -300,6 +301,50 @@ def test_branch_merge_confirm_builds_conflict_resolved_payload(tmp_path, monkeyp
             "intent": {"name": "ResolveMergeChanges"},
         },
     ]
+
+
+def test_branch_merge_conflicts_describe_summarizes_manual_decisions() -> None:
+    payload = {
+        "v": 1,
+        "appname": "bovichain-g3",
+        "app_version": "73ftr",
+        "changes": [
+            {
+                "body": {
+                    "0": {"%p": {"custom_event": "bbNyt3"}, "%x": "TriggerCustomEvent", "id": "bbQPT7"},
+                    "1": {"%p": {"AAo": {"%e": {"0": "code"}}}, "%x": "PluginAction", "id": "baNDW1"},
+                },
+                "path_array": ["%ed", "bYRba8", "%wf", "baNDc1", "actions"],
+                "intent": {"name": "MergeConflict"},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+                "session_id": "1783611260020x32",
+            },
+            {
+                "body": '["bYReP8"]',
+                "path_array": ["_index", "issues_sub", "bYRbZ8"],
+                "intent": {"name": "Update index"},
+                "version_control_api_version": 4,
+                "changelog_data": [],
+                "session_id": "1783611260020x32",
+            },
+        ],
+    }
+
+    described = describe_bubble_branch_merge_conflicts(payload=payload)
+
+    assert described["ok"] is True
+    assert described["conflict_count"] == 1
+    assert described["decision_policy"] == "manual_user_selection_required"
+    conflict = described["conflicts"][0]
+    assert conflict["decision_required"] is True
+    assert conflict["context"]["category"] == "workflow_actions"
+    assert conflict["context"]["element_or_event_id"] == "bYRba8"
+    assert conflict["context"]["workflow_id"] == "baNDc1"
+    assert conflict["body_summary"]["action_count"] == 2
+    assert conflict["body_summary"]["actions"][0]["type"] == "TriggerCustomEvent"
+    assert described["auxiliary_change_count"] == 1
+    assert described["auxiliary_changes"][0]["context"]["category"] == "auxiliary_index"
 
 
 def test_deploy_app_test_and_hotfix_posts_captured_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

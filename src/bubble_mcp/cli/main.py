@@ -36,6 +36,7 @@ from bubble_mcp.execution.editor_api import (
     confirm_bubble_branch_merge,
     create_bubble_branch,
     delete_bubble_branch,
+    describe_bubble_branch_merge_conflicts,
     fetch_jetstream_logs,
     fetch_changelog_entries,
     fetch_plan_usage,
@@ -869,6 +870,14 @@ def command_branch_merge_confirm(args: argparse.Namespace) -> int:
             execute=args.execute,
         )
     )
+    return 0
+
+
+def command_branch_merge_conflicts_describe(args: argparse.Namespace) -> int:
+    payload = json.loads(Path(args.file).expanduser().read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("branch merge-conflicts-describe requires a JSON object file.")
+    emit_json(describe_bubble_branch_merge_conflicts(payload=payload))
     return 0
 
 
@@ -2199,6 +2208,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     branch_merge_confirm_parser.add_argument("--execute", action="store_true")
     branch_merge_confirm_parser.set_defaults(func=command_branch_merge_confirm)
+
+    branch_merge_conflicts_describe_parser = branch_subparsers.add_parser(
+        "merge-conflicts-describe",
+        help="Describe Bubble merge conflict write payloads for manual developer decision-making.",
+    )
+    branch_merge_conflicts_describe_parser.add_argument("--file", required=True, help="JSON file containing a Bubble write payload.")
+    branch_merge_conflicts_describe_parser.set_defaults(func=command_branch_merge_conflicts_describe)
 
     changelog_parser = subparsers.add_parser("changelog", help="Fetch Bubble editor changelog entries.")
     changelog_subparsers = changelog_parser.add_subparsers(dest="changelog_command", required=True)

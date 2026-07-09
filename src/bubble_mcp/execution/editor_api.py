@@ -299,6 +299,214 @@ def _merge_write_change(
     return change
 
 
+def _intent_name(change: dict[str, Any]) -> str:
+    intent = change.get("intent")
+    if isinstance(intent, dict):
+        return str(intent.get("name") or "")
+    return ""
+
+
+def _path_context(path_array: list[Any]) -> dict[str, Any]:
+    path = [str(part) for part in path_array]
+    joined = ".".join(path)
+    context: dict[str, Any] = {
+        "path": joined,
+        "path_array": path,
+        "category": "unknown",
+    }
+    if not path:
+        return context
+    if path[0] == "_index":
+        context["category"] = "auxiliary_index"
+        context["index_kind"] = path[1] if len(path) > 1 else ""
+        context["target_id"] = path[2] if len(path) > 2 else ""
+        return context
+    if path[0] == "merge_changes_complete":
+        context["category"] = "merge_confirmation"
+        return context
+    if path[0] == "merge_changes":
+        context["category"] = "merge_conflicts_resolution_marker"
+        return context
+    if path[0] == "%ed":
+        context["category"] = "editor_data"
+        if len(path) > 1:
+            context["element_or_event_id"] = path[1]
+        if "%wf" in path:
+            wf_index = path.index("%wf")
+            context["category"] = "workflow"
+            if wf_index + 1 < len(path):
+                context["workflow_id"] = path[wf_index + 1]
+            if path[-1] == "actions":
+                context["category"] = "workflow_actions"
+        return context
+    if path[0] == "styles":
+        context["category"] = "style"
+        context["style_id"] = path[1] if len(path) > 1 else ""
+        return context
+    if path[0] == "user_types":
+        context["category"] = "data_type"
+        context["data_type"] = path[1] if len(path) > 1 else ""
+        return context
+    if path[0] == "option_sets":
+        context["category"] = "option_set"
+        context["option_set"] = path[1] if len(path) > 1 else ""
+        return context
+    if path[0] == "settings":
+        context["category"] = "setting"
+        return context
+    return context
+
+
+def _short_string(value: str, *, limit: int = 180) -> str:
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return f"{compact[: max(0, limit - 1)]}..."
+
+
+def _collect_body_snippets(value: Any, snippets: list[str], *, limit: int = 8) -> None:
+    if len(snippets) >= limit:
+        return
+    if isinstance(value, str):
+        if value and not value.startswith("data:image/"):
+            snippets.append(_short_string(value))
+        return
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if len(snippets) >= limit:
+                return
+            if key in {"%nm", "%x", "id", "custom_event", "option_set", "option_value"}:
+                _collect_body_snippets(child, snippets, limit=limit)
+            elif isinstance(child, (dict, list)):
+                _collect_body_snippets(child, snippets, limit=limit)
+        return
+    if isinstance(value, list):
+        for child in value:
+            if len(snippets) >= limit:
+                return
+            _collect_body_snippets(child, snippets, limit=limit)
+
+
+def _summarize_merge_body(body: Any) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "kind": type(body).__name__,
+    }
+    decoded = body
+    if isinstance(body, str):
+        stripped = body.strip()
+        summary["length"] = len(body)
+        if stripped[:1] in {"{", "["}:
+            try:
+                decoded = json.loads(stripped)
+                summary["kind"] = f"json_{type(decoded).__name__}"
+            except json.JSONDecodeError:
+                decoded = body
+    if isinstance(decoded, dict):
+        keys = [str(key) for key in decoded.keys()]
+        summary["entry_count"] = len(keys)
+        summary["top_level_keys"] = keys[:20]
+        action_summaries: list[dict[str, Any]] = []
+        for key in sorted(keys, key=lambda item: (0, int(item)) if item.isdigit() else (1, item)):
+            item = decoded.get(key)
+            if not isinstance(item, dict):
+                continue
+            properties = item.get("%p")
+            action_summaries.append(
+                {
+                    "position": int(key) if key.isdigit() else key,
+                    "id": item.get("id"),
+                    "type": item.get("%x"),
+                    "property_keys": list(properties.keys())[:12] if isinstance(properties, dict) else [],
+                }
+            )
+        if action_summaries:
+            summary["action_count"] = len(action_summaries)
+            summary["actions"] = action_summaries[:20]
+    elif isinstance(decoded, list):
+        summary["entry_count"] = len(decoded)
+    snippets: list[str] = []
+    _collect_body_snippets(decoded, snippets)
+    if snippets:
+        summary["text_snippets"] = snippets
+    return summary
+
+
+def describe_bubble_branch_merge_conflicts(*, payload: dict[str, Any]) -> dict[str, Any]:
+    candidate = payload.get("request", {}).get("payload") if isinstance(payload.get("request"), dict) else None
+    if not isinstance(candidate, dict):
+        candidate = payload.get("payload") if isinstance(payload.get("payload"), dict) else payload
+    if not isinstance(candidate, dict):
+        raise ValueError("bubble_branch_merge_conflicts_describe requires a payload object.")
+    changes = candidate.get("changes")
+    if not isinstance(changes, list):
+        raise ValueError("bubble_branch_merge_conflicts_describe requires a payload with a changes array.")
+
+    conflicts: list[dict[str, Any]] = []
+    auxiliary_changes: list[dict[str, Any]] = []
+    confirmations: list[dict[str, Any]] = []
+    for index, raw_change in enumerate(changes):
+        if not isinstance(raw_change, dict):
+            auxiliary_changes.append({"change_index": index, "reason": "non_object_change"})
+            continue
+        path_array = raw_change.get("path_array") if isinstance(raw_change.get("path_array"), list) else []
+        context = _path_context(path_array)
+        intent_name = _intent_name(raw_change)
+        if intent_name == "MergeConflict":
+            conflict_id = f"merge_conflict_{len(conflicts) + 1}"
+            conflicts.append(
+                {
+                    "id": conflict_id,
+                    "change_index": index,
+                    "intent": intent_name,
+                    "context": context,
+                    "body_summary": _summarize_merge_body(raw_change.get("body")),
+                    "decision_required": True,
+                    "decision_status": "pending_user_selection",
+                    "user_prompt": (
+                        f"Conflict {conflict_id} affects {context.get('category')} at "
+                        f"{context.get('path')}. Ask the user which Bubble version to keep before writing."
+                    ),
+                }
+            )
+        elif context["category"].startswith("merge_"):
+            confirmations.append(
+                {
+                    "change_index": index,
+                    "intent": intent_name or None,
+                    "context": context,
+                    "body_summary": _summarize_merge_body(raw_change.get("body")),
+                }
+            )
+        else:
+            auxiliary_changes.append(
+                {
+                    "change_index": index,
+                    "intent": intent_name or None,
+                    "context": context,
+                    "body_summary": _summarize_merge_body(raw_change.get("body")),
+                }
+            )
+
+    return {
+        "ok": True,
+        "app_id": candidate.get("appname"),
+        "merge_app_version": candidate.get("app_version") or candidate.get("appVersion"),
+        "change_count": len(changes),
+        "conflict_count": len(conflicts),
+        "conflicts": conflicts,
+        "auxiliary_change_count": len(auxiliary_changes),
+        "auxiliary_changes": auxiliary_changes,
+        "confirmation_change_count": len(confirmations),
+        "confirmation_changes": confirmations,
+        "decision_policy": "manual_user_selection_required",
+        "next_steps": [
+            "Review each conflict with the developer before applying any MergeConflict write.",
+            "Use an exact Bubble conflict-selection write payload only after the developer chooses a version.",
+            "After all conflict-selection writes are applied, call bubble_branch_merge_confirm with conflicts_resolved=true.",
+        ],
+    }
+
+
 def list_bubble_branches(
     *,
     profile: str,

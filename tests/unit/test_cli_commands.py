@@ -1303,6 +1303,31 @@ def test_cli_branch_merge_start_routes_payload(monkeypatch, capsys) -> None:  # 
     assert calls[0]["execute"] is True
 
 
+def test_cli_branch_merge_conflicts_describe_reads_payload_file(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    payload_file = tmp_path / "merge-payload.json"
+    payload_file.write_text(
+        json.dumps(
+            {
+                "changes": [
+                    {
+                        "body": {"0": {"%x": "TriggerCustomEvent", "id": "action-1"}},
+                        "path_array": ["%ed", "event-1", "%wf", "workflow-1", "actions"],
+                        "intent": {"name": "MergeConflict"},
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert main(["branch", "merge-conflicts-describe", "--file", str(payload_file)]) == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["conflict_count"] == 1
+    assert payload["conflicts"][0]["context"]["category"] == "workflow_actions"
+
+
 def test_cli_changelog_fetch_builds_filters(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     calls = []
 
