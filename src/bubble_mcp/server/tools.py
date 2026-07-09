@@ -690,6 +690,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             retry_count=int(args.get("retry_count") or 0),
             headless=bool(args.get("headless")),
             wait_seconds=int(args.get("wait_seconds") or 120),
+            auto_fix_objective_issues=bool(args.get("auto_fix_objective_issues")),
         )
     if name == "bubble_list_scheduled_deploys":
         _ensure_scheduled_deploys_rearmed()

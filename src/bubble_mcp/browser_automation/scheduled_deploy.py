@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,10 +25,12 @@ from bubble_mcp.browser_automation.store import (
     save_preview,
     save_scheduled_record,
 )
+from bubble_mcp.context.path_api import BubblePathApiClient, PathResult
 from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.browser import _bubble_cookie_header
-from bubble_mcp.sessions.store import save_session, session_from_payload
+from bubble_mcp.sessions.store import BubbleSessionData, save_session, session_from_payload
 
 APP_VERSION = "test"
 DEPLOY_TRIGGER_SELECTOR = '[itemid="deploy-to-live"]'
@@ -40,6 +43,7 @@ DEPLOY_DESCRIPTION_SELECTOR = (
 
 _timers_lock = threading.Lock()
 _timers: dict[str, threading.Timer] = {}
+_POPUP_INVALID_CUSTOM_STYLE_RE = re.compile(r"^Popup .+ - None \(Custom\) is not a possible option$")
 
 
 def _now() -> datetime:
@@ -150,6 +154,7 @@ def schedule_deploy(
     retry_count: int = 0,
     headless: bool = False,
     wait_seconds: int = 120,
+    auto_fix_objective_issues: bool = False,
     executor: Callable[[ScheduledDeployRecord], dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     resolved_profile, app_id = _resolve_profile(profile)
@@ -174,6 +179,7 @@ def schedule_deploy(
             retry_count=retry,
             headless=bool(headless),
             wait_seconds=wait,
+            auto_fix_objective_issues=bool(auto_fix_objective_issues),
             created_at=_now_iso(),
         )
         path = save_preview(preview)
@@ -192,6 +198,7 @@ def schedule_deploy(
                     "execute": True,
                     "confirm": True,
                     "preview_id": preview.preview_id,
+                    "auto_fix_objective_issues": preview.auto_fix_objective_issues,
                 },
             },
         }
@@ -217,6 +224,7 @@ def schedule_deploy(
         retry_count=preview.retry_count,
         headless=preview.headless,
         wait_seconds=preview.wait_seconds,
+        auto_fix_objective_issues=preview.auto_fix_objective_issues,
         status="scheduled",
         created_at=created_at,
         updated_at=created_at,
@@ -274,6 +282,216 @@ def write_evidence(profile: str, deploy_id: str, payload: dict[str, Any]) -> Pat
     path = directory / "result.json"
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
+
+
+def _json_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            decoded = json.loads(value)
+        except json.JSONDecodeError:
+            return []
+        return decoded if isinstance(decoded, list) else []
+    return []
+
+
+def _encoded_path_array(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    if isinstance(value, str):
+        return [part for part in value.split(".") if part]
+    return []
+
+
+def _issue_message(issue: dict[str, Any]) -> str:
+    return str(issue.get("message") or issue.get("m") or "").strip()
+
+
+def _issue_path_array(issue: dict[str, Any]) -> list[str]:
+    node = issue.get("node")
+    if not isinstance(node, dict):
+        return []
+    args = node.get("args")
+    if not isinstance(args, list):
+        return []
+    for arg in args:
+        if not isinstance(arg, dict) or arg.get("type") != "json":
+            continue
+        path_array = _encoded_path_array(arg.get("value"))
+        if path_array:
+            return path_array
+    return []
+
+
+def _issue_summary(issue: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "issue_id": str(issue.get("issue_id") or ""),
+        "message": _issue_message(issue),
+        "path_array": _issue_path_array(issue),
+    }
+
+
+def _load_index_deploy_issues(api: BubblePathApiClient) -> list[dict[str, Any]]:
+    issues_result = api.resolve_path(["_index", "issues_list"])
+    issues_by_id = issues_result.data if issues_result.type == "data" and isinstance(issues_result.data, dict) else {}
+    if not issues_by_id:
+        return []
+
+    page_names_result = api.resolve_path(["_index", "page_name_to_id"])
+    page_names = page_names_result.data if page_names_result.type == "data" and isinstance(page_names_result.data, dict) else {}
+    index_page_id = str(page_names.get("index") or "").strip()
+
+    issues_sub_result = api.resolve_path(["_index", "issues_sub"])
+    issues_sub = issues_sub_result.data if issues_sub_result.type == "data" and isinstance(issues_sub_result.data, dict) else {}
+    child_issue_ids = [str(item) for item in _json_list(issues_sub.get(index_page_id)) if str(item)] if index_page_id else []
+    issue_ids = ([index_page_id] if index_page_id else []) + child_issue_ids
+    if not issue_ids:
+        issue_ids = [str(key) for key in issues_by_id.keys()]
+
+    issues: list[dict[str, Any]] = []
+    for issue_id in issue_ids:
+        for entry in _json_list(issues_by_id.get(issue_id)):
+            if not isinstance(entry, dict) or not _issue_message(entry):
+                continue
+            issues.append({"issue_id": issue_id, **entry})
+    return issues
+
+
+def _classify_objective_issue_fixes(
+    api: BubblePathApiClient,
+    issues: list[dict[str, Any]],
+) -> dict[str, Any]:
+    candidates: list[dict[str, Any]] = []
+    unsupported: list[dict[str, Any]] = []
+
+    for issue in issues:
+        message = _issue_message(issue)
+        path_array = _issue_path_array(issue)
+        if (
+            _POPUP_INVALID_CUSTOM_STYLE_RE.match(message)
+            and len(path_array) >= 2
+            and path_array[-1] == "%s1"
+            and "%el" in path_array
+        ):
+            candidates.append({**_issue_summary(issue), "kind": "popup_invalid_custom_style"})
+        else:
+            unsupported.append(_issue_summary(issue))
+
+    if unsupported:
+        return {"ok": False, "fixes": [], "unsupported_issues": unsupported}
+    if not candidates:
+        return {"ok": True, "fixes": [], "unsupported_issues": []}
+
+    _last_change, current_values = api.resolve_multiple([candidate["path_array"] for candidate in candidates])
+    fixes: list[dict[str, Any]] = []
+    unresolved: list[dict[str, Any]] = []
+    for index, candidate in enumerate(candidates):
+        current = current_values[index] if index < len(current_values) else PathResult(type="error", message="missing result")
+        current_value = current.data if isinstance(current, PathResult) and current.type == "data" else None
+        if isinstance(current_value, str) and current_value.strip():
+            fixes.append(
+                {
+                    **candidate,
+                    "previous_value": current_value,
+                    "new_value": None,
+                }
+            )
+        else:
+            unresolved.append(
+                {
+                    **candidate,
+                    "reason": "style_slot_did_not_contain_an_invalid_style_reference",
+                    "current_type": current.type if isinstance(current, PathResult) else type(current).__name__,
+                    "current_value": current_value,
+                }
+            )
+
+    return {"ok": not unresolved, "fixes": fixes, "unsupported_issues": unresolved}
+
+
+def _objective_issue_fix_payload(app_id: str, fixes: list[dict[str, Any]]) -> dict[str, Any]:
+    changes: list[dict[str, Any]] = []
+    for index, fix in enumerate(fixes, start=1):
+        changes.append(
+            {
+                "intent": {"name": "SetData", "id": 910000 + index, "source_appname": ""},
+                "path_array": fix["path_array"],
+                "body": None,
+                "version_control_api_version": 4,
+                "changelog_data": [],
+            }
+        )
+    return {"appname": app_id, "version": APP_VERSION, "changes": changes}
+
+
+def auto_fix_objective_deploy_issues(
+    *,
+    profile: str,
+    app_id: str,
+    session: BubbleSessionData,
+    api: BubblePathApiClient | None = None,
+    editor_client: BubbleEditorClient | None = None,
+) -> dict[str, Any]:
+    path_api = api or BubblePathApiClient(app_id=app_id, app_version=APP_VERSION, session=session)
+    issues_before = _load_index_deploy_issues(path_api)
+    before_summary = [_issue_summary(issue) for issue in issues_before]
+    if not issues_before:
+        return {
+            "ok": True,
+            "fixes_applied": False,
+            "issues_before": [],
+            "issues_after": [],
+            "fixes": [],
+        }
+
+    plan = _classify_objective_issue_fixes(path_api, issues_before)
+    if not plan.get("ok"):
+        return {
+            "ok": False,
+            "error": "scheduled_deploy_unfixable_bubble_issues",
+            "issues_before": before_summary,
+            "unsupported_issues": plan.get("unsupported_issues", []),
+            "fixes": plan.get("fixes", []),
+        }
+
+    fixes = [fix for fix in plan.get("fixes", []) if isinstance(fix, dict)]
+    if not fixes:
+        return {
+            "ok": True,
+            "fixes_applied": False,
+            "issues_before": before_summary,
+            "issues_after": before_summary,
+            "fixes": [],
+        }
+
+    payload = _objective_issue_fix_payload(app_id, fixes)
+    write_result = (editor_client or BubbleEditorClient()).write(
+        payload,
+        session,
+        dry_run=False,
+        calculate_derived=True,
+    )
+    if not write_result.get("ok"):
+        return {
+            "ok": False,
+            "error": "scheduled_deploy_objective_issue_fix_failed",
+            "issues_before": before_summary,
+            "fixes": fixes,
+            "write_result": redact_sensitive(write_result),
+        }
+
+    issues_after = _load_index_deploy_issues(path_api)
+    after_summary = [_issue_summary(issue) for issue in issues_after]
+    return {
+        "ok": not issues_after,
+        "error": "scheduled_deploy_objective_issue_fix_unresolved" if issues_after else None,
+        "fixes_applied": True,
+        "issues_before": before_summary,
+        "issues_after": after_summary,
+        "fixes": fixes,
+        "write_result": redact_sensitive(write_result),
+    }
 
 
 def _editor_url(app_id: str) -> str:
@@ -397,6 +615,33 @@ def _deploy_blocker_error(state: dict[str, Any]) -> str:
     )
 
 
+def _browser_session(
+    *,
+    context: Any,
+    page: Any,
+    record: ScheduledDeployRecord,
+    editor_url: str,
+    captured_headers: dict[str, str],
+) -> BubbleSessionData | None:
+    cookie_header = _bubble_cookie_header(context)
+    if not cookie_header:
+        return None
+    user_agent = str(page.evaluate("() => navigator.userAgent") or "befree-bubble-mcp")
+    return session_from_payload(
+        {
+            "appId": record.app_id,
+            "url": editor_url,
+            "headers": {
+                "Cookie": cookie_header,
+                "User-Agent": user_agent,
+                **captured_headers,
+            },
+            "appVersion": APP_VERSION,
+            "source": "scheduled_deploy_browser",
+        }
+    )
+
+
 def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
     """Execute the stored browser-assisted deploy workflow with Playwright."""
 
@@ -420,6 +665,7 @@ def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
     editor_url = _editor_url(record.app_id)
     captured_headers: dict[str, str] = {}
     network_events: list[dict[str, Any]] = []
+    objective_issue_auto_fix: dict[str, Any] | None = None
 
     try:
         with sync_playwright() as playwright:
@@ -459,6 +705,33 @@ def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
             page.goto(editor_url, wait_until="domcontentloaded", timeout=record.wait_seconds * 1000)
             page.wait_for_function(_editor_ready_script(), timeout=record.wait_seconds * 1000)
             page.screenshot(path=str(evidence / "before-deploy.png"), full_page=True)
+            if record.auto_fix_objective_issues:
+                active_session = _browser_session(
+                    context=context,
+                    page=page,
+                    record=record,
+                    editor_url=editor_url,
+                    captured_headers=captured_headers,
+                )
+                if active_session is None:
+                    raise RuntimeError(
+                        "scheduled_deploy_objective_issue_fix_session_unavailable: "
+                        "The Chromium session did not expose Bubble cookies required to inspect and fix issues."
+                    )
+                objective_issue_auto_fix = auto_fix_objective_deploy_issues(
+                    profile=record.profile,
+                    app_id=record.app_id,
+                    session=active_session,
+                )
+                if not objective_issue_auto_fix.get("ok"):
+                    raise RuntimeError(
+                        f"{objective_issue_auto_fix.get('error') or 'scheduled_deploy_objective_issue_fix_failed'}: "
+                        f"{json.dumps(redact_sensitive(objective_issue_auto_fix), sort_keys=True)[:2000]}"
+                    )
+                if objective_issue_auto_fix.get("fixes_applied"):
+                    page.goto(editor_url, wait_until="domcontentloaded", timeout=record.wait_seconds * 1000)
+                    page.wait_for_function(_editor_ready_script(), timeout=record.wait_seconds * 1000)
+                    page.screenshot(path=str(evidence / "after-objective-issue-fix.png"), full_page=True)
             page.click(DEPLOY_TRIGGER_SELECTOR)
             page.wait_for_timeout(750)
             state = page.evaluate(_deploy_modal_state_script())
@@ -516,6 +789,11 @@ def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
             "session_refreshed": session_path is not None,
             "session_path": str(session_path) if session_path else None,
             "network_events": network_events[-25:],
+            **(
+                {"objective_issue_auto_fix": redact_sensitive(objective_issue_auto_fix)}
+                if objective_issue_auto_fix is not None
+                else {}
+            ),
         }
         write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
         return result
@@ -530,6 +808,11 @@ def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
             "error_class": exc.__class__.__name__,
             "evidence_dir": str(evidence),
             "network_events": network_events[-25:],
+            **(
+                {"objective_issue_auto_fix": redact_sensitive(objective_issue_auto_fix)}
+                if objective_issue_auto_fix is not None
+                else {}
+            ),
         }
         write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
         return result

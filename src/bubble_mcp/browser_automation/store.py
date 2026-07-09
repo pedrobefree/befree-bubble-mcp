@@ -77,6 +77,7 @@ def load_preview(profile: str, preview_id: str) -> ScheduledDeployPreview:
         retry_count=int(payload.get("retry_count") or 0),
         headless=bool(payload.get("headless")),
         wait_seconds=int(payload.get("wait_seconds") or 120),
+        auto_fix_objective_issues=bool(payload.get("auto_fix_objective_issues")),
         created_at=str(payload.get("created_at") or ""),
     )
 

@@ -3100,6 +3100,7 @@ def test_browser_scheduled_deploy_tools_are_listed() -> None:
     tools = {tool["name"]: tool for tool in response["result"]["tools"]}
     assert tools["bubble_schedule_deploy"]["inputSchema"]["required"] == ["profile", "scheduled_at", "message"]
     assert tools["bubble_schedule_deploy"]["inputSchema"]["properties"]["execute"]["default"] is False
+    assert tools["bubble_schedule_deploy"]["inputSchema"]["properties"]["auto_fix_objective_issues"]["default"] is False
     assert tools["bubble_schedule_deploy"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_schedule_deploy"]["annotations"]["destructiveHint"] is True
     assert tools["bubble_schedule_deploy"]["annotations"]["openWorldHint"] is True

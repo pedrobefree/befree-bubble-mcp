@@ -18,6 +18,7 @@ class ScheduledDeployPreview:
     retry_count: int
     headless: bool
     wait_seconds: int
+    auto_fix_objective_issues: bool
     created_at: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -32,6 +33,7 @@ class ScheduledDeployPreview:
             "retry_count": self.retry_count,
             "headless": self.headless,
             "wait_seconds": self.wait_seconds,
+            "auto_fix_objective_issues": self.auto_fix_objective_issues,
             "created_at": self.created_at,
         }
 
@@ -48,6 +50,7 @@ class ScheduledDeployRecord:
     retry_count: int
     headless: bool
     wait_seconds: int
+    auto_fix_objective_issues: bool
     status: str
     created_at: str
     updated_at: str
@@ -69,6 +72,7 @@ class ScheduledDeployRecord:
             "retry_count": self.retry_count,
             "headless": self.headless,
             "wait_seconds": self.wait_seconds,
+            "auto_fix_objective_issues": self.auto_fix_objective_issues,
             "status": self.status,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
@@ -92,6 +96,7 @@ class ScheduledDeployRecord:
             retry_count=int(payload.get("retry_count") or 0),
             headless=bool(payload.get("headless")),
             wait_seconds=int(payload.get("wait_seconds") or 120),
+            auto_fix_objective_issues=bool(payload.get("auto_fix_objective_issues")),
             status=str(payload.get("status") or ""),
             created_at=str(payload.get("created_at") or ""),
             updated_at=str(payload.get("updated_at") or ""),

@@ -8,6 +8,7 @@ from bubble_mcp.browser_automation.scheduled_deploy import (
     _deploy_blocker_error,
     _deploy_completion_script,
     _visible_deploy_button_script,
+    auto_fix_objective_deploy_issues,
     cancel_scheduled_deploy,
     deploy_history,
     execute_scheduled_deploy,
@@ -15,7 +16,9 @@ from bubble_mcp.browser_automation.scheduled_deploy import (
     schedule_deploy,
 )
 from bubble_mcp.browser_automation.store import preview_path, scheduled_path
+from bubble_mcp.context.path_api import PathResult
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
+from bubble_mcp.sessions.store import BubbleSessionData
 
 
 def _settings(tmp_path: Path) -> None:
@@ -53,8 +56,10 @@ def test_schedule_deploy_preview_requires_confirmation_and_forces_test_version(t
     assert preview["app_version"] == "test"
     assert preview["message"] == "Main branch release"
     assert preview["timezone"]
+    assert preview["auto_fix_objective_issues"] is False
     assert result["confirmation_required"] is True
     assert result["next_mcp_call"]["arguments"]["execute"] is True
+    assert result["next_mcp_call"]["arguments"]["auto_fix_objective_issues"] is False
     assert preview_path("client", preview["preview_id"]).exists()
 
 
@@ -88,6 +93,32 @@ def test_schedule_deploy_confirm_persists_record_and_history(tmp_path, monkeypat
     assert listed["scheduled"][0]["deploy_id"] == record["deploy_id"]
     history = deploy_history(profile="client")
     assert history["history"][0]["event"] == "scheduled"
+
+
+def test_schedule_deploy_persists_objective_issue_auto_fix_authorization(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+
+    preview_result = schedule_deploy(
+        profile="client",
+        scheduled_at="2026-07-09T10:30:00Z",
+        message="Main branch release",
+        auto_fix_objective_issues=True,
+    )
+    preview_id = preview_result["preview"]["preview_id"]
+    assert preview_result["preview"]["auto_fix_objective_issues"] is True
+    assert preview_result["next_mcp_call"]["arguments"]["auto_fix_objective_issues"] is True
+
+    result = schedule_deploy(
+        profile="client",
+        scheduled_at="2026-07-09T10:30:00Z",
+        message="Main branch release",
+        execute=True,
+        confirm=True,
+        preview_id=preview_id,
+    )
+
+    assert result["deploy"]["auto_fix_objective_issues"] is True
 
 
 def test_schedule_deploy_execution_requires_confirm_and_preview_id(tmp_path, monkeypatch) -> None:
@@ -251,6 +282,122 @@ def test_deploy_modal_selectors_match_current_bubble_markup() -> None:
     completion_script = _deploy_completion_script()
     assert DEPLOY_DESCRIPTION_SELECTOR in completion_script
     assert "visibleTextarea" in completion_script
+
+
+def _session() -> BubbleSessionData:
+    return BubbleSessionData(
+        app_id="bubble-app",
+        url="https://bubble.io/page?name=index&id=bubble-app&version=test",
+        method="POST",
+        headers={"cookie": "sid=test"},
+        cookies="sid=test",
+        app_version="test",
+        captured_at="2026-07-09T10:30:00Z",
+        source="test",
+    )
+
+
+class _FakeIssueApi:
+    def __init__(self, issue: dict[str, object] | None = None) -> None:
+        self.issue = issue
+
+    def resolve_path(self, path_array):  # type: ignore[no-untyped-def]
+        if path_array == ["_index", "issues_list"]:
+            return PathResult(
+                type="data",
+                data={"issue_alias": json.dumps([self.issue]) if self.issue else "[]"},
+            )
+        if path_array == ["_index", "page_name_to_id"]:
+            return PathResult(type="data", data={"index": "index_page"})
+        if path_array == ["_index", "issues_sub"]:
+            return PathResult(type="data", data={"index_page": json.dumps(["issue_alias"])})
+        return PathResult(type="data", data=None)
+
+    def resolve_multiple(self, path_arrays):  # type: ignore[no-untyped-def]
+        return 61493718674, [PathResult(type="data", data="Group_modal_overlay_") for _path in path_arrays]
+
+
+class _FakeEditorClient:
+    def __init__(self, api: _FakeIssueApi) -> None:
+        self.api = api
+        self.payload = None
+
+    def write(self, payload, session, *, dry_run=False, calculate_derived=False):  # type: ignore[no-untyped-def]
+        self.payload = payload
+        self.api.issue = None
+        return {
+            "ok": True,
+            "dry_run": dry_run,
+            "derived": {"ok": calculate_derived},
+            "request": {"payload": payload, "headers": {"cookie": "[REDACTED]"}},
+        }
+
+
+def test_auto_fix_objective_deploy_issues_clears_invalid_popup_style() -> None:
+    issue = {
+        "message": "Popup checkout-modal - None (Custom) is not a possible option",
+        "node": {
+            "constructor_name": "Literal",
+            "args": [
+                {"type": "json", "value": "%p3.bTGbC.%el.ai_RRuRZMgA.%s1"},
+                {
+                    "type": "node",
+                    "value": {
+                        "constructor_name": "Element",
+                        "args": [{"type": "json", "value": "%p3.bTGbC.%el.ai_RRuRZMgA"}],
+                    },
+                },
+            ],
+        },
+    }
+    api = _FakeIssueApi(issue)
+    editor = _FakeEditorClient(api)
+
+    result = auto_fix_objective_deploy_issues(
+        profile="client",
+        app_id="bubble-app",
+        session=_session(),
+        api=api,  # type: ignore[arg-type]
+        editor_client=editor,  # type: ignore[arg-type]
+    )
+
+    assert result["ok"] is True
+    assert result["fixes_applied"] is True
+    assert result["issues_after"] == []
+    assert editor.payload["changes"] == [
+        {
+            "intent": {"name": "SetData", "id": 910001, "source_appname": ""},
+            "path_array": ["%p3", "bTGbC", "%el", "ai_RRuRZMgA", "%s1"],
+            "body": None,
+            "version_control_api_version": 4,
+            "changelog_data": [],
+        }
+    ]
+
+
+def test_auto_fix_objective_deploy_issues_rejects_ambiguous_issue() -> None:
+    issue = {
+        "message": "Set state: Only when should be yes / no but right now it is empty",
+        "node": {
+            "constructor_name": "ObjectLiteral",
+            "args": [{"type": "json", "value": "%p3.bTGbC.%wf.workflow.actions.0.%p.%c"}],
+        },
+    }
+    api = _FakeIssueApi(issue)
+    editor = _FakeEditorClient(api)
+
+    result = auto_fix_objective_deploy_issues(
+        profile="client",
+        app_id="bubble-app",
+        session=_session(),
+        api=api,  # type: ignore[arg-type]
+        editor_client=editor,  # type: ignore[arg-type]
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "scheduled_deploy_unfixable_bubble_issues"
+    assert result["unsupported_issues"][0]["message"].startswith("Set state")
+    assert editor.payload is None
 
 
 def test_deploy_blocker_error_reports_bubble_issues() -> None:

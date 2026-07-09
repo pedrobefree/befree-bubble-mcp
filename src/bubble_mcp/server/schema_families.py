@@ -1635,6 +1635,14 @@ def browser_automation_tools() -> list[ToolSchema]:
                     ),
                     "headless": field("headless"),
                     "wait_seconds": field("wait_seconds"),
+                    "auto_fix_objective_issues": _prop(
+                        "boolean",
+                        (
+                            "When true, the scheduled deploy may apply allowlisted objective Bubble issue fixes "
+                            "before attempting deploy. Defaults to false."
+                        ),
+                        default=False,
+                    ),
                 },
                 required=["profile", "scheduled_at", "message"],
             ),

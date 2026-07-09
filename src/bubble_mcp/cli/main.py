@@ -279,6 +279,7 @@ def command_browser_schedule_deploy(args: argparse.Namespace) -> int:
         retry_count=args.retry_count,
         headless=args.headless,
         wait_seconds=args.wait_seconds,
+        auto_fix_objective_issues=args.auto_fix_objective_issues,
     )
     emit_json(result)
     return 0 if result.get("ok") else 1
@@ -1767,6 +1768,11 @@ def build_parser() -> argparse.ArgumentParser:
     browser_schedule_parser.add_argument("--retry-count", type=int, default=0)
     browser_schedule_parser.add_argument("--headless", action="store_true")
     browser_schedule_parser.add_argument("--wait-seconds", type=int, default=120)
+    browser_schedule_parser.add_argument(
+        "--auto-fix-objective-issues",
+        action="store_true",
+        help="Allow the scheduled deploy to apply allowlisted objective issue fixes before deploying.",
+    )
     browser_schedule_parser.set_defaults(func=command_browser_schedule_deploy)
 
     browser_list_parser = browser_subparsers.add_parser("list-deploys", help="List future deploys scheduled by this tool.")
