@@ -698,7 +698,13 @@ def _try_download_bubble_export(
         return None
 
     try:
-        decoded = content.decode(response.encoding or "utf-8")
+        # RFC 8259 mandates UTF-8 for JSON interchange, so decode as UTF-8
+        # unconditionally rather than trusting `requests`' guessed
+        # `response.encoding`: when the response has no explicit charset,
+        # requests/urllib3 falls back to ISO-8859-1 per the old HTTP default
+        # for text/* content, silently mojibake-corrupting every non-ASCII
+        # byte in the exported app (accented names, etc.) instead of raising.
+        decoded = content.decode("utf-8")
         parsed = json.loads(decoded)
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         attempts.append(
