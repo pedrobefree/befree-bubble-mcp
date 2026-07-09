@@ -6,9 +6,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from bubble_mcp.execution.client import BubbleEditorClient, default_http_transport
 from bubble_mcp.sessions.store import BubbleSessionData, session_from_payload
 
 ProgressCallback = Callable[[str], None]
+EDITOR_VALIDATION_INTERVAL_SEC = 2.0
+EDITOR_VALIDATION_TIMEOUT_SEC = 10.0
 
 
 def _cookie_header(cookies: list[dict[str, Any]]) -> str:
@@ -57,16 +60,24 @@ def _poll_browser_session(
     sleep: Callable[[float], None] = time.sleep,
     monotonic: Callable[[], float] = time.monotonic,
     progress: ProgressCallback | None = None,
-    editor_headers_ready: Callable[[], bool] | None = None,
-) -> tuple[str, str, bool]:
+    editor_session_ready: Callable[[str], bool] | None = None,
+) -> tuple[str, str, bool, bool]:
     """Poll a Playwright context and keep the newest usable Bubble session state.
 
     The login flow is intentionally user-driven. Closing the browser window or
     interrupting the command after login should not discard a valid session that
     was already observed during the wait loop.
+
+    `editor_session_ready`, when given, must perform a real authenticated
+    request (not just check for header presence) because Bubble sends
+    x-bubble-client-* headers on anonymous/login pages too -- treating their
+    mere presence as "logged in" closes the browser before the user finishes
+    authenticating and leaves a session that then fails with 401 on every
+    editor call.
     """
 
     interrupted = False
+    validated = False
     reported_cookies = bool(last_cookie_string)
     reported_write_ready = False
     deadline = monotonic() + max(1, wait_seconds)
@@ -78,27 +89,29 @@ def _poll_browser_session(
                 if not reported_cookies:
                     reported_cookies = True
                     if progress is not None:
-                        if editor_headers_ready is None:
+                        if editor_session_ready is None:
                             progress(
                                 "Session cookies detected. You can close the browser now; "
                                 "the CLI will save the newest captured session."
                             )
                         else:
                             progress(
-                                "Session cookies detected. Keep the Bubble editor open until editor request "
-                                "headers are detected."
+                                "Session cookies detected. Waiting for a validated editor session "
+                                "(anonymous/login-page cookies are not accepted) -- keep the Bubble "
+                                "editor open."
                             )
             if (
-                editor_headers_ready is not None
+                editor_session_ready is not None
                 and last_cookie_string
-                and editor_headers_ready()
                 and not reported_write_ready
+                and editor_session_ready(last_cookie_string)
             ):
                 reported_write_ready = True
+                validated = True
                 if progress is not None:
                     progress(
-                        "Bubble editor request headers detected. The session is write-ready; "
-                        "you can close the browser now."
+                        "Bubble editor session validated (calculate_derived succeeded). "
+                        "You can close the browser now."
                     )
                 break
             last_user_agent = _first_open_page_user_agent(context, last_user_agent)
@@ -108,7 +121,7 @@ def _poll_browser_session(
             break
         except Exception:
             break
-    return last_cookie_string, last_user_agent, interrupted
+    return last_cookie_string, last_user_agent, interrupted, validated
 
 
 def capture_session_with_playwright(
@@ -141,6 +154,33 @@ def capture_session_with_playwright(
     last_user_agent = "befree-bubble-mcp"
     captured_write_headers: dict[str, str] = {}
     reported_write_headers = False
+    editor_client = BubbleEditorClient(transport=default_http_transport, timeout=EDITOR_VALIDATION_TIMEOUT_SEC)
+    last_validation_check = 0.0
+
+    def editor_session_ready(cookie_string: str) -> bool:
+        nonlocal last_validation_check
+        if not captured_write_headers:
+            return False
+        now = time.monotonic()
+        if now - last_validation_check < EDITOR_VALIDATION_INTERVAL_SEC:
+            return False
+        last_validation_check = now
+        probe_session = BubbleSessionData(
+            app_id=app_id,
+            url=target_url,
+            method="POST",
+            headers={**captured_write_headers, "cookie": cookie_string},
+            cookies=cookie_string,
+            app_version=app_version or "test",
+            captured_at="",
+            source="browser",
+        )
+        try:
+            result = editor_client.calculate_derived({}, probe_session, dry_run=False)
+        except Exception:
+            return False
+        return bool(result.get("ok"))
+
     if progress is not None:
         progress(f"Opening Bubble editor login browser for app '{app_id}'.")
         progress(f"Waiting up to {max(1, wait_seconds)} seconds for session cookies.")
@@ -197,16 +237,13 @@ def capture_session_with_playwright(
         if progress is not None:
             progress("Browser opened. Log in to Bubble and keep the editor tab open until capture is confirmed.")
 
-        last_cookie_string, last_user_agent, interrupted = _poll_browser_session(
+        last_cookie_string, last_user_agent, interrupted, validated = _poll_browser_session(
             context,
             wait_seconds=wait_seconds,
             last_cookie_string=last_cookie_string,
             last_user_agent=last_user_agent,
             progress=progress,
-            editor_headers_ready=lambda: bool(
-                captured_write_headers.get("x-bubble-client-version")
-                or captured_write_headers.get("x-bubble-client-commit-timestamp")
-            ),
+            editor_session_ready=editor_session_ready,
         )
 
         try:
@@ -239,6 +276,13 @@ def capture_session_with_playwright(
         raise RuntimeError(
             "Bubble cookies were captured, but editor request headers were not. "
             "Open the Bubble editor for the target app, wait until it fully loads, and rerun session login."
+        )
+    if not validated:
+        raise RuntimeError(
+            "Bubble cookies and editor headers were captured, but the session never passed a real "
+            "calculate_derived check -- it is likely an anonymous or login-page session, not an "
+            "authenticated editor session. Log in with an account that has EDITOR access to this app, "
+            "wait for the editor to fully load, and rerun session login."
         )
 
     if progress is not None:
