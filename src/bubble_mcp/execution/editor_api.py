@@ -372,6 +372,41 @@ def delete_bubble_branch(
     return {"ok": result.get("ok"), "profile": profile, "app_id": appname, "executed": execute, **result}
 
 
+def deploy_app_test_and_hotfix(
+    *,
+    profile: str,
+    message: str,
+    app_id: str | None = None,
+    from_app_version: str = "test",
+    force_deploy: bool = False,
+    deploy_mobile: bool = False,
+    execute: bool = False,
+    client: BubbleEditorApiClient | None = None,
+) -> dict[str, Any]:
+    session = _load_session_for_profile(profile)
+    appname = _resolve_app_id(profile, session, app_id)
+    clean_message = str(message or "").strip()
+    if not clean_message:
+        raise ValueError("deploy_app_test_and_hotfix requires a deploy message.")
+    source_version = str(from_app_version or "test").strip() or "test"
+    payload = {
+        "appname": appname,
+        "from_app_version": source_version,
+        "force_deploy": bool(force_deploy),
+        "message": clean_message,
+        "deploy_mobile": bool(deploy_mobile),
+    }
+    result = _client(client).post("/appeditor/deploy_app_test_and_hotfix", payload, session, dry_run=not execute)
+    return {
+        "ok": result.get("ok"),
+        "profile": profile,
+        "app_id": appname,
+        "app_version": source_version,
+        "executed": execute,
+        **result,
+    }
+
+
 def fetch_workload_usage_by_date(
     *,
     profile: str,

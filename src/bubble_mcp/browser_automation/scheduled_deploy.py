@@ -29,8 +29,9 @@ from bubble_mcp.context.path_api import BubblePathApiClient, PathResult
 from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.execution.client import BubbleEditorClient
+from bubble_mcp.execution.editor_api import BubbleEditorApiClient, deploy_app_test_and_hotfix
 from bubble_mcp.sessions.browser import _bubble_cookie_header
-from bubble_mcp.sessions.store import BubbleSessionData, save_session, session_from_payload
+from bubble_mcp.sessions.store import BubbleSessionData, load_session, save_session, session_from_payload
 
 APP_VERSION = "test"
 DEPLOY_TRIGGER_SELECTOR = '[itemid="deploy-to-live"]'
@@ -642,7 +643,190 @@ def _browser_session(
     )
 
 
+def _deploy_issue_preflight(
+    record: ScheduledDeployRecord,
+    session: BubbleSessionData,
+    *,
+    path_api: BubblePathApiClient | None = None,
+    editor_client: BubbleEditorClient | None = None,
+) -> dict[str, Any]:
+    api = path_api or BubblePathApiClient(app_id=record.app_id, app_version=APP_VERSION, session=session)
+    if record.auto_fix_objective_issues:
+        return auto_fix_objective_deploy_issues(
+            profile=record.profile,
+            app_id=record.app_id,
+            session=session,
+            api=api,
+            editor_client=editor_client,
+        )
+
+    issues = _load_index_deploy_issues(api)
+    issue_summary = [_issue_summary(issue) for issue in issues]
+    return {
+        "ok": not issues,
+        "fixes_applied": False,
+        "issues_before": issue_summary,
+        "issues_after": issue_summary,
+        "fixes": [],
+        **({"error": "scheduled_deploy_blocked_by_bubble_issues"} if issues else {}),
+    }
+
+
+def execute_scheduled_deploy_direct(
+    record: ScheduledDeployRecord,
+    *,
+    api_client: BubbleEditorApiClient | None = None,
+    editor_client: BubbleEditorClient | None = None,
+    path_api: BubblePathApiClient | None = None,
+) -> dict[str, Any]:
+    """Execute a scheduled deploy through the authenticated editor deploy endpoint."""
+
+    evidence = evidence_dir(record.profile, record.deploy_id)
+    evidence.mkdir(parents=True, exist_ok=True)
+    session = load_session(record.profile)
+    objective_issue_preflight: dict[str, Any] | None = None
+    if session is None:
+        result = {
+            "ok": False,
+            "deploy_id": record.deploy_id,
+            "profile": record.profile,
+            "app_id": record.app_id,
+            "app_version": APP_VERSION,
+            "deployment_mode": "direct",
+            "error": f"No Bubble session stored for profile '{record.profile}'.",
+            "reason": "missing_session",
+            "evidence_dir": str(evidence),
+        }
+        write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
+        return result
+
+    try:
+        objective_issue_preflight = _deploy_issue_preflight(
+            record,
+            session,
+            path_api=path_api,
+            editor_client=editor_client,
+        )
+        if not objective_issue_preflight.get("ok"):
+            result = {
+                "ok": False,
+                "deploy_id": record.deploy_id,
+                "profile": record.profile,
+                "app_id": record.app_id,
+                "app_version": APP_VERSION,
+                "deployment_mode": "direct",
+                "error": objective_issue_preflight.get("error") or "scheduled_deploy_blocked_by_bubble_issues",
+                "reason": "bubble_issues",
+                "evidence_dir": str(evidence),
+                "objective_issue_preflight": redact_sensitive(objective_issue_preflight),
+            }
+            write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
+            return result
+
+        deploy_result = deploy_app_test_and_hotfix(
+            profile=record.profile,
+            app_id=record.app_id,
+            message=record.message,
+            from_app_version=APP_VERSION,
+            force_deploy=False,
+            deploy_mobile=False,
+            execute=True,
+            client=api_client,
+        )
+        if not deploy_result.get("ok"):
+            result = {
+                "ok": False,
+                "deploy_id": record.deploy_id,
+                "profile": record.profile,
+                "app_id": record.app_id,
+                "app_version": APP_VERSION,
+                "deployment_mode": "direct",
+                "error": "scheduled_deploy_direct_endpoint_failed",
+                "reason": deploy_result.get("reason") or "deploy_endpoint_failed",
+                "status": deploy_result.get("status"),
+                "evidence_dir": str(evidence),
+                "objective_issue_preflight": redact_sensitive(objective_issue_preflight),
+                "direct_deploy": redact_sensitive(deploy_result),
+            }
+            write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
+            return result
+
+        result = {
+            "ok": True,
+            "deploy_id": record.deploy_id,
+            "profile": record.profile,
+            "app_id": record.app_id,
+            "app_version": APP_VERSION,
+            "deployment_mode": "direct",
+            "deployed_at": _now_iso(),
+            "evidence_dir": str(evidence),
+            "session_refreshed": False,
+            "objective_issue_preflight": redact_sensitive(objective_issue_preflight),
+            "direct_deploy": redact_sensitive(deploy_result),
+        }
+        write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
+        return result
+    except RuntimeError as exc:
+        reason = "session_expired" if "session expired" in str(exc).lower() else "direct_deploy_error"
+        result = {
+            "ok": False,
+            "deploy_id": record.deploy_id,
+            "profile": record.profile,
+            "app_id": record.app_id,
+            "app_version": APP_VERSION,
+            "deployment_mode": "direct",
+            "error": str(exc),
+            "reason": reason,
+            "error_class": exc.__class__.__name__,
+            "evidence_dir": str(evidence),
+            **(
+                {"objective_issue_preflight": redact_sensitive(objective_issue_preflight)}
+                if objective_issue_preflight is not None
+                else {}
+            ),
+        }
+        write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
+        return result
+    except Exception as exc:
+        reason = "auth_blocked" if "blocked context api" in str(exc).lower() else "direct_deploy_error"
+        result = {
+            "ok": False,
+            "deploy_id": record.deploy_id,
+            "profile": record.profile,
+            "app_id": record.app_id,
+            "app_version": APP_VERSION,
+            "deployment_mode": "direct",
+            "error": str(exc),
+            "reason": reason,
+            "error_class": exc.__class__.__name__,
+            "evidence_dir": str(evidence),
+            **(
+                {"objective_issue_preflight": redact_sensitive(objective_issue_preflight)}
+                if objective_issue_preflight is not None
+                else {}
+            ),
+        }
+        write_evidence(record.profile, record.deploy_id, redact_sensitive(result))
+        return result
+
+
+def _should_fallback_to_browser(result: dict[str, Any]) -> bool:
+    return str(result.get("reason") or "") in {"missing_session", "auth_blocked", "session_expired"}
+
+
 def execute_scheduled_deploy(record: ScheduledDeployRecord) -> dict[str, Any]:
+    """Execute a scheduled deploy directly, falling back to browser when needed."""
+
+    direct_result = execute_scheduled_deploy_direct(record)
+    if direct_result.get("ok") or not _should_fallback_to_browser(direct_result):
+        return direct_result
+    browser_result = _execute_scheduled_deploy_browser(record)
+    browser_result["direct_attempt"] = redact_sensitive(direct_result)
+    write_evidence(record.profile, record.deploy_id, redact_sensitive(browser_result))
+    return browser_result
+
+
+def _execute_scheduled_deploy_browser(record: ScheduledDeployRecord) -> dict[str, Any]:
     """Execute the stored browser-assisted deploy workflow with Playwright."""
 
     try:

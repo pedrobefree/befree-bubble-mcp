@@ -10,6 +10,7 @@ from bubble_mcp.execution.editor_api import (
     BubbleEditorApiClient,
     create_bubble_branch,
     delete_bubble_branch,
+    deploy_app_test_and_hotfix,
     fetch_jetstream_logs,
     fetch_changelog_entries,
     fetch_storage_usage,
@@ -199,6 +200,40 @@ def test_branch_delete_requires_confirm_when_executing(tmp_path, monkeypatch) ->
 
     with pytest.raises(ValueError, match="confirm=true"):
         delete_bubble_branch(profile="dev", app_version="feature-branch", execute=True, confirm=False)
+
+
+def test_deploy_app_test_and_hotfix_posts_captured_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    result = deploy_app_test_and_hotfix(
+        profile="dev",
+        message="Release from test",
+        execute=True,
+        client=_client_with_calls(calls),
+    )
+
+    assert result["ok"] is True
+    assert result["executed"] is True
+    assert calls[0]["url"] == "https://bubble.io/appeditor/deploy_app_test_and_hotfix"
+    assert calls[0]["payload"] == {
+        "appname": "synthetic-app",
+        "from_app_version": "test",
+        "force_deploy": False,
+        "message": "Release from test",
+        "deploy_mobile": False,
+    }
+
+
+def test_deploy_app_test_and_hotfix_previews_without_execute(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+
+    result = deploy_app_test_and_hotfix(profile="dev", message="Release preview")
+
+    assert result["ok"] is True
+    assert result["dry_run"] is True
+    assert result["executed"] is False
+    assert result["request"]["payload"]["from_app_version"] == "test"
 
 
 def test_workload_usage_by_date_posts_editor_metrics_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

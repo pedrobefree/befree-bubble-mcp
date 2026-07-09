@@ -11,6 +11,7 @@ from bubble_mcp.browser_automation.scheduled_deploy import (
     auto_fix_objective_deploy_issues,
     cancel_scheduled_deploy,
     deploy_history,
+    execute_scheduled_deploy_direct,
     execute_scheduled_deploy,
     list_scheduled_deploys,
     schedule_deploy,
@@ -18,7 +19,9 @@ from bubble_mcp.browser_automation.scheduled_deploy import (
 from bubble_mcp.browser_automation.store import preview_path, scheduled_path
 from bubble_mcp.context.path_api import PathResult
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
-from bubble_mcp.sessions.store import BubbleSessionData
+from bubble_mcp.execution.client import HttpResponse
+from bubble_mcp.execution.editor_api import BubbleEditorApiClient
+from bubble_mcp.sessions.store import BubbleSessionData, save_session, session_from_payload
 
 
 def _settings(tmp_path: Path) -> None:
@@ -266,6 +269,81 @@ def test_execute_scheduled_deploy_reports_missing_playwright(tmp_path, monkeypat
 
     assert result["ok"] is False
     assert "Playwright is required" in result["error"]
+
+
+class _NoIssueApi:
+    def resolve_path(self, path_array):  # type: ignore[no-untyped-def]
+        if path_array == ["_index", "issues_list"]:
+            return PathResult(type="data", data={})
+        return PathResult(type="data", data={})
+
+
+def test_execute_scheduled_deploy_direct_uses_stored_session_without_browser(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    _settings(tmp_path)
+    save_session(
+        "client",
+        session_from_payload(
+            {
+                "appId": "bubble-app",
+                "appVersion": "test",
+                "url": "https://bubble.io/page?id=bubble-app&version=test",
+                "headers": {
+                    "Cookie": "sid=secret",
+                    "User-Agent": "pytest",
+                    "x-bubble-client-version": "client-version",
+                    "x-bubble-client-commit-timestamp": "1783547016000",
+                },
+            }
+        ),
+    )
+    calls: list[dict[str, object]] = []
+
+    def fake_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        calls.append(
+            {
+                "url": url,
+                "payload": json.loads(body.decode("utf-8")),
+                "headers": headers,
+                "timeout": timeout,
+            }
+        )
+        return HttpResponse(status=200, body='{"status":"success"}', headers={})
+
+    record = schedule_deploy(
+        profile="client",
+        scheduled_at="2026-07-09T10:30:00Z",
+        message="Direct release",
+    )
+    scheduled = schedule_deploy(
+        profile="client",
+        scheduled_at="2026-07-09T10:30:00Z",
+        message="Direct release",
+        execute=True,
+        confirm=True,
+        preview_id=record["preview"]["preview_id"],
+    )["deploy"]
+
+    result = execute_scheduled_deploy_direct(
+        __import__("bubble_mcp.browser_automation.models", fromlist=["ScheduledDeployRecord"]).ScheduledDeployRecord.from_dict(
+            scheduled
+        ),
+        api_client=BubbleEditorApiClient(transport=fake_transport),
+        path_api=_NoIssueApi(),  # type: ignore[arg-type]
+    )
+
+    assert result["ok"] is True
+    assert result["deployment_mode"] == "direct"
+    assert result["session_refreshed"] is False
+    assert calls[0]["url"] == "https://bubble.io/appeditor/deploy_app_test_and_hotfix"
+    assert calls[0]["payload"] == {
+        "appname": "bubble-app",
+        "from_app_version": "test",
+        "force_deploy": False,
+        "message": "Direct release",
+        "deploy_mobile": False,
+    }
+    assert result["direct_deploy"]["request"]["headers"]["cookie"] == "[REDACTED]"
 
 
 def test_deploy_modal_selectors_match_current_bubble_markup() -> None:
