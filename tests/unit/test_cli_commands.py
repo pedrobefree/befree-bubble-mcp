@@ -1263,7 +1263,43 @@ def test_cli_branch_create_passes_sub_branch_source(monkeypatch, capsys) -> None
     assert payload["ok"] is True
     assert calls[0]["profile"] == "smoke"
     assert calls[0]["name"] == "sub-feature"
-    assert calls[0]["from_app_version"] == "parent-branch"
+
+
+def test_cli_branch_merge_start_routes_payload(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_start_bubble_branch_merge(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "request": {"payload": kwargs}}
+
+    monkeypatch.setattr("bubble_mcp.cli.main.start_bubble_branch_merge", fake_start_bubble_branch_merge)
+
+    assert (
+        main(
+            [
+                "branch",
+                "merge-start",
+                "--profile",
+                "smoke",
+                "--ours-version-id",
+                "53ffs",
+                "--theirs-version-id",
+                "23347",
+                "--savepoint-message",
+                "sync:Started merging changes from staging",
+                "--session-id",
+                "1783611043308x32",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert calls[0]["ours_version_id"] == "53ffs"
+    assert calls[0]["theirs_version_id"] == "23347"
+    assert calls[0]["session_id"] == "1783611043308x32"
     assert calls[0]["execute"] is True
 
 

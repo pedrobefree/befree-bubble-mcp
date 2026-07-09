@@ -34,6 +34,7 @@ from bubble_mcp.core.config import BubbleProfile, load_settings, resolve_profile
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
 from bubble_mcp.execution.editor_api import (
+    confirm_bubble_branch_merge,
     create_bubble_branch,
     delete_bubble_branch,
     fetch_jetstream_logs,
@@ -47,6 +48,7 @@ from bubble_mcp.execution.editor_api import (
     list_bubble_branches,
     performance_audit,
     read_time_series,
+    start_bubble_branch_merge,
 )
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.plugins import install_plugin
@@ -1719,6 +1721,27 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             soft_delete=bool(args.get("soft_delete", True)),
             execute=bool(args.get("execute")),
             confirm=bool(args.get("confirm")),
+        )
+    if name == "bubble_branch_merge_start":
+        args = arguments or {}
+        return start_bubble_branch_merge(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            ours_version_id=str(args.get("ours_version_id") or ""),
+            theirs_version_id=str(args.get("theirs_version_id") or ""),
+            savepoint_message=str(args.get("savepoint_message") or ""),
+            session_id=str(args.get("session_id") or "") or None,
+            execute=bool(args.get("execute")),
+        )
+    if name == "bubble_branch_merge_confirm":
+        args = arguments or {}
+        return confirm_bubble_branch_merge(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            merge_app_version=str(args.get("merge_app_version") or ""),
+            conflicts_resolved=bool(args.get("conflicts_resolved")),
+            session_id=str(args.get("session_id") or "") or None,
+            execute=bool(args.get("execute")),
         )
     if name == "bubble_performance_audit":
         args = arguments or {}

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -10,6 +11,7 @@ from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.execution.client import (
     EDITOR_WRITE_TIMEOUT_SEC,
+    BubbleEditorClient,
     HttpTransport,
     build_editor_write_headers,
     default_http_transport,
@@ -271,6 +273,32 @@ def _client(client: BubbleEditorApiClient | None) -> BubbleEditorApiClient:
     return client or BubbleEditorApiClient()
 
 
+def _editor_session_id(value: str | None = None) -> str:
+    explicit = str(value or "").strip()
+    if explicit:
+        return explicit
+    return f"{int(time.time() * 1000)}x32"
+
+
+def _merge_write_change(
+    *,
+    path_array: list[str],
+    body: Any,
+    session_id: str,
+    intent: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    change = {
+        "body": body,
+        "path_array": path_array,
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": session_id,
+    }
+    if intent is not None:
+        change["intent"] = intent
+    return change
+
+
 def list_bubble_branches(
     *,
     profile: str,
@@ -370,6 +398,106 @@ def delete_bubble_branch(
     payload = {"appname": appname, "app_version": branch_version, "soft_delete": bool(soft_delete)}
     result = _client(client).post("/appeditor/delete_app_version", payload, session, dry_run=not execute)
     return {"ok": result.get("ok"), "profile": profile, "app_id": appname, "executed": execute, **result}
+
+
+def start_bubble_branch_merge(
+    *,
+    profile: str,
+    ours_version_id: str,
+    theirs_version_id: str,
+    savepoint_message: str,
+    app_id: str | None = None,
+    session_id: str | None = None,
+    execute: bool = False,
+    client: BubbleEditorApiClient | None = None,
+) -> dict[str, Any]:
+    session = _load_session_for_profile(profile)
+    appname = _resolve_app_id(profile, session, app_id)
+    ours = str(ours_version_id or "").strip()
+    theirs = str(theirs_version_id or "").strip()
+    message = str(savepoint_message or "").strip()
+    if not ours:
+        raise ValueError("bubble_branch_merge_start requires ours_version_id.")
+    if not theirs:
+        raise ValueError("bubble_branch_merge_start requires theirs_version_id.")
+    if not message:
+        raise ValueError("bubble_branch_merge_start requires savepoint_message.")
+    merge_session_id = _editor_session_id(session_id)
+    payload = {
+        "appname": appname,
+        "ours_version_id": ours,
+        "theirs_version_id": theirs,
+        "session_id": merge_session_id,
+        "savepoint_message": message,
+    }
+    result = _client(client).post("/appeditor/sync", payload, session, dry_run=not execute)
+    return {
+        "ok": result.get("ok"),
+        "profile": profile,
+        "app_id": appname,
+        "ours_version_id": ours,
+        "theirs_version_id": theirs,
+        "session_id": merge_session_id,
+        "executed": execute,
+        **result,
+    }
+
+
+def confirm_bubble_branch_merge(
+    *,
+    profile: str,
+    merge_app_version: str,
+    app_id: str | None = None,
+    conflicts_resolved: bool = False,
+    session_id: str | None = None,
+    execute: bool = False,
+    client: BubbleEditorClient | None = None,
+) -> dict[str, Any]:
+    session = _load_session_for_profile(profile)
+    appname = _resolve_app_id(profile, session, app_id)
+    merge_version = str(merge_app_version or "").strip()
+    if not merge_version:
+        raise ValueError("bubble_branch_merge_confirm requires merge_app_version.")
+    merge_session_id = _editor_session_id(session_id)
+    if conflicts_resolved:
+        changes = [
+            _merge_write_change(
+                path_array=["merge_changes_complete"],
+                body=None,
+                session_id=merge_session_id,
+            ),
+            _merge_write_change(
+                path_array=["merge_changes"],
+                body=None,
+                session_id=merge_session_id,
+                intent={"name": "ResolveMergeChanges"},
+            ),
+        ]
+    else:
+        changes = [
+            _merge_write_change(
+                path_array=["merge_changes_complete"],
+                body=True,
+                session_id=merge_session_id,
+            )
+        ]
+    payload = {
+        "v": 1,
+        "appname": appname,
+        "app_version": merge_version,
+        "changes": changes,
+    }
+    result = (client or BubbleEditorClient()).write(payload, session, dry_run=not execute)
+    return {
+        "ok": result.get("ok"),
+        "profile": profile,
+        "app_id": appname,
+        "merge_app_version": merge_version,
+        "session_id": merge_session_id,
+        "conflicts_resolved": conflicts_resolved,
+        "executed": execute,
+        **result,
+    }
 
 
 def deploy_app_test_and_hotfix(

@@ -1577,7 +1577,12 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_deploy_history",
     }
     read_only = _is_read_only(name) or name in agent_read_only
-    destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {"bubble_branch_delete", "bubble_schedule_deploy"}
+    destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {
+        "bubble_branch_delete",
+        "bubble_branch_merge_start",
+        "bubble_branch_merge_confirm",
+        "bubble_schedule_deploy",
+    }
     return {
         "readOnlyHint": read_only,
         "destructiveHint": destructive,
@@ -1616,6 +1621,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_changelog_fetch",
             "bubble_branch_create",
             "bubble_branch_delete",
+            "bubble_branch_merge_start",
+            "bubble_branch_merge_confirm",
             "bubble_extension_companion_start",
             "bubble_schedule_deploy",
             "upload_asset",

@@ -33,6 +33,7 @@ from bubble_mcp.core.config import (
 )
 from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
 from bubble_mcp.execution.editor_api import (
+    confirm_bubble_branch_merge,
     create_bubble_branch,
     delete_bubble_branch,
     fetch_jetstream_logs,
@@ -46,6 +47,7 @@ from bubble_mcp.execution.editor_api import (
     list_bubble_branches,
     performance_audit,
     read_time_series,
+    start_bubble_branch_merge,
 )
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.plugins import install_plugin
@@ -836,6 +838,35 @@ def command_branch_delete(args: argparse.Namespace) -> int:
             soft_delete=not args.hard_delete,
             execute=args.execute,
             confirm=args.confirm,
+        )
+    )
+    return 0
+
+
+def command_branch_merge_start(args: argparse.Namespace) -> int:
+    emit_json(
+        start_bubble_branch_merge(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            ours_version_id=args.ours_version_id,
+            theirs_version_id=args.theirs_version_id,
+            savepoint_message=args.savepoint_message,
+            session_id=args.session_id or None,
+            execute=args.execute,
+        )
+    )
+    return 0
+
+
+def command_branch_merge_confirm(args: argparse.Namespace) -> int:
+    emit_json(
+        confirm_bubble_branch_merge(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            merge_app_version=args.merge_app_version,
+            conflicts_resolved=args.conflicts_resolved,
+            session_id=args.session_id or None,
+            execute=args.execute,
         )
     )
     return 0
@@ -2139,6 +2170,35 @@ def build_parser() -> argparse.ArgumentParser:
     branch_delete_parser.add_argument("--execute", action="store_true")
     branch_delete_parser.add_argument("--confirm", action="store_true")
     branch_delete_parser.set_defaults(func=command_branch_delete)
+
+    branch_merge_start_parser = branch_subparsers.add_parser(
+        "merge-start",
+        help="Preview or start a Bubble branch merge through /appeditor/sync.",
+    )
+    branch_merge_start_parser.add_argument("--profile", required=True)
+    branch_merge_start_parser.add_argument("--app-id", default="")
+    branch_merge_start_parser.add_argument("--ours-version-id", required=True)
+    branch_merge_start_parser.add_argument("--theirs-version-id", required=True)
+    branch_merge_start_parser.add_argument("--savepoint-message", required=True)
+    branch_merge_start_parser.add_argument("--session-id", default="")
+    branch_merge_start_parser.add_argument("--execute", action="store_true")
+    branch_merge_start_parser.set_defaults(func=command_branch_merge_start)
+
+    branch_merge_confirm_parser = branch_subparsers.add_parser(
+        "merge-confirm",
+        help="Preview or confirm a Bubble branch merge after non-conflicting changes or resolved conflicts.",
+    )
+    branch_merge_confirm_parser.add_argument("--profile", required=True)
+    branch_merge_confirm_parser.add_argument("--app-id", default="")
+    branch_merge_confirm_parser.add_argument("--merge-app-version", required=True)
+    branch_merge_confirm_parser.add_argument("--session-id", default="")
+    branch_merge_confirm_parser.add_argument(
+        "--conflicts-resolved",
+        action="store_true",
+        help="Use after conflict-resolution writes were applied; emits ResolveMergeChanges.",
+    )
+    branch_merge_confirm_parser.add_argument("--execute", action="store_true")
+    branch_merge_confirm_parser.set_defaults(func=command_branch_merge_confirm)
 
     changelog_parser = subparsers.add_parser("changelog", help="Fetch Bubble editor changelog entries.")
     changelog_subparsers = changelog_parser.add_subparsers(dest="changelog_command", required=True)

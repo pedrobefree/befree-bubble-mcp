@@ -2581,6 +2581,8 @@ def test_native_mutating_schemas_make_execution_and_confirmation_explicit() -> N
     assert branch_delete["properties"]["confirm"]["default"] is False
     assert "destructive" in branch_delete["properties"]["confirm"]["description"]
     assert tools["bubble_branch_delete"]["annotations"]["destructiveHint"] is True
+    assert tools["bubble_branch_merge_start"]["inputSchema"]["properties"]["execute"]["default"] is False
+    assert tools["bubble_branch_merge_confirm"]["inputSchema"]["properties"]["execute"]["default"] is False
 
 
 def test_legacy_catalog_tools_expose_common_agent_arguments() -> None:
@@ -2706,6 +2708,8 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
         "bubble_changelog_fetch",
         "bubble_branch_create",
         "bubble_branch_delete",
+        "bubble_branch_merge_start",
+        "bubble_branch_merge_confirm",
     ]:
         assert name in tools
         assert tools[name]["inputSchema"]["properties"]["profile"]["description"]
@@ -2719,6 +2723,15 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
     assert tools["bubble_branch_delete"]["annotations"]["destructiveHint"] is True
     assert tools["bubble_branch_delete"]["inputSchema"]["required"] == ["profile", "app_version"]
     assert "from_app_version" in tools["bubble_branch_create"]["inputSchema"]["properties"]
+    assert tools["bubble_branch_merge_start"]["annotations"]["destructiveHint"] is True
+    assert tools["bubble_branch_merge_confirm"]["annotations"]["destructiveHint"] is True
+    assert tools["bubble_branch_merge_start"]["inputSchema"]["required"] == [
+        "profile",
+        "ours_version_id",
+        "theirs_version_id",
+        "savepoint_message",
+    ]
+    assert tools["bubble_branch_merge_confirm"]["inputSchema"]["required"] == ["profile", "merge_app_version"]
     assert "change_type" in tools["bubble_changelog_fetch"]["inputSchema"]["properties"]
 
 
@@ -2790,6 +2803,42 @@ def test_branch_create_tool_routes_sub_branch_source(monkeypatch) -> None:  # ty
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["ok"] is True
     assert calls[0]["from_app_version"] == "parent-branch-id"
+    assert calls[0]["execute"] is True
+
+
+def test_branch_merge_confirm_tool_routes_conflict_mode(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_confirm_bubble_branch_merge(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "request": {"payload": kwargs}}
+
+    monkeypatch.setattr("bubble_mcp.server.tools.confirm_bubble_branch_merge", fake_confirm_bubble_branch_merge)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 19,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_branch_merge_confirm",
+                "arguments": {
+                    "profile": "smoke",
+                    "merge_app_version": "73ftr",
+                    "conflicts_resolved": True,
+                    "session_id": "1783611260020x32",
+                    "execute": True,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert calls[0]["merge_app_version"] == "73ftr"
+    assert calls[0]["conflicts_resolved"] is True
+    assert calls[0]["session_id"] == "1783611260020x32"
     assert calls[0]["execute"] is True
 
 

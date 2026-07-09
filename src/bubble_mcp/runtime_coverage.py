@@ -64,6 +64,8 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_changelog_fetch",
     "bubble_branch_create",
     "bubble_branch_delete",
+    "bubble_branch_merge_start",
+    "bubble_branch_merge_confirm",
     "bubble_performance_audit",
     "bubble_workload_usage_by_date",
     "bubble_workload_usage_breakdown",

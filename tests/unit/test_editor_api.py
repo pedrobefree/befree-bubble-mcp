@@ -4,10 +4,11 @@ from typing import Any
 import pytest
 
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
-from bubble_mcp.execution.client import HttpResponse
+from bubble_mcp.execution.client import BubbleEditorClient, HttpResponse
 
 from bubble_mcp.execution.editor_api import (
     BubbleEditorApiClient,
+    confirm_bubble_branch_merge,
     create_bubble_branch,
     delete_bubble_branch,
     deploy_app_test_and_hotfix,
@@ -21,6 +22,7 @@ from bubble_mcp.execution.editor_api import (
     list_bubble_branches,
     performance_audit,
     read_time_series,
+    start_bubble_branch_merge,
 )
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
@@ -200,6 +202,104 @@ def test_branch_delete_requires_confirm_when_executing(tmp_path, monkeypatch) ->
 
     with pytest.raises(ValueError, match="confirm=true"):
         delete_bubble_branch(profile="dev", app_version="feature-branch", execute=True, confirm=False)
+
+
+def test_branch_merge_start_posts_sync_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    result = start_bubble_branch_merge(
+        profile="dev",
+        ours_version_id="53ffs",
+        theirs_version_id="23347",
+        savepoint_message="sync:Started merging changes from staging",
+        session_id="1783611043308x32",
+        execute=True,
+        client=_client_with_calls(calls),
+    )
+
+    assert result["ok"] is True
+    assert result["executed"] is True
+    assert calls[0]["url"] == "https://bubble.io/appeditor/sync"
+    assert calls[0]["payload"] == {
+        "appname": "synthetic-app",
+        "ours_version_id": "53ffs",
+        "theirs_version_id": "23347",
+        "session_id": "1783611043308x32",
+        "savepoint_message": "sync:Started merging changes from staging",
+    }
+
+
+def test_branch_merge_confirm_builds_non_conflicting_write_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    def fake_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        calls.append({"url": url, "payload": json.loads(body.decode("utf-8")), "headers": headers})
+        return HttpResponse(status=200, body='{"last_change":"1"}', headers={})
+
+    result = confirm_bubble_branch_merge(
+        profile="dev",
+        merge_app_version="73ftr",
+        session_id="1783611260020x32",
+        execute=True,
+        client=BubbleEditorClient(transport=fake_transport),
+    )
+
+    assert result["ok"] is True
+    assert calls[0]["url"] == "https://bubble.io/appeditor/write"
+    assert calls[0]["payload"] == {
+        "v": 1,
+        "appname": "synthetic-app",
+        "app_version": "73ftr",
+        "changes": [
+            {
+                "body": True,
+                "path_array": ["merge_changes_complete"],
+                "version_control_api_version": 4,
+                "changelog_data": [],
+                "session_id": "1783611260020x32",
+            }
+        ],
+        "appVersion": "73ftr",
+    }
+
+
+def test_branch_merge_confirm_builds_conflict_resolved_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    def fake_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        calls.append({"url": url, "payload": json.loads(body.decode("utf-8")), "headers": headers})
+        return HttpResponse(status=200, body='{"last_change":"1"}', headers={})
+
+    result = confirm_bubble_branch_merge(
+        profile="dev",
+        merge_app_version="73ftr",
+        session_id="1783611260020x32",
+        conflicts_resolved=True,
+        execute=True,
+        client=BubbleEditorClient(transport=fake_transport),
+    )
+
+    assert result["ok"] is True
+    assert calls[0]["payload"]["changes"] == [
+        {
+            "body": None,
+            "path_array": ["merge_changes_complete"],
+            "version_control_api_version": 4,
+            "changelog_data": [],
+            "session_id": "1783611260020x32",
+        },
+        {
+            "body": None,
+            "path_array": ["merge_changes"],
+            "version_control_api_version": 4,
+            "changelog_data": [],
+            "session_id": "1783611260020x32",
+            "intent": {"name": "ResolveMergeChanges"},
+        },
+    ]
 
 
 def test_deploy_app_test_and_hotfix_posts_captured_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

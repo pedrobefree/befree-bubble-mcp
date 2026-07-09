@@ -886,6 +886,31 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         default="test",
         examples=["test", "feature-parent"],
     ),
+    "ours_version_id": _prop(
+        "string",
+        "Destination/current Bubble branch version id for a merge sync request.",
+        examples=["53ffs"],
+    ),
+    "theirs_version_id": _prop(
+        "string",
+        "Source Bubble branch version id whose changes should be merged into ours_version_id.",
+        examples=["23347"],
+    ),
+    "savepoint_message": _prop(
+        "string",
+        "Bubble savepoint message recorded when starting the merge.",
+        examples=["sync:Started merging changes from staging"],
+    ),
+    "merge_app_version": _prop(
+        "string",
+        "Temporary Bubble merge app version returned/used after the sync request, such as the version shown in the merge editor URL.",
+        examples=["73ftr"],
+    ),
+    "conflicts_resolved": _prop(
+        "boolean",
+        "Set true only after conflict-resolution writes have been applied; the confirm payload then includes ResolveMergeChanges.",
+        default=False,
+    ),
     "description": _prop(
         "string",
         "Optional Bubble branch description.",
@@ -1801,6 +1826,33 @@ def branch_changelog_tools() -> list[ToolSchema]:
             "Soft-delete a Bubble branch/version. Requires execute=true and confirm=true to mutate Bubble; otherwise it previews the request.",
             ["profile", "app_id", "app_version", "soft_delete", "execute", "confirm"],
             required=["profile", "app_version"],
+        ),
+        tool_schema(
+            "bubble_branch_merge_start",
+            "Preview or start a Bubble branch merge through the authenticated editor sync endpoint. This creates Bubble's temporary merge version for review/confirmation.",
+            [
+                "profile",
+                "app_id",
+                "ours_version_id",
+                "theirs_version_id",
+                "savepoint_message",
+                "session_id",
+                "execute",
+            ],
+            required=["profile", "ours_version_id", "theirs_version_id", "savepoint_message"],
+        ),
+        tool_schema(
+            "bubble_branch_merge_confirm",
+            "Preview or confirm a Bubble branch merge after non-conflicting changes, or after conflict resolution writes were applied. Pass conflicts_resolved=true for the ResolveMergeChanges confirmation path.",
+            [
+                "profile",
+                "app_id",
+                "merge_app_version",
+                "conflicts_resolved",
+                "session_id",
+                "execute",
+            ],
+            required=["profile", "merge_app_version"],
         ),
     ]
 
