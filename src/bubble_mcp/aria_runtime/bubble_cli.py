@@ -15784,17 +15784,18 @@ class BubbleCLI:
 
         # Build path array
         element_path = list(result.get("path") or [])
+
+        # Resolve element identifiers for local alias cache updates.
+        element_payload = result.get("element", {}) if isinstance(result.get("element"), dict) else {}
+        element_id = str(result.get("id") or element_payload.get("id") or "").strip()
+        element_key = str(result.get("key") or (element_path[-1] if element_path else "") or "").strip()
+
         path_array = self._resolve_canonical_existing_element_path(
             context_id,
             context_type,
             result,
             element_id or element_key,
         )
-
-        # Resolve element identifiers for local alias cache updates.
-        element_payload = result.get("element", {}) if isinstance(result.get("element"), dict) else {}
-        element_id = str(result.get("id") or element_payload.get("id") or "").strip()
-        element_key = str(result.get("key") or (element_path[-1] if element_path else "") or "").strip()
 
         # Create payload: write both internal and display names.
         pb = PayloadBuilder(appname=self.appname)

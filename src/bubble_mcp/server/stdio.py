@@ -139,6 +139,15 @@ def serve(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.stdout) 
 
 
 def main() -> int:
+    # MCP is a UTF-8 wire protocol, but Python's default stdio encoding on
+    # Windows follows the console codepage (e.g. cp1252), not UTF-8. Without
+    # this, any non-ASCII character in a request/response gets mis-decoded
+    # (mojibake) or corrupted further on every subsequent read/write.
+    for stream in (sys.stdin, sys.stdout):
+        if getattr(stream, "encoding", "").lower().replace("-", "") != "utf8":
+            reconfigure = getattr(stream, "reconfigure", None)
+            if callable(reconfigure):
+                reconfigure(encoding="utf-8")
     serve()
     return 0
 

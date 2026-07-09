@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,30 @@ from bubble_mcp.execution.editor_api import BubbleEditorApiClient
 from bubble_mcp.sessions.store import BubbleSessionData, save_session, session_from_payload
 
 
+def _noop_executor(record):  # type: ignore[no-untyped-def]
+    # `schedule_deploy(execute=True, ...)` arms a real `threading.Timer` that
+    # fires `executor or execute_scheduled_deploy` once `scheduled_at`
+    # elapses. Without an explicit executor the *real* Playwright-based
+    # execute_scheduled_deploy gets armed -- launching an actual browser
+    # against bubble.io. Tests that don't care about execution outcome must
+    # pass this no-op instead of relying on the default.
+    return {"ok": True}
+
+
+def _future_iso(offset_seconds: float = 0.0) -> str:
+    # A `scheduled_at` far enough in the future that the background timer's
+    # delay is always large, regardless of what today's date happens to be.
+    # A fixed "near now" literal here is a landmine: it looks safely in the
+    # future when the test is written, but once wall-clock time catches up
+    # to it, `_arm_timer`'s delay collapses to ~0 and the timer fires
+    # mid-test-run instead of harmlessly dying with the process at exit.
+    # Kept under threading.TIMEOUT_MAX (~49.7 days on Windows, where
+    # Timer.wait ultimately hits WaitForSingleObject's DWORD millisecond
+    # limit) so the daemon Timer thread doesn't itself raise OverflowError.
+    when = datetime.now(timezone.utc) + timedelta(days=30, seconds=offset_seconds)
+    return when.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
 def _settings(tmp_path: Path) -> None:
     save_settings(
         BubbleMcpSettings(
@@ -47,7 +72,7 @@ def test_schedule_deploy_preview_requires_confirmation_and_forces_test_version(t
 
     result = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00",
+        scheduled_at=_future_iso(),
         message="Main branch release",
     )
 
@@ -72,17 +97,18 @@ def test_schedule_deploy_confirm_persists_record_and_history(tmp_path, monkeypat
 
     preview_result = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
     )
     preview_id = preview_result["preview"]["preview_id"]
     result = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
         execute=True,
         confirm=True,
         preview_id=preview_id,
+        executor=_noop_executor,
     )
 
     assert result["ok"] is True
@@ -104,7 +130,7 @@ def test_schedule_deploy_persists_objective_issue_auto_fix_authorization(tmp_pat
 
     preview_result = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
         auto_fix_objective_issues=True,
     )
@@ -114,11 +140,12 @@ def test_schedule_deploy_persists_objective_issue_auto_fix_authorization(tmp_pat
 
     result = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
         execute=True,
         confirm=True,
         preview_id=preview_id,
+        executor=_noop_executor,
     )
 
     assert result["deploy"]["auto_fix_objective_issues"] is True
@@ -130,7 +157,7 @@ def test_schedule_deploy_execution_requires_confirm_and_preview_id(tmp_path, mon
 
     missing_confirm = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
         execute=True,
     )
@@ -139,7 +166,7 @@ def test_schedule_deploy_execution_requires_confirm_and_preview_id(tmp_path, mon
 
     missing_preview = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
         execute=True,
         confirm=True,
@@ -153,16 +180,17 @@ def test_cancel_scheduled_deploy_moves_record_to_history(tmp_path, monkeypatch) 
     _settings(tmp_path)
     preview_result = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
     )
     scheduled = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
         execute=True,
         confirm=True,
         preview_id=preview_result["preview"]["preview_id"],
+        executor=_noop_executor,
     )["deploy"]
 
     result = cancel_scheduled_deploy(profile="client", deploy_id=scheduled["deploy_id"])
@@ -191,16 +219,17 @@ def test_history_limit_returns_latest_records(tmp_path, monkeypatch) -> None:
     for index in range(3):
         preview = schedule_deploy(
             profile="client",
-            scheduled_at=f"2026-07-09T10:3{index}:00Z",
+            scheduled_at=_future_iso(offset_seconds=index),
             message=f"Release {index}",
         )
         schedule_deploy(
             profile="client",
-            scheduled_at=f"2026-07-09T10:3{index}:00Z",
+            scheduled_at=_future_iso(offset_seconds=index),
             message=f"Release {index}",
             execute=True,
             confirm=True,
             preview_id=preview["preview"]["preview_id"],
+            executor=_noop_executor,
         )
 
     history = deploy_history(profile="client", limit=2)
@@ -241,16 +270,17 @@ def test_execute_scheduled_deploy_reports_missing_playwright(tmp_path, monkeypat
     _settings(tmp_path)
     record = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
     )
     scheduled = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Main branch release",
         execute=True,
         confirm=True,
         preview_id=record["preview"]["preview_id"],
+        executor=_noop_executor,
     )["deploy"]
 
     real_import = __import__
@@ -312,16 +342,17 @@ def test_execute_scheduled_deploy_direct_uses_stored_session_without_browser(tmp
 
     record = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Direct release",
     )
     scheduled = schedule_deploy(
         profile="client",
-        scheduled_at="2026-07-09T10:30:00Z",
+        scheduled_at=_future_iso(),
         message="Direct release",
         execute=True,
         confirm=True,
         preview_id=record["preview"]["preview_id"],
+        executor=_noop_executor,
     )["deploy"]
 
     result = execute_scheduled_deploy_direct(
