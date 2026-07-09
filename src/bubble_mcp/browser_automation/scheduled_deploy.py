@@ -379,8 +379,13 @@ def _deploy_modal_state_script() -> str:
 def _deploy_blocker_error(state: dict[str, Any]) -> str:
     deploy_buttons = state.get("deployButtons") if isinstance(state.get("deployButtons"), list) else []
     disabled_deploy = any(bool(button.get("disabled")) for button in deploy_buttons if isinstance(button, dict))
+    snippet = str(state.get("bodySnippet") or "").strip()
+    if "temporary error deploying your app" in snippet.lower():
+        return (
+            "scheduled_deploy_temporary_bubble_error: Bubble reported a temporary error while deploying the app. "
+            f"Visible page text: {snippet}"
+        )
     if state.get("hasIssueText") or disabled_deploy:
-        snippet = str(state.get("bodySnippet") or "").strip()
         return (
             "scheduled_deploy_blocked_by_bubble_issues: Bubble did not expose the deploy description textarea. "
             "The deploy modal appears blocked by app issues or validation. "

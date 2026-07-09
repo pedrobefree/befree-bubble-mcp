@@ -266,6 +266,19 @@ def test_deploy_blocker_error_reports_bubble_issues() -> None:
     assert "app issues or validation" in error
 
 
+def test_deploy_blocker_error_reports_temporary_bubble_error() -> None:
+    error = _deploy_blocker_error(
+        {
+            "hasIssueText": True,
+            "deployButtons": [{"disabled": False, "text": "Continue"}],
+            "bodySnippet": "You cannot deploy your app because there was a temporary error deploying your app... Please try again.",
+        }
+    )
+
+    assert error.startswith("scheduled_deploy_temporary_bubble_error")
+    assert "temporary error" in error
+
+
 def test_deploy_blocker_error_reports_missing_modal_without_issue_text() -> None:
     error = _deploy_blocker_error(
         {
