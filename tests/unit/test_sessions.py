@@ -54,7 +54,7 @@ def test_browser_session_poll_keeps_cookies_when_interrupted() -> None:
         raise KeyboardInterrupt
 
     progress_events: list[str] = []
-    cookie_string, user_agent, interrupted = _poll_browser_session(
+    cookie_string, user_agent, interrupted, validated = _poll_browser_session(
         FakeContext(),
         wait_seconds=180,
         sleep=interrupted_sleep,
@@ -65,12 +65,13 @@ def test_browser_session_poll_keeps_cookies_when_interrupted() -> None:
     assert cookie_string == "sid=captured"
     assert user_agent == "FakeBrowser/1.0"
     assert interrupted is True
+    assert validated is False
     assert progress_events == [
         "Session cookies detected. You can close the browser now; the CLI will save the newest captured session."
     ]
 
 
-def test_browser_session_poll_waits_for_editor_headers_before_close_guidance() -> None:
+def test_browser_session_poll_waits_for_validated_editor_session_before_close_guidance() -> None:
     class FakePage:
         def is_closed(self) -> bool:
             return False
@@ -93,21 +94,23 @@ def test_browser_session_poll_waits_for_editor_headers_before_close_guidance() -
         return float(ticks["count"])
 
     progress_events: list[str] = []
-    cookie_string, user_agent, interrupted = _poll_browser_session(
+    cookie_string, user_agent, interrupted, validated = _poll_browser_session(
         FakeContext(),
         wait_seconds=5,
         sleep=fake_sleep,
         monotonic=fake_monotonic,
         progress=progress_events.append,
-        editor_headers_ready=lambda: ticks["count"] >= 2,
+        editor_session_ready=lambda _cookie_string: ticks["count"] >= 2,
     )
 
     assert cookie_string == "sid=captured"
     assert user_agent == "FakeBrowser/1.0"
     assert interrupted is False
+    assert validated is True
     assert progress_events == [
-        "Session cookies detected. Keep the Bubble editor open until editor request headers are detected.",
-        "Bubble editor request headers detected. The session is write-ready; you can close the browser now.",
+        "Session cookies detected. Waiting for a validated editor session "
+        "(anonymous/login-page cookies are not accepted) -- keep the Bubble editor open.",
+        "Bubble editor session validated (calculate_derived succeeded). You can close the browser now.",
     ]
 
 
