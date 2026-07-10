@@ -37,6 +37,7 @@ from bubble_mcp.execution.editor_api import (
     create_bubble_branch,
     delete_bubble_branch,
     describe_bubble_branch_merge_conflicts,
+    finalize_bubble_branch_merge,
     fetch_jetstream_logs,
     fetch_changelog_entries,
     fetch_plan_usage,
@@ -48,6 +49,7 @@ from bubble_mcp.execution.editor_api import (
     list_bubble_branches,
     performance_audit,
     read_time_series,
+    resolve_bubble_branch_merge_conflicts,
     start_bubble_branch_merge,
 )
 from bubble_mcp.execution.executor import execute_plan
@@ -878,6 +880,38 @@ def command_branch_merge_conflicts_describe(args: argparse.Namespace) -> int:
     if not isinstance(payload, dict):
         raise ValueError("branch merge-conflicts-describe requires a JSON object file.")
     emit_json(describe_bubble_branch_merge_conflicts(payload=payload))
+    return 0
+
+
+def command_branch_merge_resolve_conflicts(args: argparse.Namespace) -> int:
+    emit_json(
+        resolve_bubble_branch_merge_conflicts(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            merge_app_version=args.merge_app_version,
+            changelog_data=_load_optional_json_object(args.changelog_data).get("changelog_data") if args.changelog_data else None,
+            session_id=args.session_id or None,
+            execute=args.execute,
+        )
+    )
+    return 0
+
+
+def command_branch_merge_finalize(args: argparse.Namespace) -> int:
+    emit_json(
+        finalize_bubble_branch_merge(
+            profile=args.profile,
+            app_id=args.app_id or None,
+            merge_app_version=args.merge_app_version,
+            target_version_id=args.target_version_id,
+            source_version_id=args.source_version_id,
+            source_branch_name=args.source_branch_name,
+            user_id=args.user_id or None,
+            savepoint_message=args.savepoint_message or None,
+            version_control_api_version=args.version_control_api_version,
+            execute=args.execute,
+        )
+    )
     return 0
 
 
@@ -2215,6 +2249,34 @@ def build_parser() -> argparse.ArgumentParser:
     )
     branch_merge_conflicts_describe_parser.add_argument("--file", required=True, help="JSON file containing a Bubble write payload.")
     branch_merge_conflicts_describe_parser.set_defaults(func=command_branch_merge_conflicts_describe)
+
+    branch_merge_resolve_conflicts_parser = branch_subparsers.add_parser(
+        "merge-resolve-conflicts",
+        help="Preview or apply Bubble's ResolveConflicts write before finalizing a merge.",
+    )
+    branch_merge_resolve_conflicts_parser.add_argument("--profile", required=True)
+    branch_merge_resolve_conflicts_parser.add_argument("--app-id", default="")
+    branch_merge_resolve_conflicts_parser.add_argument("--merge-app-version", required=True)
+    branch_merge_resolve_conflicts_parser.add_argument("--changelog-data", default="", help="JSON object with changelog_data array.")
+    branch_merge_resolve_conflicts_parser.add_argument("--session-id", default="")
+    branch_merge_resolve_conflicts_parser.add_argument("--execute", action="store_true")
+    branch_merge_resolve_conflicts_parser.set_defaults(func=command_branch_merge_resolve_conflicts)
+
+    branch_merge_finalize_parser = branch_subparsers.add_parser(
+        "merge-finalize",
+        help="Preview or finalize a Bubble branch merge through /appeditor/finalize_merge.",
+    )
+    branch_merge_finalize_parser.add_argument("--profile", required=True)
+    branch_merge_finalize_parser.add_argument("--app-id", default="")
+    branch_merge_finalize_parser.add_argument("--merge-app-version", required=True)
+    branch_merge_finalize_parser.add_argument("--target-version-id", required=True)
+    branch_merge_finalize_parser.add_argument("--source-version-id", required=True)
+    branch_merge_finalize_parser.add_argument("--source-branch-name", required=True)
+    branch_merge_finalize_parser.add_argument("--user-id", default="")
+    branch_merge_finalize_parser.add_argument("--savepoint-message", default="")
+    branch_merge_finalize_parser.add_argument("--version-control-api-version", type=int, default=7)
+    branch_merge_finalize_parser.add_argument("--execute", action="store_true")
+    branch_merge_finalize_parser.set_defaults(func=command_branch_merge_finalize)
 
     changelog_parser = subparsers.add_parser("changelog", help="Fetch Bubble editor changelog entries.")
     changelog_subparsers = changelog_parser.add_subparsers(dest="changelog_command", required=True)

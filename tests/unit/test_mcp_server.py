@@ -2583,6 +2583,8 @@ def test_native_mutating_schemas_make_execution_and_confirmation_explicit() -> N
     assert tools["bubble_branch_delete"]["annotations"]["destructiveHint"] is True
     assert tools["bubble_branch_merge_start"]["inputSchema"]["properties"]["execute"]["default"] is False
     assert tools["bubble_branch_merge_confirm"]["inputSchema"]["properties"]["execute"]["default"] is False
+    assert tools["bubble_branch_merge_resolve_conflicts"]["inputSchema"]["properties"]["execute"]["default"] is False
+    assert tools["bubble_branch_merge_finalize"]["inputSchema"]["properties"]["execute"]["default"] is False
 
 
 def test_legacy_catalog_tools_expose_common_agent_arguments() -> None:
@@ -2711,6 +2713,8 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
         "bubble_branch_merge_start",
         "bubble_branch_merge_confirm",
         "bubble_branch_merge_conflicts_describe",
+        "bubble_branch_merge_resolve_conflicts",
+        "bubble_branch_merge_finalize",
     ]:
         assert name in tools
     for name in [
@@ -2721,6 +2725,8 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
         "bubble_branch_delete",
         "bubble_branch_merge_start",
         "bubble_branch_merge_confirm",
+        "bubble_branch_merge_resolve_conflicts",
+        "bubble_branch_merge_finalize",
     ]:
         assert tools[name]["inputSchema"]["properties"]["profile"]["description"]
     assert tools["bubble_branch_merge_conflicts_describe"]["inputSchema"]["properties"]["payload"]["description"]
@@ -2737,6 +2743,8 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
     assert "from_app_version" in tools["bubble_branch_create"]["inputSchema"]["properties"]
     assert tools["bubble_branch_merge_start"]["annotations"]["destructiveHint"] is True
     assert tools["bubble_branch_merge_confirm"]["annotations"]["destructiveHint"] is True
+    assert tools["bubble_branch_merge_resolve_conflicts"]["annotations"]["destructiveHint"] is True
+    assert tools["bubble_branch_merge_finalize"]["annotations"]["destructiveHint"] is True
     assert tools["bubble_branch_merge_start"]["inputSchema"]["required"] == [
         "profile",
         "ours_version_id",
@@ -2745,6 +2753,14 @@ def test_tools_list_exposes_branch_and_changelog_tools() -> None:
     ]
     assert tools["bubble_branch_merge_confirm"]["inputSchema"]["required"] == ["profile", "merge_app_version"]
     assert tools["bubble_branch_merge_conflicts_describe"]["inputSchema"]["required"] == ["payload"]
+    assert tools["bubble_branch_merge_resolve_conflicts"]["inputSchema"]["required"] == ["profile", "merge_app_version"]
+    assert tools["bubble_branch_merge_finalize"]["inputSchema"]["required"] == [
+        "profile",
+        "merge_app_version",
+        "target_version_id",
+        "source_version_id",
+        "source_branch_name",
+    ]
     assert "change_type" in tools["bubble_changelog_fetch"]["inputSchema"]["properties"]
 
 
@@ -2884,6 +2900,44 @@ def test_branch_merge_conflicts_describe_tool_routes_payload() -> None:
     assert payload["conflict_count"] == 1
     assert payload["decision_policy"] == "manual_user_selection_required"
     assert payload["conflicts"][0]["context"]["category"] == "workflow_actions"
+
+
+def test_branch_merge_finalize_tool_routes_payload(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_finalize_bubble_branch_merge(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "request": {"payload": kwargs}}
+
+    monkeypatch.setattr("bubble_mcp.server.tools.finalize_bubble_branch_merge", fake_finalize_bubble_branch_merge)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 19,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_branch_merge_finalize",
+                "arguments": {
+                    "profile": "smoke",
+                    "merge_app_version": "73ftr",
+                    "target_version_id": "53ffs",
+                    "source_version_id": "23347",
+                    "source_branch_name": "staging",
+                    "execute": True,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert calls[0]["merge_app_version"] == "73ftr"
+    assert calls[0]["target_version_id"] == "53ffs"
+    assert calls[0]["source_version_id"] == "23347"
+    assert calls[0]["source_branch_name"] == "staging"
+    assert calls[0]["execute"] is True
 
 
 def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

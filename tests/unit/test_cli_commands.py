@@ -1328,6 +1328,45 @@ def test_cli_branch_merge_conflicts_describe_reads_payload_file(tmp_path, monkey
     assert payload["conflicts"][0]["context"]["category"] == "workflow_actions"
 
 
+def test_cli_branch_merge_finalize_routes_payload(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    calls = []
+
+    def fake_finalize_bubble_branch_merge(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return {"ok": True, "request": {"payload": kwargs}}
+
+    monkeypatch.setattr("bubble_mcp.cli.main.finalize_bubble_branch_merge", fake_finalize_bubble_branch_merge)
+
+    assert (
+        main(
+            [
+                "branch",
+                "merge-finalize",
+                "--profile",
+                "smoke",
+                "--merge-app-version",
+                "73ftr",
+                "--target-version-id",
+                "53ffs",
+                "--source-version-id",
+                "23347",
+                "--source-branch-name",
+                "staging",
+                "--execute",
+            ]
+        )
+        == 0
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert calls[0]["merge_app_version"] == "73ftr"
+    assert calls[0]["target_version_id"] == "53ffs"
+    assert calls[0]["source_version_id"] == "23347"
+    assert calls[0]["source_branch_name"] == "staging"
+    assert calls[0]["execute"] is True
+
+
 def test_cli_changelog_fetch_builds_filters(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     calls = []
 

@@ -737,6 +737,14 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Bubble presents conflicts and the agent needs to explain affected paths, workflow actions, or auxiliary writes "
         "before asking the developer what to keep. Read-only; never chooses ours/theirs."
     ),
+    "bubble_branch_merge_resolve_conflicts": (
+        "Preview or apply Bubble's ResolveConflicts write on the temporary merge branch after conflict decisions are "
+        "handled in the editor. This clears conflict state but does not finalize the merge into the target branch."
+    ),
+    "bubble_branch_merge_finalize": (
+        "Preview or finalize a Bubble branch merge through /appeditor/finalize_merge after conflict resolution writes "
+        "have succeeded. Requires target/source version ids and source branch name for Bubble changelog data."
+    ),
     "bubble_extension_list": (
         "List Bubble MCP extension packs and their enabled state before validate/import/enable/disable workflows. "
         "Use when the user asks which extension packs are installed or active."
@@ -1586,6 +1594,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_branch_delete",
         "bubble_branch_merge_start",
         "bubble_branch_merge_confirm",
+        "bubble_branch_merge_resolve_conflicts",
+        "bubble_branch_merge_finalize",
         "bubble_schedule_deploy",
     }
     return {
@@ -1628,6 +1638,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_branch_delete",
             "bubble_branch_merge_start",
             "bubble_branch_merge_confirm",
+            "bubble_branch_merge_resolve_conflicts",
+            "bubble_branch_merge_finalize",
             "bubble_extension_companion_start",
             "bubble_schedule_deploy",
             "upload_asset",

@@ -906,6 +906,31 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Temporary Bubble merge app version returned/used after the sync request, such as the version shown in the merge editor URL.",
         examples=["73ftr"],
     ),
+    "target_version_id": _prop(
+        "string",
+        "Destination/current Bubble branch version id that receives the finalized merge.",
+        examples=["53ffs"],
+    ),
+    "source_version_id": _prop(
+        "string",
+        "Source Bubble branch version id being merged into the target branch.",
+        examples=["23347"],
+    ),
+    "source_branch_name": _prop(
+        "string",
+        "Human-readable source branch name for Bubble's merge changelog entry.",
+        examples=["staging"],
+    ),
+    "user_id": _prop(
+        "string",
+        "Bubble user id for merge changelog data. Usually derived from stored session cookies when omitted.",
+        examples=["1754998774520x493530240122586500"],
+    ),
+    "changelog_data": _prop(
+        "array",
+        "Exact Bubble changelog_data array captured from the editor. Only pass when replaying an observed merge write/finalize payload.",
+        items={"type": "object", "additionalProperties": True},
+    ),
     "conflicts_resolved": _prop(
         "boolean",
         "Set true only after conflict-resolution writes have been applied; the confirm payload then includes ResolveMergeChanges.",
@@ -1859,6 +1884,37 @@ def branch_changelog_tools() -> list[ToolSchema]:
             "Describe Bubble merge conflict write payloads as manual decision cards. This is read-only and does not choose ours/theirs or execute any conflict-selection write.",
             ["payload"],
             required=["payload"],
+        ),
+        tool_schema(
+            "bubble_branch_merge_resolve_conflicts",
+            "Preview or apply Bubble's ResolveConflicts write after the developer has decided not to select a conflicted item or has resolved conflicts in the editor. This prepares the temporary merge branch but does not finalize it.",
+            [
+                "profile",
+                "app_id",
+                "merge_app_version",
+                "changelog_data",
+                "session_id",
+                "execute",
+            ],
+            required=["profile", "merge_app_version"],
+        ),
+        tool_schema(
+            "bubble_branch_merge_finalize",
+            "Preview or finalize a Bubble branch merge through /appeditor/finalize_merge after conflict resolution writes have succeeded.",
+            [
+                "profile",
+                "app_id",
+                "merge_app_version",
+                "target_version_id",
+                "source_version_id",
+                "source_branch_name",
+                "user_id",
+                "savepoint_message",
+                "version_control_api_version",
+                "changelog_data",
+                "execute",
+            ],
+            required=["profile", "merge_app_version", "target_version_id", "source_version_id", "source_branch_name"],
         ),
     ]
 

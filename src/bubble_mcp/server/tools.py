@@ -38,6 +38,7 @@ from bubble_mcp.execution.editor_api import (
     create_bubble_branch,
     delete_bubble_branch,
     describe_bubble_branch_merge_conflicts,
+    finalize_bubble_branch_merge,
     fetch_jetstream_logs,
     fetch_changelog_entries,
     fetch_plan_usage,
@@ -49,6 +50,7 @@ from bubble_mcp.execution.editor_api import (
     list_bubble_branches,
     performance_audit,
     read_time_series,
+    resolve_bubble_branch_merge_conflicts,
     start_bubble_branch_merge,
 )
 from bubble_mcp.execution.executor import execute_plan
@@ -1750,6 +1752,33 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         if not isinstance(payload, dict):
             raise ValueError("bubble_branch_merge_conflicts_describe requires a payload object.")
         return describe_bubble_branch_merge_conflicts(payload=payload)
+    if name == "bubble_branch_merge_resolve_conflicts":
+        args = arguments or {}
+        changelog_data = args.get("changelog_data")
+        return resolve_bubble_branch_merge_conflicts(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            merge_app_version=str(args.get("merge_app_version") or ""),
+            changelog_data=changelog_data if isinstance(changelog_data, list) else None,
+            session_id=str(args.get("session_id") or "") or None,
+            execute=bool(args.get("execute")),
+        )
+    if name == "bubble_branch_merge_finalize":
+        args = arguments or {}
+        changelog_data = args.get("changelog_data")
+        return finalize_bubble_branch_merge(
+            profile=str(args.get("profile") or ""),
+            app_id=str(args.get("app_id") or "") or None,
+            merge_app_version=str(args.get("merge_app_version") or ""),
+            target_version_id=str(args.get("target_version_id") or ""),
+            source_version_id=str(args.get("source_version_id") or ""),
+            source_branch_name=str(args.get("source_branch_name") or ""),
+            user_id=str(args.get("user_id") or "") or None,
+            savepoint_message=str(args.get("savepoint_message") or "") or None,
+            version_control_api_version=int(args.get("version_control_api_version") or 7),
+            changelog_data=changelog_data if isinstance(changelog_data, list) else None,
+            execute=bool(args.get("execute")),
+        )
     if name == "bubble_performance_audit":
         args = arguments or {}
         return performance_audit(

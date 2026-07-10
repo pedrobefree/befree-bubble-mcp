@@ -6,6 +6,7 @@ import json
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import unquote
 
 from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.core.redaction import redact_sensitive
@@ -286,17 +287,56 @@ def _merge_write_change(
     body: Any,
     session_id: str,
     intent: dict[str, Any] | None = None,
+    version_control_api_version: int = 4,
+    changelog_data: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     change = {
         "body": body,
         "path_array": path_array,
-        "version_control_api_version": 4,
-        "changelog_data": [],
+        "version_control_api_version": version_control_api_version,
+        "changelog_data": changelog_data or [],
         "session_id": session_id,
     }
     if intent is not None:
         change["intent"] = intent
     return change
+
+
+def _session_user_id(session: BubbleSessionData, explicit: str | None = None) -> str:
+    user_id = str(explicit or "").strip()
+    if user_id:
+        return user_id
+    cookie = str(session.cookies or session.headers.get("cookie") or session.headers.get("Cookie") or "")
+    for part in cookie.split(";"):
+        key, separator, value = part.strip().partition("=")
+        if separator and key in {"meta_u1main", "ajs_user_id"}:
+            resolved = unquote(value).strip()
+            if resolved:
+                return resolved
+    return ""
+
+
+def _merge_changelog_data(
+    *,
+    appname: str,
+    target_version_id: str,
+    source_version_id: str,
+    temporary_merge_branch_id: str,
+    source_branch_name: str,
+    user_id: str,
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "appname": appname,
+            "app_version": target_version_id,
+            "user_id": user_id,
+            "change_identifier": temporary_merge_branch_id,
+            "display_name": source_branch_name,
+            "operation": "merge",
+            "before_value": json.dumps(source_version_id),
+            "inner_node_count": 1,
+        }
+    ]
 
 
 def _intent_name(change: dict[str, Any]) -> str:
@@ -703,6 +743,126 @@ def confirm_bubble_branch_merge(
         "merge_app_version": merge_version,
         "session_id": merge_session_id,
         "conflicts_resolved": conflicts_resolved,
+        "executed": execute,
+        **result,
+    }
+
+
+def resolve_bubble_branch_merge_conflicts(
+    *,
+    profile: str,
+    merge_app_version: str,
+    app_id: str | None = None,
+    changelog_data: list[dict[str, Any]] | None = None,
+    session_id: str | None = None,
+    execute: bool = False,
+    client: BubbleEditorClient | None = None,
+) -> dict[str, Any]:
+    session = _load_session_for_profile(profile)
+    appname = _resolve_app_id(profile, session, app_id)
+    merge_version = str(merge_app_version or "").strip()
+    if not merge_version:
+        raise ValueError("bubble_branch_merge_resolve_conflicts requires merge_app_version.")
+    merge_session_id = _editor_session_id(session_id)
+    changes = [
+        _merge_write_change(
+            path_array=["conflicts"],
+            body=None,
+            session_id=merge_session_id,
+            intent={"name": "ResolveConflicts"},
+            version_control_api_version=7,
+            changelog_data=changelog_data or [],
+        ),
+        _merge_write_change(
+            path_array=["conflicts_theirs_version_name"],
+            body=None,
+            session_id=merge_session_id,
+            intent={"name": "CleanupConflicts"},
+            version_control_api_version=7,
+        ),
+        _merge_write_change(
+            path_array=["conflicts_undo_snapshot_id"],
+            body=None,
+            session_id=merge_session_id,
+            intent={"name": "CleanupConflicts"},
+            version_control_api_version=7,
+        ),
+    ]
+    payload = {
+        "v": 1,
+        "appname": appname,
+        "app_version": merge_version,
+        "changes": changes,
+    }
+    result = (client or BubbleEditorClient()).write(payload, session, dry_run=not execute)
+    return {
+        "ok": result.get("ok"),
+        "profile": profile,
+        "app_id": appname,
+        "merge_app_version": merge_version,
+        "session_id": merge_session_id,
+        "executed": execute,
+        **result,
+    }
+
+
+def finalize_bubble_branch_merge(
+    *,
+    profile: str,
+    merge_app_version: str,
+    target_version_id: str,
+    source_version_id: str,
+    source_branch_name: str,
+    app_id: str | None = None,
+    user_id: str | None = None,
+    savepoint_message: str | None = None,
+    version_control_api_version: int = 7,
+    changelog_data: list[dict[str, Any]] | None = None,
+    execute: bool = False,
+    client: BubbleEditorApiClient | None = None,
+) -> dict[str, Any]:
+    session = _load_session_for_profile(profile)
+    appname = _resolve_app_id(profile, session, app_id)
+    merge_version = str(merge_app_version or "").strip()
+    target_version = str(target_version_id or "").strip()
+    source_version = str(source_version_id or "").strip()
+    source_name = str(source_branch_name or "").strip()
+    if not merge_version:
+        raise ValueError("bubble_branch_merge_finalize requires merge_app_version.")
+    if not target_version:
+        raise ValueError("bubble_branch_merge_finalize requires target_version_id.")
+    if not source_version:
+        raise ValueError("bubble_branch_merge_finalize requires source_version_id.")
+    if not source_name:
+        raise ValueError("bubble_branch_merge_finalize requires source_branch_name.")
+    resolved_user_id = _session_user_id(session, user_id)
+    if not resolved_user_id:
+        raise ValueError("bubble_branch_merge_finalize requires user_id when it cannot be derived from session cookies.")
+    resolved_changelog_data = changelog_data or _merge_changelog_data(
+        appname=appname,
+        target_version_id=target_version,
+        source_version_id=source_version,
+        temporary_merge_branch_id=merge_version,
+        source_branch_name=source_name,
+        user_id=resolved_user_id,
+    )
+    message = str(savepoint_message or f"finalize_merge:Completed merging changes from {source_name}").strip()
+    payload = {
+        "appname": appname,
+        "temporary_merge_branch_id": merge_version,
+        "savepoint_message": message,
+        "version_control_api_version": int(version_control_api_version),
+        "changelog_data": resolved_changelog_data,
+    }
+    result = _client(client).post("/appeditor/finalize_merge", payload, session, dry_run=not execute)
+    return {
+        "ok": result.get("ok"),
+        "profile": profile,
+        "app_id": appname,
+        "merge_app_version": merge_version,
+        "target_version_id": target_version,
+        "source_version_id": source_version,
+        "source_branch_name": source_name,
         "executed": execute,
         **result,
     }
