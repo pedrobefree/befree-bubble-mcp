@@ -182,6 +182,82 @@ def test_privacy_rule_tools_emit_bubble_editor_contracts(tmp_path, capsys) -> No
     assert payload["changes"][0]["body"] is None
 
 
+def test_update_name_renames_element_in_reusable(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "element_definitions": {
+                    "bTHce": {
+                        "name": "Popup login",
+                        "elements": {
+                            "bTHcz": {
+                                "id": "elGroupLogin",
+                                "name": "Group login",
+                                "elements": {},
+                            }
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="courselaunch")
+
+    assert cli.update_name("Popup login", "Group login", "Grupo Login", dry_run=True) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    changes = payload["changes"]
+    assert changes[0]["body"] == "Grupo Login"
+    assert changes[0]["path_array"][-1] == "%nm"
+    assert changes[1]["body"] == "Grupo Login"
+    assert changes[1]["path_array"][-1] == "%dn"
+
+
+def test_update_name_exact_default_name_match_wins_over_earlier_fuzzy_text_match(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    # bTHdq is a Text element whose content is "Login". Its synthesized search
+    # candidate "Text Login" contains "text l" (the target's default name,
+    # lowercased) as a text-prefix, and it appears before the real target in
+    # traversal order. Without an exact-match-first rule, searching for
+    # "Text L" would silently resolve to bTHdq instead of bTKyF.
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "element_definitions": {
+                    "bTHce": {
+                        "name": "Popup login",
+                        "elements": {
+                            "bTHdq": {
+                                "id": "elTextLogin",
+                                "default_name": "Text C",
+                                "type": "Text",
+                                "properties": {"text": {"entries": {"0": "Login"}}},
+                            },
+                            "bTKyF": {
+                                "id": "elTextL",
+                                "default_name": "Text L",
+                                "type": "Text",
+                                "properties": {"text": {"entries": {"0": "Email"}}},
+                            },
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="courselaunch")
+
+    assert cli.update_name("Popup login", "Text L", "Texto Label Email Login", dry_run=True) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    changes = payload["changes"]
+    assert changes[0]["path_array"] == ["%ed", "bTHce", "%el", "bTKyF", "%nm"]
+    assert changes[1]["path_array"] == ["%ed", "bTHce", "%el", "bTKyF", "%dn"]
+
+
 def test_cli_context_summary(capsys) -> None:  # type: ignore[no-untyped-def]
     assert main(["context", "summary", "--file", str(FIXTURE)]) == 0
 

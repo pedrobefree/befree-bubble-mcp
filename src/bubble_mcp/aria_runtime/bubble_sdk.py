@@ -7590,6 +7590,16 @@ class PathDiscovery:
         """
         Find element by its name property.
         Checks: name, default_name, and properties.element_name
+
+        Exact matches (case-insensitive) always take priority over fuzzy
+        substring matches. Without this, a query like the Bubble-generated
+        default name "Text L" can accidentally match an unrelated element's
+        synthesized "type + text content" candidate (e.g. "Text Login",
+        built from a Text element whose content is "Login") purely because
+        "text l" happens to be a text-prefix of "text login" -- silently
+        renaming/editing the wrong element even though the intended one
+        exists elsewhere in the tree.
+
         Returns: {'path': [...], 'id': str, 'element': dict} or None
         """
         root = self._get_context_root(context_id, context_type)
@@ -7599,45 +7609,34 @@ class PathDiscovery:
 
         name_lower = self._norm_lookup(name)
 
-        def search(obj, path_parts=[]):
+        exact_matches: List[Dict] = []
+        fuzzy_matches: List[Dict] = []
+
+        def visit(obj, path_parts=[]):
             if isinstance(obj, dict):
-                candidates = self._element_match_candidates(obj)
+                normalized_candidates = [
+                    self._norm_lookup(candidate)
+                    for candidate in self._element_match_candidates(obj)
+                    if candidate
+                ]
+                match = {'path': path_parts, 'id': obj.get('id'), 'element': obj}
+                if any(candidate == name_lower for candidate in normalized_candidates):
+                    exact_matches.append(match)
+                elif any(name_lower in candidate for candidate in normalized_candidates):
+                    fuzzy_matches.append(match)
 
-                # Check if any candidate matches
-                for candidate in candidates:
-                    if candidate and name_lower in self._norm_lookup(candidate):
-                        return {'path': path_parts, 'id': obj.get('id'), 'element': obj}
-
-                # Search children
                 elements = obj.get('elements') or obj.get('%el', {})
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
-                        result = search(value, path_parts + (['%el', key] if '%el' in obj or '%x' in obj else ['elements', key]))
-                        if result:
-                            return result
+                        visit(value, path_parts + (['%el', key] if '%el' in obj or '%x' in obj else ['elements', key]))
+
+        visit(root)
+
+        matches = exact_matches or fuzzy_matches
+        if not matches:
             return None
-
-        if not prefer_last:
-            return search(root)
-
-        # Collect all and return last
-        all_matches = []
-        def search_all(obj, path_parts=[]):
-            if isinstance(obj, dict):
-                candidates = self._element_match_candidates(obj)
-                for candidate in candidates:
-                    if candidate and name_lower in self._norm_lookup(candidate):
-                        all_matches.append({'path': path_parts, 'id': obj.get('id'), 'element': obj})
-
-                elements = obj.get('elements') or obj.get('%el', {})
-                if isinstance(elements, dict):
-                    for key, value in elements.items():
-                        if key == "length": continue
-                        search_all(value, path_parts + (['%el', key] if '%el' in obj or '%x' in obj else ['elements', key]))
-
-        search_all(root)
-        return all_matches[-1] if all_matches else None
+        return matches[-1] if prefer_last else matches[0]
 
     def find_element_by_id(
         self,

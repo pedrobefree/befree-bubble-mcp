@@ -165,6 +165,43 @@ def test_detect_context_downloads_bubble_export_before_crawler(tmp_path, monkeyp
     assert any(node.id == "element:elDownloaded" for node in context.nodes)
 
 
+def test_detect_context_download_ignores_bogus_response_encoding_guess(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    # requests/urllib3 falls back to guessing ISO-8859-1 for a response
+    # without an explicit charset, even though the export is JSON (which
+    # RFC 8259 mandates is UTF-8). Trusting that guess corrupts every
+    # non-ASCII byte (e.g. accented element names) instead of decoding them
+    # correctly.
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
+    save_session(
+        "dev",
+        session_from_payload({"appId": "synthetic-app", "headers": {"Cookie": "sid=secret"}}),
+    )
+    payload = {
+        "appname": "synthetic-app",
+        "pages": {
+            "pgDownloaded": {
+                "id": "rootDownloaded",
+                "%p": {"%nm": "index"},
+                "%el": {"elDownloaded": {"%x": "Text", "%p": {"%nm": "Botão Login"}}},
+            }
+        },
+    }
+
+    class Response:
+        status_code = 200
+        content = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        encoding = "ISO-8859-1"
+
+    monkeypatch.setattr("bubble_mcp.context.detector.requests.get", lambda *args, **kwargs: Response())
+
+    result = detect_project_context(profile="dev", app_id="synthetic-app", app_version="test", force=True)
+
+    assert result.source == "downloaded_bubble"
+    saved = json.loads(default_bubble_export_path("dev", "synthetic-app").read_text(encoding="utf-8"))
+    assert saved["pages"]["pgDownloaded"]["%el"]["elDownloaded"]["%p"]["%nm"] == "Botão Login"
+
+
 def test_detect_context_force_refreshes_default_profile_bubble_cache(
     tmp_path,
     monkeypatch,

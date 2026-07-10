@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from bubble_mcp.runtime_coverage import catalog_coverage_report
@@ -3342,6 +3343,23 @@ def test_extension_list_tool_returns_installed_extensions(tmp_path, monkeypatch)
 
 def test_scheduled_deploy_mcp_flow_preview_confirm_list_cancel_history(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    # `bubble_schedule_deploy` has no public `executor` argument, so a
+    # confirmed schedule here arms a real `threading.Timer` against the
+    # module-level default (the real, Playwright-based execute_scheduled_deploy)
+    # unless it's replaced for the duration of this test. With scheduled_at
+    # set to a fixed "today" timestamp, that timer's delay can be ~0 and fire
+    # mid-suite, launching an actual browser against bubble.io.
+    monkeypatch.setattr(
+        "bubble_mcp.browser_automation.scheduled_deploy.execute_scheduled_deploy",
+        lambda record: {"ok": True},
+    )
+    # Also stay clear of a fixed "today" scheduled_at: even with the executor
+    # mocked above, a ~0s timer delay races the mocked executor's near-instant
+    # completion (record deleted + moved to history) against this test's own
+    # assertions that the deploy is still "scheduled".
+    scheduled_at = (
+        (datetime.now(timezone.utc) + timedelta(days=30)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    )
     save_settings(
         BubbleMcpSettings(
             config_dir=tmp_path,
@@ -3366,7 +3384,7 @@ def test_scheduled_deploy_mcp_flow_preview_confirm_list_cancel_history(tmp_path,
                 "name": "bubble_schedule_deploy",
                 "arguments": {
                     "profile": "client",
-                    "scheduled_at": "2026-07-09T10:30:00Z",
+                    "scheduled_at": scheduled_at,
                     "message": "Main branch release",
                 },
             },
@@ -3386,7 +3404,7 @@ def test_scheduled_deploy_mcp_flow_preview_confirm_list_cancel_history(tmp_path,
                 "name": "bubble_schedule_deploy",
                 "arguments": {
                     "profile": "client",
-                    "scheduled_at": "2026-07-09T10:30:00Z",
+                    "scheduled_at": scheduled_at,
                     "message": "Main branch release",
                     "execute": True,
                     "confirm": True,
@@ -4275,3 +4293,50 @@ def test_learning_record_tool_rejects_non_object_value_without_append(tmp_path, 
     assert list_response is not None
     list_payload = json.loads(list_response["result"]["content"][0]["text"])
     assert list_payload["records"] == []
+
+
+def test_main_forces_utf8_stdio_on_non_utf8_platforms(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import bubble_mcp.server.stdio as stdio_module
+
+    class FakeStream:
+        def __init__(self, encoding: str) -> None:
+            self.encoding = encoding
+            self.reconfigure_calls: list[dict] = []  # type: ignore[type-arg]
+
+        def reconfigure(self, **kwargs):  # type: ignore[no-untyped-def]
+            self.reconfigure_calls.append(kwargs)
+            self.encoding = kwargs.get("encoding", self.encoding)
+
+    fake_stdin = FakeStream("cp1252")
+    fake_stdout = FakeStream("cp1252")
+    monkeypatch.setattr(stdio_module.sys, "stdin", fake_stdin)
+    monkeypatch.setattr(stdio_module.sys, "stdout", fake_stdout)
+    monkeypatch.setattr(stdio_module, "serve", lambda: None)
+
+    assert stdio_module.main() == 0
+
+    assert fake_stdin.reconfigure_calls == [{"encoding": "utf-8"}]
+    assert fake_stdout.reconfigure_calls == [{"encoding": "utf-8"}]
+
+
+def test_main_does_not_reconfigure_already_utf8_stdio(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import bubble_mcp.server.stdio as stdio_module
+
+    class FakeStream:
+        def __init__(self, encoding: str) -> None:
+            self.encoding = encoding
+            self.reconfigure_calls: list[dict] = []  # type: ignore[type-arg]
+
+        def reconfigure(self, **kwargs):  # type: ignore[no-untyped-def]
+            self.reconfigure_calls.append(kwargs)
+
+    fake_stdin = FakeStream("utf-8")
+    fake_stdout = FakeStream("utf-8")
+    monkeypatch.setattr(stdio_module.sys, "stdin", fake_stdin)
+    monkeypatch.setattr(stdio_module.sys, "stdout", fake_stdout)
+    monkeypatch.setattr(stdio_module, "serve", lambda: None)
+
+    assert stdio_module.main() == 0
+
+    assert fake_stdin.reconfigure_calls == []
+    assert fake_stdout.reconfigure_calls == []
