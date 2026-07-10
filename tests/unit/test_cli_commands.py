@@ -2002,3 +2002,83 @@ def test_cli_learning_record_missing_scope_discriminator_returns_json_error(
     assert main(["learning", "list"]) == 0
     listed = json.loads(capsys.readouterr().out)
     assert listed["records"] == []
+
+
+def test_add_action_reuses_workflow_it_just_auto_created_for_a_second_action(
+    tmp_path, capsys
+) -> None:  # type: ignore[no-untyped-def]
+    """Regression test for a duplicate-workflow bug: the 2nd add_action call for
+    the same trigger element+event, right after the 1st call auto-created the
+    workflow, used to fail to find that workflow and silently create another one.
+
+    Root cause: create_event() (called by add_action's auto-create path) patches
+    both the in-memory discovery root and the local cache with the new workflow
+    shell, but the follow-up set_event_element() call - which binds the trigger
+    element (%p.%ei) - only patched the cache, never the in-memory root. A
+    deliberate anti-stale-cache guard in _list_context_workflows then refused to
+    let the (correct) cached binding fill in the (incomplete) in-memory one, so
+    the real workflow could never be matched by element again in the same
+    process, and add_action fell through to auto-creating a duplicate.
+    """
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "pages": {
+                    "pg1": {
+                        "id": "pg1",
+                        "name": "index",
+                        "type": "Page",
+                        "properties": {},
+                        "custom_states": {},
+                        "workflows": {},
+                        "elements": {
+                            "btn1": {
+                                "id": "btn1",
+                                "name": "Meu Botao",
+                                "type": "Button",
+                                "properties": {},
+                            }
+                        },
+                    }
+                },
+                "user_types": {},
+                "option_sets": {},
+                "styles": {},
+                "settings": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="reprotest")
+
+    assert (
+        cli.add_action(
+            context_name="index",
+            element_name="Meu Botao",
+            action_type="hide",
+            action_param="Meu Botao",
+            event="click",
+            dry_run=True,
+        )
+        is True
+    )
+    capsys.readouterr()  # discard call 1 output
+
+    assert (
+        cli.add_action(
+            context_name="index",
+            element_name="Meu Botao",
+            action_type="show",
+            action_param="Meu Botao",
+            event="click",
+            dry_run=True,
+        )
+        is True
+    )
+    out = capsys.readouterr().out
+    assert "No workflow found" not in out
+    assert "Auto-creating workflow" not in out
+
+    workflows = cli.discovery.data["pages"]["pg1"]["workflows"]
+    assert len(workflows) == 1
