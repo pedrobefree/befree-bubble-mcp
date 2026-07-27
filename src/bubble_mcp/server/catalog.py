@@ -179,6 +179,7 @@ ARIA_BUBBLE_TOOL_NAMES: tuple[str, ...] = (
     "create_data_type",
     "rename_data_type",
     "delete_data_type",
+    "delete_data_type_permanently",
     "create_data_field",
     "rename_data_field",
     "delete_data_field",

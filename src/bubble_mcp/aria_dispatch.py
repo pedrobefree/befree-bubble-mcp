@@ -171,6 +171,25 @@ def _requires_calculate_derived(tool_name: str) -> bool:
     }
 
 
+def _delete_data_type_follow_up(
+    tool_name: str,
+    *,
+    ok: bool,
+    execute: bool,
+) -> dict[str, Any] | None:
+    if tool_name != "delete_data_type" or not ok or not execute:
+        return None
+    return {
+        "action": "ask_whether_to_delete_data_type_permanently",
+        "question": (
+            "The data type was soft-deleted. Do you want to delete it permanently? "
+            "Permanent deletion cannot be undone."
+        ),
+        "tool_name": "delete_data_type_permanently",
+        "requires_new_confirmation": True,
+    }
+
+
 @dataclass(frozen=True)
 class AriaRuntimeEnvironment:
     profile: str
@@ -387,6 +406,8 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         raise ValueError(f"No Bubble session stored for profile '{profile}'.")
 
     env = _resolve_runtime_environment(args)
+    if name == "delete_data_type_permanently" and args.get("mutation_overlay_path"):
+        raise ValueError("delete_data_type_permanently does not accept a caller-supplied mutation_overlay_path.")
     style_metadata = style_metadata_from_artifact(env.app_json_path or env.crawler_index_path or env.consolelog_json_path)
     captured_payloads: list[dict[str, Any]] = []
     captured_results: list[dict[str, Any]] = []
@@ -469,6 +490,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
                 appname=env.app_id,
                 webhook_url="local://bubble-mcp",
                 profile_name=env.profile,
+                app_version=env.app_version,
             )
             custom_return = _call_custom_runtime_tool(name, cli, args)
             if custom_return is not None:
@@ -487,7 +509,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
     ok = bool(return_value) if captured_results else return_value is not False
     if captured_results:
         ok = all(bool(item.get("ok")) for item in captured_results)
-    return {
+    response = {
         "ok": ok,
         "engine": "aria_runtime",
         "tool_name": name,
@@ -501,3 +523,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         "results": [{"index": index, **item} for index, item in enumerate(captured_results, start=1)],
         "logs": logs,
     }
+    follow_up = _delete_data_type_follow_up(name, ok=ok, execute=execute)
+    if follow_up is not None:
+        response["follow_up"] = follow_up
+    return response

@@ -2,6 +2,7 @@ import json
 from types import SimpleNamespace
 
 from bubble_mcp.aria_dispatch import (
+    _delete_data_type_follow_up,
     _method_kwargs,
     _requires_calculate_derived,
     dispatch_aria_runtime_tool,
@@ -64,12 +65,59 @@ def test_method_kwargs_maps_delete_data_field_name_to_field_key() -> None:
     }
 
 
+def test_method_kwargs_maps_permanent_data_type_delete_confirmation() -> None:
+    def delete_data_type_permanently(
+        data_type_key: str,
+        data_type_ref_kind: str = "auto",
+        confirm: bool = False,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    kwargs = _method_kwargs(
+        delete_data_type_permanently,
+        {
+            "profile": "smoke",
+            "data_type_ref": "Cliente",
+            "data_type_ref_kind": "name",
+            "confirm": True,
+            "execute": True,
+        },
+        execute=True,
+    )
+
+    assert kwargs == {
+        "data_type_key": "Cliente",
+        "data_type_ref_kind": "name",
+        "confirm": True,
+        "dry_run": False,
+    }
+
+
 def test_delete_data_field_requires_calculate_derived_refresh() -> None:
     assert _requires_calculate_derived("delete_data_field") is True
+    assert _requires_calculate_derived("delete_data_type_permanently") is False
     assert _requires_calculate_derived("create_privacy_rule") is True
     assert _requires_calculate_derived("set_privacy_rule_field_visibility") is True
     assert _requires_calculate_derived("delete_privacy_rule") is True
     assert _requires_calculate_derived("create_data_field") is False
+
+
+def test_soft_delete_returns_separate_permanent_delete_confirmation_follow_up() -> None:
+    follow_up = _delete_data_type_follow_up("delete_data_type", ok=True, execute=True)
+
+    assert follow_up == {
+        "action": "ask_whether_to_delete_data_type_permanently",
+        "question": (
+            "The data type was soft-deleted. Do you want to delete it permanently? "
+            "Permanent deletion cannot be undone."
+        ),
+        "tool_name": "delete_data_type_permanently",
+        "requires_new_confirmation": True,
+    }
+    assert _delete_data_type_follow_up("delete_data_type", ok=True, execute=False) is None
+    assert _delete_data_type_follow_up("delete_data_type", ok=False, execute=True) is None
+    assert _delete_data_type_follow_up("delete_data_type_permanently", ok=True, execute=True) is None
 
 
 def test_method_kwargs_maps_style_condition_aliases() -> None:
