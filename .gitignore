@@ -17,6 +17,7 @@ captures/
 .local/
 profiles.d/
 settings.json
+.mcp.json
 *.sqlite
 *.db
 *.enc

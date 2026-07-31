@@ -27891,7 +27891,9 @@ class BubbleCLI:
                     deleted = font_data.get("%del", False)
                     status = " [DELETED]" if deleted else ""
                     desc_part = f" - {description}" if description else ""
-        logger.log(f"   {order}. {name}: {font_family}{desc_part} ({font_id}){status}")
+                    logger.log(
+                        f"   {order}. {name}: {font_family}{desc_part} ({font_id}){status}"
+                    )
 
         return True
 
