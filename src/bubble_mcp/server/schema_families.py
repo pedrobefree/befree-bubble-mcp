@@ -1025,14 +1025,30 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "messages": _prop(
         "array",
-        "Optional Jetstream log message tags to request. Omit to use the default workflow, database, HTTP, scheduled task, plugin, and error tags.",
+        "Optional Jetstream log message TYPES to request (running event, action completed, ...). This is not a name search: to filter by workflow name use 'contains'. Omit to use the default workflow, database, HTTP, scheduled task, plugin, and error tags.",
         items={"type": "string"},
         examples=[["running event", "running action", "server_db.modify"]],
     ),
+    "contains": _prop(
+        ["string", "null"],
+        "Server-side substring filter on the log line's display name, i.e. the workflow or action name. Busy apps return 0 rows without it and cap at 10000 rows with it, so pass the workflow you are investigating. Bubble ignores 'search'/'constraint'; 'contains' is the key the editor's own search box sends.",
+        examples=["Fast_Start", "runDailyFastSTart and Badges"],
+    ),
     "ascending": _prop(
         "boolean",
-        "Return Bubble logs in ascending time order.",
+        "Sent as-is to Bubble, but the endpoint appears to ignore it: rows always come back oldest-first. Do not rely on it to read the tail of a window.",
         default=True,
+    ),
+    "paginate": _prop(
+        "boolean",
+        "Walk the whole time window instead of stopping at Bubble's 10000-row cap. The endpoint has no offset/cursor parameter, so pages are produced by advancing 'after' past the last row and de-duplicating the small overlap. Costs one request per 10000 rows, so keep a 'contains' term and a sane window.",
+        default=False,
+    ),
+    "max_pages": _prop(
+        "integer",
+        "Maximum requests a paginated log query may issue. Reaching it sets truncated=true and reports how far the response actually covers in 'covered_until'.",
+        default=10,
+        minimum=1,
     ),
     "is_state_ar": _prop(
         "boolean",
@@ -1949,7 +1965,7 @@ def performance_metrics_tools() -> list[ToolSchema]:
 
     logs = tool_schema(
         "bubble_logs_fetch",
-        "Fetch Bubble Jetstream logs from the editor for a selected app/profile/time window. Defaults app_version to live for production performance diagnostics unless explicitly overridden. Read-only.",
+        "Fetch Bubble Jetstream logs from the editor for a selected app/profile/time window. Pass 'contains' with the workflow name whenever you are chasing a specific workflow: busy apps return 0 rows without it, and the endpoint answers HTTP 200 with an empty list rather than an error. Responses are capped at 10000 rows and the endpoint has no offset/cursor, so pass paginate=true to cover a whole window. Defaults app_version to live for production performance diagnostics unless explicitly overridden. Read-only.",
         [
             "profile",
             "app_id",
@@ -1957,8 +1973,11 @@ def performance_metrics_tools() -> list[ToolSchema]:
             "start",
             "end",
             "messages",
+            "contains",
             "ascending",
             "is_state_ar",
+            "paginate",
+            "max_pages",
             "limit",
             "include_raw",
         ],

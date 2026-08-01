@@ -25,6 +25,7 @@ from bubble_mcp.execution.editor_api import (
     performance_audit,
     read_time_series,
     resolve_bubble_branch_merge_conflicts,
+    resolve_editor_base_url,
     start_bubble_branch_merge,
 )
 from bubble_mcp.sessions.store import save_session, session_from_payload
@@ -531,6 +532,225 @@ def test_logs_default_to_live_app_version(tmp_path, monkeypatch) -> None:  # typ
     assert calls[0]["payload"]["tags"]["appname"] == "synthetic-app"
     assert "running action" in calls[0]["payload"]["tags"]["message"]
     assert len(result["items"]) == 2
+
+
+def _store_session_with_headers(headers: dict[str, str], *, url: str = "https://bubble.io/page?id=synthetic-app") -> None:
+    save_session(
+        "dev",
+        session_from_payload(
+            {
+                "appId": "synthetic-app",
+                "appVersion": "test",
+                "url": url,
+                "headers": {"Cookie": "sid=secret", "User-Agent": "pytest", **headers},
+            }
+        ),
+    )
+
+
+def test_logs_target_the_dedicated_cluster_from_the_session_referer(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    _store_session_with_headers({"referer": "https://d200.bubble.is/"})
+    calls: list[dict[str, Any]] = []
+
+    fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        client=_metrics_client_with_calls(calls),
+    )
+
+    assert calls[0]["url"] == "https://d200.bubble.is/appeditor/get_jetstream_logs"
+
+
+def test_metrics_endpoints_follow_the_same_cluster(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    _store_session_with_headers({"referer": "https://d200.bubble.is/"})
+    calls: list[dict[str, Any]] = []
+
+    fetch_workload_usage_by_date(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-12T00:00:00.000Z",
+        client=_metrics_client_with_calls(calls),
+    )
+
+    assert calls[0]["url"] == "https://d200.bubble.is/appeditor/get_workload_usage_by_date"
+
+
+def test_editor_base_url_ignores_non_bubble_hosts(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    _store_session_with_headers({"referer": "https://evil.example.com/"}, url="https://evil.example.com/page")
+    calls: list[dict[str, Any]] = []
+
+    fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        client=_metrics_client_with_calls(calls),
+    )
+
+    # Editor cookies must never leave Bubble-owned hosts, whatever the stored session claims.
+    assert calls[0]["url"] == "https://bubble.io/appeditor/get_jetstream_logs"
+
+
+def test_resolve_editor_base_url_priority() -> None:
+    session = session_from_payload(
+        {
+            "appId": "synthetic-app",
+            "url": "https://bubble.io/page?id=synthetic-app",
+            "headers": {"referer": "https://d200.bubble.is/"},
+        }
+    )
+    assert resolve_editor_base_url(session) == "https://d200.bubble.is"
+    assert resolve_editor_base_url(session, override="d17.bubble.is") == "https://d17.bubble.is"
+    assert resolve_editor_base_url(session, override="https://evil.example.com") == "https://d200.bubble.is"
+    assert resolve_editor_base_url(None) == "https://bubble.io"
+
+
+def test_logs_send_contains_and_flag_empty_unfiltered_results(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    calls: list[dict[str, Any]] = []
+
+    def empty_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        calls.append({"url": url, "payload": json.loads(body.decode("utf-8"))})
+        return HttpResponse(status=200, body=json.dumps({"rows": []}), headers={})
+
+    unfiltered = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        client=BubbleEditorApiClient(transport=empty_transport),
+    )
+
+    assert "contains" not in calls[0]["payload"]
+    assert unfiltered["contains"] is None
+    assert unfiltered["row_count"] == 0
+    assert any("contains" in hint for hint in unfiltered["hints"])
+
+    filtered = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        contains="  Fast_Start  ",
+        client=BubbleEditorApiClient(transport=empty_transport),
+    )
+
+    assert calls[1]["payload"]["contains"] == "Fast_Start"
+    assert filtered["contains"] == "Fast_Start"
+    # A filtered query that legitimately returns nothing must not be blamed on a missing term.
+    assert "hints" not in filtered
+
+
+def test_logs_flag_the_ten_thousand_row_cap(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+
+    def capped_transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        rows = [{"created": 1, "tags": {"message": "running event"}} for _ in range(10000)]
+        return HttpResponse(status=200, body=json.dumps({"rows": rows}), headers={})
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        contains="Fast_Start",
+        limit=5,
+        client=BubbleEditorApiClient(transport=capped_transport),
+    )
+
+    assert result["row_count"] == 10000
+    assert result["paginated"] is False
+    assert any("paginate=true" in hint for hint in result["hints"])
+
+
+def _paged_log_transport(pages: list[list[dict[str, Any]]], calls: list[dict[str, Any]]):  # type: ignore[no-untyped-def]
+    """Serve one canned page per request, recording the cursor each request asked for."""
+
+    def transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        payload = json.loads(body.decode("utf-8"))
+        index = len(calls)
+        calls.append({"after": payload["after"], "before": payload["before"]})
+        rows = pages[index] if index < len(pages) else []
+        return HttpResponse(status=200, body=json.dumps({"rows": rows}), headers={})
+
+    return BubbleEditorApiClient(transport=transport)
+
+
+def _row(created: int, eid: str) -> dict[str, Any]:
+    return {"created": created, "elastic_id": eid, "tags": {"message": "running event", "fiber_id": eid}}
+
+
+def test_logs_paginate_walks_the_window_and_drops_the_overlap(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    full_page = [_row(1000 + i, f"a{i}") for i in range(10000)]
+    # Bubble's `after` is fuzzy: the next page repeats the last row of the previous one.
+    second_page = [full_page[-1]] + [_row(20000 + i, f"b{i}") for i in range(5)]
+    calls: list[dict[str, Any]] = []
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        contains="Fast_Start",
+        paginate=True,
+        limit=100000,
+        client=_paged_log_transport([full_page, second_page], calls),
+    )
+
+    assert len(calls) == 2
+    # Page 2 resumes at the last row of page 1 rather than skipping past it.
+    assert calls[1]["after"] == full_page[-1]["created"]
+    assert calls[1]["before"] == calls[0]["before"]
+    assert result["pages_fetched"] == 2
+    assert result["stop_reason"] == "reached_end_of_window"
+    assert result["truncated"] is False
+    assert result["row_count"] == 10005  # 10000 + 5 fresh, the repeated row dropped
+    assert result["covered_until_epoch_ms"] == 20004
+    assert "hints" not in result
+
+
+def test_logs_paginate_stops_at_max_pages_and_reports_coverage(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    pages = [[_row(1_000_000 * p + i, f"p{p}-{i}") for i in range(10000)] for p in range(1, 5)]
+    calls: list[dict[str, Any]] = []
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        paginate=True,
+        max_pages=3,
+        limit=100000,
+        client=_paged_log_transport(pages, calls),
+    )
+
+    assert len(calls) == 3
+    assert result["pages_fetched"] == 3
+    assert result["truncated"] is True
+    assert result["stop_reason"] == "hit_max_pages"
+    assert result["covered_until"].startswith("1970-")  # synthetic epochs, but the field is populated
+    assert any("max_pages" in hint for hint in result["hints"])
+
+
+def test_logs_paginate_bails_when_the_cursor_cannot_advance(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    # A single millisecond holding a whole page would otherwise loop forever.
+    stuck = [_row(500, f"s{i}") for i in range(10000)]
+    calls: list[dict[str, Any]] = []
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        paginate=True,
+        max_pages=25,
+        limit=10,
+        client=_paged_log_transport([stuck, stuck, stuck], calls),
+    )
+
+    assert len(calls) == 2
+    assert result["stop_reason"] == "no_progress_same_millisecond"
+    assert any("could not advance" in hint for hint in result["hints"])
 
 
 def test_secondary_metrics_endpoints_post_expected_payloads(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

@@ -1827,8 +1827,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             start=_required_string_arg(args, "start", name),
             end=_required_string_arg(args, "end", name),
             messages=messages,
+            contains=str(args.get("contains") or "") or None,
             ascending=bool(args.get("ascending", True)),
             is_state_ar=bool(args.get("is_state_ar", True)),
+            paginate=bool(args.get("paginate", False)),
+            max_pages=int(args.get("max_pages") or 10),
             include_raw=bool(args.get("include_raw")),
             limit=int(args.get("limit") or 100),
         )
