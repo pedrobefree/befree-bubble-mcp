@@ -22,12 +22,24 @@ from bubble_mcp.sessions.store import BubbleSessionData, load_session
 
 
 BUBBLE_EDITOR_BASE_URL = "https://bubble.io"
-# Dedicated Bubble apps are served from their own cluster (for example https://d200.bubble.is)
-# instead of the shared https://bubble.io host. Several editor endpoints - get_jetstream_logs in
-# particular - answer HTTP 200 with an empty payload when they are called on the wrong host, so the
-# cluster has to be resolved per session rather than hardcoded.
+# Dedicated Bubble apps are served from their own cluster (for example https://d200.bubble.is) as
+# well as the shared https://bubble.io host, and the two are NOT interchangeable. Measured against a
+# dedicated app:
+#
+#   endpoint                       bubble.io      cluster
+#   get_jetstream_logs             200, 0 rows    200, rows      <- cluster only
+#   get_workload_usage_by_date     200, rows      401            <- shared host only
+#   get_workload_usage_breakdown   200, rows      401            <- shared host only
+#   get_current_app_plan_usage     200            200
+#   get_storage_size               200            200
+#   get_workflow_runs              200            200
+#
+# The logs endpoint is the dangerous one: on the shared host it answers 200 with an empty list rather
+# than an error, so a wrong host looks like an app with no activity. Only endpoints proven to need the
+# cluster are routed there; everything else stays on the shared host, which is where it already worked.
 BUBBLE_EDITOR_HOST_SUFFIXES = (".bubble.io", ".bubble.is")
 BUBBLE_EDITOR_HOSTS = ("bubble.io", "bubble.is")
+CLUSTER_LOCAL_ENDPOINTS = frozenset({"/appeditor/get_jetstream_logs"})
 DEFAULT_LOG_MESSAGES = [
     "running event",
     "event condition passed",
@@ -136,7 +148,11 @@ class BubbleEditorApiClient:
     ) -> dict[str, Any]:
         if not endpoint.startswith("/appeditor/"):
             raise ValueError("Bubble editor endpoint must start with /appeditor/.")
-        url = f"{resolve_editor_base_url(session, profile=profile, override=base_url)}{endpoint}"
+        if base_url or endpoint in CLUSTER_LOCAL_ENDPOINTS:
+            origin = resolve_editor_base_url(session, profile=profile, override=base_url)
+        else:
+            origin = BUBBLE_EDITOR_BASE_URL
+        url = f"{origin}{endpoint}"
         headers = build_editor_write_headers(session, payload)
         safe_request = {
             "url": url,

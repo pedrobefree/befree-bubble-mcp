@@ -563,19 +563,32 @@ def test_logs_target_the_dedicated_cluster_from_the_session_referer(tmp_path, mo
     assert calls[0]["url"] == "https://d200.bubble.is/appeditor/get_jetstream_logs"
 
 
-def test_metrics_endpoints_follow_the_same_cluster(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+def test_metrics_endpoints_stay_on_the_shared_host(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Workload endpoints answer 401 on a dedicated cluster - only logs may follow it."""
     _store_profile_and_session(tmp_path, monkeypatch)
     _store_session_with_headers({"referer": "https://d200.bubble.is/"})
     calls: list[dict[str, Any]] = []
+    client = _metrics_client_with_calls(calls)
 
     fetch_workload_usage_by_date(
         profile="dev",
         start="2026-04-11T00:00:00.000Z",
         end="2026-04-12T00:00:00.000Z",
-        client=_metrics_client_with_calls(calls),
+        client=client,
     )
+    fetch_workload_usage_breakdown(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-12T00:00:00.000Z",
+        client=client,
+    )
+    fetch_workflow_runs(profile="dev", client=client)
 
-    assert calls[0]["url"] == "https://d200.bubble.is/appeditor/get_workload_usage_by_date"
+    assert [c["url"] for c in calls] == [
+        "https://bubble.io/appeditor/get_workload_usage_by_date",
+        "https://bubble.io/appeditor/get_workload_usage_breakdown",
+        "https://bubble.io/appeditor/get_workflow_runs",
+    ]
 
 
 def test_editor_base_url_ignores_non_bubble_hosts(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
