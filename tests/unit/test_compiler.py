@@ -1,4 +1,5 @@
-from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
+from bubble_mcp.compiler.payload import compile_plan_to_write_payloads, resolve_context_root_id
+from bubble_mcp.context.models import BubbleContextNode, BubbleProjectContext
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.sessions.store import session_from_payload
 
@@ -9,6 +10,24 @@ def first_change(payload: dict, intent_name: str) -> dict:  # type: ignore[type-
 
 def created_body(payload: dict) -> dict:  # type: ignore[type-arg]
     return first_change(payload, "CreateElement")["body"]
+
+
+def test_resolve_context_root_id_preserves_missing_root() -> None:
+    context = BubbleProjectContext(
+        app_id="synthetic-app",
+        source="test",
+        nodes=[
+            BubbleContextNode(
+                id="reusable:Empty",
+                label="Empty",
+                type="reusable",
+                metadata={"bubble_id": "reEmpty", "root_id": None},
+            )
+        ],
+        edges=[],
+    )
+
+    assert resolve_context_root_id("reEmpty", context) is None
 
 
 def set_data_value(payload: dict, property_name: str):  # type: ignore[no-untyped-def,type-arg]
