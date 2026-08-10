@@ -97,7 +97,7 @@ from bubble_mcp.skills.store import (
     list_skills,
 )
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
-from bubble_mcp.sessions.browser import capture_session_with_playwright
+from bubble_mcp.sessions.browser import DEFAULT_LOGIN_WAIT_SECONDS, capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.tool_authoring.sessions import (
     append_capture_to_authoring_session,
@@ -2104,8 +2104,11 @@ def build_parser() -> argparse.ArgumentParser:
     session_login_parser.add_argument(
         "--wait-seconds",
         type=int,
-        default=120,
-        help="Maximum time to keep the browser open while polling and saving the latest Bubble cookies.",
+        default=DEFAULT_LOGIN_WAIT_SECONDS,
+        help=(
+            "Maximum time to keep the browser open while polling and saving the latest Bubble cookies. "
+            "The window is closed as soon as this runs out, so leave room for two-factor codes."
+        ),
     )
     session_login_parser.add_argument("--headless", action="store_true")
     session_login_parser.add_argument(

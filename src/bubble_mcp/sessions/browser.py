@@ -12,6 +12,12 @@ from bubble_mcp.sessions.store import BubbleSessionData, session_from_payload
 ProgressCallback = Callable[[str], None]
 EDITOR_VALIDATION_INTERVAL_SEC = 2.0
 EDITOR_VALIDATION_TIMEOUT_SEC = 10.0
+# Login is user-driven and the browser is closed the moment this budget runs out, so it has to
+# cover the slowest realistic human path: password, then a two-factor code that arrives by email
+# or SMS and may need a retry. The old 120-180s budgets expired mid-2FA and killed the window
+# before the user could finish. Waiting longer costs nothing on the happy path -- the poll loop
+# exits as soon as the editor session validates.
+DEFAULT_LOGIN_WAIT_SECONDS = 600
 
 
 def _cookie_header(cookies: list[dict[str, Any]]) -> str:
@@ -129,7 +135,7 @@ def capture_session_with_playwright(
     app_id: str,
     editor_url: str | None = None,
     headless: bool = False,
-    wait_seconds: int = 120,
+    wait_seconds: int = DEFAULT_LOGIN_WAIT_SECONDS,
     user_data_dir: Path | None = None,
     app_version: str | None = None,
     progress: ProgressCallback | None = None,
@@ -268,7 +274,11 @@ def capture_session_with_playwright(
             )
 
     if not last_cookie_string:
-        raise RuntimeError("No bubble.io cookies were captured. Log in before the wait timeout expires.")
+        raise RuntimeError(
+            f"No bubble.io cookies were captured within {max(1, wait_seconds)} seconds, so the browser was "
+            "closed before login finished. If a two-factor code was still pending, rerun with a larger "
+            "wait_seconds (CLI: --wait-seconds)."
+        )
     if not (
         captured_write_headers.get("x-bubble-client-version")
         or captured_write_headers.get("x-bubble-client-commit-timestamp")

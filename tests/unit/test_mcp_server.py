@@ -8,6 +8,7 @@ import bubble_mcp.server.tools as tools_module
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
+from bubble_mcp.sessions.browser import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import BubbleSessionData, load_session, save_session, session_from_payload
 
 
@@ -2540,7 +2541,10 @@ def test_native_family_schemas_expose_agent_selection_constraints() -> None:
 
     session_login = tools["bubble_session_login"]["inputSchema"]
     assert session_login["required"] == ["profile"]
-    assert session_login["properties"]["wait_seconds"]["default"] == 180
+    # Must stay generous enough to cover a two-factor code: the browser is closed the moment
+    # this budget expires, even if the user is still mid-login.
+    assert session_login["properties"]["wait_seconds"]["default"] == DEFAULT_LOGIN_WAIT_SECONDS
+    assert session_login["properties"]["wait_seconds"]["default"] >= 600
     assert session_login["properties"]["headless"]["default"] is False
 
     changelog = tools["bubble_changelog_fetch"]["inputSchema"]

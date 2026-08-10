@@ -526,8 +526,10 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "wait_seconds": _prop(
         "integer",
-        "Maximum time to keep the local browser login flow open while polling for Bubble session cookies.",
-        default=180,
+        "Maximum time to keep the local browser login flow open while polling for Bubble session cookies. "
+        "The browser is closed as soon as this budget runs out, even mid-login, so it must cover the whole "
+        "human flow including a two-factor code. Raise it for accounts whose 2FA code arrives by email or SMS.",
+        default=600,
         minimum=1,
     ),
     "headless": _prop(

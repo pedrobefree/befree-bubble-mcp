@@ -120,7 +120,7 @@ from bubble_mcp.skills.store import (
     list_skills,
 )
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
-from bubble_mcp.sessions.browser import capture_session_with_playwright
+from bubble_mcp.sessions.browser import DEFAULT_LOGIN_WAIT_SECONDS, capture_session_with_playwright
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.style_import.runtime import create_styles_from_html_runtime
 from bubble_mcp.tool_authoring.sessions import (
@@ -1467,7 +1467,7 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             app_id=app_id,
             editor_url=str(args.get("editor_url") or "").strip() or None,
             headless=bool(args.get("headless")),
-            wait_seconds=int(args.get("wait_seconds") or 180),
+            wait_seconds=int(args.get("wait_seconds") or DEFAULT_LOGIN_WAIT_SECONDS),
             user_data_dir=settings.config_dir / "browser-profiles" / profile,
             app_version=app_version,
             progress=collect_progress,
