@@ -99,8 +99,21 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "manage_data_schema",
         "when": "The user asks to create or change Bubble data types, fields, option sets, or option values.",
-        "tools": ["list_data_types", "create_data_type", "create_data_field", "create_option_set", "create_option_value", "list_option_values"],
-        "notes": "Use preview mode first for schema changes unless the user explicitly asks to execute.",
+        "tools": [
+            "list_data_types",
+            "create_data_type",
+            "delete_data_type",
+            "delete_data_type_permanently",
+            "create_data_field",
+            "create_option_set",
+            "create_option_value",
+            "list_option_values",
+        ],
+        "notes": (
+            "Use preview mode first for schema changes unless the user explicitly asks to execute. "
+            "Data type deletion is always two-stage: run delete_data_type first, then ask whether the user wants "
+            "irreversible deletion before calling delete_data_type_permanently with a new confirmation."
+        ),
     },
     {
         "intent": "branches_or_changelog",
@@ -626,7 +639,19 @@ RECIPES: dict[str, dict[str, Any]] = {
     },
     "data_schema": {
         "when": "Create or update data types, fields, option sets, or option values.",
-        "tools": ["list_data_types", "create_data_type", "create_data_field", "create_option_set", "create_option_value"],
+        "tools": [
+            "list_data_types",
+            "create_data_type",
+            "delete_data_type",
+            "delete_data_type_permanently",
+            "create_data_field",
+            "create_option_set",
+            "create_option_value",
+        ],
+        "notes": (
+            "Permanent data type deletion is a second-stage action only. After delete_data_type succeeds, ask the "
+            "user whether to continue; call delete_data_type_permanently only after a new explicit confirmation."
+        ),
         "steps": [
             {
                 "tool": "list_data_types",
@@ -1052,6 +1077,22 @@ RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
 
 
 RECIPE_CONTRACTS: dict[str, dict[str, list[str]]] = {
+    "data_schema": {
+        "quality_gates": [
+            "Preview schema mutations before execute=true unless the user explicitly requested execution.",
+            "Resolve the exact data type or field from current project context before destructive writes.",
+            "Permanent data type deletion requires a successful prior delete_data_type soft-delete and a new explicit confirmation.",
+        ],
+        "stop_conditions": [
+            "Stop before delete_data_type_permanently if the same data type is not already soft-deleted.",
+            "Stop before delete_data_type_permanently unless confirm=true reflects a new user confirmation.",
+            "Stop before execute=true if the target data type or field cannot be resolved exactly.",
+        ],
+        "verification": [
+            "After schema writes, refresh derived schema data and project context.",
+            "After permanent deletion, verify the data type no longer exists in refreshed user_types metadata.",
+        ],
+    },
     "html_import": {
         "quality_gates": [
             "Preview create_from_html with execute=false before any real write.",

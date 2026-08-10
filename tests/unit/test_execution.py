@@ -342,3 +342,97 @@ def test_execute_plan_blocks_destructive_steps_without_confirmation() -> None:
     assert result["ok"] is False
     assert result["structural_validation"]["status"] == "blocked"
     assert result["operation_snapshot"]["next_user_action"] == "request_user_confirmation"
+
+
+def test_execute_plan_blocks_permanent_data_type_delete_even_with_confirmation() -> None:
+    result = execute_plan(
+        {
+            "steps": [
+                {
+                    "id": "s1",
+                    "tool_name": "delete_data_type_permanently",
+                    "args": {"write_payload": write_payload(), "confirm": True},
+                }
+            ]
+        },
+        profile="dev",
+        execute=True,
+        session=synthetic_session(),
+    )
+
+    assert result["ok"] is False
+    assert result["structural_validation"]["status"] == "blocked"
+    assert any(
+        "must call delete_data_type_permanently directly" in error
+        for error in result["structural_validation"]["errors"]
+    )
+
+
+def test_execute_plan_blocks_clean_app_data_type_delete_disguised_as_raw_write() -> None:
+    payload = {
+        "appname": "synthetic-app",
+        "app_version": "test",
+        "changes": [
+            {
+                "intent": {"name": "CleanApp"},
+                "path_array": ["user_types", "cliente"],
+                "body": None,
+            }
+        ],
+    }
+    result = execute_plan(
+        {
+            "steps": [
+                {
+                    "id": "s1",
+                    "tool_name": "bubble_editor_write",
+                    "args": {"write_payload": payload, "confirm": True},
+                }
+            ]
+        },
+        profile="dev",
+        execute=True,
+        session=synthetic_session(),
+    )
+
+    assert result["ok"] is False
+    assert any(
+        "contains permanent data type deletion for cliente" in error
+        for error in result["structural_validation"]["errors"]
+    )
+
+
+def test_execute_plan_blocks_body_wrapped_clean_app_data_type_delete() -> None:
+    payload = {
+        "body": {
+            "appname": "synthetic-app",
+            "app_version": "test",
+            "changes": [
+                {
+                    "intent": {"name": "CleanApp"},
+                    "path_array": ["user_types", "cliente"],
+                    "body": None,
+                }
+            ],
+        }
+    }
+    result = execute_plan(
+        {
+            "steps": [
+                {
+                    "id": "s1",
+                    "tool_name": "bubble_editor_write",
+                    "args": {"write_payload": payload, "confirm": True},
+                }
+            ]
+        },
+        profile="dev",
+        execute=True,
+        session=synthetic_session(),
+    )
+
+    assert result["ok"] is False
+    assert any(
+        "contains permanent data type deletion for cliente" in error
+        for error in result["structural_validation"]["errors"]
+    )

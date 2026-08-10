@@ -480,6 +480,18 @@ DOC_ENRICHMENT_TOOL = "bubble_manual_context_for_tool_authoring"
 
 
 NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "delete_data_type": (
+        "Soft-delete a Bubble data type using Bubble's normal schema delete marker. The type remains recoverable "
+        "in Bubble's internal schema. After a successful write, ask the user whether they also want permanent "
+        "deletion. Use delete_data_type_permanently only after a separate explicit confirmation."
+    ),
+    "delete_data_type_permanently": (
+        "Permanently remove a Bubble data type using the CleanApp write contract captured from Optimize application. "
+        "This is irreversible, deletes the complete user_types entry, and is allowed only after delete_data_type "
+        "has successfully soft-deleted the same type in the same branch. It requires the exact internal data type "
+        "key, execute=true, and a new confirm=true; exact payload and batch bypasses are rejected. The runtime "
+        "downloads a fresh authenticated .bubble export before the write and performs another export read-back after it."
+    ),
     "bubble_project_bootstrap": (
         "One-call setup entrypoint for a Bubble project profile. Use it when the user provides or implies a profile "
         "and Bubble app id: it can create or update the local profile, report readiness, and optionally run context "
@@ -882,7 +894,7 @@ LEGACY_CATEGORY_DESCRIPTIONS: tuple[tuple[str, str], ...] = (
         "Create or modify Bubble styles, style conditions, and reusable design-system definitions.",
     ),
     (
-        "create_data_type rename_data_type delete_data_type create_data_field rename_data_field delete_data_field set_data_type_api_exposure list_privacy_rules create_privacy_rule delete_privacy_rule set_privacy_rule",
+        "create_data_type rename_data_type delete_data_type delete_data_type_permanently create_data_field rename_data_field delete_data_field set_data_type_api_exposure list_privacy_rules create_privacy_rule delete_privacy_rule set_privacy_rule",
         "Create or modify Bubble database types, fields, privacy rules, and API exposure settings.",
     ),
     (
@@ -1237,6 +1249,19 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
         field_schema = properties.setdefault(field, _property_schema(field))
         if field in defaults and isinstance(field_schema, dict):
             field_schema.setdefault("default", deepcopy(defaults[field]))
+    if name == "delete_data_type_permanently":
+        properties.pop("write_payload", None)
+        properties.pop("payload", None)
+        properties["data_type_ref"]["description"] = (
+            "Exact internal Bubble data type key already soft-deleted in the same app branch. "
+            "Display-name and fuzzy resolution are not allowed for permanent deletion."
+        )
+        properties["data_type_ref_kind"] = {
+            "type": "string",
+            "enum": ["id"],
+            "default": "id",
+            "description": "Permanent deletion accepts only an exact internal data type id/key.",
+        }
     _apply_visual_create_metadata(name, input_schema, properties)
     _apply_data_field_reference_metadata(name, input_schema, properties)
 
@@ -1332,6 +1357,7 @@ def _documentation_family_for_name(name: str) -> str | None:
             "create_data_type",
             "rename_data_type",
             "delete_data_type",
+            "delete_data_type_permanently",
             "create_data_field",
             "rename_data_field",
             "delete_data_field",
@@ -1480,6 +1506,8 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if name == "rename_data_type":
         return (("profile", "data_type_ref", "new_name"), ("dry_run", "settings_path", "data_type_ref_kind"))
     if name == "delete_data_type":
+        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "data_type_ref_kind", "confirm"))
+    if name == "delete_data_type_permanently":
         return (("profile", "data_type_ref"), ("dry_run", "settings_path", "data_type_ref_kind", "confirm"))
     if name == "create_data_field":
         return (("profile", "data_type_ref", "name", "type"), ("dry_run", "settings_path", "is_list", "optional"))

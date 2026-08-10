@@ -1,4 +1,6 @@
 import json
+import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI, PayloadBuilder
@@ -17,6 +19,39 @@ def first_change(payload: dict, intent_name: str) -> dict:  # type: ignore[type-
 
 def payload_from_dry_run_output(output: str) -> dict:  # type: ignore[type-arg]
     return json.loads(output[output.index("{") :])
+
+
+def write_soft_delete_overlay(
+    path: Path,
+    *,
+    app_id: str = "cli-test",
+    app_version: str = "test",
+    profile: str = "",
+    captured_at: str = "2000-01-01T00:00:00+00:00",
+) -> None:
+    path.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "captured_at": captured_at,
+                        "profile": profile,
+                        "app_id": app_id,
+                        "app_version": app_version,
+                        "source": "delete_data_type",
+                        "changes": [
+                            {
+                                "intent": {"name": "WriteCustom"},
+                                "path_array": ["user_types", "cliente", "%del"],
+                                "body": True,
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
 
 
 def test_delete_data_field_emits_bubble_editor_delete_contract(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
@@ -84,6 +119,457 @@ def test_delete_data_field_resolves_display_name_to_internal_custom_type_key(tmp
     assert changes[0]["body"] is True
     assert changes[1]["path_array"] == ["user_types", "user", "%f3", "teste_delete_custom_enrollment", "%d"]
     assert changes[1]["body"] == "teste_delete - deleted"
+
+
+def test_delete_data_type_permanently_emits_clean_app_contract(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "user_types": {
+                    "cliente": {
+                        "%d": "Cliente",
+                        "%del": True,
+                        "%f3": {},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    overlay_path = tmp_path / "mutation-overlay.json"
+    write_soft_delete_overlay(overlay_path, app_version="feature-a")
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+        app_version="feature-a",
+    )
+
+    assert cli.delete_data_type_permanently("cliente", data_type_ref_kind="id", dry_run=True) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    assert payload["appname"] == "cli-test"
+    assert payload["app_version"] == "feature-a"
+    assert len(payload["changes"]) == 1
+    assert payload["changes"][0]["intent"] == {"name": "CleanApp"}
+    assert payload["changes"][0]["path_array"] == ["user_types", "cliente"]
+    assert payload["changes"][0]["body"] is None
+    assert payload["changes"][0]["version_control_api_version"] == 4
+    assert payload["changes"][0]["changelog_data"] == []
+
+
+def test_delete_data_type_keeps_soft_delete_contract(capsys) -> None:
+    cli = BubbleCLI(appname="cli-test")
+
+    assert cli.delete_data_type("cliente", dry_run=True) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    assert len(payload["changes"]) == 1
+    assert payload["changes"][0]["intent"] == {"name": "WriteCustom"}
+    assert payload["changes"][0]["path_array"] == ["user_types", "cliente", "%del"]
+    assert payload["changes"][0]["body"] is True
+
+
+def test_delete_data_type_permanently_requires_confirmation_for_write(tmp_path, monkeypatch) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%del": True, "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    overlay_path = tmp_path / "mutation-overlay.json"
+    write_soft_delete_overlay(overlay_path)
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+    )
+    dispatched = False
+
+    def fake_dispatch(_payload) -> None:  # type: ignore[no-untyped-def]
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently("cliente", confirm=False, dry_run=False) is False
+    assert dispatched is False
+
+
+def test_delete_data_type_permanently_rejects_truthy_string_confirmation(tmp_path, monkeypatch) -> None:
+    overlay_path = tmp_path / "mutation-overlay.json"
+    write_soft_delete_overlay(overlay_path)
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%del": True, "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+    )
+    dispatched = False
+
+    def fake_dispatch(_payload) -> None:  # type: ignore[no-untyped-def]
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently("cliente", confirm="false", dry_run=False) is False
+    assert dispatched is False
+
+
+def test_delete_data_type_permanently_executes_after_soft_delete_and_confirmation(tmp_path, monkeypatch) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%del": True, "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    overlay_path = tmp_path / "mutation-overlay.json"
+    write_soft_delete_overlay(overlay_path)
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+    )
+    captured_payload = {}
+
+    def fake_dispatch(payload_builder) -> None:  # type: ignore[no-untyped-def]
+        captured_payload.update(payload_builder.build())
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently("cliente", confirm=True, dry_run=False) is True
+    assert captured_payload["changes"][0]["intent"] == {"name": "CleanApp"}
+    assert captured_payload["changes"][0]["path_array"] == ["user_types", "cliente"]
+    assert captured_payload["changes"][0]["body"] is None
+
+
+def test_delete_data_type_permanently_requires_prior_soft_delete(tmp_path, monkeypatch) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="cli-test")
+    dispatched = False
+
+    def fake_dispatch(_payload) -> None:  # type: ignore[no-untyped-def]
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently("cliente", confirm=True, dry_run=False) is False
+    assert dispatched is False
+
+
+def test_delete_data_type_permanently_accepts_successful_soft_delete_overlay(tmp_path, capsys) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    overlay_path = tmp_path / "mutation-overlay.json"
+    write_soft_delete_overlay(overlay_path)
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+    )
+
+    assert cli.delete_data_type_permanently("cliente", dry_run=True) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    assert payload["changes"][0]["path_array"] == ["user_types", "cliente"]
+    assert payload["changes"][0]["intent"] == {"name": "CleanApp"}
+    assert payload["changes"][0]["body"] is None
+
+
+def test_delete_data_type_permanently_rejects_undated_soft_delete_overlay(tmp_path) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%del": True, "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    overlay_path = tmp_path / "mutation-overlay.json"
+    write_soft_delete_overlay(overlay_path, captured_at="")
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+    )
+
+    assert cli.delete_data_type_permanently("cliente", dry_run=True) is False
+
+
+def test_delete_data_type_permanently_uses_capture_time_instead_of_overlay_order(tmp_path) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente restaurado", "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    overlay_path = tmp_path / "mutation-overlay.json"
+    overlay_path.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "captured_at": "2001-01-01T00:00:00+00:00",
+                        "profile": "",
+                        "app_id": "cli-test",
+                        "app_version": "test",
+                        "source": "restore_data_type",
+                        "changes": [
+                            {
+                                "intent": {"name": "WriteCustom"},
+                                "path_array": ["user_types", "cliente", "%del"],
+                                "body": False,
+                            }
+                        ],
+                    },
+                    {
+                        "captured_at": "2000-01-01T00:00:00+00:00",
+                        "profile": "",
+                        "app_id": "cli-test",
+                        "app_version": "test",
+                        "source": "delete_data_type",
+                        "changes": [
+                            {
+                                "intent": {"name": "WriteCustom"},
+                                "path_array": ["user_types", "cliente", "%del"],
+                                "body": True,
+                            }
+                        ],
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+    )
+
+    assert cli.delete_data_type_permanently("cliente", dry_run=True) is False
+
+
+def test_delete_data_type_permanently_rejects_soft_delete_from_another_branch(tmp_path, monkeypatch) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    overlay_path = tmp_path / "mutation-overlay.json"
+    overlay_path.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "captured_at": "2000-01-01T00:00:00+00:00",
+                        "profile": "",
+                        "app_id": "cli-test",
+                        "app_version": "feature-a",
+                        "source": "delete_data_type",
+                        "changes": [
+                            {
+                                "intent": {"name": "WriteCustom"},
+                                "path_array": ["user_types", "cliente", "%del"],
+                                "body": True,
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+        app_version="feature-b",
+    )
+    dispatched = False
+
+    def fake_dispatch(_payload) -> None:  # type: ignore[no-untyped-def]
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently("cliente", confirm=True, dry_run=False) is False
+    assert dispatched is False
+
+
+def test_delete_data_type_permanently_rejects_stale_overlay_after_restore(tmp_path, monkeypatch) -> None:
+    overlay_path = tmp_path / "mutation-overlay.json"
+    overlay_path.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "captured_at": "2000-01-01T00:00:00+00:00",
+                        "profile": "",
+                        "app_id": "cli-test",
+                        "app_version": "test",
+                        "source": "delete_data_type",
+                        "changes": [
+                            {
+                                "intent": {"name": "WriteCustom"},
+                                "path_array": ["user_types", "cliente", "%del"],
+                                "body": True,
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente restaurado", "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+        app_version="test",
+    )
+    dispatched = False
+
+    def fake_dispatch(_payload) -> None:  # type: ignore[no-untyped-def]
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently("cliente", confirm=True, dry_run=False) is False
+    assert dispatched is False
+
+
+def test_delete_data_type_permanently_rejects_overlay_when_fresh_type_is_absent(tmp_path, monkeypatch) -> None:
+    overlay_path = tmp_path / "mutation-overlay.json"
+    write_soft_delete_overlay(overlay_path)
+    app_path = tmp_path / "app.json"
+    app_path.write_text(json.dumps({"user_types": {}}), encoding="utf-8")
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+        app_version="test",
+    )
+    dispatched = False
+
+    def fake_dispatch(_payload) -> None:  # type: ignore[no-untyped-def]
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently("cliente", confirm=True, dry_run=False) is False
+    assert dispatched is False
+
+
+def test_delete_data_type_permanently_rejects_schema_older_than_soft_delete_evidence(tmp_path, monkeypatch) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%del": True, "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    old_timestamp = datetime(1999, 1, 1, tzinfo=timezone.utc).timestamp()
+    os.utime(app_path, (old_timestamp, old_timestamp))
+
+    overlay_path = tmp_path / "mutation-overlay.json"
+    overlay_path.write_text(
+        json.dumps(
+            {
+                "entries": [
+                    {
+                        "captured_at": "2000-01-01T00:00:00+00:00",
+                        "profile": "",
+                        "app_id": "cli-test",
+                        "app_version": "test",
+                        "source": "delete_data_type",
+                        "changes": [
+                            {
+                                "intent": {"name": "WriteCustom"},
+                                "path_array": ["user_types", "cliente", "%del"],
+                                "body": True,
+                            }
+                        ],
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="cli-test",
+        app_version="test",
+    )
+    dispatched = False
+
+    def fake_dispatch(_payload) -> None:  # type: ignore[no-untyped-def]
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently("cliente", confirm=True, dry_run=False) is False
+    assert dispatched is False
+
+
+def test_delete_data_type_permanently_requires_exact_internal_key(tmp_path, monkeypatch) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps({"user_types": {"cliente": {"%d": "Cliente", "%del": True, "%f3": {}}}}),
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="cli-test")
+    dispatched = False
+
+    def fake_dispatch(_payload) -> None:  # type: ignore[no-untyped-def]
+        nonlocal dispatched
+        dispatched = True
+
+    monkeypatch.setattr(cli, "_dispatch_payload", fake_dispatch)
+
+    assert cli.delete_data_type_permanently(
+        "Cliente",
+        data_type_ref_kind="name",
+        confirm=True,
+        dry_run=False,
+    ) is False
+    assert dispatched is False
+
+
+def test_batch_rejects_permanent_data_type_delete(capsys) -> None:
+    cli = BubbleCLI(appname="cli-test")
+
+    assert cli.execute_commands(
+        [
+            {"command": "delete-data-type", "key": "cliente"},
+            {
+                "command": "delete-data-type-permanently",
+                "key": "cliente",
+                "confirm": True,
+            },
+        ],
+        dry_run=True,
+    ) is False
+
+    output = capsys.readouterr().out
+    assert "Unknown command: delete-data-type-permanently" in output
+    assert "Batch complete: 1/2 successful" in output
 
 
 def test_privacy_rule_tools_emit_bubble_editor_contracts(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
