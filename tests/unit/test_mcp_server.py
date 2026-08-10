@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
+
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 import bubble_mcp.server.completion as completion_module
 import bubble_mcp.server.tools as tools_module
@@ -94,6 +96,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_performance_audit"]["inputSchema"]["required"] == ["profile"]
     assert tools["bubble_logs_fetch"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_logs_fetch"]["inputSchema"]["properties"]["app_version"]["default"] == "live"
+    assert tools["bubble_logs_fetch"]["inputSchema"]["properties"]["max_pages"]["maximum"] == 25
     assert "Defaults app_version to live" in tools["bubble_logs_fetch"]["description"]
     assert tools["bubble_workload_usage_by_date"]["inputSchema"]["required"] == ["profile", "start", "end"]
     assert tools["bubble_workload_usage_breakdown"]["inputSchema"]["properties"]["granularity"]["enum"] == [
@@ -1407,6 +1410,84 @@ def test_task_runbook_html_fallback_avoids_generic_create_tools() -> None:
     assert "create_301_redirect" not in names
 
 
+def test_task_runbook_routes_permanent_data_type_delete_to_two_stage_tools() -> None:
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 265,
+            "method": "tools/call",
+            "params": {
+                "name": "bubble_task_runbook",
+                "arguments": {
+                    "task": "exclua definitivamente o data type Cliente",
+                    "profile": "smoke",
+                    "search_limit": 8,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["recipe"] == "data_schema"
+    assert payload["route_intents"] == ["manage_data_schema"]
+    names = [match["name"] for match in payload["tool_search"]["matches"]]
+    assert "delete_data_type" in names
+    assert "delete_data_type_permanently" in names
+    assert any("successful prior delete_data_type" in gate for gate in payload["quality_gates"])
+    assert any("not already soft-deleted" in condition for condition in payload["stop_conditions"])
+    assert any("new user confirmation" in condition for condition in payload["stop_conditions"])
+
+
+def test_permanent_data_type_delete_rejects_exact_payload_bypass() -> None:
+    with pytest.raises(ValueError, match="does not accept write_payload or payload"):
+        tools_module.call_legacy_catalog_tool(
+            "delete_data_type_permanently",
+            {
+                "profile": "smoke",
+                "execute": True,
+                "confirm": True,
+                "write_payload": {
+                    "v": 1,
+                    "appname": "cli-test",
+                    "app_version": "test",
+                    "changes": [
+                        {
+                            "intent": {"name": "CleanApp"},
+                            "path_array": ["user_types", "cliente"],
+                            "body": None,
+                        }
+                    ],
+                },
+            },
+        )
+
+
+def test_editor_write_rejects_body_wrapped_permanent_delete_bypass() -> None:
+    with pytest.raises(ValueError, match="cannot permanently delete data types"):
+        tools_module.call_tool(
+            "bubble_editor_write",
+            {
+                "profile": "smoke",
+                "execute": True,
+                "payload": {
+                    "body": {
+                        "v": 1,
+                        "appname": "cli-test",
+                        "app_version": "test",
+                        "changes": [
+                            {
+                                "intent": {"name": "CleanApp"},
+                                "path_array": ["user_types", "cliente"],
+                                "body": None,
+                            }
+                        ],
+                    }
+                },
+            },
+        )
+
+
 def test_task_runbook_routes_multi_action_edits_to_inline_batch() -> None:
     response = handle_request(
         {
@@ -2659,6 +2740,20 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
     assert "field_name_number" in delete_field_description
     assert "nome_do_campo_tabelarelacional" in delete_field_description
 
+    delete_data_type = tools["delete_data_type"]
+    assert "Soft-delete" in delete_data_type["description"]
+    assert "ask the user" in delete_data_type["description"]
+
+    permanent_delete = tools["delete_data_type_permanently"]
+    assert permanent_delete["inputSchema"]["required"] == ["profile", "data_type_ref"]
+    assert "confirm" in permanent_delete["inputSchema"]["properties"]
+    assert "write_payload" not in permanent_delete["inputSchema"]["properties"]
+    assert "payload" not in permanent_delete["inputSchema"]["properties"]
+    assert permanent_delete["inputSchema"]["properties"]["data_type_ref_kind"]["enum"] == ["id"]
+    assert "Permanently remove" in permanent_delete["description"]
+    assert "only after delete_data_type" in permanent_delete["description"]
+    assert permanent_delete["annotations"]["destructiveHint"] is True
+
     create_event = tools["create_event"]["inputSchema"]
     assert create_event["required"] == ["profile", "context", "event_type"]
     for field in ["only_when_json", "interval_seconds", "element_ref", "event_key"]:
@@ -3122,9 +3217,10 @@ def test_tools_list_includes_full_aria_catalog() -> None:
 
     assert response is not None
     names = {tool["name"] for tool in response["result"]["tools"]}
-    assert len(ARIA_BUBBLE_TOOL_NAMES) == 213
+    assert len(ARIA_BUBBLE_TOOL_NAMES) == 214
     assert set(ARIA_BUBBLE_TOOL_NAMES).issubset(names)
     assert "delete_data_field" in names
+    assert "delete_data_type_permanently" in names
     assert "create_privacy_rule" in names
     assert "set_privacy_rule_field_visibility" in names
     assert "delete_privacy_rule" in names

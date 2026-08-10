@@ -988,8 +988,11 @@ def command_metrics_logs(args: argparse.Namespace) -> int:
             start=args.start,
             end=args.end,
             messages=messages,
+            contains=args.contains or None,
             ascending=not args.descending,
             is_state_ar=not args.no_state_ar,
+            paginate=args.paginate,
+            max_pages=args.max_pages,
             limit=args.limit,
             include_raw=args.include_raw,
         )
@@ -2343,8 +2346,11 @@ def build_parser() -> argparse.ArgumentParser:
     logs_parser.add_argument("--start", required=True)
     logs_parser.add_argument("--end", required=True)
     logs_parser.add_argument("--message", action="append", default=[], help="Log message tag to include. Repeatable.")
+    logs_parser.add_argument("--contains", default="", help="Filter by workflow or action display name.")
     logs_parser.add_argument("--descending", action="store_true")
     logs_parser.add_argument("--no-state-ar", action="store_true")
+    logs_parser.add_argument("--paginate", action="store_true", help="Walk capped log pages across the time window.")
+    logs_parser.add_argument("--max-pages", type=int, default=10, help="Pagination request limit (1-25).")
     logs_parser.add_argument("--limit", type=int, default=100)
     logs_parser.add_argument("--include-raw", action="store_true")
     logs_parser.set_defaults(func=command_metrics_logs)

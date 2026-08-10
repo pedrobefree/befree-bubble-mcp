@@ -408,6 +408,8 @@ def resolve_context_root_id(name: str, context: BubbleProjectContext | None = No
                 or str(node.metadata.get("key") or "") == target
             ):
                 root_id = node.metadata.get("root_id") or node.metadata.get("root")
+                if root_id is None:
+                    return None
                 return str(root_id).strip() or None
     return None
 
