@@ -574,8 +574,11 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "into workload families such as workflow, searches, or editor categories. Read-only."
     ),
     "bubble_logs_fetch": (
-        "Fetch Bubble Jetstream logs from the editor for a selected app/profile/time window. Defaults app_version "
-        "to live for production performance diagnostics unless explicitly overridden. Read-only."
+        "Fetch Bubble Jetstream logs from the editor for a selected app/profile/time window. Pass 'contains' with "
+        "the workflow name when chasing a specific workflow: busy apps return 0 rows without it, and the endpoint "
+        "answers HTTP 200 with an empty list rather than an error. Responses cap at 10000 rows and there is "
+        "no offset/cursor parameter, so pass paginate=true to cover a whole window. Defaults app_version to "
+        "live for production performance diagnostics unless explicitly overridden. Read-only."
     ),
     "bubble_plan_usage_get": (
         "Read current Bubble plan usage for the selected profile/app from the direct editor endpoint. Read-only."

@@ -95,6 +95,7 @@ def test_tools_list_includes_profile_list() -> None:
     assert tools["bubble_performance_audit"]["inputSchema"]["required"] == ["profile"]
     assert tools["bubble_logs_fetch"]["annotations"]["readOnlyHint"] is True
     assert tools["bubble_logs_fetch"]["inputSchema"]["properties"]["app_version"]["default"] == "live"
+    assert tools["bubble_logs_fetch"]["inputSchema"]["properties"]["max_pages"]["maximum"] == 25
     assert "Defaults app_version to live" in tools["bubble_logs_fetch"]["description"]
     assert tools["bubble_workload_usage_by_date"]["inputSchema"]["required"] == ["profile", "start", "end"]
     assert tools["bubble_workload_usage_breakdown"]["inputSchema"]["properties"]["granularity"]["enum"] == [

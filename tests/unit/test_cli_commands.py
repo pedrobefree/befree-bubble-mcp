@@ -21,6 +21,39 @@ def payload_from_dry_run_output(output: str) -> dict:  # type: ignore[type-arg]
     return json.loads(output[output.index("{") :])
 
 
+def test_cli_metrics_logs_forwards_filter_and_pagination(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
+    captured: dict[str, object] = {}
+
+    def fake_fetch_jetstream_logs(**kwargs):  # type: ignore[no-untyped-def]
+        captured.update(kwargs)
+        return {"ok": True}
+
+    monkeypatch.setattr(cli_module, "fetch_jetstream_logs", fake_fetch_jetstream_logs)
+
+    assert main(
+        [
+            "metrics",
+            "logs",
+            "--profile",
+            "smoke",
+            "--start",
+            "2026-04-11T00:00:00.000Z",
+            "--end",
+            "2026-04-11T01:00:00.000Z",
+            "--contains",
+            "Fast_Start",
+            "--paginate",
+            "--max-pages",
+            "7",
+        ]
+    ) == 0
+
+    assert json.loads(capsys.readouterr().out)["ok"] is True
+    assert captured["contains"] == "Fast_Start"
+    assert captured["paginate"] is True
+    assert captured["max_pages"] == 7
+
+
 def write_soft_delete_overlay(
     path: Path,
     *,
