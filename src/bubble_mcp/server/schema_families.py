@@ -1049,6 +1049,7 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Maximum requests a paginated log query may issue. Reaching it sets truncated=true and reports how far the response actually covers in 'covered_until'.",
         default=10,
         minimum=1,
+        maximum=25,
     ),
     "is_state_ar": _prop(
         "boolean",

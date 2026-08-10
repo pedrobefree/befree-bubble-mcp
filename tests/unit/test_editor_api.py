@@ -3,11 +3,14 @@ from typing import Any
 
 import pytest
 
+import bubble_mcp.execution.editor_api as editor_api
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.execution.client import BubbleEditorClient, HttpResponse
 
 from bubble_mcp.execution.editor_api import (
     BubbleEditorApiClient,
+    JETSTREAM_MAX_PAGES,
+    _jetstream_row_key,
     confirm_bubble_branch_merge,
     create_bubble_branch,
     delete_bubble_branch,
@@ -673,6 +676,8 @@ def test_logs_flag_the_ten_thousand_row_cap(tmp_path, monkeypatch) -> None:  # t
 
     assert result["row_count"] == 10000
     assert result["paginated"] is False
+    assert result["truncated"] is True
+    assert result["stop_reason"] == "row_cap_reached"
     assert any("paginate=true" in hint for hint in result["hints"])
 
 
@@ -693,11 +698,14 @@ def _row(created: int, eid: str) -> dict[str, Any]:
     return {"created": created, "elastic_id": eid, "tags": {"message": "running event", "fiber_id": eid}}
 
 
+LOG_START_MS = 1_775_865_600_000
+
+
 def test_logs_paginate_walks_the_window_and_drops_the_overlap(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _store_profile_and_session(tmp_path, monkeypatch)
-    full_page = [_row(1000 + i, f"a{i}") for i in range(10000)]
+    full_page = [_row(LOG_START_MS + i, f"a{i}") for i in range(10000)]
     # Bubble's `after` is fuzzy: the next page repeats the last row of the previous one.
-    second_page = [full_page[-1]] + [_row(20000 + i, f"b{i}") for i in range(5)]
+    second_page = [full_page[-1]] + [_row(LOG_START_MS + 20000 + i, f"b{i}") for i in range(5)]
     calls: list[dict[str, Any]] = []
 
     result = fetch_jetstream_logs(
@@ -718,13 +726,16 @@ def test_logs_paginate_walks_the_window_and_drops_the_overlap(tmp_path, monkeypa
     assert result["stop_reason"] == "reached_end_of_window"
     assert result["truncated"] is False
     assert result["row_count"] == 10005  # 10000 + 5 fresh, the repeated row dropped
-    assert result["covered_until_epoch_ms"] == 20004
+    assert result["covered_until_epoch_ms"] == LOG_START_MS + 20004
     assert "hints" not in result
 
 
 def test_logs_paginate_stops_at_max_pages_and_reports_coverage(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _store_profile_and_session(tmp_path, monkeypatch)
-    pages = [[_row(1_000_000 * p + i, f"p{p}-{i}") for i in range(10000)] for p in range(1, 5)]
+    pages = [
+        [_row(LOG_START_MS + (1_000_000 * p) + i, f"p{p}-{i}") for i in range(10000)]
+        for p in range(1, 5)
+    ]
     calls: list[dict[str, Any]] = []
 
     result = fetch_jetstream_logs(
@@ -741,14 +752,15 @@ def test_logs_paginate_stops_at_max_pages_and_reports_coverage(tmp_path, monkeyp
     assert result["pages_fetched"] == 3
     assert result["truncated"] is True
     assert result["stop_reason"] == "hit_max_pages"
-    assert result["covered_until"].startswith("1970-")  # synthetic epochs, but the field is populated
+    assert result["covered_until"].startswith("2026-04-11T00:50:")
     assert any("max_pages" in hint for hint in result["hints"])
 
 
 def test_logs_paginate_bails_when_the_cursor_cannot_advance(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _store_profile_and_session(tmp_path, monkeypatch)
+    monkeypatch.setattr(editor_api, "JETSTREAM_ROW_CAP", 2)
     # A single millisecond holding a whole page would otherwise loop forever.
-    stuck = [_row(500, f"s{i}") for i in range(10000)]
+    stuck = [_row(LOG_START_MS + 500, f"s{i}") for i in range(2)]
     calls: list[dict[str, Any]] = []
 
     result = fetch_jetstream_logs(
@@ -763,7 +775,133 @@ def test_logs_paginate_bails_when_the_cursor_cannot_advance(tmp_path, monkeypatc
 
     assert len(calls) == 2
     assert result["stop_reason"] == "no_progress_same_millisecond"
+    assert result["ok"] is False
+    assert result["truncated"] is True
+    assert result["reason"] == "pagination_incomplete"
     assert any("could not advance" in hint for hint in result["hints"])
+
+
+def test_logs_paginate_rejects_a_backward_cursor(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    monkeypatch.setattr(editor_api, "JETSTREAM_ROW_CAP", 2)
+    backward_page = [_row(LOG_START_MS - 2, "a"), _row(LOG_START_MS - 1, "b")]
+    calls: list[dict[str, Any]] = []
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        paginate=True,
+        client=_paged_log_transport([backward_page], calls),
+    )
+
+    assert len(calls) == 1
+    assert result["ok"] is False
+    assert result["truncated"] is True
+    assert result["stop_reason"] == "invalid_cursor_timestamp"
+
+
+def test_logs_paginate_rejects_unrecognized_success_response(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+
+    def transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        return HttpResponse(status=200, body=json.dumps({"unexpected": []}), headers={})
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        contains="Fast_Start",
+        paginate=True,
+        include_raw=True,
+        client=BubbleEditorApiClient(transport=transport),
+    )
+
+    assert result["ok"] is False
+    assert result["reason"] == "pagination_incomplete"
+    assert result["truncated"] is True
+    assert result["stop_reason"] == "unrecognized_response"
+    assert result["pagination_terminal_response"] == {"unexpected": []}
+
+
+def test_logs_paginate_marks_missing_cursor_as_incomplete(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    monkeypatch.setattr(editor_api, "JETSTREAM_ROW_CAP", 2)
+
+    def transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        rows = [{"elastic_id": "a"}, {"elastic_id": "b"}]
+        return HttpResponse(status=200, body=json.dumps({"rows": rows}), headers={})
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        paginate=True,
+        client=BubbleEditorApiClient(transport=transport),
+    )
+
+    assert result["ok"] is False
+    assert result["truncated"] is True
+    assert result["stop_reason"] == "missing_cursor_timestamp"
+    assert result["reason"] == "pagination_incomplete"
+
+
+def test_logs_paginate_preserves_later_page_failure(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+    monkeypatch.setattr(editor_api, "JETSTREAM_ROW_CAP", 2)
+    calls = 0
+
+    def transport(url, body, headers, timeout):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            rows = [_row(LOG_START_MS, "a"), _row(LOG_START_MS + 1, "b")]
+            return HttpResponse(status=200, body=json.dumps({"rows": rows}), headers={})
+        return HttpResponse(status=500, body=json.dumps({"error": "upstream failed"}), headers={})
+
+    result = fetch_jetstream_logs(
+        profile="dev",
+        start="2026-04-11T00:00:00.000Z",
+        end="2026-04-11T01:00:00.000Z",
+        paginate=True,
+        include_raw=True,
+        client=BubbleEditorApiClient(transport=transport),
+    )
+
+    assert calls == 2
+    assert result["ok"] is False
+    assert result["truncated"] is True
+    assert result["stop_reason"] == "request_failed"
+    assert result["row_count"] == 2
+    assert result["pagination_terminal_response"] == {"error": "upstream failed"}
+
+
+def test_logs_paginate_enforces_maximum_page_limit(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _store_profile_and_session(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match=rf"between 1 and {JETSTREAM_MAX_PAGES}"):
+        fetch_jetstream_logs(
+            profile="dev",
+            start="2026-04-11T00:00:00.000Z",
+            end="2026-04-11T01:00:00.000Z",
+            paginate=True,
+            max_pages=JETSTREAM_MAX_PAGES + 1,
+        )
+
+
+def test_jetstream_row_key_preserves_distinct_rows_without_elastic_id() -> None:
+    first = {
+        "created": LOG_START_MS,
+        "tags": {"fiber_id": "fiber", "message": "running action"},
+        "data": {"display": "Do a thing", "value": 1},
+    }
+    second = {
+        "created": LOG_START_MS,
+        "tags": {"fiber_id": "fiber", "message": "running action"},
+        "data": {"display": "Do a thing", "value": 2},
+    }
+
+    assert _jetstream_row_key(first) != _jetstream_row_key(second)
 
 
 def test_secondary_metrics_endpoints_post_expected_payloads(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

@@ -1074,6 +1074,18 @@ JETSTREAM_ROW_CAP = 10000
 
 
 JETSTREAM_DEFAULT_MAX_PAGES = 10
+JETSTREAM_MAX_PAGES = 25
+
+
+JETSTREAM_INCOMPLETE_STOP_REASONS = frozenset(
+    {
+        "request_failed",
+        "unrecognized_response",
+        "missing_cursor_timestamp",
+        "no_progress_same_millisecond",
+        "invalid_cursor_timestamp",
+    }
+)
 
 
 def _jetstream_rows(result: dict[str, Any]) -> list[Any] | None:
@@ -1100,13 +1112,17 @@ def _jetstream_row_key(row: Any) -> str:
     """
     if not isinstance(row, dict):
         return json.dumps(row, sort_keys=True, default=str)
-    tags = row.get("tags") if isinstance(row.get("tags"), dict) else {}
-    data = row.get("data") if isinstance(row.get("data"), dict) else {}
-    return json.dumps(
-        [row.get("created"), row.get("elastic_id"), tags.get("fiber_id"), tags.get("message"), data.get("display")],
-        sort_keys=True,
-        default=str,
-    )
+    elastic_id = row.get("elastic_id")
+    if elastic_id not in (None, ""):
+        return json.dumps(["elastic_id", elastic_id], default=str)
+    return json.dumps(row, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _bounded_jetstream_max_pages(value: int) -> int:
+    pages = int(value)
+    if pages < 1 or pages > JETSTREAM_MAX_PAGES:
+        raise ValueError(f"max_pages must be between 1 and {JETSTREAM_MAX_PAGES}.")
+    return pages
 
 
 def _jetstream_hints(
@@ -1126,11 +1142,17 @@ def _jetstream_hints(
             "list rather than an error. Note that 'messages' filters log message TYPES, not names."
         )
     if truncated and paginated:
-        hints.append(
-            f"Stopped at max_pages ({stop_reason}); the window is only partially covered. Raise "
-            "max_pages, narrow the time window, or pass a more specific 'contains' term. Read "
-            "'covered_until' to see where this response actually ends."
-        )
+        if stop_reason == "hit_max_pages":
+            hints.append(
+                f"Stopped at max_pages ({stop_reason}); the window is only partially covered. Raise "
+                "max_pages, narrow the time window, or pass a more specific 'contains' term. Read "
+                "'covered_until' to see where this response actually ends."
+            )
+        else:
+            hints.append(
+                f"Pagination stopped before the time window was fully covered ({stop_reason}). "
+                "Treat the returned rows as partial and inspect the structured error fields."
+            )
     elif rows is not None and rows >= JETSTREAM_ROW_CAP and not paginated:
         hints.append(
             f"Bubble capped this response at {JETSTREAM_ROW_CAP} rows, so the window is truncated "
@@ -1164,7 +1186,6 @@ def _fetch_jetstream_pages(
     merged: list[Any] = []
     seen: set[str] = set()
     after = payload["after"]
-    previous_last: int | None = None
     pages = 0
     stop_reason = "reached_end_of_window"
 
@@ -1191,10 +1212,12 @@ def _fetch_jetstream_pages(
         last = rows[-1].get("created") if isinstance(rows[-1], dict) else None
         if not isinstance(last, (int, float)):
             return first_result, merged, pages, "missing_cursor_timestamp"
-        if previous_last is not None and last == previous_last:
+        next_after = int(last)
+        if next_after == after:
             return first_result, merged, pages, "no_progress_same_millisecond"
-        previous_last = int(last)
-        after = int(last)
+        if next_after < after or next_after > before:
+            return first_result, merged, pages, "invalid_cursor_timestamp"
+        after = next_after
         stop_reason = "hit_max_pages"
 
     return first_result or {}, merged, pages, stop_reason
@@ -1240,8 +1263,10 @@ def fetch_jetstream_logs(
 
     api = _client(client)
     pagination: dict[str, Any] = {}
+    rows: int | None
+    stop_reason: str | None
     if paginate:
-        pages_allowed = max(1, int(max_pages))
+        pages_allowed = _bounded_jetstream_max_pages(max_pages)
         result, rows_list, pages, stop_reason = _fetch_jetstream_pages(
             client=api,
             payload=payload,
@@ -1250,7 +1275,15 @@ def fetch_jetstream_logs(
             before=before,
             max_pages=pages_allowed,
         )
-        truncated = stop_reason == "hit_max_pages"
+        truncated = stop_reason != "reached_end_of_window"
+        terminal_response = result.get("response")
+        if stop_reason in JETSTREAM_INCOMPLETE_STOP_REASONS and result.get("ok"):
+            result = {
+                **result,
+                "ok": False,
+                "error": f"Jetstream pagination stopped before completion ({stop_reason}).",
+                "reason": "pagination_incomplete",
+            }
         # Re-shape the merged pages as a single response so the output stays consistent.
         result = {**result, "response": {"rows": rows_list}}
         rows = len(rows_list)
@@ -1267,9 +1300,14 @@ def fetch_jetstream_logs(
     else:
         result = api.post("/appeditor/get_jetstream_logs", payload, session, profile=profile)
         rows = _jetstream_row_count(result)
-        truncated = False
-        stop_reason = None
-        pagination = {"paginated": False}
+        truncated = rows is not None and rows >= JETSTREAM_ROW_CAP
+        stop_reason = "row_cap_reached" if truncated else None
+        terminal_response = None
+        pagination = {
+            "paginated": False,
+            "stop_reason": stop_reason,
+            "truncated": truncated,
+        }
 
     compact = _compact_result(result, include_raw=include_raw, limit=limit)
     hints = _jetstream_hints(
@@ -1290,6 +1328,8 @@ def fetch_jetstream_logs(
         "row_count": rows,
         **pagination,
     }
+    if include_raw and terminal_response is not None and stop_reason in JETSTREAM_INCOMPLETE_STOP_REASONS:
+        out["pagination_terminal_response"] = terminal_response
     if hints:
         out["hints"] = hints
     return out
