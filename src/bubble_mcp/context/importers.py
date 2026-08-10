@@ -16,10 +16,13 @@ def _obj(value: Any) -> dict[str, Any]:
 def _label(record: dict[str, Any], fallback: str) -> str:
     props = _obj(record.get("%p") or record.get("properties"))
     return str(
-        props.get("%nm")
+        record.get("display")
+        or props.get("display")
+        or props.get("%nm")
         or props.get("name")
         or record.get("name")
         or record.get("%nm")
+        or record.get("%d")
         or record.get("label")
         or fallback
     )
@@ -40,8 +43,66 @@ def _root_id(record: dict[str, Any]) -> str | None:
     return str(value).strip() or None
 
 
+def _deleted_value(record: dict[str, Any]) -> bool | None:
+    props = _obj(record.get("%p") or record.get("properties"))
+    for container in (record, props):
+        for key in ("deleted", "%del"):
+            if key not in container:
+                continue
+            value = container[key]
+            if isinstance(value, str):
+                return value.strip().lower() == "true"
+            return bool(value)
+    return None
+
+
 def _encoded_path_to_array(path: str) -> list[str]:
     return [part for part in str(path or "").split(".") if part]
+
+
+def _reusable_name_by_id(app: dict[str, Any]) -> dict[str, str]:
+    raw_index = _obj(_obj(app.get("_index")).get("custom_name_to_id"))
+    names: dict[str, str] = {}
+    for raw in raw_index.values():
+        item = _obj(raw)
+        reusable_id = str(item.get("custom_id") or item.get("id") or "").strip()
+        name = str(item.get("display") or item.get("name") or "").strip()
+        if reusable_id and name:
+            names[reusable_id] = name
+    return names
+
+
+def _reusable_ids_from_path_index(app: dict[str, Any]) -> set[str]:
+    id_to_path = _obj(_obj(app.get("_index")).get("id_to_path"))
+    reusable_ids: set[str] = set()
+    reusable_roots = {"%ed", "element_definitions", "CustomDefinition", "custom_definitions"}
+    for encoded_path in id_to_path.values():
+        parts = _encoded_path_to_array(str(encoded_path))
+        if len(parts) >= 2 and parts[0] in reusable_roots and parts[1] != "length":
+            reusable_ids.add(parts[1])
+    return reusable_ids
+
+
+def _reusable_definitions(app: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    definitions: dict[str, dict[str, Any]] = {}
+    for source_key in (
+        "element_definitions",
+        "%ed",
+        "CustomDefinition",
+        "custom_definitions",
+        "reusables",
+    ):
+        for reusable_id, raw in _obj(app.get(source_key)).items():
+            if reusable_id == "length" or not isinstance(raw, dict):
+                continue
+            current = definitions.setdefault(str(reusable_id), {})
+            for key, value in raw.items():
+                if key not in current or current[key] in (None, "", {}, []):
+                    current[key] = value
+
+    for reusable_id in _reusable_ids_from_path_index(app):
+        definitions.setdefault(reusable_id, {"_inferred_from_index": True})
+    return definitions
 
 
 def _walk_elements(
@@ -71,6 +132,7 @@ def _walk_elements(
                     "path_array": element_path,
                     "properties": props,
                     "children": _element_children(raw),
+                    "deleted": _deleted_value(raw),
                 },
             )
         )
@@ -106,11 +168,12 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
         page_id = str(page.get("id") or page_index.get(page_name) or page_name or "")
         if not page_id:
             continue
-        node_id = f"page:{page.get('name') or page_id}"
+        page_label = _label(page, page_id)
+        node_id = f"page:{page_label}"
         nodes.append(
             BubbleContextNode(
                 id=node_id,
-                label=str(page.get("name") or page_id),
+                label=page_label,
                 type="page",
                 metadata={
                     "bubble_id": page_id,
@@ -119,6 +182,7 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                     "properties": _obj(page.get("properties")),
                     "root_id": _root_id(page),
                     "children": [str(key) for key in _obj(page.get("elements")).keys()],
+                    "deleted": _deleted_value(page),
                 },
             )
         )
@@ -137,7 +201,11 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                     id=workflow_node_id,
                     label=_label(_obj(workflow), str(workflow_id)),
                     type="workflow",
-                    metadata={"bubble_id": str(workflow_id), "context": node_id},
+                    metadata={
+                        "bubble_id": str(workflow_id),
+                        "context": node_id,
+                        "deleted": _deleted_value(_obj(workflow)),
+                    },
                 )
             )
             edges.append(BubbleContextEdge(source=node_id, target=workflow_node_id, type="has_workflow"))
@@ -151,12 +219,13 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
         )
         if not reusable_id:
             continue
-        node_id = f"reusable:{reusable.get('name') or reusable_id}"
+        reusable_label = _label(reusable, reusable_id)
+        node_id = f"reusable:{reusable_label}"
         root_key = "%ed" if str(reusable.get("sourceKey") or "").startswith("element") else "%p3"
         nodes.append(
             BubbleContextNode(
                 id=node_id,
-                label=str(reusable.get("name") or reusable_id),
+                label=reusable_label,
                 type="reusable",
                 metadata={
                     "bubble_id": reusable_id,
@@ -165,6 +234,8 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                     "properties": _obj(reusable.get("properties")),
                     "root_id": _root_id(reusable),
                     "children": [str(key) for key in _obj(reusable.get("elements")).keys()],
+                    "inferred_from_index": bool(reusable.get("inferredFromIndex")),
+                    "deleted": _deleted_value(reusable),
                 },
             )
         )
@@ -183,7 +254,11 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                 id=f"datatype:{type_id}",
                 label=_label(_obj(raw), str(type_id)),
                 type="data_type",
-                metadata={"bubble_id": str(type_id), "properties": _obj(raw)},
+                metadata={
+                    "bubble_id": str(type_id),
+                    "properties": _obj(raw),
+                    "deleted": _deleted_value(_obj(raw)),
+                },
             )
         )
 
@@ -193,7 +268,11 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                 id=f"optionset:{option_id}",
                 label=_label(_obj(raw), str(option_id)),
                 type="option_set",
-                metadata={"bubble_id": str(option_id), "properties": _obj(raw)},
+                metadata={
+                    "bubble_id": str(option_id),
+                    "properties": _obj(raw),
+                    "deleted": _deleted_value(_obj(raw)),
+                },
             )
         )
 
@@ -232,6 +311,9 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
         raise ValueError("Bubble export must be a JSON object.")
     raw_app = payload.get("app")
     app = raw_app if isinstance(raw_app, dict) else payload
+    reusable_definitions = _reusable_definitions(app)
+    reusable_names = _reusable_name_by_id(app)
+    id_to_path = _obj(_obj(app.get("_index")).get("id_to_path"))
     crawler_like = {
         "appId": app.get("appname")
         or app.get("app_id")
@@ -250,23 +332,25 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
                 "rootId": _root_id(_obj(value)),
                 "elements": _obj(_obj(value).get("%el") or _obj(value).get("elements")),
                 "workflows": _obj(_obj(value).get("%wf") or _obj(value).get("workflows")),
+                "deleted": _deleted_value(_obj(value)),
             }
             for key, value in _obj(app.get("pages")).items()
         ],
         "reusables": [
             {
                 "id": key,
-                "name": _label(_obj(value), key),
+                "name": _label(_obj(value), reusable_names.get(key, key)),
                 "sourceKey": "element_definitions",
                 "properties": _obj(_obj(value).get("%p") or _obj(value).get("properties")),
                 "rootId": _root_id(_obj(value)),
                 "elements": _obj(_obj(value).get("%el") or _obj(value).get("elements")),
                 "workflows": _obj(_obj(value).get("%wf") or _obj(value).get("workflows")),
+                "inferredFromIndex": bool(_obj(value).get("_inferred_from_index")),
+                "deleted": _deleted_value(_obj(value)),
             }
-            for key, value in _obj(
-                app.get("element_definitions") or app.get("reusables")
-            ).items()
+            for key, value in reusable_definitions.items()
         ],
+        "idToPath": id_to_path,
         "dataTypes": _obj(app.get("data_types") or app.get("dataTypes") or app.get("user_types")),
         "optionSets": _obj(app.get("option_sets") or app.get("optionSets")),
         "settings": _obj(app.get("settings")),
