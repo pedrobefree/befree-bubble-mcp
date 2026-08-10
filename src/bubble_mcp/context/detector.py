@@ -71,6 +71,39 @@ def default_bubble_modules_dir(profile: str, app_id: str) -> Path:
     return context_cache_dir() / safe_profile / "bubble_modules" / safe_app
 
 
+def refresh_bubble_export(*, profile: str, app_id: str, app_version: str) -> Path:
+    """Download a fresh authoritative .bubble export without browser fallback."""
+
+    session = load_session(profile)
+    if session is None:
+        raise ValueError(f"No Bubble session stored for profile '{profile}'.")
+    attempts: list[dict[str, Any]] = []
+    downloaded = _try_download_bubble_export(
+        session=session,
+        app_id=app_id,
+        app_version=app_version,
+        profile=profile,
+        attempts=attempts,
+    )
+    if downloaded is None:
+        raise ValueError(
+            "A fresh .bubble export is required for permanent data type deletion; "
+            "the authenticated export download failed."
+        )
+    _split_bubble_export(
+        downloaded,
+        app_id=app_id,
+        modules_dir=default_bubble_modules_dir(profile, app_id),
+        attempts=attempts,
+    )
+    _save_profile_app_json_path(
+        profile=profile,
+        app_id=app_id,
+        app_json_path=downloaded,
+    )
+    return downloaded
+
+
 def detect_project_context(
     *,
     profile: str,

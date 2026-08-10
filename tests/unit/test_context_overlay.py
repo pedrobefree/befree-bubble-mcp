@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
@@ -26,12 +27,15 @@ def test_load_context_with_overlay_adds_pages_and_elements(tmp_path, monkeypatch
             },
         ],
     }
-    record_mutation_overlay(
+    overlay_path = record_mutation_overlay(
         profile="smoke",
         app_id="synthetic-app",
         payload=payload,
         source="pytest",
     )
+    assert overlay_path is not None
+    overlay = json.loads(overlay_path.read_text(encoding="utf-8"))
+    assert overlay["entries"][0]["app_version"] == "test"
 
     context = load_context_with_overlay(FIXTURE, profile="smoke", app_id="synthetic-app")
 

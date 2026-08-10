@@ -63,6 +63,7 @@ def record_mutation_overlay(
             "captured_at": datetime.now(timezone.utc).isoformat(),
             "profile": profile,
             "app_id": app_id,
+            "app_version": str(payload.get("app_version") or "test"),
             "source": source,
             "response": response if isinstance(response, dict) else None,
             "changes": json.loads(json.dumps(changes)),

@@ -30,6 +30,7 @@ import unicodedata
 import shutil
 import subprocess
 import tempfile
+from datetime import datetime
 from urllib.parse import urljoin
 from typing import Optional, Dict, List, Any, Tuple, Union
 try:
@@ -401,7 +402,8 @@ class BubbleCLI:
         profile_name: Optional[str] = None,
         nl_config: Optional[Dict[str, Any]] = None,
         render_config: Optional[Dict[str, Any]] = None,
-        style_defaults: Optional[Dict[str, Any]] = None
+        style_defaults: Optional[Dict[str, Any]] = None,
+        app_version: Optional[str] = None
     ):
         app_json_path = self._remap_legacy_runtime_path(app_json_path)
         consolelog_json_path = self._remap_legacy_runtime_path(consolelog_json_path)
@@ -426,6 +428,7 @@ class BubbleCLI:
         self._cli_cache = self._load_cli_cache()
 
         self.profile_name = profile_name
+        self.app_version = str(app_version or "test")
         self.webhook_url = webhook_url or os.getenv("BUBBLE_CLI_WEBHOOK_URL", "local://bubble-mcp")
         self.appname = appname or os.getenv("BUBBLE_CLI_APPNAME", "synthetic-page")
         self.nl_config = nl_config or {}
@@ -27891,7 +27894,9 @@ class BubbleCLI:
                     deleted = font_data.get("%del", False)
                     status = " [DELETED]" if deleted else ""
                     desc_part = f" - {description}" if description else ""
-        logger.log(f"   {order}. {name}: {font_family}{desc_part} ({font_id}){status}")
+                    logger.log(
+                        f"   {order}. {name}: {font_family}{desc_part} ({font_id}){status}"
+                    )
 
         return True
 
@@ -56557,6 +56562,22 @@ class BubbleCLI:
 
     def _get_context_root_for_workflows(self, context_id: str, context_type: str) -> Optional[Dict[str, Any]]:
         context_root_token = self._resolve_context_write_root_token(context_id, context_type)
+        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        raw_bucket = data.get(self._workflow_prefix(context_type))
+        if isinstance(raw_bucket, dict):
+            raw_root = raw_bucket.get(context_root_token)
+            if isinstance(raw_root, dict) and (
+                isinstance(raw_root.get("%wf"), dict)
+                or isinstance(raw_root.get("workflows"), dict)
+            ):
+                return raw_root
+            if context_root_token != str(context_id or "").strip():
+                raw_root = raw_bucket.get(str(context_id or "").strip())
+                if isinstance(raw_root, dict) and (
+                    isinstance(raw_root.get("%wf"), dict)
+                    or isinstance(raw_root.get("workflows"), dict)
+                ):
+                    return raw_root
         root = self.discovery._get_context_root(context_root_token, context_type)
         if isinstance(root, dict):
             return root
@@ -62161,6 +62182,135 @@ class BubbleCLI:
         ok = self._send_schema_payload(pb, dry_run, f"Data type '{data_type_key}' deleted.")
         if ok and not dry_run:
             self._schema_user_types_cache().pop(data_type_key, None)
+            self._save_cli_cache()
+        return ok
+
+    def _data_type_is_soft_deleted(self, data_type_key: str, require_fresh_schema: bool = False) -> bool:
+        overlay_path = getattr(self.discovery, "mutation_overlay_path", None)
+        if not overlay_path or not os.path.exists(overlay_path):
+            return False
+        try:
+            with open(overlay_path, "r", encoding="utf-8") as overlay_file:
+                overlay = json.load(overlay_file)
+        except Exception:
+            return False
+
+        entries = overlay.get("entries") if isinstance(overlay, dict) else None
+        if not isinstance(entries, list):
+            return False
+        type_path = ["user_types", data_type_key]
+        marker_path = [*type_path, "%del"]
+        relevant_states: List[Tuple[float, int, int, bool, str, str]] = []
+        for entry_index, overlay_entry in enumerate(entries):
+            if not isinstance(overlay_entry, dict):
+                continue
+            if str(overlay_entry.get("profile") or "") != str(self.profile_name or ""):
+                continue
+            if str(overlay_entry.get("app_id") or "") != self.appname:
+                continue
+            if str(overlay_entry.get("app_version") or "") != self.app_version:
+                continue
+            changes = overlay_entry.get("changes")
+            if not isinstance(changes, list):
+                continue
+            captured_at = str(overlay_entry.get("captured_at") or "").strip()
+            try:
+                captured_timestamp = datetime.fromisoformat(captured_at.replace("Z", "+00:00")).timestamp()
+            except (ValueError, OSError):
+                captured_timestamp = 0.0
+            for change_index, change in enumerate(changes):
+                if not isinstance(change, dict):
+                    continue
+                path_array = change.get("path_array")
+                intent = change.get("intent") if isinstance(change.get("intent"), dict) else {}
+                intent_name = str(intent.get("name") or "")
+                state: Optional[bool] = None
+                if path_array == marker_path:
+                    state = change.get("body") is True
+                elif path_array == type_path:
+                    body = change.get("body")
+                    if intent_name == "CleanApp" and body is None:
+                        state = False
+                    elif isinstance(body, dict):
+                        state = body.get("%del") is True
+                if state is None:
+                    continue
+                if captured_timestamp <= 0:
+                    return False
+                relevant_states.append(
+                    (
+                        captured_timestamp,
+                        entry_index,
+                        change_index,
+                        state,
+                        str(overlay_entry.get("source") or ""),
+                        intent_name,
+                    )
+                )
+
+        if not relevant_states:
+            return False
+        latest_state = max(relevant_states, key=lambda item: (item[0], item[1], item[2]))
+        latest_capture, _, _, soft_deleted, source, intent_name = latest_state
+        if not soft_deleted or source != "delete_data_type" or intent_name != "WriteCustom":
+            return False
+
+        if require_fresh_schema:
+            source_path = self.discovery.app_json_path
+            if (
+                not source_path
+                or not os.path.exists(source_path)
+                or os.path.getmtime(source_path) <= latest_capture
+            ):
+                return False
+            current_discovery = PathDiscovery(source_path, None, None, None)
+            current_data = current_discovery.data if isinstance(current_discovery.data, dict) else {}
+            current_types = current_data.get("user_types")
+            current_entry = current_types.get(data_type_key) if isinstance(current_types, dict) else None
+            return isinstance(current_entry, dict) and current_entry.get("%del") is True
+        return True
+
+    def delete_data_type_permanently(
+        self,
+        data_type_key: str,
+        data_type_ref_kind: str = "auto",
+        confirm: bool = False,
+        dry_run: bool = False
+    ) -> bool:
+        """Permanently remove a Bubble Data Type through the CleanApp contract."""
+        ref_kind = (data_type_ref_kind or "auto").strip().lower()
+        if ref_kind not in {"auto", "id", "key"}:
+            logger.error("Permanent data type deletion requires the exact internal data type key.")
+            return False
+        resolved_key = str(data_type_key or "").strip()
+        if resolved_key.lower().startswith("custom."):
+            resolved_key = resolved_key.split(".", 1)[1].strip()
+        if not resolved_key:
+            logger.error("Permanent data type deletion requires the exact internal data type key.")
+            return False
+        if not self._data_type_is_soft_deleted(resolved_key, require_fresh_schema=not dry_run):
+            logger.error(
+                f"Data type '{resolved_key}' must be soft-deleted with delete_data_type before permanent deletion."
+            )
+            return False
+        if not dry_run and confirm is not True:
+            logger.error("Permanent data type deletion requires confirm=true.")
+            return False
+
+        pb = PayloadBuilder(appname=self.appname, app_version=self.app_version)
+        self._add_schema_change(
+            pb,
+            "CleanApp",
+            ["user_types", resolved_key],
+            None
+        )
+        ok = self._send_schema_payload(
+            pb,
+            dry_run,
+            f"Data type '{resolved_key}' permanently deleted."
+        )
+        if ok and not dry_run:
+            self._schema_user_types_cache().pop(resolved_key, None)
             self._save_cli_cache()
         return ok
 
@@ -68455,6 +68605,29 @@ Examples:
     delete_data_type_parser.add_argument('key', help='Data type key')
     delete_data_type_parser.add_argument('--dry-run', action='store_true', help='Preview payload without sending')
 
+    delete_data_type_permanently_parser = subparsers.add_parser(
+        'delete-data-type-permanently',
+        help='Permanently delete a Bubble Data Type'
+    )
+    delete_data_type_permanently_parser.add_argument('key', help='Exact internal data type key')
+    delete_data_type_permanently_parser.add_argument(
+        '--ref-kind',
+        dest='data_type_ref_kind',
+        choices=['id', 'key'],
+        default='id',
+        help='Exact internal reference kind'
+    )
+    delete_data_type_permanently_parser.add_argument(
+        '--confirm',
+        action='store_true',
+        help='Confirm irreversible deletion'
+    )
+    delete_data_type_permanently_parser.add_argument(
+        '--dry-run',
+        action='store_true',
+        help='Preview payload without sending'
+    )
+
     create_data_field_parser = subparsers.add_parser('create-data-field', help='Create a field in a data type')
     create_data_field_parser.add_argument('data_type_key', help='Data type key (e.g. user)')
     create_data_field_parser.add_argument('field_name', help='Field display name')
@@ -69550,7 +69723,8 @@ Examples:
         profile_name=profile_cfg.get("name"),
         nl_config=nl_config,
         render_config=render_config,
-        style_defaults=profile_cfg.get("style_defaults")
+        style_defaults=profile_cfg.get("style_defaults"),
+        app_version=profile_cfg.get("app_version") or "test"
     )
     global_element_kwargs = _extract_global_element_kwargs(args)
     common_surface_kwargs = _extract_common_surface_kwargs(args)
@@ -74463,6 +74637,13 @@ Examples:
     elif args.command == 'delete-data-type':
         success = cli.delete_data_type(
             args.key,
+            dry_run=args.dry_run
+        )
+    elif args.command == 'delete-data-type-permanently':
+        success = cli.delete_data_type_permanently(
+            args.key,
+            data_type_ref_kind=args.data_type_ref_kind,
+            confirm=args.confirm,
             dry_run=args.dry_run
         )
     elif args.command == 'create-data-field':

@@ -56,7 +56,7 @@ from bubble_mcp.execution.editor_api import (
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
-from bubble_mcp.execution.structural import validate_structure
+from bubble_mcp.execution.structural import permanent_data_type_delete_targets, validate_structure
 from bubble_mcp.extensions.store import (
     disable_extension,
     enable_extension,
@@ -1507,6 +1507,12 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
         write_payload = args.get("payload")
         if not isinstance(write_payload, dict):
             raise ValueError("bubble_editor_write requires a payload object.")
+        permanent_targets = permanent_data_type_delete_targets(write_payload)
+        if permanent_targets:
+            raise ValueError(
+                "bubble_editor_write cannot permanently delete data types. "
+                "Call delete_data_type_permanently so prior soft-delete state is verified."
+            )
         write_session = load_session(profile)
         if write_session is None:
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
@@ -1827,8 +1833,11 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
             start=_required_string_arg(args, "start", name),
             end=_required_string_arg(args, "end", name),
             messages=messages,
+            contains=str(args.get("contains") or "") or None,
             ascending=bool(args.get("ascending", True)),
             is_state_ar=bool(args.get("is_state_ar", True)),
+            paginate=bool(args.get("paginate", False)),
+            max_pages=int(args.get("max_pages") or 10),
             include_raw=bool(args.get("include_raw")),
             limit=int(args.get("limit") or 100),
         )
@@ -1960,6 +1969,11 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     execute = bool(args.get("execute"))
 
     if isinstance(write_payload, dict):
+        if name == "delete_data_type_permanently" or permanent_data_type_delete_targets(write_payload):
+            raise ValueError(
+                "Permanent data type deletion does not accept write_payload or payload. "
+                "Call the tool with data_type_ref, execute, and confirm so prior soft-delete state is verified."
+            )
         if not profile:
             return {
                 "ok": True,

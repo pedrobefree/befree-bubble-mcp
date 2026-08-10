@@ -6,7 +6,7 @@ import json
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.core.redaction import redact_sensitive
@@ -22,6 +22,24 @@ from bubble_mcp.sessions.store import BubbleSessionData, load_session
 
 
 BUBBLE_EDITOR_BASE_URL = "https://bubble.io"
+# Dedicated Bubble apps are served from their own cluster (for example https://d200.bubble.is) as
+# well as the shared https://bubble.io host, and the two are NOT interchangeable. Measured against a
+# dedicated app:
+#
+#   endpoint                       bubble.io      cluster
+#   get_jetstream_logs             200, 0 rows    200, rows      <- cluster only
+#   get_workload_usage_by_date     200, rows      401            <- shared host only
+#   get_workload_usage_breakdown   200, rows      401            <- shared host only
+#   get_current_app_plan_usage     200            200
+#   get_storage_size               200            200
+#   get_workflow_runs              200            200
+#
+# The logs endpoint is the dangerous one: on the shared host it answers 200 with an empty list rather
+# than an error, so a wrong host looks like an app with no activity. Only endpoints proven to need the
+# cluster are routed there; everything else stays on the shared host, which is where it already worked.
+BUBBLE_EDITOR_HOST_SUFFIXES = (".bubble.io", ".bubble.is")
+BUBBLE_EDITOR_HOSTS = ("bubble.io", "bubble.is")
+CLUSTER_LOCAL_ENDPOINTS = frozenset({"/appeditor/get_jetstream_logs"})
 DEFAULT_LOG_MESSAGES = [
     "running event",
     "event condition passed",
@@ -46,6 +64,66 @@ WORKLOAD_GRANULARITIES = {"minute", "hour", "day"}
 PLATFORMS = {"web", "mobile", "web_and_mobile"}
 
 
+def _origin_if_bubble_host(value: str | None) -> str | None:
+    """Return the https origin of ``value`` when it points at a Bubble-owned host."""
+    candidate = str(value or "").strip()
+    if not candidate:
+        return None
+    if "//" not in candidate:
+        candidate = f"https://{candidate}"
+    parts = urlsplit(candidate)
+    host = (parts.hostname or "").lower()
+    if not host:
+        return None
+    if host not in BUBBLE_EDITOR_HOSTS and not host.endswith(BUBBLE_EDITOR_HOST_SUFFIXES):
+        # Never send editor cookies to a host outside Bubble, even if a stored session says so.
+        return None
+    return f"https://{host}"
+
+
+def resolve_editor_base_url(
+    session: BubbleSessionData | None = None,
+    *,
+    profile: str | None = None,
+    override: str | None = None,
+) -> str:
+    """Resolve the Bubble editor origin that serves this app.
+
+    Priority: explicit override, then the captured ``referer`` (the strongest evidence of which
+    cluster actually served the editor), then the profile's configured editor_url, then the session
+    url, then the shared host. Non-Bubble hosts are ignored at every step.
+    """
+    explicit = _origin_if_bubble_host(override)
+    if explicit:
+        return explicit
+
+    if session is not None:
+        headers = session.headers or {}
+        referer = next(
+            (value for key, value in headers.items() if key.lower() == "referer"),
+            None,
+        )
+        from_referer = _origin_if_bubble_host(referer)
+        if from_referer:
+            return from_referer
+
+    if profile:
+        try:
+            configured = resolve_profile(load_settings(), profile)
+        except Exception:  # noqa: BLE001 - config problems must not break a read call
+            configured = None
+        from_profile = _origin_if_bubble_host(configured.editor_url if configured else None)
+        if from_profile:
+            return from_profile
+
+    if session is not None:
+        from_session_url = _origin_if_bubble_host(session.url)
+        if from_session_url:
+            return from_session_url
+
+    return BUBBLE_EDITOR_BASE_URL
+
+
 class BubbleEditorApiClient:
     """Posts authenticated non-write Bubble editor API requests."""
 
@@ -65,10 +143,16 @@ class BubbleEditorApiClient:
         session: BubbleSessionData,
         *,
         dry_run: bool = False,
+        base_url: str | None = None,
+        profile: str | None = None,
     ) -> dict[str, Any]:
         if not endpoint.startswith("/appeditor/"):
             raise ValueError("Bubble editor endpoint must start with /appeditor/.")
-        url = f"{BUBBLE_EDITOR_BASE_URL}{endpoint}"
+        if base_url or endpoint in CLUSTER_LOCAL_ENDPOINTS:
+            origin = resolve_editor_base_url(session, profile=profile, override=base_url)
+        else:
+            origin = BUBBLE_EDITOR_BASE_URL
+        url = f"{origin}{endpoint}"
         headers = build_editor_write_headers(session, payload)
         safe_request = {
             "url": url,
@@ -162,6 +246,14 @@ def _epoch_ms(value: str | int | float | None, *, default: datetime | None = Non
     iso_value = _iso_datetime(value, default=default)
     dt = datetime.fromisoformat(iso_value.replace("Z", "+00:00"))
     return int(dt.timestamp() * 1000)
+
+
+def _iso_utc(epoch_ms: int | float) -> str:
+    return (
+        datetime.fromtimestamp(int(epoch_ms) / 1000, tz=timezone.utc)
+        .isoformat(timespec="milliseconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def _bounded_granularity(value: str) -> str:
@@ -261,7 +353,7 @@ def _post_profile_endpoint(
     session = _load_session_for_profile(profile)
     appname = _resolve_app_id(profile, session, app_id)
     payload = {"appname": appname, **payload}
-    result = _client(client).post(endpoint, payload, session)
+    result = _client(client).post(endpoint, payload, session, profile=profile)
     return {
         "ok": result.get("ok"),
         "profile": profile,
@@ -978,6 +1070,159 @@ def fetch_workload_usage_breakdown(
     return result
 
 
+JETSTREAM_ROW_CAP = 10000
+
+
+JETSTREAM_DEFAULT_MAX_PAGES = 10
+JETSTREAM_MAX_PAGES = 25
+
+
+JETSTREAM_INCOMPLETE_STOP_REASONS = frozenset(
+    {
+        "request_failed",
+        "unrecognized_response",
+        "missing_cursor_timestamp",
+        "no_progress_same_millisecond",
+        "invalid_cursor_timestamp",
+    }
+)
+
+
+def _jetstream_rows(result: dict[str, Any]) -> list[Any] | None:
+    """The log rows Bubble returned, or None when the shape is unrecognized."""
+    response = result.get("response")
+    if not isinstance(response, dict):
+        return None
+    rows = response.get("rows")
+    if not isinstance(rows, list) and isinstance(response.get("data"), dict):
+        rows = response["data"].get("rows")
+    return rows if isinstance(rows, list) else None
+
+
+def _jetstream_row_count(result: dict[str, Any]) -> int | None:
+    rows = _jetstream_rows(result)
+    return len(rows) if rows is not None else None
+
+
+def _jetstream_row_key(row: Any) -> str:
+    """Identity of a log row, used to drop the overlap between consecutive pages.
+
+    ``after`` is not an exact cursor - asking for ``after=T`` can return a row stamped ``T-1`` - so
+    pages are re-requested from the last timestamp and the handful of repeats dropped here.
+    """
+    if not isinstance(row, dict):
+        return json.dumps(row, sort_keys=True, default=str)
+    elastic_id = row.get("elastic_id")
+    if elastic_id not in (None, ""):
+        return json.dumps(["elastic_id", elastic_id], default=str)
+    return json.dumps(row, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def _bounded_jetstream_max_pages(value: int) -> int:
+    pages = int(value)
+    if pages < 1 or pages > JETSTREAM_MAX_PAGES:
+        raise ValueError(f"max_pages must be between 1 and {JETSTREAM_MAX_PAGES}.")
+    return pages
+
+
+def _jetstream_hints(
+    rows: int | None,
+    contains: str,
+    *,
+    paginated: bool = False,
+    truncated: bool = False,
+    stop_reason: str | None = None,
+) -> list[str]:
+    """Explain the ways this endpoint returns 200 with unusable or partial data."""
+    hints: list[str] = []
+    if rows == 0 and not contains:
+        hints.append(
+            "Bubble returned 0 log rows. On a busy app this usually means the query needs a "
+            "'contains' term (the workflow/action name) - the endpoint answers 200 with an empty "
+            "list rather than an error. Note that 'messages' filters log message TYPES, not names."
+        )
+    if truncated and paginated:
+        if stop_reason == "hit_max_pages":
+            hints.append(
+                f"Stopped at max_pages ({stop_reason}); the window is only partially covered. Raise "
+                "max_pages, narrow the time window, or pass a more specific 'contains' term. Read "
+                "'covered_until' to see where this response actually ends."
+            )
+        else:
+            hints.append(
+                f"Pagination stopped before the time window was fully covered ({stop_reason}). "
+                "Treat the returned rows as partial and inspect the structured error fields."
+            )
+    elif rows is not None and rows >= JETSTREAM_ROW_CAP and not paginated:
+        hints.append(
+            f"Bubble capped this response at {JETSTREAM_ROW_CAP} rows, so the window is truncated "
+            "well before 'end'. This endpoint has no offset/cursor parameter - pass paginate=true "
+            "to walk the window by advancing 'after', or narrow the window yourself."
+        )
+    if stop_reason == "no_progress_same_millisecond":
+        hints.append(
+            "Pagination could not advance: a single millisecond holds a full page of rows, so the "
+            "cursor cannot move without skipping data. Add a 'contains' term to thin the stream."
+        )
+    return hints
+
+
+def _fetch_jetstream_pages(
+    *,
+    client: BubbleEditorApiClient,
+    payload: dict[str, Any],
+    session: BubbleSessionData,
+    profile: str,
+    before: int,
+    max_pages: int,
+) -> tuple[dict[str, Any], list[Any], int, str]:
+    """Walk the window by advancing ``after`` past the last row of each full page.
+
+    Bubble ignores from/offset/size/page/search_after on this endpoint, so time is the only cursor.
+    Returns the first page's envelope (for status/request reporting), the deduplicated rows, the
+    number of pages fetched, and why the walk stopped.
+    """
+    first_result: dict[str, Any] | None = None
+    merged: list[Any] = []
+    seen: set[str] = set()
+    after = payload["after"]
+    pages = 0
+    stop_reason = "reached_end_of_window"
+
+    while pages < max_pages:
+        page_payload = {**payload, "after": after, "before": before}
+        result = client.post("/appeditor/get_jetstream_logs", page_payload, session, profile=profile)
+        pages += 1
+        if first_result is None:
+            first_result = result
+        if not result.get("ok"):
+            return result, merged, pages, "request_failed"
+
+        rows = _jetstream_rows(result)
+        if rows is None:
+            return first_result, merged, pages, "unrecognized_response"
+        for row in rows:
+            key = _jetstream_row_key(row)
+            if key not in seen:
+                seen.add(key)
+                merged.append(row)
+        if len(rows) < JETSTREAM_ROW_CAP:
+            return first_result, merged, pages, "reached_end_of_window"
+
+        last = rows[-1].get("created") if isinstance(rows[-1], dict) else None
+        if not isinstance(last, (int, float)):
+            return first_result, merged, pages, "missing_cursor_timestamp"
+        next_after = int(last)
+        if next_after == after:
+            return first_result, merged, pages, "no_progress_same_millisecond"
+        if next_after < after or next_after > before:
+            return first_result, merged, pages, "invalid_cursor_timestamp"
+        after = next_after
+        stop_reason = "hit_max_pages"
+
+    return first_result or {}, merged, pages, stop_reason
+
+
 def fetch_jetstream_logs(
     *,
     profile: str,
@@ -986,8 +1231,11 @@ def fetch_jetstream_logs(
     app_id: str | None = None,
     app_version: str | None = None,
     messages: list[str] | None = None,
+    contains: str | None = None,
     ascending: bool = True,
     is_state_ar: bool = True,
+    paginate: bool = False,
+    max_pages: int = JETSTREAM_DEFAULT_MAX_PAGES,
     include_raw: bool = False,
     limit: int = 100,
     client: BubbleEditorApiClient | None = None,
@@ -995,6 +1243,8 @@ def fetch_jetstream_logs(
     version = _resolve_metrics_app_version(app_version)
     session = _load_session_for_profile(profile)
     appname = _resolve_app_id(profile, session, app_id)
+    search_term = str(contains or "").strip()
+    before = _epoch_ms(end)
     payload = {
         "tags": {
             "message": messages or DEFAULT_LOG_MESSAGES,
@@ -1003,19 +1253,86 @@ def fetch_jetstream_logs(
         },
         "ascending": bool(ascending),
         "after": _epoch_ms(start),
-        "before": _epoch_ms(end),
+        "before": before,
         "is_state_ar": bool(is_state_ar),
     }
-    result = _client(client).post("/appeditor/get_jetstream_logs", payload, session)
+    if search_term:
+        # Server-side substring filter on the log line's display name (the workflow/action name).
+        # Bubble ignores `search`/`constraint`; `contains` is the key the editor's own search box uses.
+        payload["contains"] = search_term
+
+    api = _client(client)
+    pagination: dict[str, Any] = {}
+    rows: int | None
+    stop_reason: str | None
+    if paginate:
+        pages_allowed = _bounded_jetstream_max_pages(max_pages)
+        result, rows_list, pages, stop_reason = _fetch_jetstream_pages(
+            client=api,
+            payload=payload,
+            session=session,
+            profile=profile,
+            before=before,
+            max_pages=pages_allowed,
+        )
+        truncated = stop_reason != "reached_end_of_window"
+        terminal_response = result.get("response")
+        if stop_reason in JETSTREAM_INCOMPLETE_STOP_REASONS and result.get("ok"):
+            result = {
+                **result,
+                "ok": False,
+                "error": f"Jetstream pagination stopped before completion ({stop_reason}).",
+                "reason": "pagination_incomplete",
+            }
+        # Re-shape the merged pages as a single response so the output stays consistent.
+        result = {**result, "response": {"rows": rows_list}}
+        rows = len(rows_list)
+        last_created = rows_list[-1].get("created") if rows_list and isinstance(rows_list[-1], dict) else None
+        pagination = {
+            "paginated": True,
+            "pages_fetched": pages,
+            "max_pages": pages_allowed,
+            "stop_reason": stop_reason,
+            "truncated": truncated,
+            "covered_until": _iso_utc(last_created) if isinstance(last_created, (int, float)) else None,
+            "covered_until_epoch_ms": int(last_created) if isinstance(last_created, (int, float)) else None,
+        }
+    else:
+        result = api.post("/appeditor/get_jetstream_logs", payload, session, profile=profile)
+        rows = _jetstream_row_count(result)
+        truncated = rows is not None and rows >= JETSTREAM_ROW_CAP
+        stop_reason = "row_cap_reached" if truncated else None
+        terminal_response = None
+        pagination = {
+            "paginated": False,
+            "stop_reason": stop_reason,
+            "truncated": truncated,
+        }
+
     compact = _compact_result(result, include_raw=include_raw, limit=limit)
-    return {
+    hints = _jetstream_hints(
+        rows,
+        search_term,
+        paginated=paginate,
+        truncated=truncated,
+        stop_reason=stop_reason,
+    )
+    out = {
         "ok": result.get("ok"),
         "profile": profile,
         "app_id": appname,
         "app_version": version,
         "defaulted_to_live": app_version in (None, ""),
+        "contains": search_term or None,
         **compact,
+        "row_count": rows,
+        **pagination,
     }
+    if include_raw and terminal_response is not None and stop_reason in JETSTREAM_INCOMPLETE_STOP_REASONS:
+        out["pagination_terminal_response"] = terminal_response
+    if hints:
+        out["hints"] = hints
+    return out
 
 
 def fetch_plan_usage(

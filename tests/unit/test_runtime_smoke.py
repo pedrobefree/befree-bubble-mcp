@@ -2,7 +2,11 @@ import json
 from pathlib import Path
 
 from bubble_mcp.server.tools import call_tool
-from bubble_mcp.runtime_smoke import build_runtime_smoke_cases, run_runtime_smoke
+from bubble_mcp.runtime_smoke import (
+    AGENT_ROUTING_CASES,
+    build_runtime_smoke_cases,
+    run_runtime_smoke,
+)
 
 
 def _write_execute_context(context_file: Path, run_id: str) -> None:
@@ -210,7 +214,12 @@ def test_agent_routing_smoke_validates_natural_language_tool_selection() -> None
 
     assert report["ok"] is True
     assert report["execute"] is False
-    assert report["summary"] == {"cases": 8, "passed": 8, "failed": 0, "skipped": 0}
+    assert report["summary"] == {
+        "cases": len(AGENT_ROUTING_CASES),
+        "passed": len(AGENT_ROUTING_CASES),
+        "failed": 0,
+        "skipped": 0,
+    }
     assert {result["status"] for result in report["results"]} == {"passed"}
     assert all(result["suite"] == "agent-routing" for result in report["results"])
     assert all("bubble_task_runbook" in result["tool"] for result in report["results"])

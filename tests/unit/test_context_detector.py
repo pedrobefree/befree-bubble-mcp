@@ -1,11 +1,14 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings, with_profile
 from bubble_mcp.context.detector import (
     default_bubble_export_path,
     default_bubble_modules_dir,
     detect_project_context,
+    refresh_bubble_export,
 )
 from bubble_mcp.context.source import load_context
 from bubble_mcp.sessions.store import save_session, session_from_payload
@@ -163,6 +166,54 @@ def test_detect_context_downloads_bubble_export_before_crawler(tmp_path, monkeyp
     assert (default_bubble_modules_dir("dev", "synthetic-app") / "root.json").exists()
     assert (default_bubble_modules_dir("dev", "synthetic-app") / "pages" / "pgDownloaded.json").exists()
     assert any(node.id == "element:elDownloaded" for node in context.nodes)
+
+
+def test_refresh_bubble_export_uses_authenticated_download_without_browser_fallback(tmp_path, monkeypatch) -> None:
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
+    save_session(
+        "smoke",
+        session_from_payload({"appId": "bovichain-g3", "headers": {"Cookie": "sid=secret"}}),
+    )
+    payload = {"appname": "bovichain-g3", "user_types": {"cliente": {"%del": True}}}
+
+    class Response:
+        status_code = 200
+        content = json.dumps(payload).encode("utf-8")
+        encoding = "utf-8"
+
+    monkeypatch.setattr(
+        "bubble_mcp.context.detector.requests.get",
+        lambda *_args, **_kwargs: Response(),
+    )
+
+    refreshed = refresh_bubble_export(profile="smoke", app_id="bovichain-g3", app_version="23347")
+
+    assert refreshed == default_bubble_export_path("smoke", "bovichain-g3")
+    assert json.loads(refreshed.read_text(encoding="utf-8"))["user_types"]["cliente"]["%del"] is True
+
+
+def test_refresh_bubble_export_fails_closed_without_starting_browser(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    save_session(
+        "smoke",
+        session_from_payload({"appId": "bovichain-g3", "headers": {"Cookie": "sid=secret"}}),
+    )
+    monkeypatch.setattr(
+        "bubble_mcp.context.detector._try_download_bubble_export",
+        lambda **_kwargs: None,
+    )
+
+    def fail_if_browser_starts(**_kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("browser fallback must not run")
+
+    monkeypatch.setattr(
+        "bubble_mcp.context.detector._try_capture_editor_network_index",
+        fail_if_browser_starts,
+    )
+
+    with pytest.raises(ValueError, match="fresh .bubble export is required"):
+        refresh_bubble_export(profile="smoke", app_id="bovichain-g3", app_version="23347")
 
 
 def test_detect_context_download_ignores_bogus_response_encoding_guess(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
