@@ -170,3 +170,168 @@ def test_bubble_export_prioritizes_display_and_preserves_deleted_state(tmp_path)
     assert nodes["option_set"].label == "Displayed option set"
     assert element.label == "Displayed text"
     assert all(node.metadata["deleted"] is True for node in [*nodes.values(), element])
+
+
+def test_bubble_export_recovers_scalar_reusable_index_names(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    bubble_file = tmp_path / "scalar-reusable-index.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "_id": "synthetic-app",
+                "_index": {
+                    "custom_name_to_id": {
+                        "Visible empty reusable": "reEmpty",
+                        "Stale reusable alias": "reStale",
+                    },
+                    "id_to_path": {"rootEmpty": "%ed.reEmpty"},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    context = context_from_bubble_export(bubble_file)
+    reusables = [node for node in context.nodes if node.type == "reusable"]
+    reusable = reusables[0]
+
+    assert len(reusables) == 1
+    assert reusable.label == "Visible empty reusable"
+    assert reusable.metadata["bubble_id"] == "reEmpty"
+    assert reusable.metadata["inferred_from_index"] is True
+    assert reusable.metadata["root_id"] == "rootEmpty"
+    assert reusable.metadata["deleted"] is None
+
+
+def test_bubble_export_prefers_index_display_and_bubble_display_token(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    bubble_file = tmp_path / "display-priority.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "_id": "synthetic-app",
+                "pages": {
+                    "pgIndex": {
+                        "%d": "Visible page",
+                        "%p": {"%nm": "internal_page"},
+                    }
+                },
+                "element_definitions": {
+                    "reDialog": {
+                        "%p": {"%nm": "internal_reusable"},
+                    }
+                },
+                "_index": {
+                    "custom_name_to_id": {
+                        "internal_reusable": {
+                            "custom_id": "reDialog",
+                            "display": "Visible reusable",
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    context = context_from_bubble_export(bubble_file)
+    page = next(node for node in context.nodes if node.type == "page")
+    reusable = next(node for node in context.nodes if node.type == "reusable")
+
+    assert page.label == "Visible page"
+    assert reusable.label == "Visible reusable"
+
+
+def test_bubble_export_deep_merges_reusable_aliases(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    bubble_file = tmp_path / "merged-reusable-aliases.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "_id": "synthetic-app",
+                "element_definitions": {
+                    "reDialog": {
+                        "%p": {"%nm": "internal_reusable"},
+                        "%el": {"elTitle": {"%x": "Text"}},
+                    }
+                },
+                "%ed": {
+                    "reDialog": {
+                        "properties": {"display": "Visible reusable", "%del": True},
+                        "elements": {"elButton": {"%x": "Button"}},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    context = context_from_bubble_export(bubble_file)
+    reusable = next(node for node in context.nodes if node.type == "reusable")
+
+    assert reusable.label == "Visible reusable"
+    assert reusable.metadata["children"] == ["elTitle", "elButton"]
+    assert reusable.metadata["deleted"] is True
+
+
+def test_bubble_export_materializes_reusable_element_paths_and_root_id(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    bubble_file = tmp_path / "indexed-reusable-elements.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "_id": "synthetic-app",
+                "_index": {
+                    "custom_name_to_id": {"Dialog": "reDialog"},
+                    "id_to_path": {
+                        "rootDialog": "%ed.reDialog",
+                        "pathParent": "%ed.reDialog.%el.elParent",
+                        "pathChild": "%ed.reDialog.%el.elParent.%el.elChild",
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    context = context_from_bubble_export(bubble_file)
+    reusable = next(node for node in context.nodes if node.type == "reusable")
+    elements = {node.metadata["bubble_id"]: node for node in context.nodes if node.type == "element"}
+
+    assert reusable.metadata["root_id"] == "rootDialog"
+    assert reusable.metadata["children"] == ["elParent"]
+    assert set(elements) == {"elParent", "elChild"}
+    assert elements["elParent"].metadata["path_array"] == ["%ed", "reDialog", "%el", "elParent"]
+    assert elements["elChild"].metadata["path_array"] == [
+        "%ed",
+        "reDialog",
+        "%el",
+        "elParent",
+        "%el",
+        "elChild",
+    ]
+
+
+def test_crawler_context_disambiguates_duplicate_context_labels(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    context = context_from_crawler_payload(
+        {
+            "appId": "synthetic-app",
+            "pages": [
+                {"id": "pgOne", "display": "Same context"},
+                {"id": "pgTwo", "display": "Same context"},
+            ],
+            "reusables": [
+                {"id": "reOne", "display": "Same reusable"},
+                {"id": "reTwo", "display": "Same reusable"},
+            ],
+        },
+        tmp_path / "crawler.json",
+    )
+
+    pages = [node for node in context.nodes if node.type == "page"]
+    reusables = [node for node in context.nodes if node.type == "reusable"]
+
+    assert {node.id for node in pages} == {
+        "page:Same context:pgOne",
+        "page:Same context:pgTwo",
+    }
+    assert {node.id for node in reusables} == {
+        "reusable:Same reusable:reOne",
+        "reusable:Same reusable:reTwo",
+    }

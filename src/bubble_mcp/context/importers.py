@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -13,17 +15,24 @@ def _obj(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
-def _label(record: dict[str, Any], fallback: str) -> str:
+def _label(
+    record: dict[str, Any],
+    fallback: str,
+    *,
+    preferred_display: str | None = None,
+) -> str:
     props = _obj(record.get("%p") or record.get("properties"))
     return str(
-        record.get("display")
+        preferred_display
+        or record.get("display")
         or props.get("display")
-        or props.get("%nm")
-        or props.get("name")
+        or record.get("%d")
+        or props.get("%d")
+        or record.get("label")
         or record.get("name")
         or record.get("%nm")
-        or record.get("%d")
-        or record.get("label")
+        or props.get("%nm")
+        or props.get("name")
         or fallback
     )
 
@@ -39,7 +48,16 @@ def _element_children(record: dict[str, Any]) -> list[str]:
 
 def _root_id(record: dict[str, Any]) -> str | None:
     props = _obj(record.get("%p") or record.get("properties"))
-    value = record.get("rootId") or record.get("root_id") or record.get("id") or props.get("id")
+    for key in ("rootId", "root_id"):
+        if key not in record:
+            continue
+        value = record[key]
+        if value is None:
+            return None
+        return str(value).strip() or None
+    value = record.get("id") or props.get("id")
+    if value is None:
+        return None
     return str(value).strip() or None
 
 
@@ -50,6 +68,8 @@ def _deleted_value(record: dict[str, Any]) -> bool | None:
             if key not in container:
                 continue
             value = container[key]
+            if value is None:
+                continue
             if isinstance(value, str):
                 return value.strip().lower() == "true"
             return bool(value)
@@ -60,15 +80,20 @@ def _encoded_path_to_array(path: str) -> list[str]:
     return [part for part in str(path or "").split(".") if part]
 
 
-def _reusable_name_by_id(app: dict[str, Any]) -> dict[str, str]:
+def _reusable_name_by_id(app: dict[str, Any]) -> dict[str, dict[str, str]]:
     raw_index = _obj(_obj(app.get("_index")).get("custom_name_to_id"))
-    names: dict[str, str] = {}
-    for raw in raw_index.values():
-        item = _obj(raw)
-        reusable_id = str(item.get("custom_id") or item.get("id") or "").strip()
-        name = str(item.get("display") or item.get("name") or "").strip()
-        if reusable_id and name:
-            names[reusable_id] = name
+    names: dict[str, dict[str, str]] = {}
+    for index_name, raw in raw_index.items():
+        if isinstance(raw, dict):
+            reusable_id = str(raw.get("custom_id") or raw.get("id") or index_name).strip()
+            display = str(raw.get("display") or raw.get("%d") or "").strip()
+            name = str(raw.get("name") or raw.get("%nm") or index_name).strip()
+        else:
+            reusable_id = str(raw or index_name).strip()
+            display = ""
+            name = str(index_name).strip()
+        if reusable_id:
+            names[reusable_id] = {"display": display, "name": name}
     return names
 
 
@@ -81,6 +106,68 @@ def _reusable_ids_from_path_index(app: dict[str, Any]) -> set[str]:
         if len(parts) >= 2 and parts[0] in reusable_roots and parts[1] != "length":
             reusable_ids.add(parts[1])
     return reusable_ids
+
+
+def _merge_definition(target: dict[str, Any], incoming: dict[str, Any]) -> None:
+    merge_aliases = {
+        "%p": ("%p", "properties"),
+        "properties": ("%p", "properties"),
+        "%el": ("%el", "elements"),
+        "elements": ("%el", "elements"),
+        "%wf": ("%wf", "workflows"),
+        "workflows": ("%wf", "workflows"),
+    }
+    for key, value in incoming.items():
+        target_key = next(
+            (alias for alias in merge_aliases.get(key, (key,)) if alias in target),
+            key,
+        )
+        current = target.get(target_key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            _merge_definition(current, value)
+        elif target_key not in target or current in (None, "", {}, []):
+            target[target_key] = deepcopy(value)
+
+
+def _element_collection(record: dict[str, Any]) -> dict[str, Any]:
+    for key in ("%el", "elements"):
+        current = record.get(key)
+        if isinstance(current, dict):
+            return current
+    elements: dict[str, Any] = {}
+    record["%el"] = elements
+    return elements
+
+
+def _materialize_reusable_index_paths(
+    app: dict[str, Any],
+    definitions: dict[str, dict[str, Any]],
+) -> None:
+    id_to_path = _obj(_obj(app.get("_index")).get("id_to_path"))
+    reusable_roots = {"%ed", "element_definitions", "CustomDefinition", "custom_definitions"}
+    element_tokens = {"%el", "elements"}
+
+    for indexed_id, encoded_path in id_to_path.items():
+        parts = _encoded_path_to_array(str(encoded_path))
+        if len(parts) < 2 or parts[0] not in reusable_roots or parts[1] == "length":
+            continue
+        reusable = definitions.get(parts[1])
+        if reusable is None:
+            continue
+        if len(parts) == 2:
+            reusable.setdefault("id", str(indexed_id))
+            continue
+
+        current = reusable
+        offset = 2
+        while offset + 1 < len(parts) and parts[offset] in element_tokens:
+            element_id = parts[offset + 1]
+            elements = _element_collection(current)
+            child = elements.setdefault(element_id, {})
+            if not isinstance(child, dict):
+                break
+            current = child
+            offset += 2
 
 
 def _reusable_definitions(app: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -96,13 +183,22 @@ def _reusable_definitions(app: dict[str, Any]) -> dict[str, dict[str, Any]]:
             if reusable_id == "length" or not isinstance(raw, dict):
                 continue
             current = definitions.setdefault(str(reusable_id), {})
-            for key, value in raw.items():
-                if key not in current or current[key] in (None, "", {}, []):
-                    current[key] = value
+            _merge_definition(current, raw)
 
     for reusable_id in _reusable_ids_from_path_index(app):
         definitions.setdefault(reusable_id, {"_inferred_from_index": True})
+    _materialize_reusable_index_paths(app, definitions)
     return definitions
+
+
+def _context_node_id(
+    node_type: str,
+    label: str,
+    bubble_id: str,
+    label_counts: Counter[str],
+) -> str:
+    base = f"{node_type}:{label}"
+    return base if label_counts[label] == 1 else f"{base}:{bubble_id}"
 
 
 def _walk_elements(
@@ -160,16 +256,18 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
     id_to_path = _obj(payload.get("idToPath"))
     page_index = _obj(payload.get("pageIndex"))
     reusable_index = _obj(payload.get("reusableIndex"))
+    pages = [page for page in payload.get("pages") or [] if isinstance(page, dict)]
+    page_label_counts = Counter(
+        _label(page, str(page.get("id") or page.get("name") or "")) for page in pages
+    )
 
-    for page in payload.get("pages") or []:
-        if not isinstance(page, dict):
-            continue
+    for page in pages:
         page_name = str(page.get("name") or "")
         page_id = str(page.get("id") or page_index.get(page_name) or page_name or "")
         if not page_id:
             continue
         page_label = _label(page, page_id)
-        node_id = f"page:{page_label}"
+        node_id = _context_node_id("page", page_label, page_id, page_label_counts)
         nodes.append(
             BubbleContextNode(
                 id=node_id,
@@ -210,9 +308,15 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
             )
             edges.append(BubbleContextEdge(source=node_id, target=workflow_node_id, type="has_workflow"))
 
-    for reusable in payload.get("reusables") or []:
-        if not isinstance(reusable, dict):
-            continue
+    reusables = [
+        reusable for reusable in payload.get("reusables") or [] if isinstance(reusable, dict)
+    ]
+    reusable_label_counts = Counter(
+        _label(reusable, str(reusable.get("id") or reusable.get("name") or ""))
+        for reusable in reusables
+    )
+
+    for reusable in reusables:
         reusable_name = str(reusable.get("name") or "")
         reusable_id = str(
             reusable.get("id") or reusable_index.get(reusable_name) or reusable_name or ""
@@ -220,7 +324,12 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
         if not reusable_id:
             continue
         reusable_label = _label(reusable, reusable_id)
-        node_id = f"reusable:{reusable_label}"
+        node_id = _context_node_id(
+            "reusable",
+            reusable_label,
+            reusable_id,
+            reusable_label_counts,
+        )
         root_key = "%ed" if str(reusable.get("sourceKey") or "").startswith("element") else "%p3"
         nodes.append(
             BubbleContextNode(
@@ -276,12 +385,16 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
             )
         )
 
+    element_nodes: dict[str, list[BubbleContextNode]] = {}
+    for node in nodes:
+        if node.type != "element":
+            continue
+        bubble_id = str(node.metadata.get("bubble_id") or "")
+        if bubble_id:
+            element_nodes.setdefault(bubble_id, []).append(node)
     for element_id, encoded_path in id_to_path.items():
-        node_id = f"element:{element_id}"
-        for node in nodes:
-            if node.id == node_id:
-                node.metadata.setdefault("path_array", _encoded_path_to_array(str(encoded_path)))
-                break
+        for node in element_nodes.get(str(element_id), []):
+            node.metadata.setdefault("path_array", _encoded_path_to_array(str(encoded_path)))
 
     settings = _obj(payload.get("settings"))
     client_safe = _obj(settings.get("client_safe"))
@@ -339,7 +452,11 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
         "reusables": [
             {
                 "id": key,
-                "name": _label(_obj(value), reusable_names.get(key, key)),
+                "name": _label(
+                    _obj(value),
+                    reusable_names.get(key, {}).get("name") or key,
+                    preferred_display=reusable_names.get(key, {}).get("display") or None,
+                ),
                 "sourceKey": "element_definitions",
                 "properties": _obj(_obj(value).get("%p") or _obj(value).get("properties")),
                 "rootId": _root_id(_obj(value)),
