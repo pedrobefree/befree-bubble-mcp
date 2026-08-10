@@ -56560,6 +56560,22 @@ class BubbleCLI:
 
     def _get_context_root_for_workflows(self, context_id: str, context_type: str) -> Optional[Dict[str, Any]]:
         context_root_token = self._resolve_context_write_root_token(context_id, context_type)
+        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        raw_bucket = data.get(self._workflow_prefix(context_type))
+        if isinstance(raw_bucket, dict):
+            raw_root = raw_bucket.get(context_root_token)
+            if isinstance(raw_root, dict) and (
+                isinstance(raw_root.get("%wf"), dict)
+                or isinstance(raw_root.get("workflows"), dict)
+            ):
+                return raw_root
+            if context_root_token != str(context_id or "").strip():
+                raw_root = raw_bucket.get(str(context_id or "").strip())
+                if isinstance(raw_root, dict) and (
+                    isinstance(raw_root.get("%wf"), dict)
+                    or isinstance(raw_root.get("workflows"), dict)
+                ):
+                    return raw_root
         root = self.discovery._get_context_root(context_root_token, context_type)
         if isinstance(root, dict):
             return root
