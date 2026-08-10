@@ -56557,6 +56557,22 @@ class BubbleCLI:
 
     def _get_context_root_for_workflows(self, context_id: str, context_type: str) -> Optional[Dict[str, Any]]:
         context_root_token = self._resolve_context_write_root_token(context_id, context_type)
+        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        raw_bucket = data.get(self._workflow_prefix(context_type))
+        if isinstance(raw_bucket, dict):
+            raw_root = raw_bucket.get(context_root_token)
+            if isinstance(raw_root, dict) and (
+                isinstance(raw_root.get("%wf"), dict)
+                or isinstance(raw_root.get("workflows"), dict)
+            ):
+                return raw_root
+            if context_root_token != str(context_id or "").strip():
+                raw_root = raw_bucket.get(str(context_id or "").strip())
+                if isinstance(raw_root, dict) and (
+                    isinstance(raw_root.get("%wf"), dict)
+                    or isinstance(raw_root.get("workflows"), dict)
+                ):
+                    return raw_root
         root = self.discovery._get_context_root(context_root_token, context_type)
         if isinstance(root, dict):
             return root
@@ -57358,44 +57374,6 @@ class BubbleCLI:
             workflow_obj=workflow_obj,
             workflow_id=workflow_obj.get("id") if isinstance(workflow_obj, dict) else None
         )
-
-    def _merge_workflow_properties_in_discovery(
-        self,
-        context_id: str,
-        context_type: str,
-        workflow_key: str,
-        properties: Dict[str, Any]
-    ) -> None:
-        """Merge fields into an existing workflow's %p/properties in the in-memory
-        discovery root, without touching its other fields (%x/actions/etc).
-
-        Unlike `_upsert_workflow_in_discovery` (which replaces the whole workflow
-        object and is only safe right after creating a brand-new empty shell),
-        this is for post-create steps like binding the trigger element that must
-        not clobber a workflow's existing actions/type when it already has them.
-        Without this, the in-memory/root copy of a freshly auto-created workflow
-        never learns its own %p.%ei, so the next add_action call in the same
-        process can never match it by element and silently creates a duplicate.
-        """
-        if not isinstance(properties, dict) or not properties:
-            return
-        root = self.discovery._get_context_root(context_id, context_type)
-        if not isinstance(root, dict):
-            return
-        container_key = "%wf" if isinstance(root.get("%wf"), dict) else "workflows"
-        workflows_map = root.get(container_key)
-        if not isinstance(workflows_map, dict):
-            return
-        wf_obj = workflows_map.get(workflow_key)
-        if not isinstance(wf_obj, dict):
-            return
-        use_full_key = "properties" in wf_obj and "%p" not in wf_obj
-        prop_key = "properties" if use_full_key else "%p"
-        props = wf_obj.get(prop_key)
-        if not isinstance(props, dict):
-            props = {}
-        props.update(properties)
-        wf_obj[prop_key] = props
 
     def _get_workflow_object_from_root(
         self,
@@ -59431,12 +59409,6 @@ class BubbleCLI:
             )
         ok = self._send_schema_payload(pb, dry_run, f"Event '{event_ref}' element set to {element_id}.")
         if ok:
-            self._merge_workflow_properties_in_discovery(
-                context_id,
-                context_type,
-                wf_key,
-                {"%ei": element_id}
-            )
             self._cache_workflow_event(
                 context_id,
                 context_type,

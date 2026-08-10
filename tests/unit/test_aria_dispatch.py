@@ -157,6 +157,35 @@ def test_method_kwargs_maps_visual_and_workflow_aliases() -> None:
         "dry_run": True,
     }
 
+    def add_action(
+        context_name: str,
+        element_name: str,
+        action_type: str,
+        action_param: str | None = None,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    action_kwargs = _method_kwargs(
+        add_action,
+        {
+            "context": "index",
+            "element_name": "bt_save",
+            "action_type": "hide",
+            "param": "bt_save",
+            "execute": True,
+        },
+        execute=True,
+    )
+
+    assert action_kwargs == {
+        "context_name": "index",
+        "element_name": "bt_save",
+        "action_type": "hide",
+        "action_param": "bt_save",
+        "dry_run": False,
+    }
+
 
 def test_aria_runtime_payload_builder_inherits_profile_app_version(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))

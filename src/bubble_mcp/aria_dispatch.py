@@ -62,6 +62,7 @@ ARG_ALIASES = {
     "option_set_key": ("option_set_ref",),
     "rgba": ("value", "color"),
     "event_type": ("event",),
+    "action_param": ("param",),
 }
 
 RUNTIME_TOOL_ALIASES = {
