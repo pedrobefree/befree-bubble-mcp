@@ -18,6 +18,7 @@ DESTRUCTIVE_TOOLS = {
     "delete_page",
     "delete_workflow",
     "delete_data_type",
+    "delete_data_type_permanently",
     "delete_data_field",
     "delete_option_set",
     "delete_option_value",
@@ -27,6 +28,28 @@ DESTRUCTIVE_TOOLS = {
 def is_destructive_tool(tool_name: str) -> bool:
     normalized = str(tool_name or "").strip()
     return normalized in DESTRUCTIVE_TOOLS or normalized.startswith(DESTRUCTIVE_PREFIXES)
+
+
+def permanent_data_type_delete_targets(payload: dict[str, Any]) -> list[str]:
+    candidate = payload.get("body") if isinstance(payload.get("body"), dict) else payload
+    changes = candidate.get("changes")
+    if not isinstance(changes, list):
+        return []
+    targets: list[str] = []
+    for change in changes:
+        if not isinstance(change, dict):
+            continue
+        intent = change.get("intent") if isinstance(change.get("intent"), dict) else {}
+        path_array = change.get("path_array")
+        if (
+            intent.get("name") == "CleanApp"
+            and isinstance(path_array, list)
+            and len(path_array) == 2
+            and path_array[0] == "user_types"
+            and change.get("body") is None
+        ):
+            targets.append(str(path_array[1]))
+    return targets
 
 
 def _step_id(step: dict[str, Any], index: int) -> str:
@@ -89,6 +112,12 @@ def validate_structure(plan: dict[str, Any], *, execute: bool = False) -> dict[s
         if payload is not None:
             payload_errors = validate_write_payload(payload)
             errors.extend(f"{step_id} {error}" for error in payload_errors)
+            permanent_targets = permanent_data_type_delete_targets(payload)
+            if permanent_targets:
+                errors.append(
+                    f"{step_id} contains permanent data type deletion for {', '.join(permanent_targets)}. "
+                    "Call delete_data_type_permanently directly so prior soft-delete state can be verified."
+                )
         elif execute:
             errors.append(f"{step_id} has no write_payload. Compile the plan before execute=true.")
 
@@ -96,6 +125,10 @@ def validate_structure(plan: dict[str, Any], *, execute: bool = False) -> dict[s
         args: dict[str, Any] = raw_args if isinstance(raw_args, dict) else {}
         if execute and is_destructive_tool(tool_name) and not bool(args.get("confirm") or args.get("approved")):
             errors.append(f"{step_id} uses destructive tool {tool_name} without confirm=true.")
+        if execute and tool_name == "delete_data_type_permanently":
+            errors.append(
+                f"{step_id} must call delete_data_type_permanently directly so the runtime can verify prior soft-delete state."
+            )
 
     status = "blocked" if errors else ("executable" if execute else "previewable")
     guidance: list[str] = []
