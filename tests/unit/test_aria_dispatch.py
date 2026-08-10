@@ -1,13 +1,18 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from bubble_mcp.aria_dispatch import (
+    AriaRuntimeEnvironment,
     _delete_data_type_follow_up,
     _method_kwargs,
     _requires_calculate_derived,
+    _resolve_runtime_environment,
     dispatch_aria_runtime_tool,
 )
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
+from bubble_mcp.sessions.store import save_session, session_from_payload
 
 
 def test_method_kwargs_maps_public_schema_aliases_to_aria_runtime_args() -> None:
@@ -104,20 +109,206 @@ def test_delete_data_field_requires_calculate_derived_refresh() -> None:
 
 
 def test_soft_delete_returns_separate_permanent_delete_confirmation_follow_up() -> None:
-    follow_up = _delete_data_type_follow_up("delete_data_type", ok=True, execute=True)
+    follow_up = _delete_data_type_follow_up(
+        "delete_data_type",
+        ok=True,
+        execute=True,
+        profile="smoke",
+        app_id="bovichain-g3",
+        app_version="23347",
+        data_type_ref="del_analytics_sat",
+    )
 
     assert follow_up == {
         "action": "ask_whether_to_delete_data_type_permanently",
         "question": (
-            "The data type was soft-deleted. Do you want to delete it permanently? "
+            "Data type 'del_analytics_sat' was soft-deleted in branch '23347'. "
+            "Do you want to delete this exact data type permanently? "
             "Permanent deletion cannot be undone."
         ),
         "tool_name": "delete_data_type_permanently",
         "requires_new_confirmation": True,
+        "target": {
+            "profile": "smoke",
+            "app_id": "bovichain-g3",
+            "app_version": "23347",
+            "data_type_ref": "del_analytics_sat",
+        },
     }
     assert _delete_data_type_follow_up("delete_data_type", ok=True, execute=False) is None
     assert _delete_data_type_follow_up("delete_data_type", ok=False, execute=True) is None
     assert _delete_data_type_follow_up("delete_data_type_permanently", ok=True, execute=True) is None
+
+
+def test_permanent_delete_environment_refreshes_authoritative_export(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="bovichain-g3",
+                    appname="bovichain-g3",
+                    app_version="23347",
+                )
+            },
+        )
+    )
+    save_session(
+        "smoke",
+        session_from_payload(
+            {
+                "appId": "bovichain-g3",
+                "appVersion": "23347",
+                "headers": {"Cookie": "sid=secret"},
+            }
+        ),
+    )
+    refreshed = tmp_path / "bovichain-g3.bubble"
+    refreshed.write_text(json.dumps({"user_types": {}}), encoding="utf-8")
+    calls = []
+
+    def fake_refresh(**kwargs):  # type: ignore[no-untyped-def]
+        calls.append(kwargs)
+        return refreshed
+
+    monkeypatch.setattr("bubble_mcp.aria_dispatch.refresh_bubble_export", fake_refresh)
+
+    env = _resolve_runtime_environment({"profile": "smoke"}, authoritative_refresh=True)
+
+    assert calls == [{"profile": "smoke", "app_id": "bovichain-g3", "app_version": "23347"}]
+    assert env.app_json_path == str(refreshed)
+
+
+def test_permanent_delete_environment_rejects_caller_context_override(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="bovichain-g3",
+                    appname="bovichain-g3",
+                    app_version="23347",
+                )
+            },
+        )
+    )
+
+    with pytest.raises(ValueError, match="does not accept caller-supplied context artifacts"):
+        _resolve_runtime_environment(
+            {"profile": "smoke", "bubble_file": str(tmp_path / "forged.bubble")},
+            authoritative_refresh=True,
+        )
+
+
+def test_permanent_delete_reports_remote_success_when_overlay_fails_and_verifies_readback(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_session(
+        "smoke",
+        session_from_payload(
+            {
+                "appId": "bovichain-g3",
+                "appVersion": "23347",
+                "headers": {"Cookie": "sid=secret"},
+            }
+        ),
+    )
+    refreshed = tmp_path / "bovichain-g3.bubble"
+    refreshed.write_text(json.dumps({"user_types": {}}), encoding="utf-8")
+
+    class FakePayloadBuilder:
+        def __init__(self, appname="synthetic-page", app_version="test", metadata=None):  # type: ignore[no-untyped-def]
+            self.appname = appname
+            self.app_version = app_version
+
+        def build(self):  # type: ignore[no-untyped-def]
+            return {
+                "appname": self.appname,
+                "app_version": self.app_version,
+                "changes": [
+                    {
+                        "intent": {"name": "CleanApp"},
+                        "path_array": ["user_types", "cliente"],
+                        "body": None,
+                    }
+                ],
+            }
+
+        def send_to_webhook(self, _url=""):  # type: ignore[no-untyped-def]
+            return {"ok": True}
+
+        def to_json(self, indent=2):  # type: ignore[no-untyped-def]
+            return json.dumps(self.build(), indent=indent)
+
+    class FakePathDiscovery:
+        def __init__(self, _app_path, *_args):  # type: ignore[no-untyped-def]
+            self.data = json.loads(refreshed.read_text(encoding="utf-8"))
+
+    fake_sdk = SimpleNamespace(PayloadBuilder=FakePayloadBuilder)
+
+    class FakeBubbleCLI:
+        def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
+            self.appname = kwargs["appname"]
+            self.app_version = kwargs["app_version"]
+
+        def delete_data_type_permanently(self, **_kwargs):  # type: ignore[no-untyped-def]
+            return fake_sdk.PayloadBuilder(
+                appname=self.appname,
+                app_version=self.app_version,
+            ).send_to_webhook()
+
+    fake_cli = SimpleNamespace(BubbleCLI=FakeBubbleCLI, PathDiscovery=FakePathDiscovery)
+    monkeypatch.setattr("bubble_mcp.aria_dispatch._load_aria_runtime_modules", lambda: (fake_cli, fake_sdk))
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._resolve_runtime_environment",
+        lambda _args, **_kwargs: AriaRuntimeEnvironment(
+            profile="smoke",
+            app_id="bovichain-g3",
+            app_version="23347",
+            app_json_path=str(refreshed),
+            consolelog_json_path=None,
+            crawler_index_path=None,
+            mutation_overlay_path=str(tmp_path / "overlay.json"),
+        ),
+    )
+    monkeypatch.setattr("bubble_mcp.aria_dispatch.refresh_bubble_export", lambda **_kwargs: refreshed)
+    def fail_overlay(**_kwargs):  # type: ignore[no-untyped-def]
+        raise OSError("disk full")
+
+    monkeypatch.setattr("bubble_mcp.aria_dispatch.record_mutation_overlay", fail_overlay)
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch.BubbleEditorClient.write",
+        lambda _self, payload, _session, **_kwargs: {
+            "ok": True,
+            "request": {"payload": payload},
+            "response": {"status": 200},
+        },
+    )
+
+    result = dispatch_aria_runtime_tool(
+        "delete_data_type_permanently",
+        {
+            "profile": "smoke",
+            "data_type_ref": "cliente",
+            "execute": True,
+            "confirm": True,
+        },
+    )
+
+    assert result is not None
+    assert result["ok"] is True
+    assert "Remote write succeeded" in result["results"][0]["local_state_warning"]
+    assert "Remote write succeeded" in result["warnings"][0]
+    assert result["verification"]["status"] == "verified"
+    assert result["verification"]["absent_from_fresh_export"] is True
 
 
 def test_method_kwargs_maps_style_condition_aliases() -> None:

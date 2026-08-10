@@ -31,7 +31,8 @@ def is_destructive_tool(tool_name: str) -> bool:
 
 
 def permanent_data_type_delete_targets(payload: dict[str, Any]) -> list[str]:
-    changes = payload.get("changes")
+    candidate = payload.get("body") if isinstance(payload.get("body"), dict) else payload
+    changes = candidate.get("changes")
     if not isinstance(changes, list):
         return []
     targets: list[str] = []

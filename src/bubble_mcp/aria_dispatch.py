@@ -11,7 +11,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, cast
 
-from bubble_mcp.context.detector import default_bubble_export_path, detect_project_context
+from bubble_mcp.context.detector import default_bubble_export_path, detect_project_context, refresh_bubble_export
 from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mutation_overlay
 from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.execution.client import BubbleEditorClient
@@ -177,17 +177,30 @@ def _delete_data_type_follow_up(
     *,
     ok: bool,
     execute: bool,
+    profile: str | None = None,
+    app_id: str | None = None,
+    app_version: str | None = None,
+    data_type_ref: str | None = None,
 ) -> dict[str, Any] | None:
     if tool_name != "delete_data_type" or not ok or not execute:
         return None
+    target_name = data_type_ref or "unknown"
+    target_branch = app_version or "unknown"
     return {
         "action": "ask_whether_to_delete_data_type_permanently",
         "question": (
-            "The data type was soft-deleted. Do you want to delete it permanently? "
+            f"Data type '{target_name}' was soft-deleted in branch '{target_branch}'. "
+            "Do you want to delete this exact data type permanently? "
             "Permanent deletion cannot be undone."
         ),
         "tool_name": "delete_data_type_permanently",
         "requires_new_confirmation": True,
+        "target": {
+            "profile": profile,
+            "app_id": app_id,
+            "app_version": app_version,
+            "data_type_ref": data_type_ref,
+        },
     }
 
 
@@ -232,7 +245,11 @@ def _resolve_optional_path(value: Any) -> str | None:
     return text or None
 
 
-def _resolve_runtime_environment(args: dict[str, Any]) -> AriaRuntimeEnvironment:
+def _resolve_runtime_environment(
+    args: dict[str, Any],
+    *,
+    authoritative_refresh: bool = False,
+) -> AriaRuntimeEnvironment:
     profile = str(args.get("profile") or "").strip()
     if not profile:
         raise ValueError("Aria runtime dispatch requires profile.")
@@ -257,13 +274,37 @@ def _resolve_runtime_environment(args: dict[str, Any]) -> AriaRuntimeEnvironment
     )
 
     explicit_bubble_file = _resolve_optional_path(args.get("bubble_file") or args.get("app_json_path"))
-    app_json_path = explicit_bubble_file or (profile_config.app_json_path if profile_config else None)
+    if authoritative_refresh:
+        forbidden_overrides = (
+            "bubble_file",
+            "app_json_path",
+            "consolelog_file",
+            "crawler_index_path",
+            "mutation_overlay_path",
+        )
+        supplied_overrides = [key for key in forbidden_overrides if _resolve_optional_path(args.get(key))]
+        if supplied_overrides:
+            raise ValueError(
+                "Permanent data type deletion does not accept caller-supplied context artifacts: "
+                + ", ".join(supplied_overrides)
+                + "."
+            )
+        app_json_path = str(
+            refresh_bubble_export(
+                profile=profile,
+                app_id=app_id,
+                app_version=app_version,
+            )
+        )
+    else:
+        app_json_path = explicit_bubble_file or (profile_config.app_json_path if profile_config else None)
     default_export = default_bubble_export_path(profile, app_id)
     if not app_json_path and default_export.exists():
         app_json_path = str(default_export)
 
-    should_detect = bool(args.get("refresh_context") or args.get("force")) or not (
-        app_json_path and Path(app_json_path).expanduser().exists()
+    should_detect = not authoritative_refresh and (
+        bool(args.get("refresh_context") or args.get("force"))
+        or not (app_json_path and Path(app_json_path).expanduser().exists())
     )
     if should_detect:
         detected = detect_project_context(
@@ -401,14 +442,17 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
     ):
         return None
 
-    execute = bool(args.get("execute")) and not bool(args.get("dry_run"))
+    execute = args.get("execute") is True and args.get("dry_run") is not True
+    if name == "delete_data_type_permanently" and "confirm" in args and not isinstance(args.get("confirm"), bool):
+        raise ValueError("delete_data_type_permanently requires confirm to be a boolean.")
     session = load_session(profile)
     if execute and session is None:
         raise ValueError(f"No Bubble session stored for profile '{profile}'.")
 
-    env = _resolve_runtime_environment(args)
-    if name == "delete_data_type_permanently" and args.get("mutation_overlay_path"):
-        raise ValueError("delete_data_type_permanently does not accept a caller-supplied mutation_overlay_path.")
+    if name == "delete_data_type_permanently" and execute:
+        env = _resolve_runtime_environment(args, authoritative_refresh=True)
+    else:
+        env = _resolve_runtime_environment(args)
     style_metadata = style_metadata_from_artifact(env.app_json_path or env.crawler_index_path or env.consolelog_json_path)
     captured_payloads: list[dict[str, Any]] = []
     captured_results: list[dict[str, Any]] = []
@@ -459,13 +503,18 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
             request = result.get("request")
             request_payload = request.get("payload") if isinstance(request, dict) else None
             overlay_payload = request_payload if isinstance(request_payload, dict) else write_payload
-            record_mutation_overlay(
-                profile=profile,
-                app_id=str(overlay_payload.get("appname") or env.app_id),
-                payload=overlay_payload,
-                source=name,
-                response=result.get("response"),
-            )
+            try:
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(overlay_payload.get("appname") or env.app_id),
+                    payload=overlay_payload,
+                    source=name,
+                    response=result.get("response"),
+                )
+            except Exception as exc:
+                warning = f"Remote write succeeded, but the local mutation overlay could not be persisted: {exc}"
+                captured_results[-1]["local_state_warning"] = warning
+                result["local_state_warning"] = warning
             return result
         raise RuntimeError(str(result.get("error") or result.get("reason") or "Bubble write failed"))
 
@@ -524,7 +573,63 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         "results": [{"index": index, **item} for index, item in enumerate(captured_results, start=1)],
         "logs": logs,
     }
-    follow_up = _delete_data_type_follow_up(name, ok=ok, execute=execute)
+    local_state_warnings = [
+        str(item["local_state_warning"])
+        for item in captured_results
+        if item.get("local_state_warning")
+    ]
+    if local_state_warnings:
+        response["warnings"] = local_state_warnings
+    follow_up = _delete_data_type_follow_up(
+        name,
+        ok=ok and not local_state_warnings,
+        execute=execute,
+        profile=profile,
+        app_id=env.app_id,
+        app_version=env.app_version,
+        data_type_ref=str(
+            args.get("data_type_ref") or args.get("data_type") or args.get("data_type_key") or ""
+        ).strip()
+        or None,
+    )
     if follow_up is not None:
         response["follow_up"] = follow_up
+    if name == "delete_data_type_permanently" and ok and execute:
+        target_key = str(
+            args.get("data_type_ref") or args.get("data_type") or args.get("data_type_key") or ""
+        ).strip()
+        if target_key.lower().startswith("custom."):
+            target_key = target_key.split(".", 1)[1].strip()
+        try:
+            refreshed_export = refresh_bubble_export(
+                profile=profile,
+                app_id=env.app_id,
+                app_version=env.app_version,
+            )
+            refreshed_discovery = bubble_cli.PathDiscovery(str(refreshed_export), None, None, None)
+            refreshed_data = refreshed_discovery.data if isinstance(refreshed_discovery.data, dict) else {}
+            refreshed_types = refreshed_data.get("user_types")
+            verified_absent = isinstance(refreshed_types, dict) and target_key not in refreshed_types
+            response["verification"] = {
+                "status": "verified" if verified_absent else "not_verified",
+                "data_type_key": target_key,
+                "absent_from_fresh_export": verified_absent,
+                "source": str(refreshed_export),
+            }
+            if not verified_absent:
+                response.setdefault("warnings", []).append(
+                    "The remote write succeeded, but the data type is still present in the fresh export. "
+                    "Do not retry automatically; inspect the Bubble editor state."
+                )
+        except Exception as exc:
+            response["verification"] = {
+                "status": "unavailable",
+                "data_type_key": target_key,
+                "absent_from_fresh_export": False,
+                "error": str(exc),
+            }
+            response.setdefault("warnings", []).append(
+                "The remote write succeeded, but read-back verification was unavailable. "
+                "Do not retry automatically; refresh and inspect the Bubble editor state."
+            )
     return response

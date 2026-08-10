@@ -1461,6 +1461,31 @@ def test_permanent_data_type_delete_rejects_exact_payload_bypass() -> None:
         )
 
 
+def test_editor_write_rejects_body_wrapped_permanent_delete_bypass() -> None:
+    with pytest.raises(ValueError, match="cannot permanently delete data types"):
+        tools_module.call_tool(
+            "bubble_editor_write",
+            {
+                "profile": "smoke",
+                "execute": True,
+                "payload": {
+                    "body": {
+                        "v": 1,
+                        "appname": "cli-test",
+                        "app_version": "test",
+                        "changes": [
+                            {
+                                "intent": {"name": "CleanApp"},
+                                "path_array": ["user_types", "cliente"],
+                                "body": None,
+                            }
+                        ],
+                    }
+                },
+            },
+        )
+
+
 def test_task_runbook_routes_multi_action_edits_to_inline_batch() -> None:
     response = handle_request(
         {

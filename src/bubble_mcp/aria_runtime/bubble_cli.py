@@ -62183,86 +62183,90 @@ class BubbleCLI:
             self._save_cli_cache()
         return ok
 
-    def _data_type_is_soft_deleted(self, data_type_key: str) -> bool:
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        user_types = data.get("user_types")
-        entry = user_types.get(data_type_key) if isinstance(user_types, dict) else None
-        soft_deleted = isinstance(entry, dict) and entry.get("%del") is True
-
+    def _data_type_is_soft_deleted(self, data_type_key: str, require_fresh_schema: bool = False) -> bool:
         overlay_path = getattr(self.discovery, "mutation_overlay_path", None)
         if not overlay_path or not os.path.exists(overlay_path):
-            return soft_deleted
+            return False
         try:
             with open(overlay_path, "r", encoding="utf-8") as overlay_file:
                 overlay = json.load(overlay_file)
         except Exception:
-            return soft_deleted
+            return False
 
         entries = overlay.get("entries") if isinstance(overlay, dict) else None
         if not isinstance(entries, list):
-            return soft_deleted
+            return False
         type_path = ["user_types", data_type_key]
         marker_path = [*type_path, "%del"]
-        latest_relevant_capture = 0.0
-        for overlay_entry in entries:
+        relevant_states: List[Tuple[float, int, int, bool, str, str]] = []
+        for entry_index, overlay_entry in enumerate(entries):
             if not isinstance(overlay_entry, dict):
+                continue
+            if str(overlay_entry.get("profile") or "") != str(self.profile_name or ""):
+                continue
+            if str(overlay_entry.get("app_id") or "") != self.appname:
                 continue
             if str(overlay_entry.get("app_version") or "") != self.app_version:
                 continue
             changes = overlay_entry.get("changes")
             if not isinstance(changes, list):
                 continue
-            for change in changes:
+            captured_at = str(overlay_entry.get("captured_at") or "").strip()
+            try:
+                captured_timestamp = datetime.fromisoformat(captured_at.replace("Z", "+00:00")).timestamp()
+            except (ValueError, OSError):
+                captured_timestamp = 0.0
+            for change_index, change in enumerate(changes):
                 if not isinstance(change, dict):
                     continue
                 path_array = change.get("path_array")
+                intent = change.get("intent") if isinstance(change.get("intent"), dict) else {}
+                intent_name = str(intent.get("name") or "")
+                state: Optional[bool] = None
                 if path_array == marker_path:
-                    soft_deleted = change.get("body") is True
+                    state = change.get("body") is True
                 elif path_array == type_path:
                     body = change.get("body")
-                    intent = change.get("intent") if isinstance(change.get("intent"), dict) else {}
-                    if intent.get("name") == "CleanApp" and body is None:
-                        soft_deleted = False
+                    if intent_name == "CleanApp" and body is None:
+                        state = False
                     elif isinstance(body, dict):
-                        soft_deleted = body.get("%del") is True
-                else:
+                        state = body.get("%del") is True
+                if state is None:
                     continue
-                captured_at = str(overlay_entry.get("captured_at") or "").strip()
-                if captured_at:
-                    try:
-                        latest_relevant_capture = max(
-                            latest_relevant_capture,
-                            datetime.fromisoformat(captured_at.replace("Z", "+00:00")).timestamp()
-                        )
-                    except ValueError:
-                        pass
+                if captured_timestamp <= 0:
+                    return False
+                relevant_states.append(
+                    (
+                        captured_timestamp,
+                        entry_index,
+                        change_index,
+                        state,
+                        str(overlay_entry.get("source") or ""),
+                        intent_name,
+                    )
+                )
 
-        schema_sources = [
-            ("app", self.discovery.app_json_path),
-            ("console", self.discovery.consolelog_json_path),
-        ]
-        newest_schema_source = max(
-            (
-                (os.path.getmtime(path), source_kind, path)
-                for source_kind, path in schema_sources
-                if path and os.path.exists(path)
-            ),
-            default=(0.0, "", ""),
-        )
-        latest_source_update, source_kind, source_path = newest_schema_source
-        if latest_relevant_capture and latest_source_update > latest_relevant_capture:
-            current_discovery = PathDiscovery(
-                source_path if source_kind == "app" else None,
-                source_path if source_kind == "console" else None,
-                None,
-                None,
-            )
+        if not relevant_states:
+            return False
+        latest_state = max(relevant_states, key=lambda item: (item[0], item[1], item[2]))
+        latest_capture, _, _, soft_deleted, source, intent_name = latest_state
+        if not soft_deleted or source != "delete_data_type" or intent_name != "WriteCustom":
+            return False
+
+        if require_fresh_schema:
+            source_path = self.discovery.app_json_path
+            if (
+                not source_path
+                or not os.path.exists(source_path)
+                or os.path.getmtime(source_path) <= latest_capture
+            ):
+                return False
+            current_discovery = PathDiscovery(source_path, None, None, None)
             current_data = current_discovery.data if isinstance(current_discovery.data, dict) else {}
             current_types = current_data.get("user_types")
             current_entry = current_types.get(data_type_key) if isinstance(current_types, dict) else None
-            if isinstance(current_entry, dict):
-                return current_entry.get("%del") is True
-        return soft_deleted
+            return isinstance(current_entry, dict) and current_entry.get("%del") is True
+        return True
 
     def delete_data_type_permanently(
         self,
@@ -62282,16 +62286,16 @@ class BubbleCLI:
         if not resolved_key:
             logger.error("Permanent data type deletion requires the exact internal data type key.")
             return False
-        if not self._data_type_is_soft_deleted(resolved_key):
+        if not self._data_type_is_soft_deleted(resolved_key, require_fresh_schema=not dry_run):
             logger.error(
                 f"Data type '{resolved_key}' must be soft-deleted with delete_data_type before permanent deletion."
             )
             return False
-        if not dry_run and not confirm:
+        if not dry_run and confirm is not True:
             logger.error("Permanent data type deletion requires confirm=true.")
             return False
 
-        pb = PayloadBuilder(appname=self.appname)
+        pb = PayloadBuilder(appname=self.appname, app_version=self.app_version)
         self._add_schema_change(
             pb,
             "CleanApp",

@@ -489,7 +489,8 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Permanently remove a Bubble data type using the CleanApp write contract captured from Optimize application. "
         "This is irreversible, deletes the complete user_types entry, and is allowed only after delete_data_type "
         "has successfully soft-deleted the same type in the same branch. It requires the exact internal data type "
-        "key, execute=true, and a new confirm=true; exact payload and batch bypasses are rejected."
+        "key, execute=true, and a new confirm=true; exact payload and batch bypasses are rejected. The runtime "
+        "downloads a fresh authenticated .bubble export before the write and performs another export read-back after it."
     ),
     "bubble_project_bootstrap": (
         "One-call setup entrypoint for a Bubble project profile. Use it when the user provides or implies a profile "
