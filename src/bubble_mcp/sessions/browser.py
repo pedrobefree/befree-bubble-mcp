@@ -3,15 +3,35 @@
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
 from bubble_mcp.execution.client import BubbleEditorClient, default_http_transport
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS, MIN_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import BubbleSessionData, session_from_payload
 
 ProgressCallback = Callable[[str], None]
+CancellationCheck = Callable[[], bool]
 EDITOR_VALIDATION_INTERVAL_SEC = 2.0
 EDITOR_VALIDATION_TIMEOUT_SEC = 10.0
+# Login is user-driven and the browser is closed the moment this budget runs out, so it has to
+# cover the slowest realistic human path: password, then a two-factor code that arrives by email
+# or SMS and may need a retry. The old 120-180s budgets expired mid-2FA and killed the window
+# before the user could finish. Waiting longer costs nothing on the happy path -- the poll loop
+# exits as soon as the editor session validates.
+
+
+class SessionCaptureCancelled(RuntimeError):
+    """Raised when an MCP client cancels an interactive login capture."""
+
+
+@dataclass(frozen=True)
+class BrowserSessionPollResult:
+    cookie_string: str
+    user_agent: str
+    validated: bool
+    stop_reason: str
 
 
 def _cookie_header(cookies: list[dict[str, Any]]) -> str:
@@ -51,6 +71,16 @@ def _first_open_page_user_agent(context: Any, fallback: str) -> str:
     return fallback
 
 
+def _has_open_page(context: Any) -> bool:
+    for page in getattr(context, "pages", []):
+        try:
+            if not page.is_closed():
+                return True
+        except Exception:
+            continue
+    return False
+
+
 def _poll_browser_session(
     context: Any,
     *,
@@ -61,7 +91,8 @@ def _poll_browser_session(
     monotonic: Callable[[], float] = time.monotonic,
     progress: ProgressCallback | None = None,
     editor_session_ready: Callable[[str], bool] | None = None,
-) -> tuple[str, str, bool, bool]:
+    cancelled: CancellationCheck | None = None,
+) -> BrowserSessionPollResult:
     """Poll a Playwright context and keep the newest usable Bubble session state.
 
     The login flow is intentionally user-driven. Closing the browser window or
@@ -76,12 +107,18 @@ def _poll_browser_session(
     editor call.
     """
 
-    interrupted = False
     validated = False
     reported_cookies = bool(last_cookie_string)
     reported_write_ready = False
-    deadline = monotonic() + max(1, wait_seconds)
-    while monotonic() < deadline:
+    deadline = monotonic() + wait_seconds
+    stop_reason = "timeout"
+    while True:
+        if cancelled is not None and cancelled():
+            stop_reason = "cancelled"
+            break
+        if not _has_open_page(context):
+            stop_reason = "browser_closed"
+            break
         try:
             cookie_string = _bubble_cookie_header(context)
             if cookie_string:
@@ -113,15 +150,77 @@ def _poll_browser_session(
                         "Bubble editor session validated (calculate_derived succeeded). "
                         "You can close the browser now."
                     )
+                stop_reason = "validated"
                 break
             last_user_agent = _first_open_page_user_agent(context, last_user_agent)
-            sleep(1)
         except KeyboardInterrupt:
-            interrupted = True
+            stop_reason = "interrupted"
             break
         except Exception:
+            stop_reason = "browser_error"
             break
-    return last_cookie_string, last_user_agent, interrupted, validated
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            stop_reason = "timeout"
+            break
+        try:
+            sleep(min(1, remaining))
+        except KeyboardInterrupt:
+            stop_reason = "interrupted"
+            break
+    return BrowserSessionPollResult(
+        cookie_string=last_cookie_string,
+        user_agent=last_user_agent,
+        validated=validated,
+        stop_reason=stop_reason,
+    )
+
+
+def _require_complete_capture(
+    *,
+    cookie_string: str,
+    write_headers: dict[str, str],
+    validated: bool,
+    stop_reason: str,
+    wait_seconds: int,
+) -> None:
+    if not cookie_string:
+        if stop_reason == "timeout":
+            raise RuntimeError(
+                f"No bubble.io cookies were captured within {wait_seconds} seconds. If a two-factor code "
+                "was still pending, rerun with a larger wait_seconds (CLI: --wait-seconds)."
+            )
+        raise RuntimeError(
+            "No bubble.io cookies were captured before the login browser closed or capture stopped. "
+            "Run login again and keep the browser open until the editor session is validated."
+        )
+    if not (
+        write_headers.get("x-bubble-client-version")
+        or write_headers.get("x-bubble-client-commit-timestamp")
+    ):
+        if stop_reason == "timeout":
+            raise RuntimeError(
+                f"Session capture timed out after {wait_seconds} seconds while waiting for Bubble editor "
+                "request headers. If login or two-factor authentication was still in progress, rerun with "
+                "a larger wait_seconds (CLI: --wait-seconds)."
+            )
+        raise RuntimeError(
+            "Bubble cookies were captured, but editor request headers were not. "
+            "Open the Bubble editor for the target app, wait until it fully loads, and rerun session login."
+        )
+    if not validated:
+        if stop_reason == "timeout":
+            raise RuntimeError(
+                f"Session capture timed out after {wait_seconds} seconds while waiting for the authenticated "
+                "Bubble editor session to pass calculate_derived. If a two-factor code was still pending, "
+                "rerun with a larger wait_seconds (CLI: --wait-seconds)."
+            )
+        raise RuntimeError(
+            "Bubble cookies and editor headers were captured, but the session never passed a real "
+            "calculate_derived check -- it is likely an anonymous or login-page session, not an "
+            "authenticated editor session. Log in with an account that has EDITOR access to this app, "
+            "wait for the editor to fully load, and rerun session login."
+        )
 
 
 def capture_session_with_playwright(
@@ -129,16 +228,23 @@ def capture_session_with_playwright(
     app_id: str,
     editor_url: str | None = None,
     headless: bool = False,
-    wait_seconds: int = 120,
+    wait_seconds: int = DEFAULT_LOGIN_WAIT_SECONDS,
     user_data_dir: Path | None = None,
     app_version: str | None = None,
     progress: ProgressCallback | None = None,
+    cancelled: CancellationCheck | None = None,
 ) -> BubbleSessionData:
     """Open a local browser and capture Bubble cookies.
 
     Playwright is an optional dependency. Install with
     `pip install "befree-bubble-mcp[browser]"` and run `playwright install`.
     """
+
+    wait_seconds = int(wait_seconds)
+    if wait_seconds < MIN_LOGIN_WAIT_SECONDS:
+        raise ValueError(f"wait_seconds must be at least {MIN_LOGIN_WAIT_SECONDS}.")
+    if cancelled is not None and cancelled():
+        raise SessionCaptureCancelled("Bubble session login was cancelled by the MCP client.")
 
     try:
         from playwright.sync_api import sync_playwright
@@ -183,7 +289,7 @@ def capture_session_with_playwright(
 
     if progress is not None:
         progress(f"Opening Bubble editor login browser for app '{app_id}'.")
-        progress(f"Waiting up to {max(1, wait_seconds)} seconds for session cookies.")
+        progress(f"Waiting up to {wait_seconds} seconds for a validated editor session.")
     with sync_playwright() as playwright:
         if user_data_dir is not None:
             user_data_dir.mkdir(parents=True, exist_ok=True)
@@ -237,14 +343,18 @@ def capture_session_with_playwright(
         if progress is not None:
             progress("Browser opened. Log in to Bubble and keep the editor tab open until capture is confirmed.")
 
-        last_cookie_string, last_user_agent, interrupted, validated = _poll_browser_session(
+        poll_result = _poll_browser_session(
             context,
             wait_seconds=wait_seconds,
             last_cookie_string=last_cookie_string,
             last_user_agent=last_user_agent,
             progress=progress,
             editor_session_ready=editor_session_ready,
+            cancelled=cancelled,
         )
+        last_cookie_string = poll_result.cookie_string
+        last_user_agent = poll_result.user_agent
+        validated = poll_result.validated
 
         try:
             cookie_string = _bubble_cookie_header(context)
@@ -261,29 +371,21 @@ def capture_session_with_playwright(
                 browser.close()
             except Exception:
                 pass
-        if interrupted and not last_cookie_string:
+        if poll_result.stop_reason == "cancelled":
+            raise SessionCaptureCancelled("Bubble session login was cancelled by the MCP client.")
+        if poll_result.stop_reason == "interrupted" and not last_cookie_string:
             raise RuntimeError(
                 "Session capture was interrupted before bubble.io cookies were captured. "
                 "Run login again and wait until the CLI prints the saved session JSON."
             )
 
-    if not last_cookie_string:
-        raise RuntimeError("No bubble.io cookies were captured. Log in before the wait timeout expires.")
-    if not (
-        captured_write_headers.get("x-bubble-client-version")
-        or captured_write_headers.get("x-bubble-client-commit-timestamp")
-    ):
-        raise RuntimeError(
-            "Bubble cookies were captured, but editor request headers were not. "
-            "Open the Bubble editor for the target app, wait until it fully loads, and rerun session login."
-        )
-    if not validated:
-        raise RuntimeError(
-            "Bubble cookies and editor headers were captured, but the session never passed a real "
-            "calculate_derived check -- it is likely an anonymous or login-page session, not an "
-            "authenticated editor session. Log in with an account that has EDITOR access to this app, "
-            "wait for the editor to fully load, and rerun session login."
-        )
+    _require_complete_capture(
+        cookie_string=last_cookie_string,
+        write_headers=captured_write_headers,
+        validated=validated,
+        stop_reason=poll_result.stop_reason,
+        wait_seconds=wait_seconds,
+    )
 
     if progress is not None:
         header_count = len(captured_write_headers)

@@ -28,25 +28,24 @@ Browser-assisted capture:
 ```bash
 python -m pip install "befree-bubble-mcp[browser]"
 python -m playwright install chromium
-bubble-mcp session login --profile my-app --app-id my-bubble-app --app-version test --wait-seconds 180
+bubble-mcp session login --profile my-app --app-id my-bubble-app --app-version test
 bubble-mcp session list
 bubble-mcp session inspect --profile my-app
 ```
 
 `session login` uses a persistent local Chromium profile under the Bubble MCP
-config directory, opens the Bubble editor, and polls Bubble cookies while the
-window is open. `--wait-seconds` is the maximum capture window. After logging
-in, leave the editor open for a few seconds before closing the browser so the
-latest cookies can be captured. If you close the window early, the command saves
-the most recent cookies captured during that run.
+config directory, opens the Bubble editor, and polls until the captured session
+passes a real `calculate_derived` request. `--wait-seconds` is the maximum
+capture window and defaults to 600 seconds to cover password and two-factor
+authentication. Keep the browser open until the validation message appears.
 
 The login command writes progress to stderr. Wait for:
 
 ```text
-[bubble-mcp session] Session cookies detected. You can close the browser now; the CLI will save the newest captured session.
+[bubble-mcp session] Bubble editor session validated (calculate_derived succeeded). You can close the browser now.
 ```
 
-After this message appears, it is safe to close the browser. The command will
+After the validation message appears, it is safe to close the browser. The command will
 save the session and print the final redacted JSON result to stdout. Pass
 `--quiet` to disable progress output in automated scripts.
 

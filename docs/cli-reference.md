@@ -377,18 +377,17 @@ subsequent login attempts can reuse the same Bubble browser session.
 ```bash
 python -m pip install "befree-bubble-mcp[browser]"
 python -m playwright install chromium
-bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 120
+bubble-mcp session login --profile my-app --app-id my-bubble-app
 ```
 
-`--wait-seconds` is the maximum time the command keeps polling cookies. After
-logging in, leave the Bubble editor open for a few seconds before closing the
-browser window. If the process is interrupted after Bubble cookies were
-observed, the newest usable session is still saved; if it is interrupted before
-login completes, rerun the command.
+`--wait-seconds` is the maximum time the command waits for an authenticated
+Bubble editor session and defaults to 600 seconds so password and two-factor
+authentication can complete. Keep the editor open until validation succeeds.
 
-During capture, the command prints human-readable progress to stderr. When it
-prints `Session cookies detected. You can close the browser now`, the session
-has enough data to be saved. The final JSON result is still printed to stdout.
+During capture, the command prints human-readable progress to stderr. Close the
+browser only after it prints `Bubble editor session validated
+(calculate_derived succeeded). You can close the browser now.` The final JSON
+result is still printed to stdout.
 Use `--quiet` to suppress progress messages in scripts.
 
 ## `bubble-mcp browser schedule-deploy`

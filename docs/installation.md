@@ -131,7 +131,7 @@ bubble-mcp smoke runtime --suite coverage
 Create or reuse a profile, then open a browser-assisted login flow:
 
 ```bash
-bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180
+bubble-mcp session login --profile my-app --app-id my-bubble-app
 ```
 
 Log in to Bubble in the opened browser and wait until the CLI prints the saved

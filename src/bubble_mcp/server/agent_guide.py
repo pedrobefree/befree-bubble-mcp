@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from typing import Any
 
 from bubble_mcp.knowledge.advisor import knowledge_advice
-import unicodedata
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 
 
 COMPACT_CONTEXT_FIND_ARGS: dict[str, Any] = {
@@ -328,7 +329,11 @@ RECIPES: dict[str, dict[str, Any]] = {
             {
                 "tool": "bubble_session_login",
                 "purpose": "Use when no stored session exists and the user can complete Bubble login in the opened browser.",
-                "args": {"profile": "$profile", "app_id": "$app_id", "wait_seconds": 180},
+                "args": {
+                    "profile": "$profile",
+                    "app_id": "$app_id",
+                    "wait_seconds": DEFAULT_LOGIN_WAIT_SECONDS,
+                },
                 "required_before_execute": False,
             },
             {

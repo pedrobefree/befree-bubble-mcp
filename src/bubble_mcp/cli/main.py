@@ -98,6 +98,7 @@ from bubble_mcp.skills.store import (
 )
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS, MIN_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.tool_authoring.sessions import (
     append_capture_to_authoring_session,
@@ -115,6 +116,13 @@ from bubble_mcp.validators.semantic import validate_plan
 
 def emit_json(payload: object) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
+
+
+def positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < MIN_LOGIN_WAIT_SECONDS:
+        raise argparse.ArgumentTypeError(f"must be at least {MIN_LOGIN_WAIT_SECONDS}")
+    return parsed
 
 
 def command_init(args: argparse.Namespace) -> int:
@@ -2106,9 +2114,12 @@ def build_parser() -> argparse.ArgumentParser:
     session_login_parser.add_argument("--app-version", default="")
     session_login_parser.add_argument(
         "--wait-seconds",
-        type=int,
-        default=120,
-        help="Maximum time to keep the browser open while polling and saving the latest Bubble cookies.",
+        type=positive_int,
+        default=DEFAULT_LOGIN_WAIT_SECONDS,
+        help=(
+            "Maximum time to keep the browser open while polling and saving the latest Bubble cookies. "
+            "The window is closed as soon as this runs out, so leave room for two-factor codes."
+        ),
     )
     session_login_parser.add_argument("--headless", action="store_true")
     session_login_parser.add_argument(

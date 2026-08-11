@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import re
-from typing import Any, cast
+from typing import Any, Callable, cast
 from pathlib import Path
 
 from bubble_mcp import __version__
@@ -121,6 +121,7 @@ from bubble_mcp.skills.store import (
 )
 from bubble_mcp.skills.validator import describe_skill_file, validate_skill_file
 from bubble_mcp.sessions.browser import capture_session_with_playwright
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import list_sessions, load_session, save_session, session_from_payload
 from bubble_mcp.style_import.runtime import create_styles_from_html_runtime
 from bubble_mcp.tool_authoring.sessions import (
@@ -653,7 +654,13 @@ def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, Any]:
+def call_tool(
+    name: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     """Call a supported tool and return a JSON-serializable payload."""
 
     arguments = _arguments_with_profile_defaults(arguments)
@@ -1462,15 +1469,18 @@ def call_tool(name: str, arguments: dict[str, Any] | None = None) -> dict[str, A
 
         def collect_progress(message: str) -> None:
             progress_messages.append(message)
+            if progress is not None:
+                progress(message)
 
         captured_session = capture_session_with_playwright(
             app_id=app_id,
             editor_url=str(args.get("editor_url") or "").strip() or None,
             headless=bool(args.get("headless")),
-            wait_seconds=int(args.get("wait_seconds") or 180),
+            wait_seconds=int(args.get("wait_seconds") or DEFAULT_LOGIN_WAIT_SECONDS),
             user_data_dir=settings.config_dir / "browser-profiles" / profile,
             app_version=app_version,
             progress=collect_progress,
+            cancelled=cancelled,
         )
         session_path = save_session(profile, captured_session)
         return {
