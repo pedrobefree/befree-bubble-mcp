@@ -564,11 +564,16 @@ def _summarize_merge_body(body: Any) -> dict[str, Any]:
 
 
 def describe_bubble_branch_merge_conflicts(*, payload: dict[str, Any]) -> dict[str, Any]:
-    candidate = payload.get("request", {}).get("payload") if isinstance(payload.get("request"), dict) else None
-    if not isinstance(candidate, dict):
-        candidate = payload.get("payload") if isinstance(payload.get("payload"), dict) else payload
-    if not isinstance(candidate, dict):
-        raise ValueError("bubble_branch_merge_conflicts_describe requires a payload object.")
+    raw_request = payload.get("request")
+    request_payload = raw_request.get("payload") if isinstance(raw_request, dict) else None
+    nested_payload = payload.get("payload")
+    candidate = (
+        request_payload
+        if isinstance(request_payload, dict)
+        else nested_payload
+        if isinstance(nested_payload, dict)
+        else payload
+    )
     changes = candidate.get("changes")
     if not isinstance(changes, list):
         raise ValueError("bubble_branch_merge_conflicts_describe requires a payload with a changes array.")
@@ -580,7 +585,8 @@ def describe_bubble_branch_merge_conflicts(*, payload: dict[str, Any]) -> dict[s
         if not isinstance(raw_change, dict):
             auxiliary_changes.append({"change_index": index, "reason": "non_object_change"})
             continue
-        path_array = raw_change.get("path_array") if isinstance(raw_change.get("path_array"), list) else []
+        raw_path_array = raw_change.get("path_array")
+        path_array = raw_path_array if isinstance(raw_path_array, list) else []
         context = _path_context(path_array)
         intent_name = _intent_name(raw_change)
         if intent_name == "MergeConflict":

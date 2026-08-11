@@ -101,7 +101,8 @@ def build_style_import_plan(
     if not include_states:
         rules = [rule for rule in rules if rule.state == "base"]
     elif states is not None:
-        allowed_states = {"base", *normalize_state_names(states)}
+        normalized_states = normalize_state_names(states) or []
+        allowed_states = {"base", *normalized_states}
         rules = [rule for rule in rules if rule.state in allowed_states]
 
     candidate = map_rules_to_style_candidate(

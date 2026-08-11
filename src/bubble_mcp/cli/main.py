@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 from bubble_mcp.catalog_quality import catalog_quality_report
 from bubble_mcp.browser_automation import (
@@ -892,12 +893,20 @@ def command_branch_merge_conflicts_describe(args: argparse.Namespace) -> int:
 
 
 def command_branch_merge_resolve_conflicts(args: argparse.Namespace) -> int:
+    changelog_data: list[dict[str, Any]] | None = None
+    if args.changelog_data:
+        raw_changelog_data = _load_optional_json_object(args.changelog_data).get("changelog_data")
+        if not isinstance(raw_changelog_data, list) or not all(
+            isinstance(item, dict) for item in raw_changelog_data
+        ):
+            raise ValueError("branch merge-resolve-conflicts requires changelog_data to be an array of objects.")
+        changelog_data = cast(list[dict[str, Any]], raw_changelog_data)
     emit_json(
         resolve_bubble_branch_merge_conflicts(
             profile=args.profile,
             app_id=args.app_id or None,
             merge_app_version=args.merge_app_version,
-            changelog_data=_load_optional_json_object(args.changelog_data).get("changelog_data") if args.changelog_data else None,
+            changelog_data=changelog_data,
             session_id=args.session_id or None,
             execute=args.execute,
         )

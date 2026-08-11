@@ -18,7 +18,7 @@
 
   window.addEventListener('message', (event) => {
     // Only accept messages from our own content script (same origin, same window)
-    if (event.source !== window) return;
+    if (event.source !== window || event.origin !== window.location.origin) return;
     if (!event.data || ![MCP_MSG_TYPE, MCP_WRITE_MSG_TYPE].includes(event.data.type)) return;
 
     const payload = event.data.payload;

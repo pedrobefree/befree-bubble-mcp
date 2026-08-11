@@ -274,6 +274,7 @@ def _resolve_runtime_environment(
     )
 
     explicit_bubble_file = _resolve_optional_path(args.get("bubble_file") or args.get("app_json_path"))
+    app_json_path: str | None
     if authoritative_refresh:
         forbidden_overrides = (
             "bubble_file",

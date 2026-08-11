@@ -61,7 +61,7 @@
   }
 
   function send(type, payload) {
-    window.postMessage({ type, payload }, '*');
+    window.postMessage({ type, payload }, window.location.origin);
   }
 
   function getCurrentAppId() {

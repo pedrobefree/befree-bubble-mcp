@@ -31,7 +31,8 @@ def is_destructive_tool(tool_name: str) -> bool:
 
 
 def permanent_data_type_delete_targets(payload: dict[str, Any]) -> list[str]:
-    candidate = payload.get("body") if isinstance(payload.get("body"), dict) else payload
+    raw_body = payload.get("body")
+    candidate = raw_body if isinstance(raw_body, dict) else payload
     changes = candidate.get("changes")
     if not isinstance(changes, list):
         return []
@@ -39,7 +40,8 @@ def permanent_data_type_delete_targets(payload: dict[str, Any]) -> list[str]:
     for change in changes:
         if not isinstance(change, dict):
             continue
-        intent = change.get("intent") if isinstance(change.get("intent"), dict) else {}
+        raw_intent = change.get("intent")
+        intent = raw_intent if isinstance(raw_intent, dict) else {}
         path_array = change.get("path_array")
         if (
             intent.get("name") == "CleanApp"

@@ -923,11 +923,6 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Human-readable source branch name for Bubble's merge changelog entry.",
         examples=["staging"],
     ),
-    "user_id": _prop(
-        "string",
-        "Bubble user id for merge changelog data. Usually derived from stored session cookies when omitted.",
-        examples=["1754998774520x493530240122586500"],
-    ),
     "changelog_data": _prop(
         "array",
         "Exact Bubble changelog_data array captured from the editor. Only pass when replaying an observed merge write/finalize payload.",
@@ -1947,6 +1942,13 @@ def branch_changelog_tools() -> list[ToolSchema]:
                 "execute",
             ],
             required=["profile", "merge_app_version", "target_version_id", "source_version_id", "source_branch_name"],
+            field_overrides={
+                "user_id": _prop(
+                    "string",
+                    "Bubble user id for merge changelog data. Usually derived from stored session cookies when omitted.",
+                    examples=["1754998774520x493530240122586500"],
+                )
+            },
         ),
     ]
 

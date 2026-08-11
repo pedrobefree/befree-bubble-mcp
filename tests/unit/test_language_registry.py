@@ -121,6 +121,11 @@ def test_language_diff_reports_added_changed_removed_entries(tmp_path, monkeypat
 def test_framework_language_pack_filters_context_for_framework_and_scope(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 
+    def unexpected_remote_fetch(**_kwargs):
+        raise AssertionError("framework language packs must not depend on remote knowledge")
+
+    monkeypatch.setattr("bubble_mcp.knowledge.advisor.fetch_remote_records", unexpected_remote_fetch)
+
     result = framework_language_pack(
         framework="bmad",
         profile="cliente2",
@@ -136,6 +141,7 @@ def test_framework_language_pack_filters_context_for_framework_and_scope(tmp_pat
     assert result["tool_matches"]
     assert len(result["tool_matches"]) <= 10
     assert "full_catalog" not in result
+    assert result["recipes"][0]["id"] == "workflow"
 
 
 def test_compile_framework_program_outputs_preview_safe_calls(tmp_path, monkeypatch) -> None:

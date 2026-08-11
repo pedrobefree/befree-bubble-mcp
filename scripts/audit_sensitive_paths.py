@@ -12,23 +12,48 @@ from pathlib import Path
 SENSITIVE_PATTERNS = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in [
-        r"\bcookie\s*[:=]\s*[^,\n]{12,}",
-        r"\bauthorization\s*[:=]\s*[^,\n]{12,}",
-        r"\bbearer\s+[a-z0-9._~+/-]{12,}",
-        r"\bapi[_-]?token\s*[:=]\s*[^,\n]{8,}",
-        r"\baccess[_-]?token\s*[:=]\s*[^,\n]{8,}",
-        r"\brefresh[_-]?token\s*[:=]\s*[^,\n]{8,}",
-        r"\bclient[_-]?secret\s*[:=]\s*[^,\n]{8,}",
-        r"\bpassword\s*[:=]\s*[^,\n]{8,}",
+        r"\bcookie[\"']?\s*[:=]\s*[\"'][^\"'\n]{12,}[\"']",
+        r"\bauthorization[\"']?\s*[:=]\s*[\"'][^\"'\n]{12,}[\"']",
+        r"\bapi[_-]?token[\"']?\s*[:=]\s*[\"'][^\"'\n]{8,}[\"']",
+        r"\baccess[_-]?token[\"']?\s*[:=]\s*[\"'][^\"'\n]{8,}[\"']",
+        r"\brefresh[_-]?token[\"']?\s*[:=]\s*[\"'][^\"'\n]{8,}[\"']",
+        r"\bclient[_-]?secret[\"']?\s*[:=]\s*[\"'][^\"'\n]{8,}[\"']",
+        r"\bpassword[\"']?\s*[:=]\s*[\"'][^\"'\n]{8,}[\"']",
         r"\bcredentials\.enc\b",
         r"\baria\.db\b",
         r"\bbefree-page\b",
         r"\bcli-test-project-graph\b",
         r"\b(?:befree|cli-test|prod|live)[a-z0-9_-]*-crawler-index\.json\b",
-        r"\bmutation-overlay\b",
-        r"\bproject-graph\b",
     ]
 ]
+
+BEARER_PATTERN = re.compile(r"\bbearer\s+([a-z0-9._~+/-]{12,})", re.IGNORECASE)
+PLACEHOLDER_TOKEN_MARKERS = {
+    "abcdefghijklmnopqrstuvwxyz",
+    "dummy",
+    "example",
+    "fake",
+    "redacted",
+    "secret",
+    "synthetic",
+}
+SENSITIVE_FILE_PATTERNS = (
+    re.compile(r"mutation-overlay", re.IGNORECASE),
+    re.compile(r"project-graph", re.IGNORECASE),
+)
+
+
+def is_obvious_placeholder(value: str) -> bool:
+    normalized = value.lower()
+    if any(marker in normalized for marker in PLACEHOLDER_TOKEN_MARKERS):
+        return True
+    return bool(
+        re.fullmatch(
+            r"password[\"']?\s*[:=]\s*[\"']password[\"']",
+            value,
+            re.IGNORECASE,
+        )
+    )
 
 SKIP_DIRS = {
     ".git",
@@ -93,12 +118,32 @@ def audit_path(root: Path) -> list[str]:
         relative = path.relative_to(root)
         if str(relative) in ALLOWLIST:
             continue
+        filename_pattern = next(
+            (pattern for pattern in SENSITIVE_FILE_PATTERNS if pattern.search(path.name)),
+            None,
+        )
+        if filename_pattern is not None:
+            findings.append(f"{relative}: filename matched {filename_pattern.pattern!r}")
+            continue
         text = path.read_text(encoding="utf-8", errors="ignore")
+        sensitive_match: tuple[re.Pattern[str], re.Match[str]] | None = None
         for pattern in SENSITIVE_PATTERNS:
-            match = pattern.search(text)
-            if match:
-                findings.append(f"{relative}: matched {pattern.pattern!r}")
+            match = next(
+                (candidate for candidate in pattern.finditer(text) if not is_obvious_placeholder(candidate.group(0))),
+                None,
+            )
+            if match is not None:
+                sensitive_match = (pattern, match)
                 break
+        if sensitive_match is not None:
+            findings.append(f"{relative}: matched {sensitive_match[0].pattern!r}")
+            continue
+        bearer_match = next(
+            (match for match in BEARER_PATTERN.finditer(text) if not is_obvious_placeholder(match.group(1))),
+            None,
+        )
+        if bearer_match is not None:
+            findings.append(f"{relative}: matched {BEARER_PATTERN.pattern!r}")
     return findings
 
 

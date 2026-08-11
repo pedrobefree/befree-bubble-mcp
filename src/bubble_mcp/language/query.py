@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from bubble_mcp.language.registry import build_language_index, current_language_entries
+from bubble_mcp.language.registry import (
+    LanguageRegistrySnapshot,
+    build_language_snapshot,
+    current_language_entries,
+)
 from bubble_mcp.server.schemas import list_tool_schemas
 
 
@@ -54,8 +58,10 @@ def language_query(
     profile: str | None = None,
     framework: str | None = None,
     cached_registry_version: str | None = None,
+    snapshot: LanguageRegistrySnapshot | None = None,
 ) -> dict[str, Any]:
-    entries = current_language_entries()
+    resolved_snapshot = snapshot or build_language_snapshot(profile=profile)
+    entries = resolved_snapshot.entries
     if families:
         family_set = {str(item) for item in families}
         entries = [entry for entry in entries if entry.get("family") in family_set]
@@ -69,7 +75,7 @@ def language_query(
     matches = [entry for entry, score in sorted(scored, key=lambda item: (-item[1], item[0]["name"])) if score > 0]
     if not matches and not query.strip():
         matches = sorted(entries, key=lambda item: item["name"])
-    index = build_language_index(profile=profile)
+    index = resolved_snapshot.index
     cache = {"hit": False, "reason": "not_requested"}
     if framework is not None and cached_registry_version is not None:
         current_registry_version = str(index["registry_version"])
