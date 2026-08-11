@@ -154,7 +154,7 @@ def detect_project_context(
     canonical_context_path = default_context_path(profile, resolved_app_id)
     if canonical_context_path.exists() and not force:
         context = load_context(canonical_context_path)
-        result_path = _save_context_outputs(context, canonical_path=canonical_context_path, output=output)
+        result_path = _copy_cached_context_output(canonical_path=canonical_context_path, output=output)
         return DetectionResult(
             ok=True,
             app_id=resolved_app_id,
@@ -245,13 +245,22 @@ def detect_project_context(
                 console_payload,
                 str(console_path or console_source),
             )
-            bubble_context = merge_project_contexts(
-                bubble_context,
-                bubble_complement,
-                source=f"{bubble_source}+{console_source}",
-            )
-            sources.append(console_source)
-            result_source = f"{bubble_source}+{console_source}"
+            if _has_usable_console_context(bubble_complement):
+                bubble_context = merge_project_contexts(
+                    bubble_context,
+                    bubble_complement,
+                    source=f"{bubble_source}+{console_source}",
+                )
+                sources.append(console_source)
+                result_source = f"{bubble_source}+{console_source}"
+            else:
+                attempts.append(
+                    {
+                        "source": "console_context_validation",
+                        "ok": False,
+                        "reason": "console app payload contained no usable schema or definitions",
+                    }
+                )
         complete_context = with_provenance(
             bubble_context,
             primary_source=bubble_source,
@@ -326,6 +335,24 @@ def detect_project_context(
         if crawler_index is not None
         else None
     )
+    if console_context is not None and not _has_usable_console_context(console_context):
+        attempts.append(
+            {
+                "source": "console_context_validation",
+                "ok": False,
+                "reason": "console app payload contained no usable schema or definitions",
+            }
+        )
+        console_context = None
+    if crawler_context is not None and not _has_usable_crawler_topology(crawler_context):
+        attempts.append(
+            {
+                "source": "crawler_context_validation",
+                "ok": False,
+                "reason": "editor crawler payload contained no usable topology",
+            }
+        )
+        crawler_context = None
 
     if console_context is not None and crawler_context is not None:
         composed = merge_project_contexts(
@@ -1107,6 +1134,31 @@ def _save_context_outputs(
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(canonical_path.read_text(encoding="utf-8"), encoding="utf-8")
     return output
+
+
+def _copy_cached_context_output(*, canonical_path: Path, output: Path | None) -> Path:
+    if output is None:
+        return canonical_path
+    if output.expanduser().resolve() != canonical_path.expanduser().resolve():
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(canonical_path.read_bytes())
+    return output
+
+
+def _has_usable_console_context(context: BubbleProjectContext) -> bool:
+    if context.nodes:
+        return True
+    return any(
+        bool(context.metadata.get(key))
+        for key in ("settings", "styles", "default_styles")
+    )
+
+
+def _has_usable_crawler_topology(context: BubbleProjectContext) -> bool:
+    return any(
+        node.type in {"page", "reusable", "element", "workflow"}
+        for node in context.nodes
+    )
 
 
 def _context_detection_result(

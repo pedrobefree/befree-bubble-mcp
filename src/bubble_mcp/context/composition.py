@@ -71,6 +71,54 @@ def _merge_nodes(
     )
 
 
+def _node_merge_key(node: BubbleContextNode) -> tuple[str, str, str]:
+    bubble_id = str(node.metadata.get("bubble_id") or "").strip()
+    if bubble_id:
+        return ("bubble_id", node.type, bubble_id)
+    return ("node_id", node.type, node.id)
+
+
+def _unique_node_id(node: BubbleContextNode, used_ids: set[str]) -> str:
+    if node.id not in used_ids:
+        return node.id
+    bubble_id = str(node.metadata.get("bubble_id") or "").strip()
+    base = f"{node.id}:{bubble_id}" if bubble_id else f"{node.id}:{node.type}"
+    candidate = base
+    suffix = 2
+    while candidate in used_ids:
+        candidate = f"{base}:{suffix}"
+        suffix += 1
+    return candidate
+
+
+def _with_node_id(node: BubbleContextNode, node_id: str) -> BubbleContextNode:
+    if node.id == node_id:
+        return node
+    return BubbleContextNode(
+        id=node_id,
+        label=node.label,
+        type=node.type,
+        metadata=node.metadata,
+    )
+
+
+def _remap_node_context(
+    node: BubbleContextNode,
+    node_id_remap: dict[str, str],
+) -> BubbleContextNode:
+    context = node.metadata.get("context")
+    if not isinstance(context, str) or context not in node_id_remap:
+        return node
+    metadata = deepcopy(node.metadata)
+    metadata["context"] = node_id_remap[context]
+    return BubbleContextNode(
+        id=node.id,
+        label=node.label,
+        type=node.type,
+        metadata=metadata,
+    )
+
+
 def merge_project_contexts(
     primary: BubbleProjectContext,
     complement: BubbleProjectContext,
@@ -78,25 +126,53 @@ def merge_project_contexts(
     source: str,
     complement_is_topology: bool = False,
 ) -> BubbleProjectContext:
-    """Merge a lower-priority context into a primary context by stable node id."""
+    """Merge a lower-priority context into a primary context by stable Bubble id."""
 
-    nodes_by_id = {node.id: node for node in primary.nodes}
-    node_order = [node.id for node in primary.nodes]
+    nodes_by_key = {_node_merge_key(node): node for node in primary.nodes}
+    node_order = [_node_merge_key(node) for node in primary.nodes]
+    used_ids = {node.id for node in primary.nodes}
+    complement_id_remap: dict[str, str] = {}
+    remap_context_keys: set[tuple[str, str, str]] = set()
     for node in complement.nodes:
-        existing = nodes_by_id.get(node.id)
+        key = _node_merge_key(node)
+        existing = nodes_by_key.get(key)
         if existing is None:
-            nodes_by_id[node.id] = node
-            node_order.append(node.id)
+            node_id = _unique_node_id(node, used_ids)
+            complement_id_remap[node.id] = node_id
+            remap_context_keys.add(key)
+            used_ids.add(node_id)
+            nodes_by_key[key] = _with_node_id(node, node_id)
+            node_order.append(key)
             continue
-        nodes_by_id[node.id] = _merge_nodes(
+        complement_id_remap[node.id] = existing.id
+        complement_context = node.metadata.get("context")
+        if _has_value(complement_context) and (
+            complement_is_topology or not _has_value(existing.metadata.get("context"))
+        ):
+            remap_context_keys.add(key)
+        nodes_by_key[key] = _merge_nodes(
             existing,
             node,
             complement_is_topology=complement_is_topology,
         )
 
+    nodes = [
+        _remap_node_context(nodes_by_key[key], complement_id_remap)
+        if key in remap_context_keys
+        else nodes_by_key[key]
+        for key in node_order
+    ]
     edges: list[BubbleContextEdge] = []
     edge_keys: set[tuple[str, str, str]] = set()
-    for edge in [*primary.edges, *complement.edges]:
+    remapped_complement_edges = [
+        BubbleContextEdge(
+            source=complement_id_remap.get(edge.source, edge.source),
+            target=complement_id_remap.get(edge.target, edge.target),
+            type=edge.type,
+        )
+        for edge in complement.edges
+    ]
+    for edge in [*primary.edges, *remapped_complement_edges]:
         key = (edge.source, edge.target, edge.type)
         if key in edge_keys:
             continue
@@ -106,7 +182,7 @@ def merge_project_contexts(
     return BubbleProjectContext(
         app_id=primary.app_id if primary.app_id != "unknown" else complement.app_id,
         source=source,
-        nodes=[nodes_by_id[node_id] for node_id in node_order],
+        nodes=nodes,
         edges=edges,
         metadata=_merge_missing(primary.metadata, complement.metadata),
     )
