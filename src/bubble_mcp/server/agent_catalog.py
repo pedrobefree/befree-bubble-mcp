@@ -63,7 +63,10 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "limit": "Maximum number of results or eval cases to return.",
     "kind": "Input artifact type. Use auto unless the artifact type is known.",
     "bubble_file": "Optional .bubble project export path to use as the primary context source.",
-    "consolelog_file": "Optional console.log(app) JSON path to use when a .bubble export is not available.",
+    "consolelog_file": (
+        "Optional console.log(app) JSON path. It may complement .bubble; without an export it is combined "
+        "with the editor crawler."
+    ),
     "skip_id_to_path": "Skip generating id-to-path lookup data in the compact context.",
     "dataset": "Evaluation dataset path.",
     "filter": "Comma-separated eval case ids to run.",
@@ -646,9 +649,9 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "and crawler indexes. Writes only local context artifacts."
     ),
     "bubble_context_detect": (
-        "Build or refresh the unified Bubble project context for a profile. Prefer .bubble export data, then "
-        "consolelog fallback, then editor crawl/cache. Use before planning writes when target pages or elements may "
-        "have changed."
+        "Build or refresh the unified Bubble project context for a profile. A valid .bubble export is authoritative "
+        "and skips the crawler. Without an export, console.log(app) and editor crawler data are combined; either "
+        "source alone remains partial. Use before planning writes when target pages or elements may have changed."
     ),
     "bubble_plan": (
         "Turn a short natural language Bubble edit request into a deterministic validated plan without writing to "

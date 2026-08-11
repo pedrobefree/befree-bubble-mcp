@@ -58,6 +58,16 @@ def _safe_context_summary(summary: dict[str, Any]) -> dict[str, Any]:
     if isinstance(default_styles, dict):
         safe_metadata["default_styles"] = {"count": len(default_styles)}
 
+    provenance = metadata.get("provenance")
+    if isinstance(provenance, dict):
+        safe_sources = provenance.get("sources")
+        safe_metadata["provenance"] = {
+            "primary_source": str(provenance.get("primary_source") or ""),
+            "sources": [str(item) for item in safe_sources] if isinstance(safe_sources, list) else [],
+            "completeness": str(provenance.get("completeness") or "partial"),
+            "bubble_export_available": bool(provenance.get("bubble_export_available")),
+        }
+
     if safe_metadata:
         safe_summary["metadata"] = safe_metadata
     return safe_summary
@@ -66,7 +76,7 @@ def _safe_context_summary(summary: dict[str, Any]) -> dict[str, Any]:
 def _context_path_for_profile(profile: BubbleProfile, settings_dir: Path) -> tuple[Path | None, Path | None]:
     source_artifact = _resolve_profile_path(profile, profile.app_json_path, settings_dir)
     if source_artifact is None:
-        return None, None
+        return None, default_context_path(profile.name, profile.app_id)
     if source_artifact.suffix.lower() == ".bubble":
         return source_artifact, default_context_path(profile.name, profile.app_id)
     return source_artifact, source_artifact
@@ -81,6 +91,7 @@ def _context_status(profile: BubbleProfile, *, settings_dir: Path, max_age_hours
             "source_artifact": _path_status(source_artifact),
             "loadable": False,
             "app_id_matches_profile": False,
+            "completeness": "missing",
             "summary": None,
             "freshness": {
                 "status": "missing",
@@ -96,6 +107,7 @@ def _context_status(profile: BubbleProfile, *, settings_dir: Path, max_age_hours
             "source_artifact": _path_status(source_artifact),
             "loadable": False,
             "app_id_matches_profile": False,
+            "completeness": "invalid",
             "summary": None,
             "freshness": {
                 "status": "invalid",
@@ -104,11 +116,19 @@ def _context_status(profile: BubbleProfile, *, settings_dir: Path, max_age_hours
             },
             "error": str(exc),
         }
+    provenance = context.metadata.get("provenance")
+    explicit_completeness = (
+        str(provenance.get("completeness") or "") if isinstance(provenance, dict) else ""
+    )
+    completeness = explicit_completeness if explicit_completeness in {"complete", "partial"} else (
+        "complete" if source_artifact is not None else "partial"
+    )
     return {
         **status,
         "source_artifact": _path_status(source_artifact),
         "loadable": True,
         "app_id_matches_profile": context.app_id == profile.app_id,
+        "completeness": completeness,
         "summary": _safe_context_summary(context.summary()),
         "freshness": context_freshness(context, path=context_path, max_age_hours=max_age_hours),
     }
@@ -220,6 +240,17 @@ def _next_actions(*, profile: BubbleProfile | None, session: dict[str, Any] | No
                 "reason": "Loaded context app_id does not match the configured profile app_id. Refresh context for this profile.",
             }
         )
+    elif context.get("completeness") != "complete":
+        actions.append(
+            {
+                "tool": "bubble_context_detect",
+                "args": {"profile": profile.name, "app_id": profile.app_id, "force": True},
+                "reason": (
+                    "Compact context is partial. A no-export app requires both console.log(app) "
+                    "and editor crawler data before it is ready."
+                ),
+            }
+        )
     elif context.get("freshness", {}).get("stale"):
         actions.append(
             {
@@ -258,6 +289,7 @@ def profile_status(profile_name: str = "", *, max_age_hours: int = 24) -> dict[s
         and session.get("write_ready")
         and context.get("loadable")
         and context.get("app_id_matches_profile")
+        and context.get("completeness") == "complete"
         and not context.get("freshness", {}).get("stale")
     )
     return {

@@ -418,8 +418,9 @@ def context_from_crawler_index(path: Path) -> BubbleProjectContext:
     return _context_from_crawler_payload(payload, str(path))
 
 
-def context_from_bubble_export(path: Path) -> BubbleProjectContext:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+def context_from_bubble_payload(payload: dict[str, Any], source: str) -> BubbleProjectContext:
+    """Build compact context from an in-memory .bubble or console app payload."""
+
     if not isinstance(payload, dict):
         raise ValueError("Bubble export must be a JSON object.")
     raw_app = payload.get("app")
@@ -473,7 +474,12 @@ def context_from_bubble_export(path: Path) -> BubbleProjectContext:
         "settings": _obj(app.get("settings")),
         "styles": _obj(app.get("styles")),
     }
-    return context_from_crawler_payload(crawler_like, path)
+    return _context_from_crawler_payload(crawler_like, source)
+
+
+def context_from_bubble_export(path: Path) -> BubbleProjectContext:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return context_from_bubble_payload(payload, str(path))
 
 
 def context_from_crawler_payload(payload: dict[str, Any], source_path: Path) -> BubbleProjectContext:

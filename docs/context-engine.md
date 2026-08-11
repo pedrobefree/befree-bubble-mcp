@@ -39,14 +39,19 @@ parent by name.
 For real editor writes, prefer detecting context before executing plans. The
 detector follows the same source priority used by Aria's Bubble tooling:
 
-1. Use a provided `.bubble` export when available.
-2. Use a provided `console.log(app)` capture when available.
-3. Download the authenticated `.bubble` export from
+1. Use a provided or configured `.bubble` export when available.
+2. Download the authenticated `.bubble` export from
    `https://bubble.io/appeditor/export/{version}/{appId}.bubble`.
-4. Fall back to the editor path crawler using the captured Bubble session.
-5. If Bubble's path API only returns sparse hashes, open the authenticated
+3. When no export exists, load or capture `console.log(app)` and run the editor
+   path crawler using the captured Bubble session.
+4. If Bubble's path API only returns sparse hashes, open the authenticated
    Playwright editor profile and capture the editor's own network-loaded indexes
    such as `id_to_path` and `issues_sub`.
+
+The `.bubble` export is complete on its own; console data may complement it, but
+the crawler is skipped. Without `.bubble`, both console and crawler sources are
+required for a complete context. A single fallback source remains available for
+diagnosis but profile readiness stays false until the composite is refreshed.
 
 ```bash
 bubble-mcp context detect \
@@ -63,6 +68,8 @@ directory:
   This split is produced by Aria's `bubble_modules.py` parser, vendored in the
   package as `bubble_mcp.vendor.bubble_modules`.
 - Compact context: `~/.config/bubble-mcp/contexts/{profile}/{appId}-context.json`.
+- Captured console fallback, when needed:
+  `~/.config/bubble-mcp/contexts/{profile}/{appId}-consolelog-app.json`.
 - Crawler fallback, only when needed:
   `~/.config/bubble-mcp/contexts/{profile}/{appId}-crawler-index.json`.
 
