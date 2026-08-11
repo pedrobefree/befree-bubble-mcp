@@ -544,7 +544,7 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "consolelog_file": _prop(
         "string",
-        "Optional console.log(app) JSON path used as fallback when a .bubble export is unavailable.",
+        "Optional console.log(app) JSON path. It may complement .bubble; without an export it is combined with the editor crawler.",
         examples=["/tmp/bubble-console-app.json"],
     ),
     "skip_id_to_path": _prop(
@@ -1265,7 +1265,7 @@ def _empty_tool(name: str, description: str) -> ToolSchema:
 def _profile_cache_refresh_tool() -> ToolSchema:
     schema = tool_schema(
         "bubble_profile_cache_refresh",
-        "One-call profile cache refresh for routine requests like 'refresh cache do profile cliente2'. It forces context detection by default, updates the local .bubble-backed context/cache artifacts, and returns updated paths/timestamps so agents do not need to inspect directories, CLI help, or runtime internals.",
+        "One-call profile cache refresh for routine requests like 'refresh cache do profile cliente2'. It forces context detection by default, updates authoritative .bubble or composed console-plus-crawler context artifacts, and returns updated paths/timestamps so agents do not need to inspect directories, CLI help, or runtime internals.",
         [
             "profile",
             "app_id",
@@ -1441,7 +1441,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_context_detect",
-            "Detect and materialize Bubble project context using .bubble export, consolelog fallback, and editor crawler/cache.",
+            "Detect Bubble project context with authoritative .bubble priority or a composed consolelog-plus-crawler fallback.",
             [
                 "profile",
                 "app_id",

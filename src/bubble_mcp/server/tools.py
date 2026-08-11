@@ -650,7 +650,11 @@ def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
         "context_detection": detection.to_dict(),
         "ready": bool(status.get("ready")),
         "status": status,
-        "next_user_action": "Profile cache refreshed. Use bubble_profile_status only if you need readiness details.",
+        "next_user_action": (
+            "Profile cache refreshed. Use bubble_profile_status only if you need readiness details."
+            if status.get("ready")
+            else "Profile cache refreshed but is not ready. Follow status.next_actions to complete missing context sources or session requirements."
+        ),
     }
 
 

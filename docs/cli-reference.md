@@ -108,12 +108,12 @@ bubble-mcp profile refresh-cache --profile my-app --app-id my-bubble-app
 bubble-mcp profile refresh-cache --profile my-app --no-force
 ```
 
-The command resolves `app_id` and `app_version` from the profile when omitted,
-forces context detection by default, downloads or reuses the `.bubble` export
-according to the detector inputs, splits modules, and returns JSON with updated
-artifact paths and timestamps. Agents should call this command/tool directly
-instead of inspecting cache directories or probing CLI help for low-level
-context commands.
+The command resolves `app_id` and `app_version` from the profile when omitted
+and forces context detection by default. It downloads or reuses the authoritative
+`.bubble` export when available; otherwise it composes console and crawler data.
+It returns JSON with updated artifact paths, completeness, and timestamps. Agents
+should call this command/tool directly instead of inspecting cache directories or
+probing CLI help for low-level context commands.
 
 ## `bubble-mcp profile status`
 
@@ -589,10 +589,11 @@ bubble-mcp compile-plan --file ./plan.json --app-id my-bubble-app --context-file
 
 ## `bubble-mcp context detect`
 
-Detects and materializes project context. It tries local `.bubble` or
-`console.log(app)` artifacts when provided, then downloads Bubble's authenticated
-export endpoint (`/appeditor/export/{version}/{appId}.bubble`) before falling
-back to the editor crawler. Successful downloads are cached under
+Detects and materializes project context. A valid local or authenticated `.bubble`
+export is always authoritative and does not require the editor crawler. When no
+export is available, the detector combines `console.log(app)` with the editor
+crawler; either source alone is persisted as partial context but is not ready for
+writes. Successful downloads are cached under
 `~/.config/bubble-mcp/contexts/{profile}/` and split into
 `bubble_modules/{appId}/` next to the compact context.
 

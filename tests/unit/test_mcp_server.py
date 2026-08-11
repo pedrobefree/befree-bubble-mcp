@@ -215,7 +215,10 @@ def test_profile_cache_refresh_tool_forces_context_detection(tmp_path, monkeypat
     assert payload["profile"] == "cliente2"
     assert payload["force"] is True
     assert payload["source"] == "downloaded_bubble"
-    assert payload["next_user_action"] == "Profile cache refreshed. Use bubble_profile_status only if you need readiness details."
+    assert payload["next_user_action"] == (
+        "Profile cache refreshed but is not ready. Follow status.next_actions to complete missing context sources "
+        "or session requirements."
+    )
     assert calls[0]["profile"] == "cliente2"
     assert calls[0]["app_id"] == "courselaunch"
     assert calls[0]["force"] is True

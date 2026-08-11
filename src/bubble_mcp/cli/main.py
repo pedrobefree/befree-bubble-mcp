@@ -1744,12 +1744,15 @@ def build_parser() -> argparse.ArgumentParser:
     add_parser.add_argument(
         "--app-json-path",
         default="",
-        help="Path to a local .bubble export. Used before consolelog/crawler context fallbacks.",
+        help="Path to a local .bubble export. This is the authoritative context source when available.",
     )
     add_parser.add_argument(
         "--consolelog-json-path",
         default="",
-        help="Path to a local console.log(app) JSON/text capture. Used after .bubble and before crawler.",
+        help=(
+            "Path to a local console.log(app) JSON/text capture. It may complement .bubble; "
+            "without .bubble it is combined with the editor crawler."
+        ),
     )
     add_parser.set_defaults(func=command_profile_add)
 
@@ -1907,7 +1910,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     detect_context_parser = context_subparsers.add_parser(
         "detect",
-        help="Detect and materialize context using .bubble/consolelog fallback and editor crawler.",
+        help=(
+            "Detect context from authoritative .bubble, or combine console.log(app) with the editor crawler."
+        ),
     )
     detect_context_parser.add_argument("--profile", required=True)
     detect_context_parser.add_argument("--app-id", default="")

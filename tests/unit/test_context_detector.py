@@ -7,6 +7,7 @@ from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settin
 from bubble_mcp.context.detector import (
     default_bubble_export_path,
     default_bubble_modules_dir,
+    default_context_path,
     detect_project_context,
     refresh_bubble_export,
 )
@@ -343,6 +344,167 @@ def test_detect_context_extracts_consolelog_app_file(tmp_path, monkeypatch) -> N
 
     assert result.source == "consolelog_file"
     assert load_context(result.context_path).summary()["counts"]["page"] == 1
+
+
+def test_detect_context_prefers_bubble_and_skips_crawler_when_console_exists(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    bubble_file = tmp_path / "app.bubble"
+    bubble_file.write_text(
+        json.dumps(
+            {
+                "appname": "synthetic-app",
+                "user_types": {"user": {"%d": "User", "source": "bubble"}},
+                "pages": {"pgIndex": {"%p": {"%nm": "index"}}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    console_file = tmp_path / "consolelog-app.json"
+    console_file.write_text(
+        json.dumps(
+            {
+                "appname": "synthetic-app",
+                "user_types": {"user": {"%d": "Console User", "source": "console"}},
+                "styles": {"button": {"%d": "Button"}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    save_session(
+        "dev",
+        session_from_payload({"appId": "synthetic-app", "headers": {"Cookie": "sid=secret"}}),
+    )
+
+    def unexpected_crawl(**_kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("crawler must not run when a valid .bubble source exists")
+
+    monkeypatch.setattr("bubble_mcp.context.detector.crawl_project_index", unexpected_crawl)
+
+    result = detect_project_context(
+        profile="dev",
+        app_id="synthetic-app",
+        bubble_file=bubble_file,
+        consolelog_file=console_file,
+        force=True,
+    )
+    context = load_context(result.context_path)
+
+    assert result.source == "bubble_file+consolelog_file"
+    assert context.metadata["provenance"] == {
+        "primary_source": "bubble_file",
+        "sources": ["bubble_file", "consolelog_file"],
+        "completeness": "complete",
+        "bubble_export_available": True,
+    }
+    user = next(node for node in context.nodes if node.id == "datatype:user")
+    assert user.label == "User"
+    assert context.metadata["styles"] == {"button": {"%d": "Button"}}
+
+
+def test_detect_context_composes_console_and_crawler_when_export_is_unavailable(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    console_file = tmp_path / "consolelog-app.json"
+    console_file.write_text(
+        json.dumps(
+            {
+                "appname": "synthetic-app",
+                "user_types": {"user": {"%d": "User"}},
+                "styles": {"button": {"%d": "Button"}},
+                "pages": {"pgIndex": {"%p": {"%nm": "index"}, "%el": {}}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    save_session(
+        "dev",
+        session_from_payload({"appId": "synthetic-app", "headers": {"Cookie": "sid=secret"}}),
+    )
+
+    monkeypatch.setattr("bubble_mcp.context.detector._try_download_bubble_export", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        "bubble_mcp.context.detector.crawl_project_index",
+        lambda **_kwargs: {
+            "appId": "synthetic-app",
+            "pages": [
+                {
+                    "id": "pgIndex",
+                    "name": "index",
+                    "rootId": "rootIndex",
+                    "elements": {"elTitle": {"%x": "Text", "%p": {"%nm": "Title"}}},
+                    "workflows": {},
+                }
+            ],
+            "reusables": [],
+            "backendWorkflows": [],
+            "pageIndex": {"index": "pgIndex"},
+            "reusableIndex": {},
+            "apiIndex": {},
+            "idToPath": {"elTitle": "%p3.pgIndex.%el.elTitle"},
+            "source": "full_crawl",
+        },
+    )
+
+    output = tmp_path / "secondary-context.json"
+    result = detect_project_context(
+        profile="dev",
+        app_id="synthetic-app",
+        consolelog_file=console_file,
+        output=output,
+        force=True,
+    )
+    context = load_context(result.context_path)
+
+    assert result.source == "consolelog_file+editor_crawler"
+    assert result.context_path == output
+    assert default_context_path("dev", "synthetic-app").exists()
+    assert context.metadata["provenance"] == {
+        "primary_source": "consolelog_file",
+        "sources": ["consolelog_file", "editor_crawler"],
+        "completeness": "complete",
+        "bubble_export_available": False,
+    }
+    assert any(node.id == "datatype:user" for node in context.nodes)
+    assert any(node.id == "element:elTitle" for node in context.nodes)
+    page = next(node for node in context.nodes if node.type == "page")
+    assert page.metadata["children"] == ["elTitle"]
+
+
+def test_detect_context_composes_automatic_console_capture_without_exposing_payload(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+    save_session(
+        "dev",
+        session_from_payload({"appId": "synthetic-app", "headers": {"Cookie": "sid=secret"}}),
+    )
+    monkeypatch.setattr("bubble_mcp.context.detector._try_download_bubble_export", lambda **_kwargs: None)
+    monkeypatch.setattr(
+        "bubble_mcp.context.detector._try_extract_consolelog_app",
+        lambda **_kwargs: {
+            "appname": "synthetic-app",
+            "settings": {"client_safe": {"api_key": "must-not-leak"}},
+            "pages": {"pgIndex": {"%p": {"%nm": "index"}}},
+        },
+    )
+    monkeypatch.setattr(
+        "bubble_mcp.context.detector.crawl_project_index",
+        lambda **_kwargs: {
+            "appId": "synthetic-app",
+            "pages": [{"id": "pgIndex", "name": "index", "elements": {}, "workflows": {}}],
+            "reusables": [],
+            "backendWorkflows": [],
+            "pageIndex": {"index": "pgIndex"},
+            "reusableIndex": {},
+            "apiIndex": {},
+            "idToPath": {"pgIndex": "%p3.pgIndex"},
+            "source": "full_crawl",
+        },
+    )
+
+    result = detect_project_context(profile="dev", app_id="synthetic-app", force=True)
+    encoded = json.dumps(result.to_dict())
+
+    assert result.source == "consolelog_app+editor_crawler"
+    assert result.to_dict()["completeness"] == "complete"
+    assert "must-not-leak" not in encoded
 
 
 def test_detect_context_falls_back_to_editor_crawler(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
