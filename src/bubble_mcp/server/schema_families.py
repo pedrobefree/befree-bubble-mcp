@@ -5,6 +5,8 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
+
 
 JsonSchema = dict[str, Any]
 ToolSchema = dict[str, Any]
@@ -526,10 +528,8 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "wait_seconds": _prop(
         "integer",
-        "Maximum time to keep the local browser login flow open while polling for Bubble session cookies. "
-        "The browser is closed as soon as this budget runs out, even mid-login, so it must cover the whole "
-        "human flow including a two-factor code. Raise it for accounts whose 2FA code arrives by email or SMS.",
-        default=600,
+        "Maximum time for a browser automation operation.",
+        default=120,
         minimum=1,
     ),
     "headless": _prop(
@@ -1237,12 +1237,16 @@ def tool_schema(
     required: list[str] | None = None,
     any_of: list[JsonSchema] | None = None,
     additional_properties: bool = False,
+    field_overrides: dict[str, JsonSchema] | None = None,
 ) -> ToolSchema:
+    properties = {field_name: field(field_name) for field_name in fields}
+    if field_overrides:
+        properties.update({name: deepcopy(schema) for name, schema in field_overrides.items()})
     return {
         "name": name,
         "description": description,
         "inputSchema": object_schema(
-            fields,
+            properties,
             required=required,
             any_of=any_of,
             additional_properties=additional_properties,
@@ -1338,6 +1342,15 @@ def profile_session_context_tools() -> list[ToolSchema]:
             "Open a local Playwright browser, let the user log in to Bubble, capture editor cookies and request headers, and save the redacted session for a profile. This is interactive and writes only local MCP session storage.",
             ["profile", "app_id", "editor_url", "app_version", "wait_seconds", "headless"],
             required=["profile"],
+            field_overrides={
+                "wait_seconds": _prop(
+                    "integer",
+                    "Maximum time to keep the local browser login flow open. The browser closes when this "
+                    "budget expires, so it must cover password entry and any two-factor code delivery.",
+                    default=DEFAULT_LOGIN_WAIT_SECONDS,
+                    minimum=1,
+                )
+            },
         ),
         tool_schema(
             "bubble_readiness_check",

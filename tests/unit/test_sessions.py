@@ -1,3 +1,10 @@
+import pytest
+
+from bubble_mcp.sessions.browser import (
+    _poll_browser_session,
+    _require_complete_capture,
+    capture_session_with_playwright,
+)
 from bubble_mcp.sessions.store import (
     VolatileSessionStore,
     editor_write_session_status,
@@ -6,7 +13,6 @@ from bubble_mcp.sessions.store import (
     save_session,
     session_from_payload,
 )
-from bubble_mcp.sessions.browser import _poll_browser_session
 
 
 def test_session_store_keeps_metadata_and_redacts_debug_snapshot() -> None:
@@ -54,7 +60,7 @@ def test_browser_session_poll_keeps_cookies_when_interrupted() -> None:
         raise KeyboardInterrupt
 
     progress_events: list[str] = []
-    cookie_string, user_agent, interrupted, validated = _poll_browser_session(
+    result = _poll_browser_session(
         FakeContext(),
         wait_seconds=180,
         sleep=interrupted_sleep,
@@ -62,10 +68,10 @@ def test_browser_session_poll_keeps_cookies_when_interrupted() -> None:
         progress=progress_events.append,
     )
 
-    assert cookie_string == "sid=captured"
-    assert user_agent == "FakeBrowser/1.0"
-    assert interrupted is True
-    assert validated is False
+    assert result.cookie_string == "sid=captured"
+    assert result.user_agent == "FakeBrowser/1.0"
+    assert result.stop_reason == "interrupted"
+    assert result.validated is False
     assert progress_events == [
         "Session cookies detected. You can close the browser now; the CLI will save the newest captured session."
     ]
@@ -94,7 +100,7 @@ def test_browser_session_poll_waits_for_validated_editor_session_before_close_gu
         return float(ticks["count"])
 
     progress_events: list[str] = []
-    cookie_string, user_agent, interrupted, validated = _poll_browser_session(
+    result = _poll_browser_session(
         FakeContext(),
         wait_seconds=5,
         sleep=fake_sleep,
@@ -103,15 +109,90 @@ def test_browser_session_poll_waits_for_validated_editor_session_before_close_gu
         editor_session_ready=lambda _cookie_string: ticks["count"] >= 2,
     )
 
-    assert cookie_string == "sid=captured"
-    assert user_agent == "FakeBrowser/1.0"
-    assert interrupted is False
-    assert validated is True
+    assert result.cookie_string == "sid=captured"
+    assert result.user_agent == "FakeBrowser/1.0"
+    assert result.stop_reason == "validated"
+    assert result.validated is True
     assert progress_events == [
         "Session cookies detected. Waiting for a validated editor session "
         "(anonymous/login-page cookies are not accepted) -- keep the Bubble editor open.",
         "Bubble editor session validated (calculate_derived succeeded). You can close the browser now.",
     ]
+
+
+def test_browser_session_poll_validates_once_more_at_timeout_boundary() -> None:
+    class FakePage:
+        def is_closed(self) -> bool:
+            return False
+
+        def evaluate(self, _script: str) -> str:
+            return "FakeBrowser/1.0"
+
+    class FakeContext:
+        pages = [FakePage()]
+
+        def cookies(self, _url: str | None = None) -> list[dict[str, str]]:
+            return [{"name": "sid", "value": "captured"}]
+
+    ticks = {"count": 0}
+
+    def fake_sleep(_seconds: float) -> None:
+        ticks["count"] += 1
+
+    result = _poll_browser_session(
+        FakeContext(),
+        wait_seconds=1,
+        sleep=fake_sleep,
+        monotonic=lambda: float(ticks["count"]),
+        editor_session_ready=lambda _cookie_string: ticks["count"] == 1,
+    )
+
+    assert result.validated is True
+    assert result.stop_reason == "validated"
+
+
+def test_browser_session_poll_stops_when_browser_is_closed_or_cancelled() -> None:
+    class ClosedContext:
+        pages: list[object] = []
+
+    closed = _poll_browser_session(ClosedContext(), wait_seconds=600)
+    cancelled = _poll_browser_session(ClosedContext(), wait_seconds=600, cancelled=lambda: True)
+
+    assert closed.stop_reason == "browser_closed"
+    assert cancelled.stop_reason == "cancelled"
+
+
+@pytest.mark.parametrize("wait_seconds", [0, -5])
+def test_browser_session_capture_rejects_non_positive_wait(wait_seconds: int) -> None:
+    with pytest.raises(ValueError, match="wait_seconds must be at least 1"):
+        capture_session_with_playwright(app_id="synthetic-app", wait_seconds=wait_seconds)
+
+
+@pytest.mark.parametrize(
+    ("cookie_string", "write_headers", "expected"),
+    [
+        ("", {}, "No bubble.io cookies were captured within 600 seconds"),
+        ("sid=captured", {}, "timed out after 600 seconds while waiting for Bubble editor request headers"),
+        (
+            "sid=captured",
+            {"x-bubble-client-version": "test"},
+            "timed out after 600 seconds while waiting for the authenticated Bubble editor session",
+        ),
+    ],
+)
+def test_capture_timeout_diagnostics_cover_partial_two_factor_state(
+    cookie_string: str,
+    write_headers: dict[str, str],
+    expected: str,
+) -> None:
+    with pytest.raises(RuntimeError, match=expected):
+        _require_complete_capture(
+            cookie_string=cookie_string,
+            write_headers=write_headers,
+            validated=False,
+            stop_reason="timeout",
+            wait_seconds=600,
+        )
 
 
 def test_editor_write_session_status_requires_cookies_and_editor_headers() -> None:

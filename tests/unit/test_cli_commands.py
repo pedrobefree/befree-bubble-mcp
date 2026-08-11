@@ -3,10 +3,13 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI, PayloadBuilder
 import bubble_mcp.cli.main as cli_module
 from bubble_mcp.cli.main import main
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import session_from_payload
 
 
@@ -1776,6 +1779,7 @@ def test_cli_session_login_reports_progress_on_stderr(tmp_path, monkeypatch, cap
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
 
     def fake_capture_session_with_playwright(**kwargs):  # type: ignore[no-untyped-def]
+        assert kwargs["wait_seconds"] == DEFAULT_LOGIN_WAIT_SECONDS
         kwargs["progress"]("Session cookies detected. You can close the browser now.")
         return session_from_payload(
             {
@@ -1798,6 +1802,25 @@ def test_cli_session_login_reports_progress_on_stderr(tmp_path, monkeypatch, cap
     assert payload["ok"] is True
     assert "[bubble-mcp session] Session cookies detected." in captured.err
     assert "[bubble-mcp session] Session saved for profile 'dev'" in captured.err
+
+
+@pytest.mark.parametrize("wait_seconds", ["0", "-5"])
+def test_cli_session_login_rejects_non_positive_wait(wait_seconds, capsys) -> None:  # type: ignore[no-untyped-def]
+    with pytest.raises(SystemExit):
+        main(
+            [
+                "session",
+                "login",
+                "--profile",
+                "dev",
+                "--app-id",
+                "synthetic-app",
+                "--wait-seconds",
+                wait_seconds,
+            ]
+        )
+
+    assert "must be at least 1" in capsys.readouterr().err
 
 
 def test_cli_session_login_quiet_suppresses_progress(tmp_path, monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any, TextIO
+from concurrent.futures import Future, ThreadPoolExecutor
+from functools import partial
+from threading import Event, Lock
+from typing import Any, Callable, TextIO
 
 from bubble_mcp import __version__
 from bubble_mcp.core.redaction import redact_sensitive
@@ -55,7 +58,12 @@ def tool_error_result(name: str, exc: Exception) -> dict[str, Any]:
     }
 
 
-def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
+def handle_request(
+    request: dict[str, Any],
+    *,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, Any] | None:
     """Handle a JSON-RPC request."""
 
     request_id = request.get("id")
@@ -88,7 +96,7 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
             raw_arguments = params.get("arguments")
             arguments: dict[str, Any] = raw_arguments if isinstance(raw_arguments, dict) else {}
             try:
-                result = call_tool(name, arguments)
+                result = call_tool(name, arguments, cancelled=cancelled, progress=progress)
             except Exception as exc:
                 return success_response(request_id, tool_error_result(name, exc))
             return success_response(request_id, tool_result(result))
@@ -118,24 +126,102 @@ def handle_request(request: dict[str, Any]) -> dict[str, Any] | None:
 def serve(input_stream: TextIO = sys.stdin, output_stream: TextIO = sys.stdout) -> None:
     """Serve newline-delimited JSON-RPC over stdio."""
 
-    for line in input_stream:
-        if not line.strip():
-            continue
-        try:
-            request = json.loads(line)
-            if not isinstance(request, dict):
-                response = error_response(None, -32600, "Invalid request")
-            else:
-                maybe_response = handle_request(request)
-                if maybe_response is None:
-                    continue
-                response = maybe_response
-        except json.JSONDecodeError as exc:
-            response = error_response(None, -32700, f"Parse error: {exc.msg}")
+    output_lock = Lock()
+    active_lock = Lock()
+    active_calls: dict[Any, tuple[Event, Future[dict[str, Any] | None]]] = {}
+    executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="bubble-mcp-login")
 
-        if response is not None:
-            output_stream.write(json.dumps(response, separators=(",", ":")) + "\n")
+    def write_message(message: dict[str, Any]) -> None:
+        with output_lock:
+            output_stream.write(json.dumps(message, separators=(",", ":")) + "\n")
             output_stream.flush()
+
+    def progress_callback(request: dict[str, Any]) -> Callable[[str], None] | None:
+        raw_params = request.get("params")
+        params = raw_params if isinstance(raw_params, dict) else {}
+        raw_meta = params.get("_meta")
+        meta = raw_meta if isinstance(raw_meta, dict) else {}
+        token = meta.get("progressToken")
+        if token is None:
+            return None
+        current = 0
+
+        def report(message: str) -> None:
+            nonlocal current
+            current += 1
+            write_message(
+                {
+                    "jsonrpc": JSONRPC_VERSION,
+                    "method": "notifications/progress",
+                    "params": {"progressToken": token, "progress": current, "message": message},
+                }
+            )
+
+        return report
+
+    def finish_async_call(request_id: Any, future: Future[dict[str, Any] | None]) -> None:
+        with active_lock:
+            active_calls.pop(request_id, None)
+        if future.cancelled():
+            return
+        try:
+            response = future.result()
+        except Exception as exc:
+            response = error_response(request_id, -32000, str(exc))
+        if response is not None:
+            write_message(response)
+
+    try:
+        for line in input_stream:
+            if not line.strip():
+                continue
+            try:
+                request = json.loads(line)
+                if not isinstance(request, dict):
+                    write_message(error_response(None, -32600, "Invalid request"))
+                    continue
+            except json.JSONDecodeError as exc:
+                write_message(error_response(None, -32700, f"Parse error: {exc.msg}"))
+                continue
+
+            raw_params = request.get("params")
+            params = raw_params if isinstance(raw_params, dict) else {}
+            if request.get("method") == "notifications/cancelled":
+                cancelled_id = params.get("requestId")
+                with active_lock:
+                    active_call = active_calls.get(cancelled_id)
+                if active_call is not None:
+                    active_call[0].set()
+                continue
+
+            is_login_call = (
+                request.get("method") == "tools/call"
+                and str(params.get("name") or "") == "bubble_session_login"
+                and request.get("id") is not None
+            )
+            if is_login_call:
+                request_id = request["id"]
+                cancellation = Event()
+                future = executor.submit(
+                    handle_request,
+                    request,
+                    cancelled=cancellation.is_set,
+                    progress=progress_callback(request),
+                )
+                with active_lock:
+                    active_calls[request_id] = (cancellation, future)
+                future.add_done_callback(partial(finish_async_call, request_id))
+                continue
+
+            response = handle_request(request)
+            if response is not None:
+                write_message(response)
+    finally:
+        with active_lock:
+            active_entries = list(active_calls.values())
+        for cancellation, _future in active_entries:
+            cancellation.set()
+        executor.shutdown(wait=True, cancel_futures=True)
 
 
 def main() -> int:

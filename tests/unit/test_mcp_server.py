@@ -10,7 +10,7 @@ import bubble_mcp.server.tools as tools_module
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
-from bubble_mcp.sessions.browser import DEFAULT_LOGIN_WAIT_SECONDS
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import BubbleSessionData, load_session, save_session, session_from_payload
 
 
@@ -694,7 +694,7 @@ def test_session_login_tool_saves_redacted_browser_session(tmp_path, monkeypatch
 
     def fake_capture_session_with_playwright(**kwargs):  # type: ignore[no-untyped-def]
         assert kwargs["app_id"] == "client-app"
-        assert kwargs["wait_seconds"] == 5
+        assert kwargs["wait_seconds"] == DEFAULT_LOGIN_WAIT_SECONDS
         assert kwargs["user_data_dir"] == tmp_path / "browser-profiles" / "client"
         kwargs["progress"]("Session cookies detected. You can close the browser now.")
         return session_from_payload(
@@ -716,7 +716,7 @@ def test_session_login_tool_saves_redacted_browser_session(tmp_path, monkeypatch
             "method": "tools/call",
             "params": {
                 "name": "bubble_session_login",
-                "arguments": {"profile": "client", "wait_seconds": 5},
+                "arguments": {"profile": "client"},
             },
         }
     )
@@ -1643,7 +1643,7 @@ def test_task_recipe_setup_context_includes_profile_add_and_session_inspect() ->
     assert payload["steps"][3]["args"]["name"] == "$profile"
     assert payload["steps"][3]["args"]["app_id"] == "$app_id"
     assert payload["steps"][4]["args"]["profile"] == "$profile"
-    assert payload["steps"][4]["args"]["wait_seconds"] == 180
+    assert payload["steps"][4]["args"]["wait_seconds"] == DEFAULT_LOGIN_WAIT_SECONDS
     assert payload["steps"][5]["args"] == {"profile": "$profile"}
 
 
@@ -3348,6 +3348,7 @@ def test_browser_scheduled_deploy_tools_are_listed() -> None:
     tools = {tool["name"]: tool for tool in response["result"]["tools"]}
     assert tools["bubble_schedule_deploy"]["inputSchema"]["required"] == ["profile", "scheduled_at", "message"]
     assert tools["bubble_schedule_deploy"]["inputSchema"]["properties"]["execute"]["default"] is False
+    assert tools["bubble_schedule_deploy"]["inputSchema"]["properties"]["wait_seconds"]["default"] == 120
     assert tools["bubble_schedule_deploy"]["inputSchema"]["properties"]["auto_fix_objective_issues"]["default"] is False
     assert tools["bubble_schedule_deploy"]["annotations"]["readOnlyHint"] is False
     assert tools["bubble_schedule_deploy"]["annotations"]["destructiveHint"] is True

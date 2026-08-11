@@ -8,6 +8,7 @@ from typing import Any
 from bubble_mcp.context.detector import default_context_path
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.core.config import BubbleProfile, get_settings_path, load_settings, resolve_profile
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import editor_write_session_status, load_session, session_path
 
 
@@ -165,7 +166,11 @@ def _next_actions(*, profile: BubbleProfile | None, session: dict[str, Any] | No
         actions.append(
             {
                 "tool": "bubble_session_login",
-                "args": {"profile": profile.name, "app_id": profile.app_id, "wait_seconds": 180},
+                "args": {
+                    "profile": profile.name,
+                    "app_id": profile.app_id,
+                    "wait_seconds": DEFAULT_LOGIN_WAIT_SECONDS,
+                },
                 "command": f"bubble-mcp session login --profile {profile.name} --app-id {profile.app_id}",
                 "reason": "No captured Bubble editor session exists for this profile. Run interactive session login or import a captured session before real writes.",
             }
@@ -174,7 +179,11 @@ def _next_actions(*, profile: BubbleProfile | None, session: dict[str, Any] | No
         actions.append(
             {
                 "tool": "bubble_session_login",
-                "args": {"profile": profile.name, "app_id": profile.app_id, "wait_seconds": 180},
+                "args": {
+                    "profile": profile.name,
+                    "app_id": profile.app_id,
+                    "wait_seconds": DEFAULT_LOGIN_WAIT_SECONDS,
+                },
                 "command": f"bubble-mcp session login --profile {profile.name} --app-id {profile.app_id}",
                 "reason": "Stored session app_id does not match the configured profile app_id. Capture a new session for this profile.",
             }
@@ -183,7 +192,11 @@ def _next_actions(*, profile: BubbleProfile | None, session: dict[str, Any] | No
         actions.append(
             {
                 "tool": "bubble_session_login",
-                "args": {"profile": profile.name, "app_id": profile.app_id, "wait_seconds": 180},
+                "args": {
+                    "profile": profile.name,
+                    "app_id": profile.app_id,
+                    "wait_seconds": DEFAULT_LOGIN_WAIT_SECONDS,
+                },
                 "command": f"bubble-mcp session login --profile {profile.name} --app-id {profile.app_id}",
                 "reason": (
                     "Stored session can exist and still be insufficient for editor writes. Recapture it and "

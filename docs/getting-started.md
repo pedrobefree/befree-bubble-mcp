@@ -80,17 +80,17 @@ bubble-mcp profile add my-app --app-id my-bubble-app --appname my-bubble-app --e
 ## 4. Capture The Bubble Session
 
 ```bash
-bubble-mcp session login --profile my-app --app-id my-bubble-app --wait-seconds 180
+bubble-mcp session login --profile my-app --app-id my-bubble-app
 ```
 
 The command opens a local Chromium window. Log in to Bubble and keep the editor
 tab open until the terminal prints:
 
 ```text
-[bubble-mcp session] Session cookies detected. You can close the browser now; the CLI will save the newest captured session.
+[bubble-mcp session] Bubble editor session validated (calculate_derived succeeded). You can close the browser now.
 ```
 
-After that message appears, it is safe to close the browser. The final output is
+After the validation message appears, it is safe to close the browser. The final output is
 a redacted JSON result.
 
 Inspect the saved session without printing cookies:

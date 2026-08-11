@@ -21,7 +21,7 @@ Both source and target projects need local profiles and detected context.
 bubble-mcp profile add source-app --app-id source-bubble-app --app-version test
 bubble-mcp profile add target-app --app-id target-bubble-app --app-version test
 
-bubble-mcp session login --profile target-app --app-id target-bubble-app --wait-seconds 180
+bubble-mcp session login --profile target-app --app-id target-bubble-app
 
 bubble-mcp context detect --profile source-app --app-id source-bubble-app --app-version test --force
 bubble-mcp context detect --profile target-app --app-id target-bubble-app --app-version test --force

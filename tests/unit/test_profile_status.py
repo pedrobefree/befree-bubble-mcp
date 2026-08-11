@@ -5,6 +5,7 @@ from bubble_mcp.context.source import save_context
 from bubble_mcp.context.detector import default_context_path
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.profile_status import profile_status
+from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import BubbleSessionData, save_session
 
 
@@ -88,7 +89,7 @@ def test_profile_status_reports_missing_setup_next_actions(tmp_path, monkeypatch
     assert status["context"]["loadable"] is False
     tools = [action["tool"] for action in status["next_actions"]]
     assert tools == ["bubble_session_login", "bubble_context_detect"]
-    assert status["next_actions"][0]["args"]["wait_seconds"] == 180
+    assert status["next_actions"][0]["args"]["wait_seconds"] == DEFAULT_LOGIN_WAIT_SECONDS
     assert "session login" in status["next_actions"][0]["command"]
 
 
