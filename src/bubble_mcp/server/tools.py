@@ -323,18 +323,22 @@ def _style_property_aliases(property_name: str) -> tuple[str, ...]:
 
 
 def _style_color_tokens(metadata: dict[str, Any]) -> dict[str, str]:
-    settings = metadata.get("settings") if isinstance(metadata.get("settings"), dict) else {}
-    client_safe = settings.get("client_safe") if isinstance(settings.get("client_safe"), dict) else {}
+    raw_settings = metadata.get("settings")
+    settings: dict[str, Any] = raw_settings if isinstance(raw_settings, dict) else {}
+    raw_client_safe = settings.get("client_safe")
+    client_safe: dict[str, Any] = raw_client_safe if isinstance(raw_client_safe, dict) else {}
     tokens: dict[str, str] = {}
 
-    system_tokens = client_safe.get("color_tokens") if isinstance(client_safe.get("color_tokens"), dict) else {}
+    raw_system_tokens = client_safe.get("color_tokens")
+    system_tokens: dict[str, Any] = raw_system_tokens if isinstance(raw_system_tokens, dict) else {}
     for name, token_data in system_tokens.items():
         color_value = token_data.get("%d1") or token_data.get("default") if isinstance(token_data, dict) else token_data
         if isinstance(color_value, str) and color_value.strip():
             tokens[f"var(--color_{name}_default)"] = color_value.strip()
 
-    user_tokens_wrapper = (
-        client_safe.get("color_tokens_user") if isinstance(client_safe.get("color_tokens_user"), dict) else {}
+    raw_user_tokens_wrapper = client_safe.get("color_tokens_user")
+    user_tokens_wrapper: dict[str, Any] = (
+        raw_user_tokens_wrapper if isinstance(raw_user_tokens_wrapper, dict) else {}
     )
     user_tokens = user_tokens_wrapper.get("%d1") or user_tokens_wrapper.get("default") or {}
     if isinstance(user_tokens, dict):
@@ -1584,16 +1588,17 @@ def call_tool(
         )
         write_step = result.get("steps", {}).get("write") if isinstance(result.get("steps"), dict) else {}
         if execute and result.get("ok") and isinstance(write_step, dict):
-            record_mutation_overlay(
-                profile=profile,
-                app_id=str(
-                    write_step.get("request", {}).get("payload", {}).get("appname")
-                    or write_session.app_id
-                ),
-                payload=write_step.get("request", {}).get("payload") or result.get("write_payload"),
-                source="bubble_plugin_install",
-                response=write_step.get("response"),
-            )
+            raw_request = write_step.get("request")
+            request_payload = raw_request.get("payload") if isinstance(raw_request, dict) else None
+            overlay_payload = request_payload if isinstance(request_payload, dict) else result.get("write_payload")
+            if isinstance(overlay_payload, dict):
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(overlay_payload.get("appname") or write_session.app_id),
+                    payload=overlay_payload,
+                    source="bubble_plugin_install",
+                    response=write_step.get("response"),
+                )
         return result
     if name == "bubble_execute_plan":
         args = arguments or {}
@@ -1768,10 +1773,10 @@ def call_tool(
         )
     if name == "bubble_branch_merge_conflicts_describe":
         args = arguments or {}
-        payload = args.get("payload")
-        if not isinstance(payload, dict):
+        conflict_payload = args.get("payload")
+        if not isinstance(conflict_payload, dict):
             raise ValueError("bubble_branch_merge_conflicts_describe requires a payload object.")
-        return describe_bubble_branch_merge_conflicts(payload=payload)
+        return describe_bubble_branch_merge_conflicts(payload=conflict_payload)
     if name == "bubble_branch_merge_resolve_conflicts":
         args = arguments or {}
         changelog_data = args.get("changelog_data")

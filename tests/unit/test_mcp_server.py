@@ -2636,6 +2636,7 @@ def test_native_family_schemas_expose_agent_selection_constraints() -> None:
     assert changelog["properties"]["num_fetch"]["minimum"] == 1
     assert changelog["properties"]["num_fetch"]["maximum"] == 200
     assert "Element" in changelog["properties"]["change_type"]["examples"]
+    assert changelog["properties"]["user_id"]["type"] == ["string", "array"]
 
     expert_export = tools["bubble_eval_export_expert"]["inputSchema"]
     assert expert_export["required"] == ["input", "output"]
@@ -2674,6 +2675,7 @@ def test_native_mutating_schemas_make_execution_and_confirmation_explicit() -> N
     assert tools["bubble_branch_merge_confirm"]["inputSchema"]["properties"]["execute"]["default"] is False
     assert tools["bubble_branch_merge_resolve_conflicts"]["inputSchema"]["properties"]["execute"]["default"] is False
     assert tools["bubble_branch_merge_finalize"]["inputSchema"]["properties"]["execute"]["default"] is False
+    assert tools["bubble_branch_merge_finalize"]["inputSchema"]["properties"]["user_id"]["type"] == "string"
 
 
 def test_legacy_catalog_tools_expose_common_agent_arguments() -> None:

@@ -149,11 +149,19 @@ def test_task_runbook_includes_knowledge_advice_when_triggered(monkeypatch) -> N
         "execute_authorized": False,
     }
 
-    monkeypatch.setattr("bubble_mcp.server.agent_guide.knowledge_advice", lambda **_: expected)
+    calls = 0
+
+    def fake_knowledge_advice(**_kwargs):
+        nonlocal calls
+        calls += 1
+        return expected
+
+    monkeypatch.setattr("bubble_mcp.server.agent_guide.knowledge_advice", fake_knowledge_advice)
 
     runbook = task_runbook("Delete a field from testimonial data type", profile="cliente2")
 
     assert runbook["knowledge_advice"] == expected
+    assert calls == 1
 
 
 def test_task_runbook_omits_unused_knowledge_advice(monkeypatch) -> None:

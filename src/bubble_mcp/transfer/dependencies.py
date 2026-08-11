@@ -112,7 +112,7 @@ def extract_node_dependencies(
     for node in nodes:
         plugin_type = _plugin_element_type(node.metadata.get("element_type"))
         if plugin_type:
-            key = ("plugin", plugin_type)
+            key: tuple[DependencyKind, str] = ("plugin", plugin_type)
             if key not in seen:
                 seen.add(key)
                 dependencies.append(

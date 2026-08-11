@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -34,6 +35,14 @@ LANGUAGE_ENTRYPOINTS = [
     "bubble_task_runbook",
     "bubble_tool_search",
 ]
+
+
+@dataclass(frozen=True)
+class LanguageRegistrySnapshot:
+    """One internally consistent view of the dynamic language registry."""
+
+    entries: list[dict[str, Any]]
+    index: dict[str, Any]
 
 
 def _utc_now_iso() -> str:
@@ -251,8 +260,11 @@ def _skill_digest(skills: list[Any]) -> list[dict[str, Any]]:
     return digest
 
 
-def build_language_index(*, profile: str | None = None) -> dict[str, Any]:
-    entries = current_language_entries()
+def _build_language_index_from_entries(
+    entries: list[dict[str, Any]],
+    *,
+    profile: str | None = None,
+) -> dict[str, Any]:
     skills = list_skills()
     learning = list_learning_records()
     family_counts: dict[str, int] = {}
@@ -282,3 +294,17 @@ def build_language_index(*, profile: str | None = None) -> dict[str, Any]:
         "runtime_rules_digest": RUNTIME_RULES_DIGEST,
         "entrypoints": LANGUAGE_ENTRYPOINTS,
     }
+
+
+def build_language_snapshot(*, profile: str | None = None) -> LanguageRegistrySnapshot:
+    """Build entries and their compact index once for a single request."""
+
+    entries = current_language_entries()
+    return LanguageRegistrySnapshot(
+        entries=entries,
+        index=_build_language_index_from_entries(entries, profile=profile),
+    )
+
+
+def build_language_index(*, profile: str | None = None) -> dict[str, Any]:
+    return build_language_snapshot(profile=profile).index

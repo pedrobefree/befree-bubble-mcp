@@ -37,11 +37,14 @@ function formatTime(timestamp) {
 
 function renderEvents(events) {
   if (!Array.isArray(events) || events.length === 0) {
-    eventsList.innerHTML = '<div class="empty">Nenhum evento recebido ainda.</div>';
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'Nenhum evento recebido ainda.';
+    eventsList.replaceChildren(empty);
     return;
   }
 
-  eventsList.innerHTML = events.slice(0, 8).map((event) => {
+  const eventNodes = events.slice(0, 8).map((event) => {
     const kind = event.kind === 'write' ? 'write' : 'context';
     const ok = event.ok ? 'ok' : (event.reason || 'erro');
     const meta = [
@@ -51,16 +54,22 @@ function renderEvents(events) {
       event.endpoint || null,
     ].filter(Boolean).join(' · ');
 
-    return `
-      <div class="event">
-        <div class="event-top">
-          <span>${kind}</span>
-          <span>${ok} · ${formatTime(event.deliveredAt || event.capturedAt)}</span>
-        </div>
-        <div class="event-meta">${meta || 'sem metadados adicionais'}</div>
-      </div>
-    `;
-  }).join('');
+    const eventNode = document.createElement('div');
+    eventNode.className = 'event';
+    const eventTop = document.createElement('div');
+    eventTop.className = 'event-top';
+    const kindNode = document.createElement('span');
+    kindNode.textContent = kind;
+    const statusNode = document.createElement('span');
+    statusNode.textContent = `${ok} · ${formatTime(event.deliveredAt || event.capturedAt)}`;
+    const metaNode = document.createElement('div');
+    metaNode.className = 'event-meta';
+    metaNode.textContent = meta || 'sem metadados adicionais';
+    eventTop.append(kindNode, statusNode);
+    eventNode.append(eventTop, metaNode);
+    return eventNode;
+  });
+  eventsList.replaceChildren(...eventNodes);
 }
 
 async function loadState() {

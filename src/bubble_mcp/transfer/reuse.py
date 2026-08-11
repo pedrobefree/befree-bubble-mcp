@@ -124,7 +124,8 @@ def dependency_signature(dependency: TransferDependency) -> dict[str, Any]:
     metadata = dict(dependency.metadata)
     explicit = _obj(metadata.get("signature"))
     if explicit:
-        return _clean(explicit)
+        cleaned = _clean(explicit)
+        return cleaned if isinstance(cleaned, dict) else {}
     if dependency.kind == "style":
         return _style_signature(metadata)
     if dependency.kind == "option_set":

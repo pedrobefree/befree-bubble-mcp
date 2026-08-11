@@ -30,3 +30,41 @@ def test_sensitive_audit_skips_tmp_directory(tmp_path: Path) -> None:
     findings = audit_path(tmp_path)
 
     assert findings == []
+
+
+def test_sensitive_audit_allows_runtime_cookie_expression(tmp_path: Path) -> None:
+    public_file = tmp_path / "client.py"
+    public_file.write_text('cookie = str(session.cookies or "")', encoding="utf-8")
+
+    assert audit_path(tmp_path) == []
+
+
+def test_sensitive_audit_allows_obvious_bearer_placeholder(tmp_path: Path) -> None:
+    public_file = tmp_path / "fixture.py"
+    public_file.write_text('header = "Bearer abcdefghijklmnopqrstuvwxyz"', encoding="utf-8")
+
+    assert audit_path(tmp_path) == []
+
+
+def test_sensitive_audit_flags_literal_credential(tmp_path: Path) -> None:
+    public_file = tmp_path / "config.py"
+    public_file.write_text('access_token = "live_opaque_value_12345"', encoding="utf-8")
+
+    assert audit_path(tmp_path)
+
+
+def test_sensitive_audit_checks_past_placeholder_values(tmp_path: Path) -> None:
+    public_file = tmp_path / "config.py"
+    public_file.write_text(
+        'access_token = "synthetic-token"\naccess_token = "live_opaque_value_12345"',
+        encoding="utf-8",
+    )
+
+    assert audit_path(tmp_path)
+
+
+def test_sensitive_audit_flags_sensitive_artifact_filename(tmp_path: Path) -> None:
+    artifact = tmp_path / "sample-mutation-overlay.json"
+    artifact.write_text("{}", encoding="utf-8")
+
+    assert audit_path(tmp_path)

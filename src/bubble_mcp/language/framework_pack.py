@@ -6,8 +6,8 @@ from typing import Any
 
 from bubble_mcp.frameworks.adapters import get_adapter
 from bubble_mcp.language.query import language_query
-from bubble_mcp.language.registry import RUNTIME_RULES_DIGEST, build_language_index
-from bubble_mcp.server.agent_guide import task_runbook
+from bubble_mcp.language.registry import RUNTIME_RULES_DIGEST, build_language_snapshot
+from bubble_mcp.server.agent_guide import task_recipe
 
 
 FRAMEWORK_FOCUS: dict[str, list[str]] = {
@@ -26,9 +26,21 @@ def framework_language_pack(
 ) -> dict[str, Any]:
     adapter = get_adapter(framework)
     families = FRAMEWORK_FOCUS.get(adapter.framework_id, [])
-    index = build_language_index(profile=profile)
-    matches = language_query(query=scope, families=families, limit=max_tools, profile=profile)
-    runbook = task_runbook(scope or f"{adapter.name} Bubble implementation", profile=profile or "", execute=False)
+    snapshot = build_language_snapshot(profile=profile)
+    index = snapshot.index
+    matches = language_query(
+        query=scope,
+        families=families,
+        limit=max_tools,
+        profile=profile,
+        snapshot=snapshot,
+    )
+    recipe = task_recipe(
+        scope or f"{adapter.name} Bubble implementation",
+        profile=profile or "",
+        execute=False,
+        include_knowledge_advice=False,
+    )
     return {
         "ok": True,
         "language": "bubble-mcp",
@@ -47,7 +59,15 @@ def framework_language_pack(
             ),
         },
         "tool_matches": matches["matches"],
-        "recipes": runbook.get("recipes", []),
+        "recipes": [
+            {
+                "id": recipe["recipe"],
+                "matched": recipe["matched"],
+                "steps": recipe["steps"],
+                "quality_gates": recipe["quality_gates"],
+                "verification": recipe["verification"],
+            }
+        ],
         "next_actions": [
             "Call bubble_language_query for more scoped tools when needed.",
             "Call bubble_language_tool_detail only for selected tools before compilation.",

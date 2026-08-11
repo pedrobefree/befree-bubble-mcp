@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import re
 from colorsys import hls_to_rgb
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
+from typing import TypeVar
 
 from bubble_mcp.style_import.models import BubbleStyleCandidate, ExtractedStyleRule
 
@@ -35,6 +36,7 @@ RADIUS_CORNERS = {
 }
 BOX_SIDES = ("top", "right", "bottom", "left")
 RADIUS_FIELDS = ("radius_top_left", "radius_top_right", "radius_bottom_right", "radius_bottom_left")
+_T = TypeVar("_T")
 
 
 def _pixel_int(value: str) -> int | None:
@@ -81,7 +83,7 @@ def _lower_hex(value: str) -> str | None:
 def _linear_rgb_to_srgb(channel: float) -> float:
     if channel <= 0.0031308:
         return 12.92 * channel
-    return 1.055 * (channel ** (1 / 2.4)) - 0.055
+    return float(1.055 * (channel ** (1 / 2.4)) - 0.055)
 
 
 def _lab_to_css_color(value: str) -> str | None:
@@ -283,7 +285,7 @@ def _split_padding(value: str) -> dict[str, int]:
     }
 
 
-def _expand_box_values(parts: list[object]) -> list[object]:
+def _expand_box_values(parts: Sequence[_T]) -> list[_T]:
     if len(parts) == 1:
         return [parts[0], parts[0], parts[0], parts[0]]
     if len(parts) == 2:
@@ -521,14 +523,14 @@ def _map_declarations(declarations: dict[str, str]) -> tuple[dict[str, object], 
                 mapped["font_color"] = color
                 continue
         elif property_name == "border-radius":
-            radius = _split_border_radius(value)
-            if radius:
-                mapped.update(radius)
+            radius_properties = _split_border_radius(value)
+            if radius_properties:
+                mapped.update(radius_properties)
                 continue
         elif property_name in RADIUS_CORNERS:
-            radius = _pixel_int(value)
-            if radius is not None:
-                mapped[RADIUS_CORNERS[property_name]] = radius
+            corner_radius = _pixel_int(value)
+            if corner_radius is not None:
+                mapped[RADIUS_CORNERS[property_name]] = corner_radius
                 continue
         elif property_name == "border":
             border, recognized, unparsed = _split_border(value)
@@ -628,14 +630,14 @@ def _map_declarations(declarations: dict[str, str]) -> tuple[dict[str, object], 
                 mapped.update(shadow)
                 continue
         elif property_name == "padding":
-            padding = _split_padding(value)
-            if padding:
-                mapped.update(padding)
+            padding_properties = _split_padding(value)
+            if padding_properties:
+                mapped.update(padding_properties)
                 continue
         elif property_name in {"padding-top", "padding-right", "padding-bottom", "padding-left"}:
-            padding = _pixel_int(value)
-            if padding is not None:
-                mapped[property_name.replace("-", "_")] = padding
+            side_padding = _pixel_int(value)
+            if side_padding is not None:
+                mapped[property_name.replace("-", "_")] = side_padding
                 continue
 
         unsupported.append({"property": property_name, "value": value})

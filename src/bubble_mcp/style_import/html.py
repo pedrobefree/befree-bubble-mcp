@@ -75,7 +75,8 @@ def _iter_css_blocks(html: str, extra_css: Iterable[str] = ()) -> Iterable[str]:
 def _iter_inline_style_rules(html: str, selector: str) -> Iterable[ExtractedStyleRule]:
     soup = BeautifulSoup(html, "html.parser")
     for element in soup.select(selector):
-        declarations = _parse_declarations(element.get("style", ""))
+        raw_style = element.get("style", "")
+        declarations = _parse_declarations(raw_style if isinstance(raw_style, str) else "")
         if declarations:
             yield ExtractedStyleRule(
                 selector=selector,

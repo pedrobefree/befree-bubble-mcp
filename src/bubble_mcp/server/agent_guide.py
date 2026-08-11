@@ -1303,7 +1303,7 @@ def _looks_like_project_transfer(normalized_text: str) -> bool:
     )
 
 
-def agent_guide(task: str = "") -> dict[str, Any]:
+def agent_guide(task: str = "", *, include_knowledge_advice: bool = True) -> dict[str, Any]:
     """Return compact tool-routing guidance for MCP clients."""
 
     normalized = _normalize_text(str(task or "").strip())
@@ -1347,9 +1347,10 @@ def agent_guide(task: str = "") -> dict[str, Any]:
         "recommended_routes": recommended,
         "all_routes": list(ROUTES),
     }
-    advice = knowledge_advice(task=task, family="agent_guide")
-    if advice.get("used"):
-        result["knowledge_advice"] = advice
+    if include_knowledge_advice:
+        advice = knowledge_advice(task=task, family="agent_guide")
+        if advice.get("used"):
+            result["knowledge_advice"] = advice
     return result
 
 
@@ -1361,6 +1362,7 @@ def task_recipe(
     context: str = "",
     parent: str = "root",
     execute: bool = False,
+    include_knowledge_advice: bool = True,
 ) -> dict[str, Any]:
     """Return a compact operational recipe for a Bubble task."""
 
@@ -1399,7 +1401,7 @@ def task_recipe(
             ],
         },
     )
-    guide = agent_guide(task)
+    guide = agent_guide(task, include_knowledge_advice=False)
     result = {
         "ok": True,
         "task": task or None,
@@ -1441,9 +1443,10 @@ def task_recipe(
         },
         "cli_equivalent": f"bubble-mcp tools recipe --task {task!r}" if task else "bubble-mcp tools recipe --task '<task>'",
     }
-    advice = knowledge_advice(task=task, family=recipe_id, profile=profile, context=context)
-    if advice.get("used"):
-        result["knowledge_advice"] = advice
+    if include_knowledge_advice:
+        advice = knowledge_advice(task=task, family=recipe_id, profile=profile, context=context)
+        if advice.get("used"):
+            result["knowledge_advice"] = advice
     return result
 
 
@@ -1550,16 +1553,18 @@ def task_runbook(
     execute: bool = False,
     search_limit: int = 6,
     include_profile_status: bool = False,
+    include_knowledge_advice: bool = True,
 ) -> dict[str, Any]:
     """Return a one-call operational runbook for a Bubble task."""
 
-    guide = agent_guide(task)
+    guide = agent_guide(task, include_knowledge_advice=False)
     recipe = task_recipe(
         task,
         profile=profile,
         context=context,
         parent=parent,
         execute=execute,
+        include_knowledge_advice=False,
     )
     search_query = RUNBOOK_SEARCH_QUERIES.get(str(recipe["recipe"]), task or str(recipe["recipe"]))
     search = _runbook_tool_search(recipe, search_query, limit=search_limit)
@@ -1600,15 +1605,16 @@ def task_runbook(
         ),
         "cli_equivalent": f"bubble-mcp tools runbook --task {task!r}" if task else "bubble-mcp tools runbook --task '<task>'",
     }
-    advice = knowledge_advice(
-        task=task,
-        family=str(recipe["recipe"]),
-        profile=profile,
-        context=context,
-        arguments={"parent": parent, "execute": execute},
-    )
-    if advice.get("used"):
-        result["knowledge_advice"] = advice
+    if include_knowledge_advice:
+        advice = knowledge_advice(
+            task=task,
+            family=str(recipe["recipe"]),
+            profile=profile,
+            context=context,
+            arguments={"parent": parent, "execute": execute},
+        )
+        if advice.get("used"):
+            result["knowledge_advice"] = advice
     return result
 
 

@@ -596,7 +596,8 @@ def _deploy_modal_state_script() -> str:
 
 
 def _deploy_blocker_error(state: dict[str, Any]) -> str:
-    deploy_buttons = state.get("deployButtons") if isinstance(state.get("deployButtons"), list) else []
+    raw_deploy_buttons = state.get("deployButtons")
+    deploy_buttons: list[Any] = raw_deploy_buttons if isinstance(raw_deploy_buttons, list) else []
     disabled_deploy = any(bool(button.get("disabled")) for button in deploy_buttons if isinstance(button, dict))
     snippet = str(state.get("bodySnippet") or "").strip()
     if "temporary error deploying your app" in snippet.lower():

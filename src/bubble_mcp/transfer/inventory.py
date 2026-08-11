@@ -99,10 +99,10 @@ def _subtree_nodes(context: BubbleProjectContext, root: BubbleContextNode) -> li
         if node_id in visited:
             continue
         visited.add(node_id)
-        node = nodes_by_id.get(node_id)
-        if node is None:
+        candidate_node = nodes_by_id.get(node_id)
+        if candidate_node is None:
             continue
-        ordered.append(node)
+        ordered.append(candidate_node)
         queue.extend(children_by_source.get(node_id, []))
     return ordered
 

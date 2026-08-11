@@ -60,7 +60,8 @@ def fetch_url_html(*, url: str, timeout_ms: int = 35000) -> str:
     request = Request(url, headers={"User-Agent": "befree-bubble-mcp"})
     with urlopen(request, timeout=max(1, timeout_ms / 1000)) as response:  # noqa: S310
         charset = response.headers.get_content_charset() or "utf-8"
-        return response.read().decode(charset, errors="replace")
+        body = response.read()
+        return bytes(body).decode(charset, errors="replace")
 
 
 def render_url_to_html(*, url: str, selector: str, timeout_ms: int = 35000) -> str:
