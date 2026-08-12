@@ -1412,9 +1412,7 @@ class ElementBuilder:
         }
         initial_content_canonical = initial_content_expr
         if isinstance(initial_content_expr, dict):
-            if initial_content_expr.get("type") == "TextExpression" and isinstance(initial_content_expr.get("entries"), dict):
-                initial_content_canonical = initial_content_expr
-            elif initial_content_expr.get("%x") == "TextExpression" and isinstance(initial_content_expr.get("%e"), dict):
+            if initial_content_expr.get("%x") == "TextExpression" and isinstance(initial_content_expr.get("%e"), dict):
                 initial_content_canonical = {
                     "type": "TextExpression",
                     "entries": dict(initial_content_expr.get("%e") or {}),
@@ -2471,8 +2469,6 @@ class ElementBuilder:
         self._add_visual_props(properties, kwargs)
         if vimeo_control_color is not None:
             properties["control_color_vimeo"] = vimeo_control_color
-        elif kwargs.get("vimeo_control_color") is not None:
-            properties["control_color_vimeo"] = kwargs.get("vimeo_control_color")
 
         if width_unset:
              properties = self._apply_width_unset(properties)
@@ -4782,6 +4778,23 @@ class StyleBuilder:
     Handles creation and property mapping for various Bubble elements.
     """
 
+    TRANSITION_PROP_MAPPING = {
+        "background_style": "%bas",
+        "background_color": "%bas",
+        "bg_color": "%bas",
+        "font_color": "%fc",
+        "icon_color": "%ic",
+        "border_color": "%bc",
+        "border_radius": "%br",
+        "border_width": "%bw",
+        "shadow_style": "%bs",
+        "box_shadow": "%bs",
+        "opacity": "opacity",
+        "width": "%w",
+        "height": "%h",
+    }
+    AUTO_TRANSITION_KEYS = {"%bas", "%fc", "%ic", "%bc", "%br", "%bs", "opacity"}
+
     def __init__(self, id_gen: 'BubbleIDGenerator' = None):
         self.id_gen = id_gen or BubbleIDGenerator()
 
@@ -4901,10 +4914,7 @@ class StyleBuilder:
         # Use kwargs to pass all properties to a temporary update_style call to generate the changes
         # Then convert the changes to a properties dict
 
-        # 1. Base props
-        props = {}
-
-        # 2. Use update_style logic to resolve all keys
+        # 1. Use update_style logic to resolve all keys
         # We'll create a dummy update_style result and extract the %p values
         temp_builder = StyleBuilder(self.id_gen)
         # Pass all known arguments plus kwargs
@@ -4974,7 +4984,7 @@ class StyleBuilder:
 
         changes = temp_builder.update_style(inject_defaults=False, **update_args)
 
-        # 3. Extract properties from changes
+        # 2. Extract properties from changes
         transitions_payload = {}
         props = {}
         for change in changes:
@@ -5061,7 +5071,7 @@ class StyleBuilder:
         border_style: str = None,              # %bos (shared)
 
         # Independent Borders
-        border_type: str = None,               # four_border_style: true (shared) / false (independent)
+        border_type: str = None,               # four_border_style: true (independent) / false (shared)
         border_style_top: str = None,          # border_style_top
         border_style_bottom: str = None,       # border_style_bottom
         border_style_left: str = None,         # border_style_left
@@ -5116,11 +5126,6 @@ class StyleBuilder:
             val = kwargs.pop("background_color")
             if bg_color is None:
                 bg_color = val
-        if "slider_background_color" in kwargs:
-            val = kwargs.pop("slider_background_color")
-            if slider_background_color is None:
-                slider_background_color = val
-
         # RepeatingGroup separator aliases.
         separator_style = kwargs.pop("separator_style", None)
         separator_width = kwargs.pop("separator_width", None)
@@ -5311,25 +5316,8 @@ class StyleBuilder:
 
         # Transitions Logic
         if transitions:
-            # Map friendly names to keys
-            prop_map = {
-                "background_style": "%bas",
-                "background_color": "%bas",
-                "bg_color": "%bas",
-                "font_color": "%fc",
-                "icon_color": "%ic",
-                "border_color": "%bc",
-                "border_radius": "%br",
-                "border_width": "%bw",
-                "shadow_style": "%bs",
-                "box_shadow": "%bs",
-                "opacity": "opacity",
-                "width": "%w",
-                "height": "%h"
-            }
-
             for prop, settings in transitions.items():
-                bubble_key = prop_map.get(prop, prop) # Fallback to prop if not in map
+                bubble_key = self.TRANSITION_PROP_MAPPING.get(prop, prop)
                 changes.append({
                     "intent": "AddTransition",
                     "path": ["styles", style_id, "transitions", bubble_key],
@@ -5390,30 +5378,13 @@ class StyleBuilder:
 
         # 3. Automatic Transitions Rule
         # If any state change affects transitionable properties, add them to the base style
-        transitionable_props = {
-            "%bgc": "background_color",
-            "%fc": "font_color",
-            "%ic": "icon_color",
-            "%bc": "border_color",
-            "%br": "border_radius",
-            "%bs": "shadow_style",
-            "opacity": "opacity"
-        }
-
         needed_transitions = {}
         for state_key, state_props in theme.items():
-            if state_key == "base": continue
+            if state_key == "base":
+                continue
             for prop in state_props.keys():
-                # Map prop to bubble key
-                bkey = prop if prop.startswith("%") else None
-                if not bkey:
-                    # Try to find in reverse mapping or common names
-                    for bk, pk in transitionable_props.items():
-                        if prop == pk or prop == bk:
-                            bkey = bk
-                            break
-
-                if bkey in transitionable_props:
+                bkey = prop if prop.startswith("%") else self.TRANSITION_PROP_MAPPING.get(prop)
+                if bkey in self.AUTO_TRANSITION_KEYS:
                     needed_transitions[bkey] = {"duration": 200, "fn": "ease"}
 
         if needed_transitions:
@@ -5456,7 +5427,7 @@ class StyleBuilder:
             return {}
 
         # 1. Create the root condition node
-        root_type, root_op = condition_chain[0]
+        root_type, _ = condition_chain[0]
         root = {
             "%x": "ThisElement",
             "%n": StyleBuilder._build_condition_node(root_type),
@@ -5470,8 +5441,8 @@ class StyleBuilder:
         # We process item i's operator, which wraps item i+1.
 
         for i in range(len(condition_chain) - 1):
-            current_type, op = condition_chain[i]
-            next_type, next_op = condition_chain[i+1]
+            _, op = condition_chain[i]
+            next_type, _ = condition_chain[i+1]
 
             # Use provided operator or default to or_ if missing (fallback)
             clean_op = op if op in ["and_", "or_"] else "or_"
