@@ -6410,8 +6410,6 @@ class PayloadBuilder:
 
         return self, id_mapping
 
-        return self, id_mapping
-
 
     def add_create_style(
         self,
@@ -6694,10 +6692,6 @@ class PayloadBuilder:
         """Retorna JSON string"""
         return json.dumps(self.build(), indent=indent)
 
-    def to_json(self, indent: int = 2) -> str:
-        """Retorna JSON string"""
-        return json.dumps(self.build(), indent=indent)
-
     def save(self, filename: str):
         """Salva em arquivo JSON"""
         with open(filename, 'w') as f:
@@ -6727,26 +6721,28 @@ class BubbleAppMapper:
         self.elements = {} # {page_name: {element_name: element_id}}
         self._load_map()
 
+    @staticmethod
+    def _read_mapping_source(path: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Read one mapping artifact, failing closed so fallback sources remain usable."""
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(f"Could not read app mapping source {path}: {exc}")
+            return None
+        if not isinstance(data, dict):
+            logger.warning(f"App mapping source must contain a JSON object: {path}")
+            return None
+        return data
+
 
     def _load_map(self):
         """Carrega e indexa o JSON do app (Auto-detect format with fallback)"""
-        data = None
-
-        # Try primary source
-        if self.app_json_path and os.path.exists(self.app_json_path):
-            try:
-                with open(self.app_json_path, 'r') as f:
-                    data = json.load(f)
-            except FileNotFoundError:
-                pass
-
-        # Fallback to console.log
-        if data is None and self.consolelog_json_path and os.path.exists(self.consolelog_json_path):
-            try:
-                with open(self.consolelog_json_path, 'r') as f:
-                    data = json.load(f)
-            except FileNotFoundError:
-                pass
+        data = self._read_mapping_source(self.app_json_path)
+        if data is None:
+            data = self._read_mapping_source(self.consolelog_json_path)
 
         if not data:
             logger.warning("No app data found for mapping")
@@ -7982,7 +7978,7 @@ class WebhookClient:
             return response
         except Exception as e:
             logger.error(f"Erro ao enviar para Webhook: {e}")
-            if hasattr(e, 'response') and e.response:
+            if getattr(e, "response", None) is not None:
                 print(f"Response: {e.response.text}")
             raise
 
