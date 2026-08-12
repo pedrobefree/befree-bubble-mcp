@@ -68,7 +68,7 @@ def test_create_style_applies_padding_aliases_background_alias_and_transitions(
     assert "%bas" not in props
     assert props["custom_literal"] == "value"
     assert style["transitions"] == {
-        "%bgc": transition,
+        "%bas": transition,
         "custom_property": {"duration": 50},
     }
 
@@ -304,8 +304,8 @@ def test_transition_mapping_targets_wire_properties(builder: StyleBuilder) -> No
         },
     )
     paths = [change["path"] for change in changes]
-    assert ["styles", "style", "transitions", "%bas"] in paths
-    assert paths.count(["styles", "style", "transitions", "%bgc"]) == 2
+    assert paths.count(["styles", "style", "transitions", "%bas"]) == 3
+    assert ["styles", "style", "transitions", "%bgc"] not in paths
     assert ["styles", "style", "transitions", "%fc"] in paths
     assert ["styles", "style", "transitions", "%bs"] in paths
     assert ["styles", "style", "transitions", "custom"] in paths
@@ -422,7 +422,7 @@ def test_apply_theme_maps_states_and_auto_injects_transitions(builder: StyleBuil
         if change.get("intent") == "AddTransition"
     }
     assert transition_paths == {
-        ("styles", "style", "transitions", "%bgc"),
+        ("styles", "style", "transitions", "%bas"),
         ("styles", "style", "transitions", "%fc"),
         ("styles", "style", "transitions", "%bc"),
         ("styles", "style", "transitions", "opacity"),

@@ -4780,8 +4780,8 @@ class StyleBuilder:
 
     TRANSITION_PROP_MAPPING = {
         "background_style": "%bas",
-        "background_color": "%bgc",
-        "bg_color": "%bgc",
+        "background_color": "%bas",
+        "bg_color": "%bas",
         "font_color": "%fc",
         "icon_color": "%ic",
         "border_color": "%bc",
@@ -4793,7 +4793,7 @@ class StyleBuilder:
         "width": "%w",
         "height": "%h",
     }
-    AUTO_TRANSITION_KEYS = {"%bgc", "%fc", "%ic", "%bc", "%br", "%bs", "opacity"}
+    AUTO_TRANSITION_KEYS = {"%bas", "%fc", "%ic", "%bc", "%br", "%bs", "opacity"}
 
     def __init__(self, id_gen: 'BubbleIDGenerator' = None):
         self.id_gen = id_gen or BubbleIDGenerator()
