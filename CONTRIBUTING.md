@@ -8,9 +8,15 @@ This project is in early extraction. Keep changes small, tested, and scoped.
 python -m venv .venv
 . .venv/bin/activate
 pip install -e ".[dev]"
-python -m pytest -q
+python -m coverage run -m pytest -q
+python -m coverage report
 python -m ruff check src tests scripts
+python -m mypy src
+python scripts/audit_sensitive_paths.py .
 ```
+
+The coverage gate includes the legacy `aria_runtime` package. The initial 31% floor is a
+ratchet: new work must not reduce it, and focused runtime tests should raise it over time.
 
 ## Rules
 

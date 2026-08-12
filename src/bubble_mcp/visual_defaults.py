@@ -135,6 +135,18 @@ def project_default_style_id(metadata: dict[str, Any], element_type: str) -> str
     return None
 
 
+def style_metadata_from_payload(payload: Any) -> dict[str, Any]:
+    """Extract the style metadata needed by create-payload quality gates."""
+
+    if not isinstance(payload, dict):
+        return {}
+    raw_app = payload.get("app")
+    app = raw_app if isinstance(raw_app, dict) else payload
+    settings = _obj(app.get("settings") or payload.get("settings"))
+    styles = _obj(app.get("styles") or payload.get("styles"))
+    return {"settings": settings, "styles": styles} if settings or styles else {}
+
+
 def style_metadata_from_artifact(path: str | Path | None) -> dict[str, Any]:
     if not path:
         return {}
@@ -145,14 +157,7 @@ def style_metadata_from_artifact(path: str | Path | None) -> dict[str, Any]:
         payload = json.loads(resolved.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    if not isinstance(payload, dict):
-        return {}
-    raw_app = payload.get("app")
-    app = raw_app if isinstance(raw_app, dict) else payload
-    return {
-        "settings": _obj(app.get("settings") or payload.get("settings")),
-        "styles": _obj(app.get("styles") or payload.get("styles")),
-    }
+    return style_metadata_from_payload(payload)
 
 
 def default_style_for_element(

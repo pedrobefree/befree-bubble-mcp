@@ -272,3 +272,52 @@ def test_repair_native_extension_policy_targets_only_native_files(
     assert any(str(native) in command and "codesign" in command for command in flattened)
     assert any(str(dylib) in command and "codesign" in command for command in flattened)
     assert all(str(pure_python) not in command for command in flattened)
+
+
+def test_repair_native_extension_policy_continues_after_command_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    first = tmp_path / "first.so"
+    second = tmp_path / "second.so"
+    first.write_bytes(b"native")
+    second.write_bytes(b"native")
+    calls: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> None:
+        calls.append(command)
+        if command[0] == "codesign" and str(first) in command:
+            raise subprocess.TimeoutExpired(command, 2.0)
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(install_local.subprocess, "run", fake_run)
+
+    _repair_native_extension_policy(tmp_path)
+
+    assert any(command[0] == "codesign" and str(second) in command for command in calls)
+    assert f"timed out while repairing native extension {first}" in capsys.readouterr().err
+
+
+def test_repair_native_extension_policy_stops_at_total_time_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    native = tmp_path / "native.so"
+    native.write_bytes(b"native")
+    calls: list[list[str]] = []
+    monotonic_values = iter([0.0, install_local.MACOS_NATIVE_REPAIR_BUDGET_SECONDS])
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(install_local.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        install_local.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    _repair_native_extension_policy(tmp_path)
+
+    assert calls == []
+    assert "native extension repair reached its time budget" in capsys.readouterr().err

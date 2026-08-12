@@ -14,12 +14,15 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
 PACKAGE_NAME = "befree-bubble-mcp"
 DIST_NAME = "befree_bubble_mcp"
 LOCAL_PTH_NAME = "befree_bubble_mcp_local.pth"
+MACOS_REPAIR_COMMAND_TIMEOUT_SECONDS = 2.0
+MACOS_NATIVE_REPAIR_BUDGET_SECONDS = 10.0
 CONSOLE_SCRIPTS = {
     "bubble-mcp": "bubble_mcp.cli.main:main",
     "bubble-mcp-server": "bubble_mcp.server.stdio:main",
@@ -156,11 +159,38 @@ def _repair_venv_visibility(venv: Path) -> None:
 def _repair_native_extension_policy(site_packages: Path) -> None:
     if sys.platform != "darwin" or not site_packages.exists():
         return
+    deadline = time.monotonic() + MACOS_NATIVE_REPAIR_BUDGET_SECONDS
     for path in site_packages.rglob("*"):
         if not path.is_file() or path.suffix not in {".so", ".dylib"}:
             continue
-        subprocess.run(["xattr", "-d", "com.apple.quarantine", str(path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(["codesign", "--force", "--sign", "-", str(path)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        for command in (
+            ["xattr", "-d", "com.apple.quarantine", str(path)],
+            ["codesign", "--force", "--sign", "-", str(path)],
+        ):
+            remaining_seconds = deadline - time.monotonic()
+            if remaining_seconds <= 0:
+                print(
+                    "Warning: native extension repair reached its time budget; "
+                    "continuing installation",
+                    file=sys.stderr,
+                )
+                return
+            try:
+                subprocess.run(
+                    command,
+                    check=False,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=min(
+                        MACOS_REPAIR_COMMAND_TIMEOUT_SECONDS,
+                        remaining_seconds,
+                    ),
+                )
+            except subprocess.TimeoutExpired:
+                print(
+                    f"Warning: timed out while repairing native extension {path}",
+                    file=sys.stderr,
+                )
 
 
 def _write_local_editable_pth(site_packages: Path, source_dir: Path) -> Path:

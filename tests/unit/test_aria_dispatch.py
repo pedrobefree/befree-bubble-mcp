@@ -206,6 +206,41 @@ def test_permanent_delete_environment_rejects_caller_context_override(tmp_path, 
         )
 
 
+def test_runtime_environment_resolves_profile_artifacts_from_config_dir(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    bubble_file = tmp_path / "contexts" / "smoke" / "bovichain-g3.bubble"
+    consolelog_file = tmp_path / "contexts" / "smoke" / "consolelog.json"
+    bubble_file.parent.mkdir(parents=True)
+    bubble_file.write_text("{}", encoding="utf-8")
+    consolelog_file.write_text("{}", encoding="utf-8")
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="bovichain-g3",
+                    appname="bovichain-g3",
+                    app_version="23347",
+                    app_json_path="contexts/smoke/bovichain-g3.bubble",
+                    consolelog_json_path="contexts/smoke/consolelog.json",
+                )
+            },
+        )
+    )
+
+    def unexpected_detect(**_kwargs):
+        raise AssertionError("existing configured artifacts must not trigger context detection")
+
+    monkeypatch.setattr("bubble_mcp.aria_dispatch.detect_project_context", unexpected_detect)
+
+    env = _resolve_runtime_environment({"profile": "smoke"})
+
+    assert env.app_json_path == str(bubble_file)
+    assert env.consolelog_json_path == str(consolelog_file)
+
+
 def test_permanent_delete_reports_remote_success_when_overlay_fails_and_verifies_readback(
     tmp_path,
     monkeypatch,
@@ -612,6 +647,7 @@ def test_aria_runtime_applies_project_default_styles_to_created_elements(tmp_pat
     class FakeBubbleCLI:
         def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
             self.appname = kwargs["appname"]
+            self.discovery = SimpleNamespace(data=json.loads(bubble_file.read_text(encoding="utf-8")))
 
         def create_button(self, dry_run=False):  # type: ignore[no-untyped-def]
             builder = fake_sdk.PayloadBuilder(appname=self.appname)
@@ -619,6 +655,11 @@ def test_aria_runtime_applies_project_default_styles_to_created_elements(tmp_pat
 
     fake_cli = SimpleNamespace(BubbleCLI=FakeBubbleCLI)
     monkeypatch.setattr("bubble_mcp.aria_dispatch._load_aria_runtime_modules", lambda: (fake_cli, fake_sdk))
+
+    def unexpected_artifact_read(_path):  # type: ignore[no-untyped-def]
+        raise AssertionError("loaded runtime discovery data should be reused for style metadata")
+
+    monkeypatch.setattr("bubble_mcp.aria_dispatch.style_metadata_from_artifact", unexpected_artifact_read)
 
     result = dispatch_aria_runtime_tool("create_button", {"profile": "runtime-profile"})
 

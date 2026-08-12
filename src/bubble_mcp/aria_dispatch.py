@@ -13,10 +13,14 @@ from typing import Any, cast
 
 from bubble_mcp.context.detector import default_bubble_export_path, detect_project_context, refresh_bubble_export
 from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mutation_overlay
-from bubble_mcp.core.config import load_settings, resolve_profile
+from bubble_mcp.core.config import load_settings, resolve_config_artifact_path, resolve_profile
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.store import load_session
-from bubble_mcp.visual_defaults import enforce_visual_create_payload_quality, style_metadata_from_artifact
+from bubble_mcp.visual_defaults import (
+    enforce_visual_create_payload_quality,
+    style_metadata_from_artifact,
+    style_metadata_from_payload,
+)
 
 
 CONTROL_ARG_KEYS = {
@@ -298,10 +302,25 @@ def _resolve_runtime_environment(
             )
         )
     else:
-        app_json_path = explicit_bubble_file or (profile_config.app_json_path if profile_config else None)
+        configured_app_json_path = resolve_config_artifact_path(
+            settings.config_dir,
+            profile_config.app_json_path if profile_config else None,
+        )
+        app_json_path = explicit_bubble_file or (
+            str(configured_app_json_path) if configured_app_json_path else None
+        )
     default_export = default_bubble_export_path(profile, app_id)
     if not app_json_path and default_export.exists():
         app_json_path = str(default_export)
+
+    explicit_consolelog_file = _resolve_optional_path(args.get("consolelog_file"))
+    configured_consolelog_path = resolve_config_artifact_path(
+        settings.config_dir,
+        profile_config.consolelog_json_path if profile_config else None,
+    )
+    consolelog_json_path = explicit_consolelog_file or (
+        str(configured_consolelog_path) if configured_consolelog_path else None
+    )
 
     should_detect = not authoritative_refresh and (
         bool(args.get("refresh_context") or args.get("force"))
@@ -314,9 +333,7 @@ def _resolve_runtime_environment(
             app_version=app_version,
             force=bool(args.get("refresh_context") or args.get("force")),
             bubble_file=Path(explicit_bubble_file).expanduser() if explicit_bubble_file else None,
-            consolelog_file=Path(str(args.get("consolelog_file"))).expanduser()
-            if str(args.get("consolelog_file") or "").strip()
-            else None,
+            consolelog_file=Path(consolelog_json_path).expanduser() if consolelog_json_path else None,
         )
         candidate = default_bubble_export_path(profile, app_id)
         if candidate.exists():
@@ -324,7 +341,7 @@ def _resolve_runtime_environment(
         elif detected.source.endswith("bubble") and Path(detected.context_path).exists():
             app_json_path = app_json_path
 
-    if not app_json_path and not args.get("consolelog_file") and not args.get("crawler_index_path"):
+    if not app_json_path and not consolelog_json_path and not args.get("crawler_index_path"):
         raise ValueError(
             "Aria runtime dispatch requires a .bubble export, consolelog JSON, or crawler index. "
             "Run bubble-mcp context detect for this profile first."
@@ -335,7 +352,7 @@ def _resolve_runtime_environment(
         app_id=app_id,
         app_version=app_version,
         app_json_path=app_json_path,
-        consolelog_json_path=_resolve_optional_path(args.get("consolelog_file")),
+        consolelog_json_path=consolelog_json_path,
         crawler_index_path=_resolve_optional_path(args.get("crawler_index_path")),
         mutation_overlay_path=_resolve_optional_path(args.get("mutation_overlay_path"))
         or str(mutation_overlay_path(profile, app_id)),
@@ -454,7 +471,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         env = _resolve_runtime_environment(args, authoritative_refresh=True)
     else:
         env = _resolve_runtime_environment(args)
-    style_metadata = style_metadata_from_artifact(env.app_json_path or env.crawler_index_path or env.consolelog_json_path)
+    style_metadata: dict[str, Any] = {}
     captured_payloads: list[dict[str, Any]] = []
     captured_results: list[dict[str, Any]] = []
     captured_builder_ids: set[int] = set()
@@ -543,6 +560,13 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
                 profile_name=env.profile,
                 app_version=env.app_version,
             )
+            discovery = getattr(cli, "discovery", None)
+            discovery_data = getattr(discovery, "data", None)
+            style_metadata = style_metadata_from_payload(discovery_data)
+            if not style_metadata:
+                style_metadata = style_metadata_from_artifact(
+                    env.app_json_path or env.crawler_index_path or env.consolelog_json_path
+                )
             custom_return = _call_custom_runtime_tool(name, cli, args)
             if custom_return is not None:
                 return_value = custom_return

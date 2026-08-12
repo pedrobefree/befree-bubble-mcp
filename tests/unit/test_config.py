@@ -4,10 +4,20 @@ from bubble_mcp.core.config import (
     BubbleMcpSettings,
     BubbleProfile,
     load_settings,
+    resolve_config_artifact_path,
     resolve_profile,
     save_settings,
     with_profile,
 )
+
+
+def test_resolve_config_artifact_path_uses_settings_directory(tmp_path: Path) -> None:
+    assert resolve_config_artifact_path(tmp_path, "contexts/sample.bubble") == (
+        tmp_path / "contexts/sample.bubble"
+    )
+    absolute = tmp_path / "absolute.bubble"
+    assert resolve_config_artifact_path(tmp_path / "ignored", str(absolute)) == absolute
+    assert resolve_config_artifact_path(tmp_path, None) is None
 
 
 def test_save_load_and_resolve_profile(tmp_path: Path) -> None:

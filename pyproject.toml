@@ -18,6 +18,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "coverage[toml]>=7.6.0",
   "pytest>=8.0.0",
   "ruff>=0.6.0",
   "mypy>=1.10.0",
@@ -50,6 +51,16 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+branch = true
+source = ["src/bubble_mcp"]
+
+[tool.coverage.report]
+fail_under = 31.0
+precision = 1
+show_missing = true
+skip_covered = true
 
 [tool.ruff]
 line-length = 100

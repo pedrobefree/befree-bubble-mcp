@@ -16,7 +16,8 @@ jobs:
         with:
           node-version: "20"
       - run: python -m pip install -e ".[dev]"
-      - run: python -m pytest -q
+      - run: python -m coverage run -m pytest -q
+      - run: python -m coverage report
       - run: python -m bubble_mcp.cli.main smoke runtime --suite coverage
       - run: python -m bubble_mcp.cli.main smoke runtime --suite agent-routing
       - run: python -m ruff check src tests scripts
