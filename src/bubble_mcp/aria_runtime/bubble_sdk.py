@@ -7382,39 +7382,21 @@ class PathDiscovery(DiscoveryDataBoundary):
 
         # If parent_id is None or same as context (Root), add to root elements
         if not parent_id or parent_id == context_id:
-             # Check if we are updating the root itself
-             # We need to make sure we're updating the PERSISTENT self.data
-             container_key = 'element_definitions' if context_type == "reusable" else 'pages'
-             if container_key not in self.data and (container_key == 'element_definitions' and '%ed' in self.data):
-                 container_key = '%ed'
-             elif container_key not in self.data and (container_key == 'pages' and '%p3' in self.data):
-                 container_key = '%p3'
+            # Root creations use no distinct element slot. Child creations do.
+            if not element_key or element_key == context_id or element_key == extracted_name:
+                root.update(new_el)
+                self.persist_disk_cache()
+                logger.info(f" Updated context root {context_id} with name '{extracted_name}'")
+                return
 
-             if container_key not in self.data:
-                 self.data[container_key] = {}
-
-             container = self.data[container_key]
-
-             # If this is the root itself or if it has the same ID, update it
-             if context_id in container and (not element_key or element_key == context_id or element_key == extracted_name):
-                 container[context_id].update(new_el)
-                 self.persist_disk_cache()
-                 logger.info(f" Updated context root {context_id} with name '{extracted_name}'")
-                 return
-
-             # Fallback: if it's the root but not in container, add it!
-             if context_id not in container:
-                 container[context_id] = new_el
-                 self.persist_disk_cache()
-                 logger.info(f" Added new context root {context_id} with name '{extracted_name}'")
-                 return
-
-             if children_key not in root:
-                 root[children_key] = {}
-             root[children_key][dict_key] = new_el
-             self.persist_disk_cache()
-             logger.info(f" Injected {new_el['default_name']} ({dict_key}) into {context_id} root")
-             return
+            children = root.get(children_key)
+            if not isinstance(children, dict):
+                children = {}
+                root[children_key] = children
+            children[dict_key] = new_el
+            self.persist_disk_cache()
+            logger.info(f" Injected {new_el['default_name']} ({dict_key}) into {context_id} root")
+            return
 
         # If parent_id provided, find it first
         # We can reuse find_element_by_name logic but we need ID search
@@ -7433,15 +7415,17 @@ class PathDiscovery(DiscoveryDataBoundary):
 
         parent_node = find_node(root)
         if parent_node:
-             # Match children key of the parent
-             node_children_key = "%el" if "%el" in parent_node or "%x" in parent_node else "elements"
-             if node_children_key not in parent_node:
-                 parent_node[node_children_key] = {}
-             parent_node[node_children_key][dict_key] = new_el
-             self.persist_disk_cache()
-             logger.info(f" Injected {new_el['default_name']} ({dict_key}) into parent {parent_id}")
+            # Match children key of the parent
+            node_children_key = "%el" if "%el" in parent_node or "%x" in parent_node else "elements"
+            parent_children = parent_node.get(node_children_key)
+            if not isinstance(parent_children, dict):
+                parent_children = {}
+                parent_node[node_children_key] = parent_children
+            parent_children[dict_key] = new_el
+            self.persist_disk_cache()
+            logger.info(f" Injected {new_el['default_name']} ({dict_key}) into parent {parent_id}")
         else:
-             logger.warning(f"Injection failed: Parent {parent_id} not found")
+            logger.warning(f"Injection failed: Parent {parent_id} not found")
 
     def find_workflow_for_element(self, context_id: str, element_id: str, event_type: str = "click", context_type: str = "reusable") -> Optional[Dict]:
         """
@@ -7462,7 +7446,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 # Check if it's a workflow event
                 obj_type = obj.get('%x') or obj.get('type')
                 if obj_type:
-                    props = obj.get('%p', {})
+                    props = obj.get('%p')
                     if not isinstance(props, dict):
                         props = obj.get('properties', {})
                     if not isinstance(props, dict):
@@ -7518,11 +7502,7 @@ class PathDiscovery(DiscoveryDataBoundary):
 
     def list_elements(self, context_id: str, context_type: str = "reusable") -> List[Dict]:
         """List all elements with their paths in a context."""
-        if context_type == "reusable":
-            root = self.data.get('element_definitions', {}).get(context_id)
-        else:
-            root = self.data.get('pages', {}).get(context_id)
-
+        root = self._get_context_root(context_id, context_type)
         if not root:
             return []
 
@@ -7539,9 +7519,11 @@ class PathDiscovery(DiscoveryDataBoundary):
                     "id": value.get("id"),
                     "element": value
                 })
-                walk(value.get("elements", {}), path_parts + ["%el", key])
+                children = value.get("elements") or value.get("%el", {})
+                walk(children, path_parts + ["%el", key])
 
-        walk(root.get("elements", {}), [])
+        root_elements = root.get("elements") or root.get("%el", {})
+        walk(root_elements, [])
         return results
 
     def inject_workflow(
@@ -7554,15 +7536,15 @@ class PathDiscovery(DiscoveryDataBoundary):
         workflow_obj: Optional[Dict] = None
     ):
         """Inject workflow into discovery"""
-        if context_type == "reusable":
-            root = self.data.get('element_definitions', {}).get(context_id)
-        else:
-            root = self.data.get('pages', {}).get(context_id)
+        root = self._get_context_root(context_id, context_type)
+        if not root:
+            return
 
-        if not root: return
-
-        if 'workflows' not in root:
-            root['workflows'] = {}
+        workflows_key = "%wf" if "%wf" in root or "%x" in root else "workflows"
+        workflows = root.get(workflows_key)
+        if not isinstance(workflows, dict):
+            workflows = {}
+            root[workflows_key] = workflows
 
         # Keep injected workflow shape aligned with what was created.
         if isinstance(workflow_obj, dict):
@@ -7580,7 +7562,8 @@ class PathDiscovery(DiscoveryDataBoundary):
                 "actions": {}
             }
 
-        root['workflows'][wf_id] = wf_obj
+        workflows[wf_id] = wf_obj
+        self.persist_disk_cache()
         logger.info(f" Injected Workflow {wf_id} for element {element_id}")
 
     def build_path_array(self, context_id: str, element_path: List[str], context_type: str = "reusable") -> List[str]:
@@ -7611,7 +7594,11 @@ class PathDiscovery(DiscoveryDataBoundary):
 
     def get_element_properties(self, element: Dict) -> Dict:
         """Extract all properties from element"""
-        return element.get('properties', {})
+        properties = element.get('properties')
+        if isinstance(properties, dict):
+            return properties
+        wire_properties = element.get('%p')
+        return wire_properties if isinstance(wire_properties, dict) else {}
 
 
 # ==========================================

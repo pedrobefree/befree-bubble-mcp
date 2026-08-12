@@ -348,6 +348,8 @@ def test_app_mapper_falls_back_from_structurally_unusable_primary(
 
 
 def test_app_mapper_rejects_non_object_and_unknown_sources(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
+    assert BubbleAppMapper._read_mapping_source(None) is None
+
     non_object = tmp_path / "list.json"
     non_object.write_text("[]", encoding="utf-8")
     assert BubbleAppMapper(str(non_object)).pages == {}
@@ -362,6 +364,39 @@ def test_app_mapper_rejects_non_object_and_unknown_sources(tmp_path: Path, capsy
     unknown_mapper.elements["index"] = {}
     unknown_mapper._map_elements_recursive("index", [])  # type: ignore[arg-type]
     assert unknown_mapper.elements["index"] == {}
+
+
+def test_app_mapper_legacy_loader_ignores_invalid_pages_and_elements(tmp_path: Path) -> None:
+    source = tmp_path / "legacy.json"
+    source.write_text(
+        json.dumps(
+            {
+                "%p3": {
+                    "invalid-page": "invalid",
+                    "invalid-elements": {
+                        "%x": "Page",
+                        "%nm": "Invalid elements",
+                        "%el": "invalid",
+                    },
+                    "mixed-elements": {
+                        "%x": "ReusableElement",
+                        "%nm": "Mixed elements",
+                        "%el": {
+                            "invalid": "invalid",
+                            "valid": {"%dn": "Valid"},
+                        },
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    mapper = BubbleAppMapper(str(source))
+
+    assert mapper.get_page_id("Invalid elements") == "invalid-elements"
+    assert mapper.get_page_id("Mixed elements") == "mixed-elements"
+    assert mapper.get_element_id("Mixed elements", "Valid") == "valid"
 
 
 def test_bubble_client_requires_authentication_and_sends_headers(monkeypatch) -> None:  # type: ignore[no-untyped-def]
