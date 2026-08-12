@@ -7717,7 +7717,7 @@ class WebhookClient:
 # EXAMPLE USAGE
 # ==========================================
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - illustrative manual example
     print("=" * 70)
     print("BUBBLE SDK - Examples")
     print("=" * 70)
