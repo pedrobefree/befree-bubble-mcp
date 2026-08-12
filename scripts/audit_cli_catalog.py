@@ -4,9 +4,16 @@
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
 
-from bubble_mcp.catalog_audit import cli_catalog_parity_report
-from bubble_mcp.server.schemas import list_tool_schemas
+
+SOURCE_ROOT = Path(__file__).resolve().parents[1] / "src"
+if str(SOURCE_ROOT) not in sys.path:
+    sys.path.insert(0, str(SOURCE_ROOT))
+
+from bubble_mcp.catalog_audit import cli_catalog_parity_report  # noqa: E402
+from bubble_mcp.server.schemas import list_tool_schemas  # noqa: E402
 
 
 def main() -> int:

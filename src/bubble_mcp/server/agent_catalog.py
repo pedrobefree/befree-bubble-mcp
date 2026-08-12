@@ -334,7 +334,10 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "theme_json": "Button theme object encoded as JSON, with a base state and optional hover, pressed, focus, or disabled states.",
     "from_url": "Incoming URL path handled by the Bubble 301 redirect rule.",
     "to_url": "Destination URL path for the Bubble 301 redirect rule.",
-    "target_type": "Bubble object family receiving the editor comment.",
+    "target_type": (
+        "Bubble object family receiving the editor comment. Canonical names and runtime aliases are accepted; "
+        "custom target names require target_wire_type."
+    ),
     "target_id": "Exact Bubble object key or id receiving the editor comment.",
     "comment": "Comment text to append or use as the replacement value.",
     "parent_id": "Parent data type or option set id required for nested comment targets.",
@@ -999,6 +1002,7 @@ QUERY_FIELDS = (
     "query_sort_desc",
     "query_ignore_empty_constraints",
 )
+ACTION_QUERY_FIELDS = tuple(field for field in QUERY_FIELDS if field != "query_result_type")
 
 
 EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -1065,8 +1069,8 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "add_custom_event_parameter": (("profile", "context", "event_ref", "param_name", "btype_id"), ("dry_run", "settings_path", "is_list", "optional", "param_id", "ref_kind", "id_counter")),
     "set_custom_event_return_types": (("profile", "context", "event_ref", "return_types_json"), ("dry_run", "settings_path", "ref_kind", "id_counter")),
     "add_custom_event_return_type": (("profile", "context", "event_ref", "return_name", "btype_id"), ("dry_run", "settings_path", "is_list", "optional", "return_id", "ref_kind", "id_counter")),
-    "add_action": (("profile", "context", "element_name", "action_type"), ("dry_run", "settings_path", "event", "param", "data_type", "fields", "thing", *QUERY_FIELDS, "to_email", "to", "subject", "body", "message", "title", "pause_ms", "hide_status_bar", "open_in_new_tab", "animation", "duration_ms", "customize_duration", "offset", "custom_state", "value", "element_ref_kind", "match_index")),
-    "add_event_action": (("profile", "context", "action_type"), ("dry_run", "settings_path", "event_ref", "event_type", "ref_kind", "param", "data_type", "fields", "thing", *QUERY_FIELDS, "to_email", "to", "subject", "body", "message", "title", "pause_ms", "hide_status_bar", "open_in_new_tab", "animation", "duration_ms", "customize_duration", "offset", "custom_state", "value")),
+    "add_action": (("profile", "context", "element_name", "action_type"), ("dry_run", "settings_path", "event", "param", "data_type", "fields", "thing", *ACTION_QUERY_FIELDS, "to_email", "to", "subject", "body", "message", "title", "pause_ms", "hide_status_bar", "open_in_new_tab", "animation", "duration_ms", "customize_duration", "offset", "custom_state", "value", "element_ref_kind", "match_index")),
+    "add_event_action": (("profile", "context", "action_type"), ("dry_run", "settings_path", "event_ref", "event_type", "ref_kind", "param", "data_type", "fields", "thing", *ACTION_QUERY_FIELDS, "to_email", "to", "subject", "body", "message", "title", "pause_ms", "hide_status_bar", "open_in_new_tab", "animation", "duration_ms", "customize_duration", "offset", "custom_state", "value")),
     "replace_action": (("profile", "context", "element_name", "action_type", "param"), ("dry_run", "settings_path", "event")),
     "delete_action": (("profile", "context", "action_ref"), ("dry_run", "settings_path", "element_name", "event", "event_ref", "event_type", "ref_kind", "action_ref_kind", "confirm")),
     "cleanup_empty_actions": (("profile", "context"), ("dry_run", "settings_path", "element_name", "event", "event_ref", "event_type", "ref_kind")),
@@ -1249,9 +1253,11 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "scope": {"type": "string", "enum": ["elements", "workflows", "styles", "schema", "all"]},
     "target_type": {
         "type": "string",
-        "enum": [
+        "minLength": 1,
+        "examples": [
             "page",
             "element",
+            "reusable",
             "workflow_event",
             "action",
             "data_type",
