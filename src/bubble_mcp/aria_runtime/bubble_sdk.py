@@ -1242,98 +1242,6 @@ class ElementBuilder:
             body["%s1"] = style
         return body
 
-    def text(
-        self,
-        name: str,
-        content: Union[str, Dict],
-        font_size: int = 16,
-        min_width: str = None, max_width: str = None, fixed_width: bool = False, fit_width: bool = False,
-        min_height: str = None, max_height: str = None, fixed_height: bool = False, fit_height: bool = False,
-        width_unset: bool = True,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Cria um Text"""
-        element_id = self.id_gen.element_id()
-
-        # Check if content is already a full TextExpression dict
-        if isinstance(content, dict) and content.get("%x") == "TextExpression":
-             text_prop = content
-        elif isinstance(content, str) and content.startswith("current_cell_field:"):
-             # Handle "current_cell_field:title"
-             field_name = content.split(":")[1]
-             # Construct Bubble Expression: ParentGroup -> Field
-             text_prop = {
-                 "%x": "TextExpression",
-                 "%e": {
-                     "0": "", # Pre-text
-                     "1": {
-                         "%x": "ElementParent",
-                         "%p": None,
-                         "%n": {
-                             "%x": "Message",
-                             "%nm": f"{field_name}_text", # Heuristic: field_text? Or just field?
-                             # Actually for "Parent Group's Project's Title"
-                             # It is ElementParent -> .title (Message?)
-                             # Let's try mimicking the structure
-                             # The user payload showed: ElementParent -> Message(title_text)
-                             "%n": None,
-                             "%a": None,
-                             "is_slidable": False
-                         },
-                         "is_slidable": False
-                     },
-                     "2": "" # Post-text
-                 }
-             }
-        else:
-             text_prop = {
-                "%x": "TextExpression",
-                "%e": {"0": content}
-             }
-
-        properties = {
-            "%3": text_prop,
-            "%fs": font_size,
-            "font_size": font_size,
-            "color": kwargs.get("font_color") or kwargs.get("text_color") or kwargs.get("color", "#000000"),
-            "font_weight": kwargs.get("font_weight", "400"),
-            "horiz_alignment": kwargs.get("horiz_alignment", "flex-start"),
-            "%fa": kwargs.get("font_alignment", kwargs.get("fa", "left")),
-            "order": kwargs.get("order", 0), # Ensure order is present for auto-layout
-            **kwargs.get("extra_props", {})
-        }
-
-        # Apply new dimension logic
-        dim_args = {
-            "min_width": min_width, "max_width": max_width, "fixed_width": fixed_width, "fit_width": fit_width,
-            "min_height": min_height, "max_height": max_height, "fixed_height": fixed_height, "fit_height": fit_height
-        }
-        self._apply_dimensions(properties, dim_args)
-
-        self._add_visual_props(properties, kwargs)
-        self._prune_typography_overrides_for_style(
-            properties,
-            kwargs,
-            style_applied=bool(self._resolve_style_ref(kwargs)),
-        )
-
-        if width_unset:
-             properties = self._apply_width_unset(properties)
-
-        # Clean up internal markers
-        properties.pop("__explicit_dims", None)
-
-        body = {
-            "id": element_id,
-            "type": "Text",
-            "%x": "Text",
-            "%dn": name,
-            "%p": properties
-        }
-        style_ref = self._resolve_default_text_style_ref(properties, kwargs)
-        if style_ref:
-            body["%s1"] = style_ref
-        return body
 
     # Valid button_type values - MANDATORY from docs/bubble-api-elements.md
     VALID_BUTTON_TYPES = ["label", "label_icon", "icon"]
@@ -1579,119 +1487,6 @@ class ElementBuilder:
             "%p": properties
         }
 
-    def checkbox(
-        self,
-        name: str,
-        label: str = "Checkbox",
-        checked: bool = False,
-        required: bool = False,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Cria um Checkbox"""
-        element_id = self.id_gen.element_id()
-
-        properties = {
-            "%lab": {
-                "%x": "TextExpression",
-                "%e": {"0": label}
-            },
-            "%ct": "checked" if checked else "unchecked",
-            "%1m": required,
-            "disabled": kwargs.get("disabled", False),
-            "%9i": kwargs.get("icon", "feather square"),
-            "min_height_css": "36px",
-            "min_width_css": "150px",
-            "fit_height": True,
-            "fit_width": True,
-            **kwargs.get("extra_props", {})
-        }
-
-        self._add_visual_props(properties, kwargs)
-        self._prune_typography_overrides_for_style(
-            properties,
-            kwargs,
-            style_applied=bool(self._resolve_style_ref(kwargs)),
-        )
-
-        return {
-            "id": element_id,
-            "%x": "Checkbox",
-            "%dn": name,
-            "%s1": kwargs.get("style", "Checkbox_standard"),
-            "%p": properties
-        }
-
-    def radio_button(
-        self,
-        name: str,
-        label: str = "Radio",
-        group_name: str = "radio_group",
-        selected: bool = False,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Cria um Radio Button"""
-        element_id = self.id_gen.element_id()
-
-        properties = {
-            "%lab": {
-                "%x": "TextExpression",
-                "%e": {"0": label}
-            },
-            "radio_group": group_name,
-            "%ct": "checked" if selected else "unchecked",
-            "%9i": kwargs.get("icon", "feather circle"),
-            "min_height_css": "36px",
-            "min_width_css": "150px",
-            "fit_height": True,
-            "fit_width": True,
-            **kwargs.get("extra_props", {})
-        }
-
-        self._add_visual_props(properties, kwargs)
-
-        return {
-            "id": element_id,
-            "%x": "RadioButton",
-            "%dn": name,
-            "%s1": kwargs.get("style", "RadioButton_standard"),
-            "%p": properties
-        }
-
-    def date_picker(
-        self,
-        name: str,
-        placeholder: str = "Select date...",
-        show_time: bool = False,
-        required: bool = False,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Cria um Date/Time Picker"""
-        element_id = self.id_gen.element_id()
-
-        properties = {
-            "%w": kwargs.get("width", 250),
-            "%h": kwargs.get("height", 48),
-            "min_width_css": "250px",
-            "min_height_css": "48px",
-            "placeholder": {
-                "%x": "TextExpression",
-                "%e": {"0": placeholder}
-            },
-            "input_type": "date_time" if show_time else "date",
-            "%1m": required,
-            "fit_width": True,
-            **kwargs.get("extra_props", {})
-        }
-
-        self._add_visual_props(properties, kwargs)
-
-        return {
-            "id": element_id,
-            "%x": "DateInput",
-            "%dn": name,
-            "%s1": kwargs.get("style", "DateInput_standard"),
-            "%p": properties
-        }
 
     def file_uploader(
         self,
@@ -2164,57 +1959,6 @@ class ElementBuilder:
             "%p": properties
         }
 
-    def checkbox(
-        self,
-        name: str,
-        label: str = "Checkbox",
-        checked: bool = False,
-        required: bool = False,
-        disabled: bool = False,
-        min_width: str = None, max_width: str = None, fixed_width: bool = False, fit_width: bool = False,
-        min_height: str = None, max_height: str = None, fixed_height: bool = False, fit_height: bool = False,
-        width_unset: bool = False,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Cria um Checkbox"""
-        element_id = self.id_gen.element_id()
-
-        properties = {
-            "%lab": {
-                "%x": "TextExpression",
-                "%e": {"0": label}
-            },
-            "%ct": "checked" if checked else "unchecked",
-            "%1m": required,
-            "disabled": disabled,
-            "%9i": kwargs.get("icon", "feather square"),
-            "min_height_css": "36px",
-            "min_width_css": "150px",
-            **kwargs.get("extra_props", {})
-        }
-
-        # Apply new dimension logic
-        dim_args = {
-            "min_width": min_width, "max_width": max_width, "fixed_width": fixed_width, "fit_width": fit_width,
-            "min_height": min_height, "max_height": max_height, "fixed_height": fixed_height, "fit_height": fit_height
-        }
-        self._apply_dimensions(properties, dim_args)
-
-        self._add_visual_props(properties, kwargs)
-
-        if width_unset:
-             properties = self._apply_width_unset(properties)
-
-        # Clean up internal markers
-        properties.pop("__explicit_dims", None)
-
-        return {
-            "id": element_id,
-            "%x": "Checkbox",
-            "%dn": name,
-            "%s1": kwargs.get("style", "Checkbox_standard"),
-            "%p": properties
-        }
 
     def date_picker(
         self,
@@ -6410,8 +6154,6 @@ class PayloadBuilder:
 
         return self, id_mapping
 
-        return self, id_mapping
-
 
     def add_create_style(
         self,
@@ -6694,10 +6436,6 @@ class PayloadBuilder:
         """Retorna JSON string"""
         return json.dumps(self.build(), indent=indent)
 
-    def to_json(self, indent: int = 2) -> str:
-        """Retorna JSON string"""
-        return json.dumps(self.build(), indent=indent)
-
     def save(self, filename: str):
         """Salva em arquivo JSON"""
         with open(filename, 'w') as f:
@@ -6727,38 +6465,61 @@ class BubbleAppMapper:
         self.elements = {} # {page_name: {element_name: element_id}}
         self._load_map()
 
+    @staticmethod
+    def _read_mapping_source(path: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Read one mapping artifact, failing closed so fallback sources remain usable."""
+        if not path or not os.path.exists(path):
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            logger.warning(f"Could not read app mapping source {path}: {exc}")
+            return None
+        if not isinstance(data, dict):
+            logger.warning(f"App mapping source must contain a JSON object: {path}")
+            return None
+        return data
+
 
     def _load_map(self):
         """Carrega e indexa o JSON do app (Auto-detect format with fallback)"""
-        data = None
+        seen_paths = set()
+        for path in (self.app_json_path, self.consolelog_json_path):
+            if not path or path in seen_paths:
+                continue
+            seen_paths.add(path)
 
-        # Try primary source
-        if self.app_json_path and os.path.exists(self.app_json_path):
-            try:
-                with open(self.app_json_path, 'r') as f:
-                    data = json.load(f)
-            except FileNotFoundError:
-                pass
+            data = self._read_mapping_source(path)
+            if data is None:
+                continue
 
-        # Fallback to console.log
-        if data is None and self.consolelog_json_path and os.path.exists(self.consolelog_json_path):
-            try:
-                with open(self.consolelog_json_path, 'r') as f:
-                    data = json.load(f)
-            except FileNotFoundError:
-                pass
+            self.pages.clear()
+            self.elements.clear()
 
-        if not data:
-            logger.warning("No app data found for mapping")
-            return
+            if 'pages' in data:
+                pages = data.get('pages')
+                element_definitions = data.get('element_definitions', {})
+                if isinstance(pages, dict) and isinstance(element_definitions, dict):
+                    self._load_native_map(data)
+                else:
+                    logger.warning(f"Invalid native app mapping format: {path}")
+            elif '%p3' in data:
+                if isinstance(data.get('%p3'), dict):
+                    self._load_legacy_map(data)
+                else:
+                    logger.warning(f"Invalid legacy app mapping format: {path}")
+            else:
+                logger.warning(f"Unknown app format: {path}")
 
-        # Auto-detect format
-        if 'pages' in data:
-            self._load_native_map(data)
-        elif '%p3' in data:
-            self._load_legacy_map(data)
-        else:
-            logger.warning(f"Unknown app format")
+            if self.pages:
+                return
+
+            logger.warning(f"App mapping source produced no usable mappings: {path}")
+
+        self.pages.clear()
+        self.elements.clear()
+        logger.warning("No app data found for mapping")
 
     def _load_native_map(self, data: Dict[str, Any]):
         """Carrega formato nativo (app.bubble)"""
@@ -6810,6 +6571,8 @@ class BubbleAppMapper:
         """Carrega formato legacy/export (consolelog-app.json)"""
         p3 = data.get('%p3', {})
         for page_id, page_data in p3.items():
+            if not isinstance(page_data, dict):
+                continue
             if page_data.get('%x') in ['Page', 'ReusableElement']:
                 page_name = page_data.get('%nm') or page_data.get('%dn')
                 if page_name:
@@ -6819,7 +6582,11 @@ class BubbleAppMapper:
                     # Legacy is usually flat in %el ? Or need recursion too?
                     # Assuming flat based on previous observations, but recursion is safer if structure varies.
                     elements = page_data.get('%el', {})
+                    if not isinstance(elements, dict):
+                        continue
                     for el_id, el_data in elements.items():
+                        if not isinstance(el_data, dict):
+                            continue
                         el_name = el_data.get('%dn')
                         if el_name:
                             self.elements[page_name][el_name] = el_id
@@ -7982,7 +7749,7 @@ class WebhookClient:
             return response
         except Exception as e:
             logger.error(f"Erro ao enviar para Webhook: {e}")
-            if hasattr(e, 'response') and e.response:
+            if getattr(e, "response", None) is not None:
                 print(f"Response: {e.response.text}")
             raise
 
