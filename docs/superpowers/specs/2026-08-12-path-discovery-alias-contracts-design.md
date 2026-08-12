@@ -1,7 +1,7 @@
 # Path Discovery Alias Contracts Design
 
 Date: 2026-08-12
-Status: Approved direction, pending implementation
+Status: Approved design
 Scope: PR #17 in the Befree Bubble MCP standalone package
 
 ## Problem
