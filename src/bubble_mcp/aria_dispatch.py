@@ -67,6 +67,7 @@ ARG_ALIASES = {
     "rgba": ("value", "color"),
     "event_type": ("event",),
     "action_param": ("param",),
+    "to_email": ("to",),
 }
 
 RUNTIME_TOOL_ALIASES = {

@@ -15,8 +15,12 @@ python -m mypy src
 python scripts/audit_sensitive_paths.py .
 ```
 
-The coverage gate includes the legacy `aria_runtime` package. The initial 31% floor is a
-ratchet: new work must not reduce it, and focused runtime tests should raise it over time.
+The coverage gate includes the legacy `aria_runtime` package. Its 32.5% floor is a ratchet:
+new work must not reduce it, and focused runtime tests should raise it over time.
+
+For local environments with a short process window, collect the large MCP test
+module and the remaining unit suite as two `coverage run --append` shards. The
+combined data must still pass the same global ratchet.
 
 ## Rules
 

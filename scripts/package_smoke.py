@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -15,8 +16,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _run(command: list[str], *, cwd: Path = ROOT, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(command, cwd=cwd, input=input_text, text=True, check=True, capture_output=True)
+def _subprocess_env() -> dict[str, str]:
+    """Return an environment that cannot import the source checkout accidentally."""
+
+    env = os.environ.copy()
+    env.pop("PYTHONHOME", None)
+    env.pop("PYTHONPATH", None)
+    return env
+
+
+def _run(
+    command: list[str],
+    *,
+    cwd: Path = ROOT,
+    input_text: str | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        env=_subprocess_env(),
+        input=input_text,
+        text=True,
+        check=True,
+        capture_output=True,
+    )
 
 
 def _venv_python(venv: Path) -> Path:

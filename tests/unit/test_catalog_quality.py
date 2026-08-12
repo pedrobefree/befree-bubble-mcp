@@ -14,12 +14,14 @@ def test_catalog_quality_report_passes_current_catalog() -> None:
         "tool_names",
         "tool_descriptions",
         "tool_input_schemas",
+        "legacy_required_fields",
         "tool_property_descriptions",
         "tool_annotations",
         "resources",
         "resource_templates",
         "prompts",
         "runtime_coverage",
+        "cli_catalog_parity",
     }
 
 

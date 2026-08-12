@@ -924,8 +924,9 @@ bubble-mcp tools quality
 
 The report checks tool/resource/prompt identifiers, tool descriptions, input
 schemas, property descriptions, annotations, resource metadata, prompt
-arguments, and runtime coverage. Use it as a CI-friendly gate before claiming
-catalog or harness work is complete.
+arguments, explicit required fields for Aria-compatible tools, runtime coverage,
+and packaged Bubble CLI-to-MCP parity. Use it as a CI-friendly gate before
+claiming catalog or harness work is complete.
 
 ## `bubble-mcp readiness`
 

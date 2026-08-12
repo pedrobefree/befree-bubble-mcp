@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import sys
 import subprocess
@@ -310,7 +311,11 @@ def test_repair_native_extension_policy_stops_at_total_time_budget(
     monotonic_values = iter([0.0, install_local.MACOS_NATIVE_REPAIR_BUDGET_SECONDS])
 
     monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(install_local.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        install_local,
+        "time",
+        SimpleNamespace(monotonic=lambda: next(monotonic_values)),
+    )
     monkeypatch.setattr(
         install_local.subprocess,
         "run",
@@ -351,7 +356,11 @@ def test_repair_native_extension_policy_counts_directory_traversal_against_budge
             return SlowTraversal()
 
     monkeypatch.setattr(sys, "platform", "darwin")
-    monkeypatch.setattr(install_local.time, "monotonic", lambda: clock["seconds"])
+    monkeypatch.setattr(
+        install_local,
+        "time",
+        SimpleNamespace(monotonic=lambda: clock["seconds"]),
+    )
     monkeypatch.setattr(
         install_local.subprocess,
         "run",

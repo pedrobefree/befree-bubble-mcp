@@ -44,6 +44,34 @@ def test_method_kwargs_maps_public_schema_aliases_to_aria_runtime_args() -> None
     }
 
 
+def test_method_kwargs_maps_email_recipient_alias() -> None:
+    def add_event_action(
+        context_name: str,
+        action_type: str,
+        to_email: str | None = None,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    kwargs = _method_kwargs(
+        add_event_action,
+        {
+            "context": "index",
+            "action_type": "send_email",
+            "to": "person@example.com",
+            "execute": False,
+        },
+        execute=False,
+    )
+
+    assert kwargs == {
+        "context_name": "index",
+        "action_type": "send_email",
+        "to_email": "person@example.com",
+        "dry_run": True,
+    }
+
+
 def test_method_kwargs_maps_delete_data_field_name_to_field_key() -> None:
     def delete_data_field(
         data_type_key: str,

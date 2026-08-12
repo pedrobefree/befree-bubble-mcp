@@ -74,9 +74,9 @@ class TokenTransformer:
             ("medium", 500),
             ("semibold", 600),
             ("demibold", 600),
-            ("bold", 700),
             ("extrabold", 800),
             ("ultrabold", 800),
+            ("bold", 700),
             ("black", 900),
             ("heavy", 900),
         )
@@ -114,13 +114,16 @@ class TokenTransformer:
         if not isinstance(hex_str, str) or not hex_str.startswith('#'):
             return self.normalize_rgba(hex_str)
         hex_str = hex_str.lstrip('#')
-        if len(hex_str) == 6:
-            r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
-            return self.normalize_rgba(f"rgba({r},{g},{b},1)")
-        elif len(hex_str) == 8:
-            r, g, b, a = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16), int(hex_str[6:8], 16)
-            alpha = round(a / 255, 2)
-            return self.normalize_rgba(f"rgba({r},{g},{b},{alpha})")
+        try:
+            if len(hex_str) == 6:
+                r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
+                return self.normalize_rgba(f"rgba({r},{g},{b},1)")
+            elif len(hex_str) == 8:
+                r, g, b, a = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16), int(hex_str[6:8], 16)
+                alpha = round(a / 255, 2)
+                return self.normalize_rgba(f"rgba({r},{g},{b},{alpha})")
+        except ValueError:
+            return f"#{hex_str}"
         return hex_str
 
     def normalize_rgba(self, rgba_str: str) -> str:

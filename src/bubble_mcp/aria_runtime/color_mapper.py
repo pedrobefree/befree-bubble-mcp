@@ -122,9 +122,12 @@ class ColorMapper:
             if len(hex_val) == 3:
                 hex_val = "".join([c*2 for c in hex_val])
             if len(hex_val) == 6:
-                r = int(hex_val[0:2], 16)
-                g = int(hex_val[2:4], 16)
-                b = int(hex_val[4:6], 16)
+                try:
+                    r = int(hex_val[0:2], 16)
+                    g = int(hex_val[2:4], 16)
+                    b = int(hex_val[4:6], 16)
+                except ValueError:
+                    return None
                 return (r, g, b, 1.0)
 
         return None
@@ -216,6 +219,8 @@ class ColorMapper:
         var_name = f"var(--color_{key}_default)"
         friendly = friendly_name or key
         self.var_to_friendly[var_name] = friendly
+        self._register_name_alias(friendly, var_name)
+        self._register_name_alias(key, var_name)
         self.color_map.append((rgba, var_name))
 
     def find_variable_by_name(self, friendly_name: str) -> Optional[str]:
