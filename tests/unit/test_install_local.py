@@ -321,3 +321,44 @@ def test_repair_native_extension_policy_stops_at_total_time_budget(
 
     assert calls == []
     assert "native extension repair reached its time budget" in capsys.readouterr().err
+
+
+def test_repair_native_extension_policy_counts_directory_traversal_against_budget(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    native = tmp_path / "native.so"
+    native.write_bytes(b"native")
+    clock = {"seconds": 0.0}
+    calls: list[list[str]] = []
+
+    class SlowTraversal:
+        def __iter__(self):  # type: ignore[no-untyped-def]
+            return self
+
+        def __next__(self) -> Path:
+            clock["seconds"] += install_local.MACOS_NATIVE_REPAIR_BUDGET_SECONDS
+            return native
+
+    class SitePackages:
+        @staticmethod
+        def exists() -> bool:
+            return True
+
+        @staticmethod
+        def rglob(_pattern: str) -> SlowTraversal:
+            return SlowTraversal()
+
+    monkeypatch.setattr(sys, "platform", "darwin")
+    monkeypatch.setattr(install_local.time, "monotonic", lambda: clock["seconds"])
+    monkeypatch.setattr(
+        install_local.subprocess,
+        "run",
+        lambda command, **_kwargs: calls.append(command),
+    )
+
+    _repair_native_extension_policy(SitePackages())  # type: ignore[arg-type]
+
+    assert calls == []
+    assert "native extension repair reached its time budget" in capsys.readouterr().err

@@ -160,8 +160,34 @@ def _repair_native_extension_policy(site_packages: Path) -> None:
     if sys.platform != "darwin" or not site_packages.exists():
         return
     deadline = time.monotonic() + MACOS_NATIVE_REPAIR_BUDGET_SECONDS
-    for path in site_packages.rglob("*"):
-        if not path.is_file() or path.suffix not in {".so", ".dylib"}:
+
+    def budget_expired() -> bool:
+        if time.monotonic() < deadline:
+            return False
+        print(
+            "Warning: native extension repair reached its time budget; "
+            "continuing installation",
+            file=sys.stderr,
+        )
+        return True
+
+    paths = iter(site_packages.rglob("*"))
+    while True:
+        if budget_expired():
+            return
+        try:
+            path = next(paths)
+        except StopIteration:
+            return
+        if budget_expired():
+            return
+        try:
+            is_native = path.is_file() and path.suffix in {".so", ".dylib"}
+        except OSError:
+            continue
+        if budget_expired():
+            return
+        if not is_native:
             continue
         for command in (
             ["xattr", "-d", "com.apple.quarantine", str(path)],
@@ -169,11 +195,7 @@ def _repair_native_extension_policy(site_packages: Path) -> None:
         ):
             remaining_seconds = deadline - time.monotonic()
             if remaining_seconds <= 0:
-                print(
-                    "Warning: native extension repair reached its time budget; "
-                    "continuing installation",
-                    file=sys.stderr,
-                )
+                budget_expired()
                 return
             try:
                 subprocess.run(
