@@ -1412,9 +1412,7 @@ class ElementBuilder:
         }
         initial_content_canonical = initial_content_expr
         if isinstance(initial_content_expr, dict):
-            if initial_content_expr.get("type") == "TextExpression" and isinstance(initial_content_expr.get("entries"), dict):
-                initial_content_canonical = initial_content_expr
-            elif initial_content_expr.get("%x") == "TextExpression" and isinstance(initial_content_expr.get("%e"), dict):
+            if initial_content_expr.get("%x") == "TextExpression" and isinstance(initial_content_expr.get("%e"), dict):
                 initial_content_canonical = {
                     "type": "TextExpression",
                     "entries": dict(initial_content_expr.get("%e") or {}),
@@ -2471,8 +2469,6 @@ class ElementBuilder:
         self._add_visual_props(properties, kwargs)
         if vimeo_control_color is not None:
             properties["control_color_vimeo"] = vimeo_control_color
-        elif kwargs.get("vimeo_control_color") is not None:
-            properties["control_color_vimeo"] = kwargs.get("vimeo_control_color")
 
         if width_unset:
              properties = self._apply_width_unset(properties)
