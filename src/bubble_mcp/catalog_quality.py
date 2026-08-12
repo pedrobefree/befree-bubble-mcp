@@ -5,7 +5,9 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from bubble_mcp.catalog_audit import cli_catalog_parity_report
 from bubble_mcp.runtime_coverage import catalog_coverage_report
+from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.server.prompts import list_prompts
 from bubble_mcp.server.resources import list_resource_templates, list_resources
 from bubble_mcp.server.schemas import list_tool_schemas
@@ -150,6 +152,25 @@ def _check_tool_schemas(tools: list[dict[str, Any]]) -> tuple[list[dict[str, Any
                     message="Required field is missing from properties.",
                 )
     _record_check(checks, "tool_input_schemas", before, issues)
+
+    before = len(issues)
+    aria_names = set(ARIA_BUBBLE_TOOL_NAMES)
+    for tool in tools:
+        name = str(tool.get("name") or "<missing>")
+        if name not in aria_names:
+            continue
+        input_schema = tool.get("inputSchema")
+        required = input_schema.get("required") if isinstance(input_schema, dict) else None
+        if not isinstance(required, list) or not required:
+            _add_issue(
+                issues,
+                check="legacy_required_fields",
+                scope="tool",
+                name=name,
+                field="inputSchema.required",
+                message="Aria-compatible tools must declare their agent-required fields explicitly.",
+            )
+    _record_check(checks, "legacy_required_fields", before, issues)
 
     before = len(issues)
     for tool in tools:
@@ -360,6 +381,30 @@ def _coverage_check() -> tuple[dict[str, Any], list[Issue]]:
     }, issues
 
 
+def _cli_catalog_check(tools: list[dict[str, Any]]) -> tuple[dict[str, Any], list[Issue]]:
+    report = cli_catalog_parity_report(str(tool.get("name") or "") for tool in tools)
+    issues: list[Issue] = []
+    if not report["ok"]:
+        _add_issue(
+            issues,
+            check="cli_catalog_parity",
+            scope="catalog",
+            name="legacy_cli",
+            field="missing",
+            message=f"Bubble CLI commands missing from the MCP catalog: {report['missing']}",
+        )
+    return {
+        "name": "cli_catalog_parity",
+        "ok": not issues,
+        "issue_count": len(issues),
+        "cli_command_count": report["cli_command_count"],
+        "direct_match_count": report["direct_match_count"],
+        "alias_count": report["alias_count"],
+        "excluded_count": report["excluded_count"],
+        "missing_count": report["missing_count"],
+    }, issues
+
+
 def catalog_quality_report() -> dict[str, Any]:
     """Return a compact machine-readable quality report for MCP clients and CI."""
 
@@ -387,6 +432,10 @@ def catalog_quality_report() -> dict[str, Any]:
     checks.append(coverage_check)
     issues.extend(coverage_issues)
 
+    cli_catalog_check, cli_catalog_issues = _cli_catalog_check(tools)
+    checks.append(cli_catalog_check)
+    issues.extend(cli_catalog_issues)
+
     by_scope: dict[str, int] = {}
     for issue in issues:
         scope = str(issue.get("scope") or "unknown")
@@ -410,5 +459,6 @@ def catalog_quality_report() -> dict[str, Any]:
             "property_descriptions": f">= {MIN_PROPERTY_DESCRIPTION_CHARS} characters",
             "required_annotations": list(REQUIRED_ANNOTATIONS),
             "coverage": "No uncovered exposed tools; no uncovered Aria-compatible runtime tools.",
+            "cli_catalog_parity": "Every packaged Bubble-operation CLI command maps to a canonical MCP tool, an explicit alias, or an explained CLI-only exclusion.",
         },
     }

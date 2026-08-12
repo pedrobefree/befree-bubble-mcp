@@ -330,6 +330,28 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "private_key": "Private API token value. Never log or commit real secrets.",
     "exposed_api": "Whether the Bubble data type should be exposed through Bubble's Data API.",
     "include_cache": "Include local cache data in the read-only response.",
+    "style_id": "Exact Bubble style id to rename.",
+    "theme_json": "Button theme object encoded as JSON, with a base state and optional hover, pressed, focus, or disabled states.",
+    "from_url": "Incoming URL path handled by the Bubble 301 redirect rule.",
+    "to_url": "Destination URL path for the Bubble 301 redirect rule.",
+    "target_type": "Bubble object family receiving the editor comment.",
+    "target_id": "Exact Bubble object key or id receiving the editor comment.",
+    "comment": "Comment text to append or use as the replacement value.",
+    "parent_id": "Parent data type or option set id required for nested comment targets.",
+    "existing_comment": "Known current comment text used to append safely without relying on cached discovery data.",
+    "append": "Append to an existing Bubble editor comment when true.",
+    "replace": "Replace the current Bubble editor comment instead of appending.",
+    "target_wire_type": "Advanced raw Bubble comment target type when target_type has no built-in mapping.",
+    "updated_by": "Bubble account email recorded as the comment author when creating comment metadata.",
+    "updated_at_ms": "Optional comment update timestamp in Unix milliseconds.",
+    "is_visible": "Whether the Bubble element is visible when the page or reusable is loaded.",
+    "collapse_when_hidden": "Whether the Bubble element collapses its layout space while hidden.",
+    "html_id": "HTML id attribute assigned to the Bubble element.",
+    "unique_id": "Bubble element unique-id property used by advanced integrations.",
+    "animation": "Bubble animation name used by an animate-element workflow action.",
+    "duration_ms": "Custom workflow animation duration in milliseconds.",
+    "customize_duration": "Whether the workflow animation should use duration_ms instead of Bubble's default duration.",
+    "custom_state": "Custom state name targeted by a set-state workflow action.",
 }
 
 DATA_FIELD_KEY_GUIDANCE = (
@@ -494,6 +516,14 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "has successfully soft-deleted the same type in the same branch. It requires the exact internal data type "
         "key, execute=true, and a new confirm=true; exact payload and batch bypasses are rejected. The runtime "
         "downloads a fresh authenticated .bubble export before the write and performs another export read-back after it."
+    ),
+    "add_event_action": (
+        "Add an action to an existing Bubble workflow selected by event_ref or event_type, without requiring a trigger "
+        "element. Use add_action instead when targeting an element event and allowing automatic event creation."
+    ),
+    "set_comment": (
+        "Append or replace a Bubble editor comment on a page, element, workflow, action, data type, field, option set, "
+        "attribute, or option value. Use exact target ids and pass parent_id for nested schema targets."
     ),
     "bubble_project_bootstrap": (
         "One-call setup entrypoint for a Bubble project profile. Use it when the user provides or implies a profile "
@@ -975,6 +1005,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "refresh_profile_cache": (("profile",), ("dry_run", "settings_path", "skip_clear_cache", "skip_split", "skip_sync_events", "skip_scan_types", "skip_sync_element_refs", "capture_file")),
     "sync_cache": (("profile",), ("dry_run", "settings_path", "mode", "skip_clear_cache", "skip_split", "skip_sync_events", "skip_scan_types", "skip_sync_element_refs", "capture_file")),
     "sync_event_cache": (("profile",), ("dry_run", "settings_path", "context", "clear", "json")),
+    "sync_workflow_ref_cache": (("profile",), ("dry_run", "settings_path", "context", "clear", "json")),
     "inspect_context": (("profile",), ("dry_run", "settings_path", "context", "scope", "include_elements", "include_workflows", "include_styles", "limit", "json")),
     "resolve_refs": (("profile",), ("dry_run", "settings_path", "context", "parent_ref", "parent_match_index", "element_ref", "element_ref_kind", "match_index", "event_ref", "event_ref_kind", "style_ref", "style_element_type", "data_type_ref", "data_type_ref_kind", "option_set_ref", "option_set_ref_kind", "option_value_ref", "json")),
     "verify_write": (("profile",), ("dry_run", "settings_path", "path", "context", "entity", "ref", "property_path", "ref_kind", "element_ref_kind", "match_index", "expected", "value_type", "json")),
@@ -985,6 +1016,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "delete_page": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
     "clone_page": (("profile", "source", "name"), ("dry_run", "settings_path", "title")),
     "create_reusable": (("profile", "name"), ("dry_run", "settings_path", "type", "element_type", "layout", *VISUAL_STYLE_FIELDS, "float_v_relative", "float_h_relative", "float_zindex", "parallax", "data_class", "data_source", "properties")),
+    "update_reusable": (("profile", "context", "element_name"), ("dry_run", "settings_path", "prefer_last", "width", "height", "is_visible", "collapse_when_hidden", "html_id", "unique_id", *VISUAL_STYLE_FIELDS)),
     "update_reusable_type": (("profile", "name", "type"), ("dry_run", "settings_path")),
     "clone_reusable": (("profile", "source", "name"), ("dry_run", "settings_path")),
     "delete_reusable": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
@@ -1006,6 +1038,8 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "edit_style": (("profile", "name", "element_type"), ("dry_run", "settings_path", "map_type", "map_style", "custom_style", *VISUAL_STYLE_FIELDS)),
     "add_style_condition": (("profile", "name", "condition"), ("dry_run", "settings_path", *VISUAL_STYLE_FIELDS)),
     "reorder_style_states": (("profile", "name", "order"), ("dry_run", "settings_path")),
+    "rename_style": (("profile", "style_id", "new_name"), ("dry_run", "settings_path")),
+    "create_button_style": (("profile", "name", "theme_json"), ("dry_run", "settings_path")),
     "create_workflow": (("profile", "context", "element_name"), ("dry_run", "settings_path", "event")),
     "log_the_user_in": (("profile", "context", "event_ref", "email_input_ref", "password_input_ref"), ("dry_run", "settings_path", "workflow_id", "action_index", "action_id", "stay_logged_in", "remember_email")),
     "log_the_user_out": (("profile", "context", "event_ref"), ("dry_run", "settings_path", "workflow_id", "action_index", "action_id")),
@@ -1031,10 +1065,13 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "add_custom_event_parameter": (("profile", "context", "event_ref", "param_name", "btype_id"), ("dry_run", "settings_path", "is_list", "optional", "param_id", "ref_kind", "id_counter")),
     "set_custom_event_return_types": (("profile", "context", "event_ref", "return_types_json"), ("dry_run", "settings_path", "ref_kind", "id_counter")),
     "add_custom_event_return_type": (("profile", "context", "event_ref", "return_name", "btype_id"), ("dry_run", "settings_path", "is_list", "optional", "return_id", "ref_kind", "id_counter")),
-    "add_action": (("profile", "context", "action_type"), ("dry_run", "settings_path", "element_name", "event_ref", "event", "event_type", "ref_kind", "param", "data_type", "fields", "thing", *QUERY_FIELDS, "to_email", "to", "subject", "body", "message", "title", "pause_ms", "hide_status_bar", "open_in_new_tab")),
+    "add_action": (("profile", "context", "element_name", "action_type"), ("dry_run", "settings_path", "event", "param", "data_type", "fields", "thing", *QUERY_FIELDS, "to_email", "to", "subject", "body", "message", "title", "pause_ms", "hide_status_bar", "open_in_new_tab", "animation", "duration_ms", "customize_duration", "offset", "custom_state", "value", "element_ref_kind", "match_index")),
+    "add_event_action": (("profile", "context", "action_type"), ("dry_run", "settings_path", "event_ref", "event_type", "ref_kind", "param", "data_type", "fields", "thing", *QUERY_FIELDS, "to_email", "to", "subject", "body", "message", "title", "pause_ms", "hide_status_bar", "open_in_new_tab", "animation", "duration_ms", "customize_duration", "offset", "custom_state", "value")),
     "replace_action": (("profile", "context", "element_name", "action_type", "param"), ("dry_run", "settings_path", "event")),
     "delete_action": (("profile", "context", "action_ref"), ("dry_run", "settings_path", "element_name", "event", "event_ref", "event_type", "ref_kind", "action_ref_kind", "confirm")),
     "cleanup_empty_actions": (("profile", "context"), ("dry_run", "settings_path", "element_name", "event", "event_ref", "event_type", "ref_kind")),
+    "create_301_redirect": (("profile", "from_url", "to_url"), ("dry_run", "settings_path", "rule_key", "id_counter")),
+    "set_comment": (("profile", "target_type", "target_id", "comment"), ("dry_run", "settings_path", "parent_id", "existing_comment", "append", "replace", "target_wire_type", "updated_by", "updated_at_ms", "id_counter")),
 }
 
 
@@ -1078,6 +1115,11 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "limit_image_size_before_upload": {"type": "boolean"},
     "prefer_last": {"type": "boolean"},
     "include_cache": {"type": "boolean"},
+    "is_visible": {"type": "boolean"},
+    "collapse_when_hidden": {"type": "boolean"},
+    "append": {"type": "boolean", "default": True},
+    "replace": {"type": "boolean", "default": False},
+    "customize_duration": {"type": "boolean"},
     "include_states": {"type": "boolean", "default": True},
     "rows": {"type": "integer"},
     "limit": {"type": "integer"},
@@ -1110,6 +1152,9 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "auto_binding": {"type": "boolean"},
     "include_everyone_default": {"type": "boolean", "default": True},
     "id_counter": {"type": "integer"},
+    "updated_at_ms": {"type": "integer", "minimum": 0},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "offset": {"type": "integer"},
     "provider_app_id": {"type": "string"},
     "provider_app_secret": {"type": "string"},
     "provider_scopes": {"type": ["string", "array"], "items": {"type": "string"}},
@@ -1202,6 +1247,20 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "option_set_ref_kind": {"type": "string", "enum": ["auto", "id", "name"]},
     "option_value_ref_kind": {"type": "string", "enum": ["auto", "id", "name", "display"]},
     "scope": {"type": "string", "enum": ["elements", "workflows", "styles", "schema", "all"]},
+    "target_type": {
+        "type": "string",
+        "enum": [
+            "page",
+            "element",
+            "workflow_event",
+            "action",
+            "data_type",
+            "data_field",
+            "option_set",
+            "option_attribute",
+            "option_value",
+        ],
+    },
     "mode": {"type": "string", "enum": ["full", "fast", "events", "types", "elements"]},
     "placement": {"type": "string", "enum": ["top", "bottom", "append", "prepend", "replace children"]},
     "table_direction": {"type": "string", "enum": ["vertical", "horizontal"]},
@@ -1255,6 +1314,15 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
         field_schema = properties.setdefault(field, _property_schema(field))
         if field in defaults and isinstance(field_schema, dict):
             field_schema.setdefault("default", deepcopy(defaults[field]))
+    if name == "add_event_action":
+        input_schema["anyOf"] = [
+            {"required": ["event_ref"]},
+            {"required": ["event_type"]},
+        ]
+    if name in {"add_action", "add_event_action"}:
+        properties["offset"]["description"] = (
+            "Vertical pixel offset used by a scroll-to-element workflow action."
+        )
     if name == "delete_data_type_permanently":
         properties.pop("write_payload", None)
         properties.pop("payload", None)

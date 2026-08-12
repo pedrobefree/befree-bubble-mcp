@@ -9,12 +9,12 @@ import json
 import random
 import string
 import requests
-import copy
-import pickle
 import tempfile
 from datetime import datetime
 import re
 from typing import Dict, List, Any, Optional, Union, Tuple
+
+from bubble_mcp.runtime_discovery import DiscoveryDataBoundary
 
 
 # ==========================================
@@ -6837,7 +6837,7 @@ class BubbleAppMapper:
 # PATH DISCOVERY ENGINE
 # ==========================================
 
-class PathDiscovery:
+class PathDiscovery(DiscoveryDataBoundary):
     """
     Auto-discovers element paths in app.bubble file.
     Eliminates manual path lookup for CLI operations.
@@ -6851,12 +6851,13 @@ class PathDiscovery:
         mutation_overlay_path: Optional[str] = None,
     ):
         print(f"[PathDiscovery] INIT: app_path={app_json_path}, console_path={consolelog_json_path}, crawler_path={crawler_index_path}, overlay_path={mutation_overlay_path}")
-        self.app_json_path = app_json_path
-        self.consolelog_json_path = consolelog_json_path
-        self.crawler_index_path = crawler_index_path
-        self.mutation_overlay_path = mutation_overlay_path
-        self._data = None
-        self._data_source = None  # Track which source was used
+        super().__init__(
+            app_json_path=app_json_path,
+            consolelog_json_path=consolelog_json_path,
+            crawler_index_path=crawler_index_path,
+            mutation_overlay_path=mutation_overlay_path,
+            logger=logger,
+        )
 
     def _load_crawler_index(self, path: Optional[str]) -> Optional[Dict[str, Any]]:
         """
@@ -6942,125 +6943,6 @@ class PathDiscovery:
             "backend_workflows": backend_workflows_by_id,
             "api_connector_collections": collections_by_id,
         }
-
-    def _load_mutation_overlay(self, path: Optional[str]) -> List[Dict[str, Any]]:
-        if not path or not os.path.exists(path):
-            return []
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except Exception as exc:
-            logger.warning(f"[PathDiscovery] Could not read mutation overlay at {path}: {exc}")
-            return []
-
-        entries = raw.get("entries") if isinstance(raw, dict) else None
-        if not isinstance(entries, list):
-            return []
-        return [entry for entry in entries if isinstance(entry, dict) and isinstance(entry.get("changes"), list)]
-
-    @staticmethod
-    def _normalize_overlay_path_array(path_array: Any) -> List[str]:
-        if not isinstance(path_array, list):
-            return []
-        normalized: List[str] = []
-        for segment in path_array:
-            if isinstance(segment, (str, int, float)):
-                text = str(segment)
-                if text:
-                    normalized.append(text)
-        return normalized
-
-    @staticmethod
-    def _set_nested_overlay_value(target: Dict[str, Any], path_parts: List[str], value: Any) -> None:
-        if not path_parts:
-            return
-        cur: Dict[str, Any] = target
-        for token in path_parts[:-1]:
-            nxt = cur.get(token)
-            if not isinstance(nxt, dict):
-                nxt = {}
-                cur[token] = nxt
-            cur = nxt
-        cur[path_parts[-1]] = copy.deepcopy(value)
-
-    @staticmethod
-    def _delete_nested_overlay_value(target: Dict[str, Any], path_parts: List[str]) -> None:
-        if not path_parts:
-            return
-        cur: Dict[str, Any] = target
-        for token in path_parts[:-1]:
-            nxt = cur.get(token)
-            if not isinstance(nxt, dict):
-                return
-            cur = nxt
-        cur.pop(path_parts[-1], None)
-
-    @staticmethod
-    def _delete_aliased_overlay_record(target: Dict[str, Any], bucket_names: List[str], key: str) -> None:
-        aliases = {key}
-        for bucket_name in bucket_names:
-            bucket = target.get(bucket_name)
-            if not isinstance(bucket, dict):
-                continue
-            direct = bucket.get(key)
-            if not isinstance(direct, dict):
-                continue
-            for alias in (direct.get("id"), direct.get("%nm"), direct.get("name"), direct.get("%d")):
-                if isinstance(alias, str) and alias.strip():
-                    aliases.add(alias.strip())
-
-        for bucket_name in bucket_names:
-            bucket = target.get(bucket_name)
-            if not isinstance(bucket, dict):
-                continue
-            for candidate_key, value in list(bucket.items()):
-                should_delete = candidate_key in aliases
-                if not should_delete and isinstance(value, dict):
-                    for alias in (value.get("id"), value.get("%nm"), value.get("name"), value.get("%d")):
-                        if isinstance(alias, str) and alias.strip() in aliases:
-                            should_delete = True
-                            break
-                if should_delete:
-                    bucket.pop(candidate_key, None)
-
-    def _delete_overlay_value(self, target: Dict[str, Any], path_parts: List[str]) -> None:
-        if len(path_parts) == 2 and path_parts[0] in {"%p3", "pages", "all_pages"}:
-            self._delete_aliased_overlay_record(target, ["%p3", "pages", "all_pages"], path_parts[1])
-            return
-        if len(path_parts) == 2 and path_parts[0] in {"%ed", "element_definitions", "CustomDefinition", "custom_definitions"}:
-            self._delete_aliased_overlay_record(target, ["%ed", "element_definitions", "CustomDefinition", "custom_definitions"], path_parts[1])
-            return
-        self._delete_nested_overlay_value(target, path_parts)
-
-    def _apply_mutation_overlay(self, data: Dict[str, Any], entries: List[Dict[str, Any]]) -> Dict[str, Any]:
-        if not isinstance(data, dict) or not entries:
-            return data
-        for entry in entries:
-            changes = entry.get("changes") if isinstance(entry, dict) else None
-            if not isinstance(changes, list):
-                continue
-            for change in changes:
-                if not isinstance(change, dict):
-                    continue
-                path_parts = self._normalize_overlay_path_array(change.get("path_array"))
-                if not path_parts:
-                    continue
-                intent = change.get("intent") if isinstance(change.get("intent"), dict) else {}
-                intent_name = str(intent.get("name") or "").strip()
-                lowered_intent = intent_name.lower()
-                is_delete = (
-                    intent_name == "RemoveElement"
-                    or lowered_intent.startswith("delete")
-                    or lowered_intent == "removeelement"
-                    or (len(path_parts) > 0 and path_parts[-1] == "%del")
-                )
-                if is_delete:
-                    delete_path = path_parts[:-1] if path_parts and path_parts[-1] == "%del" else path_parts
-                    self._delete_overlay_value(data, delete_path)
-                    continue
-                if "body" in change:
-                    self._set_nested_overlay_value(data, path_parts, change.get("body"))
-        return data
 
     def _merge_crawler_into_data(
         self,
@@ -7252,13 +7134,6 @@ class PathDiscovery:
 
         return data
 
-    def _cache_enabled(self) -> bool:
-        raw = str(os.getenv("BUBBLE_CLI_DISCOVERY_CACHE", "1")).strip().lower()
-        return raw not in {"0", "false", "no", "off"}
-
-    def _cache_path_for_source(self, source_path: str) -> str:
-        return f"{source_path}.parsed-cache.pkl"
-
     def _normalize_api_connector_collections(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Normalize API Connector collections from consolelog/app data into a stable alias.
@@ -7325,159 +7200,6 @@ class PathDiscovery:
             if not data.get("plugin_special"):
                 data["plugin_special"] = collections
         return data
-
-    def _load_json_with_disk_cache(self, source_path: str) -> Dict[str, Any]:
-        """
-        Load JSON source using a persistent pickle cache keyed by mtime+size.
-        This avoids expensive full JSON parsing on every CLI/MCP subprocess call.
-        """
-        if not source_path:
-            return {}
-        if not self._cache_enabled():
-            with open(source_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-
-        try:
-            stat = os.stat(source_path)
-            source_mtime = float(getattr(stat, "st_mtime", 0.0))
-            source_size = int(getattr(stat, "st_size", 0))
-        except Exception:
-            with open(source_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-
-        cache_path = self._cache_path_for_source(source_path)
-        try:
-            if os.path.exists(cache_path):
-                with open(cache_path, "rb") as cf:
-                    payload = pickle.load(cf)
-                if isinstance(payload, dict):
-                    meta = payload.get("__meta__", {})
-                    cached_mtime = float(meta.get("mtime", -1))
-                    cached_size = int(meta.get("size", -1))
-                    cached_data = payload.get("data")
-                    if (
-                        cached_mtime == source_mtime
-                        and cached_size == source_size
-                        and isinstance(cached_data, dict)
-                        and cached_data # Valid dict
-                    ):
-                        return cached_data
-        except Exception:
-            # Cache is best-effort; fallback to source parse.
-            pass
-
-        with open(source_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        try:
-            cache_payload = {
-                "__meta__": {"mtime": source_mtime, "size": source_size},
-                "data": data,
-            }
-            with open(cache_path, "wb") as cf:
-                pickle.dump(cache_payload, cf, protocol=pickle.HIGHEST_PROTOCOL)
-        except Exception:
-            # Ignore cache write failures.
-            pass
-        return data
-
-    @property
-    def data(self) -> Dict[str, Any]:
-        """Lazy load app data with fallback logic"""
-        if self._data is None:
-            # Try primary source first
-            if self.app_json_path and os.path.exists(self.app_json_path):
-                try:
-                    self._data = self._load_json_with_disk_cache(self.app_json_path)
-                    self._data = self._normalize_api_connector_collections(self._data)
-                    self._data_source = "app.bubble"
-                except FileNotFoundError:
-                    pass
-
-            # Fallback to console.log JSON
-            if self._data is None and self.consolelog_json_path and os.path.exists(self.consolelog_json_path):
-                try:
-                    print(f"[PathDiscovery] Opening consolelog: {self.consolelog_json_path}")
-                    self._data = self._load_json_with_disk_cache(self.consolelog_json_path)
-                    self._data = self._normalize_api_connector_collections(self._data)
-                    self._data_source = "consolelog"
-                    logger.info(f"Using console.log fallback: {self.consolelog_json_path}")
-                except FileNotFoundError:
-                    pass
-
-            # Enrich with crawler-index if available
-            # We now do this for ALL sources, including .bubble, to ensure the most
-            # recent discovery findings from Aria are integrated.
-            if self._data is not None and self.crawler_index_path and os.path.exists(self.crawler_index_path):
-                crawler = self._load_crawler_index(self.crawler_index_path)
-                if crawler:
-                    self._data = self._merge_crawler_into_data(self._data, crawler)
-                    self._data_source = f"{self._data_source}+crawler"
-                    logger.info(f"[PathDiscovery] Merged crawler-index into {self._data_source} data")
-
-            if self._data is not None and self.mutation_overlay_path and os.path.exists(self.mutation_overlay_path):
-                overlay_entries = self._load_mutation_overlay(self.mutation_overlay_path)
-                if overlay_entries:
-                    self._data = self._apply_mutation_overlay(self._data, overlay_entries)
-                    self._data_source = f"{self._data_source}+overlay"
-                    logger.info(f"[PathDiscovery] Applied mutation overlay into {self._data_source} data")
-
-            # No data source found
-            if self._data is None:
-                logger.warning("No app data source found")
-                self._data = {}
-                self._data_source = "none"
-
-            logger.info(f" [DEBUG] load_discovery_cache: data loaded from {self._data_source}. Keys: {list(self._data.keys())}")
-
-        return self._data
-
-    def refresh(self) -> Dict[str, Any]:
-        """Force reload app data from disk"""
-        self._data = None
-        return self.data
-
-    @property
-    def source_path(self) -> str:
-        """Returns the path of the source currently being used"""
-        if self._data is None:
-            _ = self.data # Trigger load
-
-        if self._data_source == "consolelog":
-            return self.consolelog_json_path
-        return self.app_json_path
-
-    def persist_disk_cache(self) -> bool:
-        """
-        Persist the current in-memory discovery snapshot to the parsed-cache pickle
-        associated with the active source JSON file.
-
-        This keeps CLI/MCP-created or updated elements discoverable across
-        subprocesses without forcing a full profile refresh.
-        """
-        if self._data is None or not isinstance(self._data, dict):
-            return False
-        source_path = self.source_path
-        if not source_path or not self._cache_enabled():
-            return False
-        try:
-            stat = os.stat(source_path)
-            source_mtime = float(getattr(stat, "st_mtime", 0.0))
-            source_size = int(getattr(stat, "st_size", 0))
-        except Exception:
-            source_mtime = 0.0
-            source_size = 0
-
-        cache_path = self._cache_path_for_source(source_path)
-        try:
-            cache_payload = {
-                "__meta__": {"mtime": source_mtime, "size": source_size},
-                "data": self._data,
-            }
-            with open(cache_path, "wb") as cf:
-                pickle.dump(cache_payload, cf, protocol=pickle.HIGHEST_PROTOCOL)
-            return True
-        except Exception:
-            return False
 
     def _get_context_root(self, context_id: str, context_type: str) -> Optional[Dict]:
         """Get the root object for a context, handling standard and raw formats."""

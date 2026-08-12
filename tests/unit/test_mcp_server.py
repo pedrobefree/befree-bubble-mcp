@@ -2765,7 +2765,18 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
         assert field in create_event["properties"]
 
     add_action = tools["add_action"]["inputSchema"]
-    assert add_action["required"] == ["profile", "context", "action_type"]
+    assert add_action["required"] == ["profile", "context", "element_name", "action_type"]
+
+    add_event_action = tools["add_event_action"]["inputSchema"]
+    assert add_event_action["required"] == ["profile", "context", "action_type"]
+    assert add_event_action["anyOf"] == [
+        {"required": ["event_ref"]},
+        {"required": ["event_type"]},
+    ]
+
+    set_comment = tools["set_comment"]["inputSchema"]
+    assert set_comment["required"] == ["profile", "target_type", "target_id", "comment"]
+    assert set_comment["properties"]["target_type"]["enum"]
 
     login = tools["log_the_user_in"]["inputSchema"]
     assert login["required"] == ["profile", "context", "event_ref", "email_input_ref", "password_input_ref"]
@@ -3222,7 +3233,7 @@ def test_tools_list_includes_full_aria_catalog() -> None:
 
     assert response is not None
     names = {tool["name"] for tool in response["result"]["tools"]}
-    assert len(ARIA_BUBBLE_TOOL_NAMES) == 214
+    assert len(ARIA_BUBBLE_TOOL_NAMES) == 216
     assert set(ARIA_BUBBLE_TOOL_NAMES).issubset(names)
     assert "delete_data_field" in names
     assert "delete_data_type_permanently" in names

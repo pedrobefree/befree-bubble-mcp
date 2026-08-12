@@ -53,6 +53,7 @@ When adding or refining a family, update tests in
 - numeric fields include realistic min/max bounds;
 - stable option fields expose enums instead of unbounded strings;
 - `tools/list` still exposes the full catalog.
+- `python scripts/audit_cli_catalog.py` reports no unmapped packaged Bubble CLI commands.
 - `bubble-mcp smoke runtime --suite coverage` passes both the execution
   coverage case and the catalog-quality case.
 
@@ -94,3 +95,9 @@ When a catalog name differs from the packaged runtime method name, add an
 explicit alias in `src/bubble_mcp/aria_dispatch.py` and keep
 `bubble-mcp smoke runtime --suite coverage` green. Do not rely on agents
 discovering CLI subcommand spellings at runtime.
+
+When consolidating or renaming an existing public tool, keep the old name as a
+deprecated alias generated from the canonical schema. Canonical and alias calls
+must reach the same handler and have parity tests. Suppress deprecated aliases
+from default search ranking, retain them for at least two minor releases, and
+remove them only in an explicitly documented major release.

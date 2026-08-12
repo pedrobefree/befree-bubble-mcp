@@ -57,7 +57,7 @@ branch = true
 source = ["src/bubble_mcp"]
 
 [tool.coverage.report]
-fail_under = 31.0
+fail_under = 32.5
 precision = 1
 show_missing = true
 skip_covered = true

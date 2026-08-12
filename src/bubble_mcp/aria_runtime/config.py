@@ -40,7 +40,8 @@ def load_settings_file(path: str) -> Dict[str, Any]:
     if os.path.exists(path):
         try:
             with open(path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
+                loaded = json.load(f)
+                settings = loaded if isinstance(loaded, dict) else {}
         except Exception:
             settings = {}
 
