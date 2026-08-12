@@ -58,6 +58,15 @@ def get_settings_path(config_dir: Path | None = None) -> Path:
     return (config_dir or get_config_dir()) / SETTINGS_FILENAME
 
 
+def resolve_config_artifact_path(config_dir: Path, raw_path: str | None) -> Path | None:
+    """Resolve a configured artifact path relative to its settings directory."""
+
+    if not raw_path:
+        return None
+    path = Path(raw_path).expanduser()
+    return path if path.is_absolute() else config_dir / path
+
+
 def load_json_file(path: Path) -> dict[str, Any]:
     """Load a JSON object from disk, returning an empty object when absent."""
 

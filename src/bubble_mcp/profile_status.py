@@ -7,18 +7,15 @@ from typing import Any
 
 from bubble_mcp.context.detector import default_context_path
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
-from bubble_mcp.core.config import BubbleProfile, get_settings_path, load_settings, resolve_profile
+from bubble_mcp.core.config import (
+    BubbleProfile,
+    get_settings_path,
+    load_settings,
+    resolve_config_artifact_path,
+    resolve_profile,
+)
 from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import editor_write_session_status, load_session, session_path
-
-
-def _resolve_profile_path(profile: BubbleProfile, raw_path: str | None, settings_dir: Path) -> Path | None:
-    if not raw_path:
-        return None
-    path = Path(raw_path).expanduser()
-    if path.is_absolute():
-        return path
-    return settings_dir / path
 
 
 def _path_status(path: Path | None) -> dict[str, Any]:
@@ -74,7 +71,7 @@ def _safe_context_summary(summary: dict[str, Any]) -> dict[str, Any]:
 
 
 def _context_path_for_profile(profile: BubbleProfile, settings_dir: Path) -> tuple[Path | None, Path | None]:
-    source_artifact = _resolve_profile_path(profile, profile.app_json_path, settings_dir)
+    source_artifact = resolve_config_artifact_path(settings_dir, profile.app_json_path)
     if source_artifact is None:
         return None, default_context_path(profile.name, profile.app_id)
     if source_artifact.suffix.lower() == ".bubble":
