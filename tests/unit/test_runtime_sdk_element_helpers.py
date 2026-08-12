@@ -1,3 +1,6 @@
+import ast
+from collections import Counter
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,6 +17,24 @@ class FixedIds:
 @pytest.fixture
 def builder() -> ElementBuilder:
     return ElementBuilder(FixedIds())
+
+
+def test_sdk_classes_do_not_shadow_method_definitions() -> None:
+    source_path = Path(bubble_sdk.__file__)
+    tree = ast.parse(source_path.read_text())
+    duplicates: dict[str, list[str]] = {}
+
+    for class_node in (node for node in tree.body if isinstance(node, ast.ClassDef)):
+        method_names = [
+            node.name
+            for node in class_node.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        shadowed = sorted(name for name, count in Counter(method_names).items() if count > 1)
+        if shadowed:
+            duplicates[class_node.name] = shadowed
+
+    assert duplicates == {}
 
 
 @pytest.mark.parametrize(
