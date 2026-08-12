@@ -6484,21 +6484,42 @@ class BubbleAppMapper:
 
     def _load_map(self):
         """Carrega e indexa o JSON do app (Auto-detect format with fallback)"""
-        data = self._read_mapping_source(self.app_json_path)
-        if data is None:
-            data = self._read_mapping_source(self.consolelog_json_path)
+        seen_paths = set()
+        for path in (self.app_json_path, self.consolelog_json_path):
+            if not path or path in seen_paths:
+                continue
+            seen_paths.add(path)
 
-        if not data:
-            logger.warning("No app data found for mapping")
-            return
+            data = self._read_mapping_source(path)
+            if data is None:
+                continue
 
-        # Auto-detect format
-        if 'pages' in data:
-            self._load_native_map(data)
-        elif '%p3' in data:
-            self._load_legacy_map(data)
-        else:
-            logger.warning(f"Unknown app format")
+            self.pages.clear()
+            self.elements.clear()
+
+            if 'pages' in data:
+                pages = data.get('pages')
+                element_definitions = data.get('element_definitions', {})
+                if isinstance(pages, dict) and isinstance(element_definitions, dict):
+                    self._load_native_map(data)
+                else:
+                    logger.warning(f"Invalid native app mapping format: {path}")
+            elif '%p3' in data:
+                if isinstance(data.get('%p3'), dict):
+                    self._load_legacy_map(data)
+                else:
+                    logger.warning(f"Invalid legacy app mapping format: {path}")
+            else:
+                logger.warning(f"Unknown app format: {path}")
+
+            if self.pages:
+                return
+
+            logger.warning(f"App mapping source produced no usable mappings: {path}")
+
+        self.pages.clear()
+        self.elements.clear()
+        logger.warning("No app data found for mapping")
 
     def _load_native_map(self, data: Dict[str, Any]):
         """Carrega formato nativo (app.bubble)"""
@@ -6550,6 +6571,8 @@ class BubbleAppMapper:
         """Carrega formato legacy/export (consolelog-app.json)"""
         p3 = data.get('%p3', {})
         for page_id, page_data in p3.items():
+            if not isinstance(page_data, dict):
+                continue
             if page_data.get('%x') in ['Page', 'ReusableElement']:
                 page_name = page_data.get('%nm') or page_data.get('%dn')
                 if page_name:
@@ -6559,7 +6582,11 @@ class BubbleAppMapper:
                     # Legacy is usually flat in %el ? Or need recursion too?
                     # Assuming flat based on previous observations, but recursion is safer if structure varies.
                     elements = page_data.get('%el', {})
+                    if not isinstance(elements, dict):
+                        continue
                     for el_id, el_data in elements.items():
+                        if not isinstance(el_data, dict):
+                            continue
                         el_name = el_data.get('%dn')
                         if el_name:
                             self.elements[page_name][el_name] = el_id

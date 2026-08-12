@@ -309,6 +309,44 @@ def test_app_mapper_falls_back_from_corrupt_primary_to_legacy_console(tmp_path: 
     assert "Could not read app mapping source" in capsys.readouterr().out
 
 
+@pytest.mark.parametrize(
+    "primary_payload",
+    [
+        {},
+        {"other": True},
+        {"pages": []},
+        {"pages": {"broken": "not-an-object"}},
+        {"%p3": []},
+    ],
+)
+def test_app_mapper_falls_back_from_structurally_unusable_primary(
+    tmp_path: Path,
+    primary_payload: dict[str, Any],
+) -> None:
+    primary = tmp_path / "app.bubble"
+    primary.write_text(json.dumps(primary_payload), encoding="utf-8")
+    console = tmp_path / "console.json"
+    console.write_text(
+        json.dumps(
+            {
+                "%p3": {
+                    "page": {
+                        "%x": "Page",
+                        "%dn": "fallback",
+                        "%el": {"text": {"%dn": "Fallback title"}},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    mapper = BubbleAppMapper(str(primary), str(console))
+
+    assert mapper.get_page_id("fallback") == "page"
+    assert mapper.get_element_id("fallback", "Fallback title") == "text"
+
+
 def test_app_mapper_rejects_non_object_and_unknown_sources(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
     non_object = tmp_path / "list.json"
     non_object.write_text("[]", encoding="utf-8")
