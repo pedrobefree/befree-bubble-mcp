@@ -7003,9 +7003,9 @@ class PathDiscovery(DiscoveryDataBoundary):
         if context_type == "reusable":
             standard = self.data.get('element_definitions', {})
             raw = self.data.get('%ed', {})
-            if isinstance(standard, dict) and context_id in standard:
+            if isinstance(standard, dict) and isinstance(standard.get(context_id), dict):
                 return standard[context_id]
-            if isinstance(raw, dict) and context_id in raw:
+            if isinstance(raw, dict) and isinstance(raw.get(context_id), dict):
                 return raw[context_id]
             else:
                 reusable_ids: List[str] = []
@@ -7018,9 +7018,9 @@ class PathDiscovery(DiscoveryDataBoundary):
         else:
             standard = self.data.get('pages', {})
             raw = self.data.get('%p3', {})
-            if isinstance(standard, dict) and context_id in standard:
+            if isinstance(standard, dict) and isinstance(standard.get(context_id), dict):
                 return standard[context_id]
-            if isinstance(raw, dict) and context_id in raw:
+            if isinstance(raw, dict) and isinstance(raw.get(context_id), dict):
                 return raw[context_id]
             else:
                 page_ids: List[str] = []

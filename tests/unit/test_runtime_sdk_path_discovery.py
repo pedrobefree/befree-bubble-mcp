@@ -482,6 +482,44 @@ def test_inject_element_mutates_present_empty_preferred_context_root(
     assert "%el" not in raw_root
 
 
+@pytest.mark.parametrize(
+    ("context_type", "preferred_key", "alternate_key", "preferred_root"),
+    [
+        ("reusable", "element_definitions", "%ed", []),
+        ("page", "pages", "%p3", "invalid"),
+    ],
+)
+def test_context_root_skips_non_mapping_preferred_record_for_valid_raw_root(
+    context_type: str,
+    preferred_key: str,
+    alternate_key: str,
+    preferred_root: object,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    raw_root = {"id": "shared", "%x": "Group", "%dn": "Raw"}
+    discovery = discovery_with(
+        {
+            preferred_key: {"shared": preferred_root},
+            alternate_key: {"shared": raw_root},
+        }
+    )
+    resolved = discovery._get_context_root("shared", context_type)
+    monkeypatch.setattr(discovery, "persist_disk_cache", lambda: True)
+
+    discovery.inject_element(
+        "shared",
+        context_type,
+        None,
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    assert resolved is raw_root
+    assert discovery._get_context_root("shared", context_type) is raw_root
+    assert raw_root["%el"]["child-slot"]["id"] == "child"
+    assert discovery.data[preferred_key]["shared"] is preferred_root
+
+
 def test_element_lookup_handles_text_names_ids_and_match_priority() -> None:
     discovery = sample_discovery()
     assert discovery.find_element_by_text("reuse", "hello world")["id"] == "first"
