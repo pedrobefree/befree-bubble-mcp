@@ -19,6 +19,7 @@ class HTMLParser(_SourceHTMLParser):
 
     def _parse_snapshot_node(self, node: Any) -> Optional[Dict[str, Any]]:
         parsed = super()._parse_snapshot_node(node)
+        self._hydrate_rendered_inline_geometry(parsed)
         self._normalize_progressbar_node(parsed)
         self._normalize_interactive_container_text(parsed)
         return parsed
@@ -69,10 +70,6 @@ class HTMLParser(_SourceHTMLParser):
             rect["y"] = top
         if rect:
             node["rect"] = rect
-
-        for child in list(node.get("children", []) or []):
-            if isinstance(child, dict):
-                self._hydrate_rendered_inline_geometry(child)
 
     def _normalize_interactive_container_text(self, node: Optional[Dict[str, Any]]) -> None:
         if not isinstance(node, dict):

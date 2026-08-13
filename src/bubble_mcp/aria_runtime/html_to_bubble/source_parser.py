@@ -324,10 +324,16 @@ class HTMLParser:
     def _normalize_attrs(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         for key, value in attrs.items():
-            if isinstance(value, list):
-                out[key] = [str(v).strip() for v in value if str(v).strip()]
+            normalized_key = str(key).strip().lower()
+            if normalized_key == "class":
+                raw_classes = value if isinstance(value, list) else str(value or "").split()
+                out[normalized_key] = [str(v).strip() for v in raw_classes if str(v).strip()]
+            elif isinstance(value, list):
+                out[normalized_key] = [str(v).strip() for v in value if str(v).strip()]
+            elif value is None:
+                out[normalized_key] = ""
             else:
-                out[key] = str(value).strip()
+                out[normalized_key] = str(value).strip()
         if "class" not in out:
             out["class"] = []
         return out
@@ -356,6 +362,8 @@ class HTMLParser:
                     parts.append(t)
         joined = self._clean_text(" ".join(parts))
         if joined:
+            if element.name and element.name.lower() in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                return self._compact_fragmented_text(joined)
             return joined
 
         # Some animated headings split each glyph into nested block wrappers.
