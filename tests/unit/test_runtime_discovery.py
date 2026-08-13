@@ -171,6 +171,43 @@ def test_path_discovery_persists_injected_workflow_across_instances(tmp_path: Pa
     assert root["workflows"] is root["%wf"]
 
 
+@pytest.mark.parametrize(
+    ("context_type", "container_key"),
+    [("reusable", "element_definitions"), ("page", "pages")],
+)
+def test_path_discovery_root_update_preserves_aliased_children_across_instances(
+    tmp_path: Path,
+    context_type: str,
+    container_key: str,
+) -> None:
+    app_path = tmp_path / "app.bubble"
+    _write_json(
+        app_path,
+        {
+            container_key: {
+                "root": {
+                    "id": "root",
+                    "elements": {"readable-child": {"id": "readable-child"}},
+                    "%el": {"wire-child": {"id": "wire-child"}},
+                }
+            }
+        },
+    )
+    discovery = PathDiscovery(str(app_path))
+    _ = discovery.data
+
+    discovery.inject_element("root", context_type, None, {"id": "root", "%x": "Group", "%dn": "Updated"})
+
+    root = discovery.data[container_key]["root"]
+    assert root["elements"] is root["%el"]
+    assert set(root["elements"]) == {"readable-child", "wire-child"}
+
+    reloaded = PathDiscovery(str(app_path))
+    persisted_root = reloaded.data[container_key]["root"]
+    assert persisted_root["elements"] is persisted_root["%el"]
+    assert set(persisted_root["elements"]) == {"readable-child", "wire-child"}
+
+
 def test_path_discovery_cache_can_be_disabled(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_CLI_DISCOVERY_CACHE", "off")
     app_path = tmp_path / "app.bubble"

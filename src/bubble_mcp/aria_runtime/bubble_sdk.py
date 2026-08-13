@@ -7033,17 +7033,20 @@ class PathDiscovery(DiscoveryDataBoundary):
         Find reusable element ID by name (case-insensitive).
         Returns: reusable_id or None
         """
-        reusables = self._read_alias_mapping(self.data, 'element_definitions', '%ed')
-        if not reusables or not isinstance(reusables, dict):
-            return None
-
         name_lower = self._norm_lookup(name)
-        for el_id, el_data in reusables.items():
-            if isinstance(el_data, dict):
-                el_name = el_data.get('name') or el_data.get('%nm', '')
-                if self._norm_lookup(el_name) == name_lower:
-                    logger.info(f" [DEBUG] find_reusable: '{name}' -> '{el_id}'")
-                    return el_id
+        seen_ids = set()
+        for reusables in (self.data.get('element_definitions'), self.data.get('%ed')):
+            if not isinstance(reusables, dict):
+                continue
+            for el_id, el_data in reusables.items():
+                if el_id in seen_ids:
+                    continue
+                seen_ids.add(el_id)
+                if isinstance(el_data, dict):
+                    el_name = el_data.get('name') or el_data.get('%nm', '')
+                    if self._norm_lookup(el_name) == name_lower:
+                        logger.info(f" [DEBUG] find_reusable: '{name}' -> '{el_id}'")
+                        return el_id
         return None
 
     def find_page(self, name: str) -> Optional[str]:
@@ -7051,16 +7054,19 @@ class PathDiscovery(DiscoveryDataBoundary):
         Find page ID by name (case-insensitive).
         Returns: page_id or None
         """
-        pages = self._read_alias_mapping(self.data, 'pages', '%p3')
-        if not pages or not isinstance(pages, dict):
-            return None
-
         name_lower = self._norm_lookup(name)
-        for page_id, page_data in pages.items():
-            if isinstance(page_data, dict):
-                page_name = page_data.get('name') or page_data.get('%nm', '')
-                if self._norm_lookup(page_name) == name_lower:
-                    return page_id
+        seen_ids = set()
+        for pages in (self.data.get('pages'), self.data.get('%p3')):
+            if not isinstance(pages, dict):
+                continue
+            for page_id, page_data in pages.items():
+                if page_id in seen_ids:
+                    continue
+                seen_ids.add(page_id)
+                if isinstance(page_data, dict):
+                    page_name = page_data.get('name') or page_data.get('%nm', '')
+                    if self._norm_lookup(page_name) == name_lower:
+                        return page_id
         return None
 
     def find_element_by_text(self, context_id: str, text: str, context_type: str = "reusable") -> Optional[Dict]:
@@ -7437,7 +7443,8 @@ class PathDiscovery(DiscoveryDataBoundary):
         if not parent_id or parent_id == context_id:
             # Root creations use no distinct element slot. Child creations do.
             if not element_key or element_key == context_id or element_key == extracted_name:
-                root.update(new_el)
+                root.update({key: value for key, value in new_el.items() if key != "elements"})
+                self._sync_alias_mapping(root, "elements", "%el")
                 self.persist_disk_cache()
                 logger.info(f" Updated context root {context_id} with name '{extracted_name}'")
                 return

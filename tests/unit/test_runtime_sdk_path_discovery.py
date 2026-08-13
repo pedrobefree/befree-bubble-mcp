@@ -380,6 +380,28 @@ def test_context_and_name_lookup_support_standard_and_raw_aliases() -> None:
     assert discovery.find_page("missing") is None
 
 
+def test_context_name_lookup_prefers_readable_aliases_for_duplicate_names() -> None:
+    discovery = discovery_with(
+        {
+            "element_definitions": {
+                "readable-reusable": {"id": "readable-reusable", "name": "Duplicate"},
+            },
+            "%ed": {
+                "raw-reusable": {"id": "raw-reusable", "%nm": "Duplicate"},
+            },
+            "pages": {
+                "readable-page": {"id": "readable-page", "name": "Duplicate"},
+            },
+            "%p3": {
+                "raw-page": {"id": "raw-page", "%nm": "Duplicate"},
+            },
+        }
+    )
+
+    assert discovery.find_reusable("duplicate") == "readable-reusable"
+    assert discovery.find_page("duplicate") == "readable-page"
+
+
 def test_element_lookup_handles_text_names_ids_and_match_priority() -> None:
     discovery = sample_discovery()
     assert discovery.find_element_by_text("reuse", "hello world")["id"] == "first"
