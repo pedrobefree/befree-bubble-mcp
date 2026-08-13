@@ -5,7 +5,8 @@ from __future__ import annotations
 import copy
 import json
 import os
-from collections.abc import Callable
+import tempfile
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -79,3 +80,42 @@ class BubbleCLICacheStore:
         except (json.JSONDecodeError, OSError, UnicodeError) as exc:
             self._warn(f"Could not load CLI cache {self.cache_path}: {exc}")
             return default_cache_payload()
+
+    def save(self, payload: Mapping[str, Any]) -> bool:
+        """Atomically persist a normalized payload without exposing partial JSON."""
+        temporary_path: Path | None = None
+        try:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=self.cache_path.parent,
+                prefix=f".{self.cache_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as handle:
+                temporary_path = Path(handle.name)
+                json.dump(_normalize_payload(dict(payload)), handle, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, self.cache_path)
+            temporary_path = None
+            return True
+        except (OSError, TypeError, ValueError) as exc:
+            self._warn(f"Could not save CLI cache {self.cache_path}: {exc}")
+            return False
+        finally:
+            if temporary_path is not None:
+                try:
+                    temporary_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def clear(self) -> bool:
+        """Remove the canonical cache file if present."""
+        try:
+            self.cache_path.unlink(missing_ok=True)
+            return True
+        except OSError as exc:
+            self._warn(f"Could not clear CLI cache {self.cache_path}: {exc}")
+            return False

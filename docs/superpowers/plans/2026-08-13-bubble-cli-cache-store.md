@@ -63,23 +63,23 @@ Commit: `refactor: extract CLI cache read boundary`
 **Interfaces:**
 - Produces: `BubbleCLICacheStore.save(payload: Mapping[str, Any]) -> bool` and `clear() -> bool`.
 
-- [ ] **Step 1: Write failing filesystem behavior tests**
+- [x] **Step 1: Write failing filesystem behavior tests**
 
 Use `tmp_path` to assert a normalized round trip, same-directory temporary replacement, failed serialization preserving the previous file, temporary cleanup, and missing/existing clear returning success.
 
-- [ ] **Step 2: Run the new tests and verify RED**
+- [x] **Step 2: Run the new tests and verify RED**
 
 Expected: failures because `save` and `clear` are absent.
 
-- [ ] **Step 3: Implement atomic persistence**
+- [x] **Step 3: Implement atomic persistence**
 
 Serialize to a named temporary sibling, flush and `os.fsync`, replace with `os.replace`, clean the temporary path in `finally`, warn and return `False` on expected errors, and make clear idempotent.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run the cache-store tests and `git diff --check`. Expected: all pass.
 
-- [ ] **Step 5: Commit atomic persistence**
+- [x] **Step 5: Commit atomic persistence**
 
 Commit: `refactor: make CLI cache writes atomic`
 
