@@ -53,9 +53,9 @@ Results on 2026-08-13:
 - `parser.py`: 93.3% combined branch coverage;
 - `source_parser.py`: 93.9% combined branch coverage;
 - `mapper.py`: 46.0%, up from 30.1% in the focused baseline;
-- full suite: 1,097 Python and 11 Node tests passed;
-- global combined coverage: 37.0621%;
-- global ratchet: 36.8%, retaining 0.26 percentage point of headroom;
+- full suite: 1,100 Python and 11 Node tests passed;
+- global combined coverage: 37.0441%;
+- global ratchet: 36.8%, retaining 0.24 percentage point of headroom;
 - `hero.html` benchmark: 0.016024 seconds per 20 conversions versus the
   0.015476-second pre-change baseline (+3.5%, no material regression).
 

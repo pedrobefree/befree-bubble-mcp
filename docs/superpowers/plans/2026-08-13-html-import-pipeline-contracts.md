@@ -161,7 +161,7 @@ Use the established coverage shards, combine them, and confirm the report clears
 
 Review `origin/main..HEAD` against this plan. Fix every Critical and Important finding, rerun affected checks, and commit fixes separately.
 
-- [ ] **Step 4: Push and open a draft PR**
+- [x] **Step 4: Push and open a draft PR**
 
 Push `codex/html-import-contracts-round-3-stage-3`, open a draft PR against `main`, and include the implementation summary, coverage deltas, benchmark ratio, validation evidence, and any infrastructure-only CI limitation.
 
