@@ -50,21 +50,22 @@ control goldens, malformed-source contracts, and a repeatable JSON benchmark.
 
 Results on 2026-08-13:
 
-- `parser.py`: 93.2% combined branch coverage;
-- `source_parser.py`: 93.4% combined branch coverage;
+- `parser.py`: 93.3% combined branch coverage;
+- `source_parser.py`: 93.9% combined branch coverage;
 - `mapper.py`: 46.0%, up from 30.1% in the focused baseline;
-- full suite: 1,069 tests passed;
-- global combined coverage: 36.9702%;
-- global ratchet: 36.8%, retaining 0.17 percentage point of headroom;
-- `hero.html` benchmark: 0.015852 seconds per 20 conversions versus the
-  0.015476-second pre-change baseline (+2.4%, no material regression).
+- full suite: 1,097 Python and 11 Node tests passed;
+- global combined coverage: 37.0621%;
+- global ratchet: 36.8%, retaining 0.26 percentage point of headroom;
+- `hero.html` benchmark: 0.016024 seconds per 20 conversions versus the
+  0.015476-second pre-change baseline (+3.5%, no material regression).
 
 Production hardening in this stage normalized renderer snapshot classes and
 boolean attributes, made geometry hydration linear in the parsed tree, applied
 the same geometry contract to rendered snapshots, preserved semantic controls
-with child options, rejected active `javascript:` image URLs, and stopped
-interpreting percentage dimensions as pixels. Two unused Bootstrap stub helpers
-were removed.
+with child options, enforced CSS cascade and `!important` precedence, rejected
+unsafe URL schemes, and limited SVG data URLs to a strict passive XML allowlist.
+Percentage dimensions are no longer interpreted as pixels. Two unused
+Bootstrap stub helpers were removed.
 
 Exit criteria:
 

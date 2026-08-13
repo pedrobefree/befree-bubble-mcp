@@ -33,33 +33,33 @@
 - Consumes: BeautifulSoup `Tag` objects and renderer snapshot dictionaries.
 - Produces: normalized semantic nodes whose `attributes["class"]` is always `list[str]`, whose media URL is safe and absolute when possible, and whose missing geometry can be hydrated from inline/computed pixel styles.
 
-- [ ] **Step 1: Write failing source-parser tests**
+- [x] **Step 1: Write failing source-parser tests**
 
 Cover HTML fragments, CSS rules and selector precedence, Tailwind/Bootstrap inference, text segments, URL normalization, snapshot attributes, invalid snapshot nodes, and whitespace handling. Include a snapshot with `"class": "cs_progressbar d-flex"` and assert the class value becomes `['cs_progressbar', 'd-flex']`.
 
-- [ ] **Step 2: Run the source-parser tests and verify the snapshot class contract fails**
+- [x] **Step 2: Run the source-parser tests and verify the snapshot class contract fails**
 
 Run: `rtk ./.venv/bin/python -m pytest tests/unit/test_html_source_parser_contracts.py -q`
 
 Expected: at least the snapshot class normalization assertion fails because string classes are currently preserved as one string.
 
-- [ ] **Step 3: Normalize class and boolean attribute values at the parser boundary**
+- [x] **Step 3: Normalize class and boolean attribute values at the parser boundary**
 
 Update `_normalize_attrs` so string class attributes split on whitespace, list classes remain normalized lists, absent classes become `[]`, and `None` boolean attributes become an empty string instead of the literal `"None"`.
 
-- [ ] **Step 4: Write failing rendered-parser tests**
+- [x] **Step 4: Write failing rendered-parser tests**
 
 Cover progressbar labels, interactive containers containing mixed media/structural content, pixel parsing, invalid pixel values, and geometry hydration on both raw HTML and renderer snapshots. Instrument `_hydrate_rendered_inline_geometry` and assert one call per semantic node.
 
-- [ ] **Step 5: Remove recursive reprocessing and hydrate snapshot geometry**
+- [x] **Step 5: Remove recursive reprocessing and hydrate snapshot geometry**
 
 Make `_hydrate_rendered_inline_geometry` operate on exactly one node. Rely on recursive `parse_element` dispatch to process descendants once, and invoke the same one-node hydration from `_parse_snapshot_node` so both parser entrypoints share the geometry contract.
 
-- [ ] **Step 6: Run parser tests and measure focused coverage**
+- [x] **Step 6: Run parser tests and measure focused coverage**
 
 Run the two new files plus `tests/unit/test_html_converter.py` under branch coverage, then report only `parser.py` and `source_parser.py`. Expected: both modules at or above 85% statement coverage.
 
-- [ ] **Step 7: Commit the parser boundary**
+- [x] **Step 7: Commit the parser boundary**
 
 Commit message: `refactor: harden HTML parser contracts`
 
@@ -76,29 +76,29 @@ Commit message: `refactor: harden HTML parser contracts`
 - Consumes: semantic trees from the public `HTMLParser` interface.
 - Produces: stable generic Bubble component trees from `HTMLToBubbleMapper.map_tree`.
 
-- [ ] **Step 1: Add a representative HTML fixture**
+- [x] **Step 1: Add a representative HTML fixture**
 
 Include a responsive row/column layout, nested headings and inline emphasis, a link/button, form controls, an image with a relative URL, a gradient visual container, and hidden/noise source. Keep the fixture self-contained and deterministic.
 
-- [ ] **Step 2: Write the golden comparison test**
+- [x] **Step 2: Write the golden comparison test**
 
 Parse the fixture with a fixed HTTPS base URL, map the semantic tree, recursively remove only explicitly documented volatile diagnostic keys, and compare the result with `tests/fixtures/golden/html-import-pipeline.json`.
 
-- [ ] **Step 3: Add mapper failure and helper contracts**
+- [x] **Step 3: Add mapper failure and helper contracts**
 
 Assert empty nodes, hidden elements, skipped tags, unsafe media URLs, malformed dimensions, color/gradient parsing, transform offsets, and rich-text normalization return stable values without exceptions.
 
-- [ ] **Step 4: Generate and inspect the golden payload**
+- [x] **Step 4: Generate and inspect the golden payload**
 
 Generate the golden once from the public pipeline, inspect the full JSON diff, and retain only source-derived deterministic fields.
 
-- [ ] **Step 5: Run mapper and existing HTML tests**
+- [x] **Step 5: Run mapper and existing HTML tests**
 
 Run: `rtk ./.venv/bin/python -m pytest tests/unit/test_html_mapper_contracts.py tests/unit/test_html_converter.py -q`
 
 Expected: all tests pass and the existing fixture behavior remains unchanged.
 
-- [ ] **Step 6: Commit the mapper contracts**
+- [x] **Step 6: Commit the mapper contracts**
 
 Commit message: `test: lock HTML mapper golden contracts`
 
@@ -115,27 +115,27 @@ Commit message: `test: lock HTML mapper golden contracts`
 **Interfaces:**
 - Produces: JSON with fixture name, warmups, iterations, sample count, median seconds, best seconds, and conversions per second.
 
-- [ ] **Step 1: Write benchmark API tests**
+- [x] **Step 1: Write benchmark API tests**
 
 Import the benchmark module, run a two-sample smoke configuration against the fixture corpus, and assert its JSON-compatible schema and positive timings. Reject zero or negative iteration/sample arguments with `ValueError`.
 
-- [ ] **Step 2: Implement the benchmark runner**
+- [x] **Step 2: Implement the benchmark runner**
 
 Use `perf_counter`, warm up before measurement, construct fresh parser/mapper objects per conversion, and expose deterministic CLI arguments for fixture, warmups, iterations, and samples. Do not make timing assertions in pytest.
 
-- [ ] **Step 3: Compare pre-change and post-change performance**
+- [x] **Step 3: Compare pre-change and post-change performance**
 
 Run the same `hero.html` corpus with 20 conversions across seven samples. Compare the post-change median with the recorded pre-change median `0.015476292` seconds per 20 conversions and document the ratio.
 
-- [ ] **Step 4: Update roadmap progress and the coverage ratchet**
+- [x] **Step 4: Update roadmap progress and the coverage ratchet**
 
 Mark Stage 2 complete, record Stage 3 parser and mapper-contract results, and raise `fail_under` to the highest stable tenth that retains at least 0.1 percentage point of headroom after a full sharded branch-coverage run.
 
-- [ ] **Step 5: Run static and focused quality checks**
+- [x] **Step 5: Run static and focused quality checks**
 
 Run Ruff, MyPy, the benchmark smoke, `git diff --check`, and the focused HTML suite.
 
-- [ ] **Step 6: Commit benchmark and roadmap updates**
+- [x] **Step 6: Commit benchmark and roadmap updates**
 
 Commit message: `chore: add HTML conversion performance guard`
 
@@ -149,15 +149,15 @@ Commit message: `chore: add HTML conversion performance guard`
 **Interfaces:**
 - Produces: a locally validated draft pull request with review findings resolved.
 
-- [ ] **Step 1: Run the complete Python and Node test suites**
+- [x] **Step 1: Run the complete Python and Node test suites**
 
 Run the repository's full pytest suite, Node tests, runtime coverage checks, catalog quality checks, package/install smoke tests, sensitive-data audit, Ruff, MyPy, and `git diff --check`.
 
-- [ ] **Step 2: Run full branch coverage and confirm the ratchet**
+- [x] **Step 2: Run full branch coverage and confirm the ratchet**
 
 Use the established coverage shards, combine them, and confirm the report clears the updated `fail_under` with at least 0.1 point of headroom.
 
-- [ ] **Step 3: Request independent code review**
+- [x] **Step 3: Request independent code review**
 
 Review `origin/main..HEAD` against this plan. Fix every Critical and Important finding, rerun affected checks, and commit fixes separately.
 
