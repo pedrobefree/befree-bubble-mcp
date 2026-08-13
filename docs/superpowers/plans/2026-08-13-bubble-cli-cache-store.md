@@ -32,25 +32,25 @@
 **Interfaces:**
 - Produces: `default_cache_payload() -> dict[str, Any]`, `merge_cache_payloads(base: Any, incoming: Any) -> Any`, and `BubbleCLICacheStore.load() -> dict[str, Any]`.
 
-- [ ] **Step 1: Write failing default, merge, and load tests**
+- [x] **Step 1: Write failing default, merge, and load tests**
 
 Add literal assertions proving defaults are independent, malformed/non-object JSON returns canonical defaults, unrelated keys survive normalization, invalid canonical buckets are repaired, and canonical incoming values win recursive merge conflicts.
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run: `rtk ./.venv/bin/python -m pytest tests/unit/test_cli_cache_store.py -q`
 
 Expected: collection fails because `bubble_mcp.aria_runtime.cli_cache` does not exist.
 
-- [ ] **Step 3: Implement the minimal normalized read boundary**
+- [x] **Step 3: Implement the minimal normalized read boundary**
 
 Implement constants for canonical buckets, fresh default creation, recursive merge, `_normalize_payload`, constructor path storage, warning callback, and `load` using UTF-8 JSON reads.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run the Task 1 tests and Ruff on the two new files. Expected: all pass.
 
-- [ ] **Step 5: Commit the read boundary**
+- [x] **Step 5: Commit the read boundary**
 
 Commit: `refactor: extract CLI cache read boundary`
 
