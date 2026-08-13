@@ -47,6 +47,26 @@ def test_parse_applies_supported_css_and_normalizes_semantic_text() -> None:
     assert node["children"][2]["computed_styles"]["font-weight"] == "700"
 
 
+def test_css_cascade_honors_importance_specificity_and_source_order() -> None:
+    parsed = HTMLParser().parse(
+        """
+        <style>
+          #hero { color: #111111; padding: 1px !important; }
+          div.card { color: #222222; padding: 2px; background: #aaaaaa; }
+          .card { color: #333333; padding: 3px !important; background: #bbbbbb; }
+          div { color: #444444; background: #cccccc; }
+          .card { background: #dddddd; }
+        </style>
+        <div id="hero" class="card">Content</div>
+        """
+    )
+
+    styles = parsed["children"][1]["computed_styles"]
+    assert styles["color"] == "#111111"
+    assert styles["padding"] == "1px"
+    assert styles["background"] == "#aaaaaa"
+
+
 def test_parse_inline_segments_preserve_spacing_breaks_and_styles() -> None:
     node = HTMLParser().parse(
         '<p style="font-size: 16px">Hello <strong style="font-weight:700">world</strong><br> again</p>'
@@ -142,6 +162,12 @@ def test_infer_from_framework_classes(classes: list[str], expected: dict[str, st
         ("/image.png", "https://example.test/image.png"),
         ("'asset.png'", "https://example.test/base/asset.png"),
         ("javascript:alert(1)", ""),
+        ("vbscript:msgbox(1)", ""),
+        ("file:///etc/passwd", ""),
+        ("ftp://example.test/a.png", ""),
+        ("data:text/html,<script>alert(1)</script>", ""),
+        ("data:image/svg+xml,<svg onload='alert(1)'></svg>", ""),
+        ("data:image/svg+xml,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E", "data:image/svg+xml,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E"),
         ("#fragment", ""),
         (None, ""),
     ],

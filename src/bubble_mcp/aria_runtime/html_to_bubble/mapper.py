@@ -5,7 +5,9 @@ import re
 import unicodedata
 from html import escape
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote, urljoin
+from urllib.parse import quote
+
+from .url_policy import normalize_media_url
 
 
 class HTMLToBubbleMapper:
@@ -5204,7 +5206,7 @@ class HTMLToBubbleMapper:
             return None
         sign = -1 if s.startswith("-") else 1
         s = s.lstrip("+-")
-        m = re.match(r"(\d+(?:\.\d+)?)(px|rem|em)?", s)
+        m = re.fullmatch(r"(\d+(?:\.\d+)?)(px|rem|em)?", s)
         if not m:
             return None
         num = float(m.group(1))
@@ -5624,20 +5626,7 @@ class HTMLToBubbleMapper:
         return f"<{tag}{attr_blob}>{text_value}{children_markup}</{tag}>"
 
     def _absolutize_url(self, raw_url: Any) -> Optional[str]:
-        if raw_url is None:
-            return None
-        url = self._clean_text(str(raw_url))
-        if not url:
-            return None
-        if (url.startswith("'") and url.endswith("'")) or (url.startswith('"') and url.endswith('"')):
-            url = url[1:-1].strip()
-        if not url or url.startswith("#") or url.lower().startswith("javascript:"):
-            return None
-        if url.lower().startswith(("http://", "https://", "data:")):
-            return url
-        if self.base_url.lower().startswith(("http://", "https://")):
-            return urljoin(self.base_url, url)
-        return url
+        return normalize_media_url(raw_url, base_url=self.base_url)
 
     def _extract_css_filter(self, styles: Dict[str, Any]) -> Optional[str]:
         raw = self._clean_text(styles.get("filter", ""))

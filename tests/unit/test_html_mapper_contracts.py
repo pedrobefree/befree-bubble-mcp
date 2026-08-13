@@ -12,53 +12,6 @@ from bubble_mcp.aria_runtime.html_to_bubble import HTMLParser, HTMLToBubbleMappe
 FIXTURE = Path("tests/fixtures/html/import-pipeline-contracts.html")
 GOLDEN = Path("tests/fixtures/golden/html-import-pipeline.json")
 
-CONTRACT_PROPERTY_KEYS = (
-    "name",
-    "content",
-    "label",
-    "placeholder",
-    "image_url",
-    "alt_text",
-    "layout",
-    "gap",
-    "width",
-    "height",
-    "fit_width",
-    "fit_height",
-    "max_width_css",
-    "min_height_css",
-    "bg_color",
-    "font_color",
-    "font_size",
-    "font_weight",
-    "line_height",
-    "border_radius",
-    "background_style",
-    "gradient_style",
-    "gradient_direction",
-    "gradient_start_color",
-    "gradient_end_color",
-)
-
-
-def _contract_projection(node: dict[str, Any]) -> dict[str, Any]:
-    props = dict(node.get("properties", {}) or {})
-    selected = {
-        key: props[key]
-        for key in CONTRACT_PROPERTY_KEYS
-        if key in props and props[key] is not None
-    }
-    return {
-        "bubble_type": node.get("bubble_type"),
-        "properties": selected,
-        "children": [
-            _contract_projection(child)
-            for child in list(node.get("children", []) or [])
-            if isinstance(child, dict)
-        ],
-    }
-
-
 def _map_html(html: str, *, base_url: str = "https://example.test/pages/") -> dict[str, Any] | None:
     parsed = HTMLParser(base_url=base_url).parse(html)
     return HTMLToBubbleMapper(base_url=base_url).map_tree(parsed)
@@ -68,15 +21,14 @@ def test_html_import_pipeline_matches_reviewed_golden_payload() -> None:
     mapped = _map_html(FIXTURE.read_text(encoding="utf-8"))
 
     assert mapped is not None
-    actual = _contract_projection(mapped)
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))
-    assert actual == expected
+    assert mapped == expected
 
 
 def test_golden_fixture_covers_required_mapper_families() -> None:
     mapped = _map_html(FIXTURE.read_text(encoding="utf-8"))
     assert mapped is not None
-    payload = json.dumps(_contract_projection(mapped), sort_keys=True)
+    payload = json.dumps(mapped, sort_keys=True)
 
     assert '"layout": "row"' in payload
     assert '"content": "Reliable [b][color=#84caff]imports[/color][/b]"' in payload
@@ -125,6 +77,38 @@ def test_map_tree_rejects_empty_hidden_and_skipped_source_without_exceptions() -
     assert mapper.map_tree({"type": "img", "attributes": {"src": "javascript:alert(1)"}}) is None
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "vbscript:msgbox(1)",
+        "file:///tmp/private.png",
+        "ftp://example.test/image.png",
+        "data:text/html,<script>alert(1)</script>",
+        "data:image/svg+xml,<svg onload='alert(1)'></svg>",
+        "https://example.test/image.png\njavascript:alert(1)",
+    ],
+)
+def test_image_mapping_rejects_active_or_unsupported_urls(source: str) -> None:
+    assert HTMLToBubbleMapper().map_tree({"type": "img", "attributes": {"src": source}}) is None
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "https://example.test/image.png",
+        "/relative/image.webp",
+        "data:image/png;base64,iVBORw0KGgo=",
+        "data:image/svg+xml,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E",
+    ],
+)
+def test_image_mapping_accepts_safe_web_and_image_sources(source: str) -> None:
+    mapped = HTMLToBubbleMapper(base_url="https://example.test/base/").map_tree(
+        {"type": "img", "attributes": {"src": source}}
+    )
+    assert mapped is not None
+    assert mapped["bubble_type"] == "Image"
+
+
 def test_unknown_source_tag_falls_back_to_a_container() -> None:
     mapped = HTMLToBubbleMapper().map_tree(
         {
@@ -160,7 +144,9 @@ def test_integer_dimension_contract(raw: object, fallback: int | None, expected:
     [
         ("14px", 14, 14),
         ("-8.4px", None, -8),
-        ("20%", None, 20),
+        ("20%", None, None),
+        ("20vw", None, None),
+        ("20junk", None, None),
         ("none", None, None),
         ("", None, None),
     ],

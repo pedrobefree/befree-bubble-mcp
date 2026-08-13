@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
+
+from .url_policy import normalize_media_url
 
 
 class HTMLParser:
@@ -128,18 +129,36 @@ class HTMLParser:
 
     def _apply_style_rules(self, element: Tag, attrs: Dict[str, Any]) -> Dict[str, Any]:
         matched: Dict[str, Any] = {}
+        priorities: Dict[str, tuple[int, tuple[int, int, int], int]] = {}
         tag_name = element.name.lower()
         element_id = str(attrs.get("id", "")).strip()
         classes = attrs.get("class", []) or []
-        for rule in self._style_rules:
+        for source_order, rule in enumerate(self._style_rules):
             selector = str(rule.get("selector", "")).strip()
             if not selector:
                 continue
             if not self._selector_matches(tag_name, element_id, classes, selector):
                 continue
+            specificity = self._selector_specificity(selector)
             for k, v in (rule.get("styles", {}) or {}).items():
-                matched[str(k).strip().lower()] = v
+                key = str(k).strip().lower()
+                raw_value = str(v).strip()
+                important = bool(re.search(r"\s*!important\s*$", raw_value, flags=re.IGNORECASE))
+                value = re.sub(r"\s*!important\s*$", "", raw_value, flags=re.IGNORECASE).strip()
+                priority = (int(important), specificity, source_order)
+                if key and value and priority >= priorities.get(key, (-1, (-1, -1, -1), -1)):
+                    matched[key] = value
+                    priorities[key] = priority
         return matched
+
+    def _selector_specificity(self, selector: str) -> tuple[int, int, int]:
+        simple = selector.strip()
+        ids = len(re.findall(r"#[A-Za-z0-9_-]+", simple))
+        classes = len(re.findall(r"\.[A-Za-z0-9_-]+", simple))
+        classes += len(re.findall(r":(?!:)[A-Za-z0-9_-]+", simple))
+        base = re.split(r"[.#:]", simple, maxsplit=1)[0].strip()
+        tags = int(bool(base and base != "*"))
+        return ids, classes, tags
 
     def _selector_matches(self, tag: str, element_id: str, classes: List[str], selector: str) -> bool:
         s = selector.strip()
@@ -536,20 +555,7 @@ class HTMLParser:
                 return
 
     def _absolutize_url(self, raw_url: Any) -> str:
-        if raw_url is None:
-            return ""
-        url = self._clean_text(str(raw_url))
-        if not url:
-            return ""
-        if (url.startswith("'") and url.endswith("'")) or (url.startswith('"') and url.endswith('"')):
-            url = url[1:-1].strip()
-        if not url or url.startswith("#") or url.lower().startswith("javascript:"):
-            return ""
-        if url.lower().startswith(("http://", "https://", "data:")):
-            return url
-        if self.base_url.lower().startswith(("http://", "https://")):
-            return urljoin(self.base_url, url)
-        return url
+        return normalize_media_url(raw_url, base_url=self.base_url) or ""
 
     def _normalize_segment_raw_text(self, raw_text: str, leading: bool = False, trailing: bool = False) -> str:
         if not raw_text:
