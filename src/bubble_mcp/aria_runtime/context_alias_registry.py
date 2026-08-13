@@ -13,6 +13,7 @@ ProfileKeyGetter = Callable[[], str]
 Normalizer = Callable[[Any], str]
 PathNormalizer = Callable[[Any], list[str]]
 LifecycleCallback = Callable[[], None]
+TransactionRunner = Callable[[Callable[[], bool]], bool]
 Clock = Callable[[], int]
 
 PROFILE_BUCKETS = (
@@ -52,6 +53,7 @@ class ContextAliasRegistry:
         normalize_path: PathNormalizer,
         reload: LifecycleCallback,
         save: LifecycleCallback,
+        transaction: TransactionRunner | None = None,
         clock_ms: Clock | None = None,
     ) -> None:
         self._cache = cache
@@ -60,7 +62,15 @@ class ContextAliasRegistry:
         self._normalize_path = normalize_path
         self._reload = reload
         self._save = save
+        self._transaction = transaction or self._default_transaction
         self._clock_ms = clock_ms or (lambda: int(time.time() * 1000))
+
+    def _default_transaction(self, operation: Callable[[], bool]) -> bool:
+        self._reload()
+        changed = operation()
+        if changed:
+            self._save()
+        return changed
 
     def profile_cache(self) -> dict[str, Any]:
         """Return a repaired profile cache without modifying sibling profiles."""
@@ -120,17 +130,18 @@ class ContextAliasRegistry:
         name = str(context_name or "").strip()
         object_key = str(object_id or "").strip()
         payload = {"name": name, "context_id": context_key, "object_id": object_key}
-        context_bucket = self.bucket("contexts")[context_kind]
 
-        changed = False
-        for token in (name, context_key, object_key):
-            alias = self._normalize(token)
-            if alias and context_bucket.get(alias) != payload:
-                context_bucket[alias] = payload
-                changed = True
-        if changed:
-            self._save()
-        return changed
+        def operation() -> bool:
+            context_bucket = self.bucket("contexts")[context_kind]
+            changed = False
+            for token in (name, context_key, object_key):
+                alias = self._normalize(token)
+                if alias and context_bucket.get(alias) != payload:
+                    context_bucket[alias] = payload
+                    changed = True
+            return changed
+
+        return self._transaction(operation)
 
     def lookup_context(self, token: str) -> tuple[str | None, str | None]:
         """Resolve ambiguous aliases with reusable-before-page precedence."""
@@ -221,19 +232,19 @@ class ContextAliasRegistry:
         """Persist one element alias after refreshing cross-process state."""
         if not str(alias_name or "").strip() or not str(element_id or "").strip():
             return False
-        self._reload()
-        changed = self._upsert_element(
-            context_id=context_id,
-            context_type=context_type,
-            alias_name=alias_name,
-            element_id=element_id,
-            element_key=element_key,
-            element_path=element_path,
-            element_type=element_type,
-        )
-        if changed:
-            self._save()
-        return changed
+
+        def operation() -> bool:
+            return self._upsert_element(
+                context_id=context_id,
+                context_type=context_type,
+                alias_name=alias_name,
+                element_id=element_id,
+                element_key=element_key,
+                element_path=element_path,
+                element_type=element_type,
+            )
+
+        return self._transaction(operation)
 
     def cache_created_elements(
         self,
@@ -261,29 +272,31 @@ class ContextAliasRegistry:
         if element:
             candidates.append(element)
 
-        self._reload()
-        changed = 0
-        seen: set[str] = set()
-        for raw_alias in candidates:
-            alias = str(raw_alias or "").strip()
-            normalized = self._normalize(alias)
-            if not alias or not normalized or normalized in seen:
-                continue
-            seen.add(normalized)
-            changed += int(
-                self._upsert_element(
-                    context_id=context_id,
-                    context_type=context_type,
-                    alias_name=alias,
-                    element_id=element or key,
-                    element_key=key or None,
-                    element_path=created_path or None,
-                    element_type=element_type,
+        changed_count = 0
+
+        def operation() -> bool:
+            nonlocal changed_count
+            seen: set[str] = set()
+            for raw_alias in candidates:
+                alias = str(raw_alias or "").strip()
+                normalized = self._normalize(alias)
+                if not alias or not normalized or normalized in seen:
+                    continue
+                seen.add(normalized)
+                changed_count += int(
+                    self._upsert_element(
+                        context_id=context_id,
+                        context_type=context_type,
+                        alias_name=alias,
+                        element_id=element or key,
+                        element_key=key or None,
+                        element_path=created_path or None,
+                        element_type=element_type,
+                    )
                 )
-            )
-        if changed:
-            self._save()
-        return changed
+            return changed_count > 0
+
+        return changed_count if self._transaction(operation) else 0
 
     def lookup_element_id(
         self,
@@ -335,29 +348,37 @@ class ContextAliasRegistry:
         element_path: list[str] | None = None,
     ) -> int:
         """Remove aliases matching any supplied stable element selector."""
-        self._reload()
-        scoped = self._element_scope(context_id, context_type, create=False)
         target_id = str(element_id or "").strip()
         target_key = str(element_key or "").strip()
         target_path = self._normalize_path(element_path)
-        removed: list[str] = []
-        for alias, payload in scoped.items():
-            if not isinstance(payload, dict):
-                continue
-            payload_id = str(payload.get("id") or "").strip()
-            payload_key = str(payload.get("key") or "").strip()
-            payload_path = self._normalize_path(payload.get("path"))
-            if (
-                (target_id and payload_id == target_id)
-                or (target_key and payload_key == target_key)
-                or (target_path and payload_path == target_path)
-            ):
-                removed.append(alias)
-        for alias in removed:
-            scoped.pop(alias, None)
-        if removed:
-            self._save()
-        return len(removed)
+        removed_count = 0
+
+        def operation() -> bool:
+            nonlocal removed_count
+            scoped = self._element_scope(context_id, context_type, create=False)
+            removed: list[str] = []
+            for alias, payload in scoped.items():
+                if isinstance(payload, str):
+                    if target_id and payload.strip() == target_id:
+                        removed.append(alias)
+                    continue
+                if not isinstance(payload, dict):
+                    continue
+                payload_id = str(payload.get("id") or "").strip()
+                payload_key = str(payload.get("key") or "").strip()
+                payload_path = self._normalize_path(payload.get("path"))
+                if (
+                    (target_id and payload_id == target_id)
+                    or (target_key and payload_key == target_key)
+                    or (target_path and payload_path == target_path)
+                ):
+                    removed.append(alias)
+            for alias in removed:
+                scoped.pop(alias, None)
+            removed_count = len(removed)
+            return removed_count > 0
+
+        return removed_count if self._transaction(operation) else 0
 
     def _workflow_scope(self, context_id: str, context_type: str, *, create: bool) -> dict[str, Any]:
         refs = self.bucket("workflow_refs")
@@ -385,23 +406,33 @@ class ContextAliasRegistry:
         normalized = self._normalize(alias)
         if not alias or not key or not normalized:
             return False
-        self._reload()
-        scoped = self._workflow_scope(context_id, context_type, create=True)
-        payload: dict[str, Any] = {
+        stable_payload: dict[str, Any] = {
             "name": alias,
             "key": key,
             "context_id": context_id,
             "context_type": context_type,
-            "updated_at": self._clock_ms(),
         }
         resolved_id = str(workflow_id or "").strip()
         if resolved_id:
-            payload["id"] = resolved_id
-        if scoped.get(normalized) == payload:
-            return False
-        scoped[normalized] = payload
-        self._save()
-        return True
+            stable_payload["id"] = resolved_id
+
+        def operation() -> bool:
+            scoped = self._workflow_scope(context_id, context_type, create=True)
+            existing = scoped.get(normalized)
+            if isinstance(existing, dict):
+                existing_stable = {
+                    field: existing.get(field)
+                    for field in ("name", "key", "context_id", "context_type", "id")
+                    if field in existing
+                }
+                if existing_stable == stable_payload:
+                    return False
+            payload = dict(stable_payload)
+            payload["updated_at"] = self._clock_ms()
+            scoped[normalized] = payload
+            return True
+
+        return self._transaction(operation)
 
     def lookup_workflow(
         self,
@@ -431,32 +462,36 @@ class ContextAliasRegistry:
         object_id: str | None = None,
     ) -> int:
         """Remove every alias token belonging to a matching context payload."""
-        self._reload()
         context_kind = "reusable" if context_type == "reusable" else "page"
-        scoped = self.bucket("contexts").get(context_kind)
-        if not isinstance(scoped, dict):
-            return 0
         target_id = str(context_id or "").strip()
         target_object = str(object_id or "").strip()
         target_name = self._normalize(context_name)
-        removed: list[str] = []
-        for alias, payload in scoped.items():
-            if not isinstance(payload, dict):
-                continue
-            payload_id = str(payload.get("context_id") or "").strip()
-            payload_object = str(payload.get("object_id") or "").strip()
-            payload_name = self._normalize(payload.get("name"))
-            if (
-                (target_id and payload_id == target_id)
-                or (target_object and payload_object == target_object)
-                or (target_name and payload_name == target_name)
-            ):
-                removed.append(alias)
-        for alias in removed:
-            scoped.pop(alias, None)
-        if removed:
-            self._save()
-        return len(removed)
+        removed_count = 0
+
+        def operation() -> bool:
+            nonlocal removed_count
+            scoped = self.bucket("contexts").get(context_kind)
+            if not isinstance(scoped, dict):
+                return False
+            removed: list[str] = []
+            for alias, payload in scoped.items():
+                if not isinstance(payload, dict):
+                    continue
+                payload_id = str(payload.get("context_id") or "").strip()
+                payload_object = str(payload.get("object_id") or "").strip()
+                payload_name = self._normalize(payload.get("name"))
+                if (
+                    (target_id and payload_id == target_id)
+                    or (target_object and payload_object == target_object)
+                    or (target_name and payload_name == target_name)
+                ):
+                    removed.append(alias)
+            for alias in removed:
+                scoped.pop(alias, None)
+            removed_count = len(removed)
+            return removed_count > 0
+
+        return removed_count if self._transaction(operation) else 0
 
     def remove_workflow_aliases(
         self,
@@ -468,46 +503,51 @@ class ContextAliasRegistry:
         workflow_name: str | None = None,
     ) -> int:
         """Remove workflow aliases matching any supplied stable selector."""
-        self._reload()
-        scoped = self._workflow_scope(context_id, context_type, create=False)
         target_key = str(workflow_key or "").strip()
         target_id = str(workflow_id or "").strip()
         target_name = self._normalize(workflow_name)
-        removed: list[str] = []
-        for alias, payload in scoped.items():
-            if not isinstance(payload, dict):
-                continue
-            payload_key = str(payload.get("key") or "").strip()
-            payload_id = str(payload.get("id") or "").strip()
-            payload_name = self._normalize(payload.get("name"))
-            if (
-                (target_key and payload_key == target_key)
-                or (target_id and payload_id == target_id)
-                or (target_name and payload_name == target_name)
-            ):
-                removed.append(alias)
-        for alias in removed:
-            scoped.pop(alias, None)
-        if removed:
-            self._save()
-        return len(removed)
+        removed_count = 0
+
+        def operation() -> bool:
+            nonlocal removed_count
+            scoped = self._workflow_scope(context_id, context_type, create=False)
+            removed: list[str] = []
+            for alias, payload in scoped.items():
+                if not isinstance(payload, dict):
+                    continue
+                payload_key = str(payload.get("key") or "").strip()
+                payload_id = str(payload.get("id") or "").strip()
+                payload_name = self._normalize(payload.get("name"))
+                if (
+                    (target_key and payload_key == target_key)
+                    or (target_id and payload_id == target_id)
+                    or (target_name and payload_name == target_name)
+                ):
+                    removed.append(alias)
+            for alias in removed:
+                scoped.pop(alias, None)
+            removed_count = len(removed)
+            return removed_count > 0
+
+        return removed_count if self._transaction(operation) else 0
 
     def remove_context_scope(self, context_id: str, context_type: str) -> bool:
         """Remove modern and historical registry entries scoped to one context."""
-        self._reload()
         scope_key = self.context_key(context_id, context_type)
         legacy_prefix = f"{scope_key}:"
-        changed = False
-        for bucket_name in ("element_refs", "workflow_refs", "events"):
-            bucket = self.bucket(bucket_name)
-            keys = [
-                key
-                for key in bucket
-                if str(key) == scope_key or str(key).startswith(legacy_prefix)
-            ]
-            for key in keys:
-                bucket.pop(key, None)
-                changed = True
-        if changed:
-            self._save()
-        return changed
+
+        def operation() -> bool:
+            changed = False
+            for bucket_name in ("element_refs", "workflow_refs", "events"):
+                bucket = self.bucket(bucket_name)
+                keys = [
+                    key
+                    for key in bucket
+                    if str(key) == scope_key or str(key).startswith(legacy_prefix)
+                ]
+                for key in keys:
+                    bucket.pop(key, None)
+                    changed = True
+            return changed
+
+        return self._transaction(operation)

@@ -7,11 +7,13 @@ import json
 import os
 import tempfile
 from collections.abc import Callable, Mapping
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 WarnCallback = Callable[[str], None]
+MutationCallback = Callable[[dict[str, Any]], bool]
 
 
 def default_cache_payload() -> dict[str, Any]:
@@ -71,7 +73,36 @@ class BubbleCLICacheStore:
         self._legacy_marker_path = self.cache_path.with_name(
             f"{self.cache_path.name}.legacy-migrated"
         )
+        self._lock_path = self.cache_path.with_name(f"{self.cache_path.name}.lock")
         self._warn = warn or (lambda _message: None)
+
+    @contextmanager
+    def _exclusive_lock(self) -> Iterator[None]:
+        """Serialize cache mutations across CLI/MCP subprocesses."""
+        self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._lock_path.open("a+b") as handle:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                try:
+                    yield
+                finally:
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                try:
+                    yield
+                finally:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
     def load(self) -> dict[str, Any]:
         """Return normalized cache data, or defaults when the file is unusable."""
@@ -103,6 +134,15 @@ class BubbleCLICacheStore:
 
     def save(self, payload: Mapping[str, Any]) -> bool:
         """Atomically persist a normalized payload without exposing partial JSON."""
+        try:
+            with self._exclusive_lock():
+                return self._save_unlocked(payload)
+        except OSError as exc:
+            self._warn(f"Could not lock CLI cache {self.cache_path}: {exc}")
+            return False
+
+    def _save_unlocked(self, payload: Mapping[str, Any]) -> bool:
+        """Persist while the caller owns the cache mutation lock."""
         temporary_path: Path | None = None
         try:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -131,10 +171,35 @@ class BubbleCLICacheStore:
                 except OSError:
                     pass
 
+    def transaction(
+        self,
+        current: Mapping[str, Any],
+        mutate: MutationCallback,
+    ) -> tuple[dict[str, Any], bool]:
+        """Apply one read-modify-write operation under an inter-process lock."""
+        try:
+            with self._exclusive_lock():
+                latest = self.reload(current)
+                try:
+                    working = copy.deepcopy(latest)
+                except RecursionError as exc:
+                    self._warn(f"Could not copy CLI cache {self.cache_path}: {exc}")
+                    return latest, False
+                changed = bool(mutate(working))
+                if not changed:
+                    return latest, False
+                if not self._save_unlocked(working):
+                    return latest, False
+                return _normalize_payload(working), True
+        except OSError as exc:
+            self._warn(f"Could not lock CLI cache {self.cache_path}: {exc}")
+            return copy.deepcopy(dict(current)), False
+
     def clear(self) -> bool:
         """Remove the canonical cache file if present."""
         try:
-            self.cache_path.unlink(missing_ok=True)
+            with self._exclusive_lock():
+                self.cache_path.unlink(missing_ok=True)
             return True
         except OSError as exc:
             self._warn(f"Could not clear CLI cache {self.cache_path}: {exc}")

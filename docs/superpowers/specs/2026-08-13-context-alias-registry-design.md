@@ -10,9 +10,11 @@ element aliases, workflow aliases, and their lifecycle operations.
 
 Add `aria_runtime/context_alias_registry.py` with `ContextAliasRegistry`.
 The registry receives callbacks for the current cache mapping, disk reload,
-atomic save, lookup normalization, and path normalization. Callbacks keep the
-registry independent from `BubbleCLI` while ensuring it sees cache dictionaries
-replaced after another MCP/CLI subprocess writes to disk.
+atomic save, transactional mutation, lookup normalization, and path
+normalization. Callbacks keep the registry independent from `BubbleCLI` while
+ensuring it sees cache dictionaries replaced after another MCP/CLI subprocess
+writes to disk. Production mutations run through a cache-store transaction that
+holds an inter-process sidecar lock across reload, mutation, and atomic save.
 
 `BubbleCLI` retains every existing method as a compatibility facade. Public MCP
 tool names, schemas, annotations, aliases, routing, outputs, preview defaults,
@@ -49,6 +51,7 @@ class ContextAliasRegistry:
         normalize_path: Callable[[Any], list[str]],
         reload: Callable[[], None],
         save: Callable[[], None],
+        transaction: Callable[[Callable[[], bool]], bool] | None = None,
         clock_ms: Callable[[], int] | None = None,
     ) -> None: ...
 
@@ -80,8 +83,8 @@ cannot mutate persisted registry state without an explicit registry operation.
 - Re-caching an element preserves an existing key/path when the new call omits
   them.
 - Element ID lookup continues accepting legacy string payloads.
-- Element writes reload before mutation; workflow writes adopt the same rule to
-  prevent lost updates across subprocesses.
+- Context, element, and workflow writes and removals execute as locked
+  read-modify-write transactions to prevent lost updates across subprocesses.
 - Context-scope removal handles both modern scoped dictionaries and historical
   flat workflow/event keys.
 - Aliases remain profile-isolated under `schema.profiles.<profile>`.
@@ -93,7 +96,8 @@ normalization, profile repair, ambiguity precedence, enrichment, defensive
 copies, cross-process replacement, legacy payloads, timestamp injection, and
 all removal selectors. Integration tests instantiate a real `BubbleCLI` with a
 temporary cache file and verify existing alias tools/facades across independent
-instances.
+instances. Barrier-controlled spawned processes verify that concurrent writes
+and removal-versus-write interleavings preserve both operations.
 
 Target focused combined branch coverage is at least 95%. The final gate remains
 the complete Python/Node suites, sharded global coverage, Ruff, MyPy, package

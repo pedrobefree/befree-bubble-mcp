@@ -357,6 +357,21 @@ def test_remove_element_aliases_supports_each_stable_selector(selector: str, val
     assert saves == ["save"]
 
 
+def test_remove_element_aliases_removes_legacy_string_by_element_id() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    registry = _registry(state, save_calls=saves)
+    registry.bucket("element_refs")["page:pg"] = {
+        "legacy": "hero_id",
+        "other": "other_id",
+    }
+
+    assert registry.remove_element_aliases("pg", "page", element_id="hero_id") == 1
+    assert registry.lookup_element_id("pg", "page", "legacy", reload=False) is None
+    assert registry.lookup_element_id("pg", "page", "other", reload=False) == "other_id"
+    assert saves == ["save"]
+
+
 def test_cache_workflow_reloads_preserves_siblings_and_uses_injected_clock() -> None:
     disk_cache: dict[str, Any] = {
         "schema": {
@@ -418,6 +433,26 @@ def test_cache_workflow_rejects_invalid_and_is_idempotent_without_optional_id() 
         "updated_at": 1_700_000_000_123,
     }
     assert reloads == ["reload", "reload"]
+    assert saves == ["save"]
+
+
+def test_cache_workflow_is_idempotent_when_clock_advances() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    clock_values = iter((100, 200))
+    registry = ContextAliasRegistry(
+        cache=lambda: state["cache"],
+        profile_key=lambda: "alpha",
+        normalize=_normalize,
+        normalize_path=_normalize_path,
+        reload=lambda: None,
+        save=lambda: saves.append("save"),
+        clock_ms=lambda: next(clock_values),
+    )
+
+    assert registry.cache_workflow("pg", "page", "Load", "wf_load") is True
+    assert registry.cache_workflow("pg", "page", "Load", "wf_load") is False
+    assert registry.lookup_workflow("pg", "page", "Load", reload=False)["updated_at"] == 100
     assert saves == ["save"]
 
 
@@ -544,6 +579,21 @@ def test_bubble_cli_workflow_alias_writes_preserve_other_process_updates(
     assert reloaded._lookup_cached_workflow_ref_alias("pg", "page", "Second")["key"] == "wf_second"
 
 
+def test_bubble_cli_stale_context_writer_preserves_workflow_aliases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workflow_writer = _bubble_cli(tmp_path, monkeypatch)
+    stale_context_writer = _bubble_cli(tmp_path, monkeypatch)
+
+    workflow_writer._cache_workflow_ref_alias("pg", "page", "Load", "wf_load")
+    stale_context_writer._cache_context_alias("page", "Home", "pg")
+
+    reloaded = _bubble_cli(tmp_path, monkeypatch)
+    assert reloaded._lookup_cached_workflow_ref_alias("pg", "page", "Load")["key"] == "wf_load"
+    assert reloaded._lookup_cached_context("Home") == ("pg", "page")
+
+
 def test_bubble_cli_element_lookup_sees_another_process_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -612,6 +662,24 @@ def test_bubble_cli_element_payload_lookup_cannot_mutate_cached_alias(
     payload["id"] = "mutated"
 
     assert cli._lookup_cached_element_ref_payload("pg", "page", "Hero")["id"] == "hero_id"
+
+
+def test_bubble_cli_element_removal_cleans_legacy_string_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _bubble_cli(tmp_path, monkeypatch)
+    cli._schema_element_refs_cache()["page:pg"] = {
+        "legacy": "hero_id",
+        "other": "other_id",
+    }
+    cli._save_cli_cache()
+
+    cli._remove_cached_element_aliases("pg", "page", element_id="hero_id")
+
+    reloaded = _bubble_cli(tmp_path, monkeypatch)
+    assert reloaded._lookup_cached_element_ref_alias("pg", "page", "legacy") is None
+    assert reloaded._lookup_cached_element_ref_alias("pg", "page", "other") == "other_id"
 
 
 def test_bubble_cli_context_scope_removal_cleans_modern_workflow_bucket(

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -12,6 +14,7 @@ from bubble_mcp.aria_runtime.cli_cache import (
     merge_cache_payloads,
 )
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
+from bubble_mcp.aria_runtime.context_alias_registry import ContextAliasRegistry
 
 
 def _build_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[BubbleCLI, Path]:
@@ -25,6 +28,62 @@ def _build_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[BubbleC
         profile_name=f"stage41-{tmp_path.name}",
     )
     return cli, cache_path
+
+
+def _registry_transaction_worker(
+    cache_path: str,
+    action: str,
+    alias: str,
+    attempted: Any,
+    entered: Any,
+    release: Any,
+    hold_lock: bool,
+    results: Any,
+) -> None:
+    store = BubbleCLICacheStore(cache_path)
+    state: dict[str, Any] = {"cache": store.load()}
+
+    def transaction(operation: Any) -> bool:
+        def mutate(latest: dict[str, Any]) -> bool:
+            state["cache"] = latest
+            if hold_lock:
+                entered.set()
+                if not release.wait(10):
+                    raise RuntimeError("Timed out waiting to release cache transaction")
+            return bool(operation())
+
+        updated, changed = store.transaction(state["cache"], mutate)
+        state["cache"] = updated
+        return changed
+
+    registry = ContextAliasRegistry(
+        cache=lambda: state["cache"],
+        profile_key=lambda: "concurrent",
+        normalize=lambda value: str(value or "").strip().lower(),
+        normalize_path=lambda value: list(value) if isinstance(value, list) else [],
+        reload=lambda: None,
+        save=lambda: None,
+        transaction=transaction,
+    )
+    attempted.set()
+    if action == "workflow_write":
+        result = registry.cache_workflow("pg", "page", alias, f"wf_{alias.lower()}")
+    elif action == "element_write":
+        result = registry.cache_element("pg", "page", alias, f"id_{alias.lower()}")
+    elif action == "element_remove":
+        result = registry.remove_element_aliases("pg", "page", element_id=alias) == 1
+    else:
+        raise ValueError(f"Unknown worker action: {action}")
+    results.put(result)
+
+
+def _join_process(process: multiprocessing.Process) -> None:
+    process.join(timeout=15)
+    if process.is_alive():
+        process.terminate()
+        process.join(timeout=5)
+        pytest.fail("Concurrent cache worker did not finish")
+    assert process.exitcode == 0
 
 
 def test_default_cache_payload_returns_independent_canonical_buckets() -> None:
@@ -120,6 +179,123 @@ def test_save_writes_normalized_payload_and_load_round_trips(tmp_path: Path) -> 
     }
     assert json.loads(cache_path.read_text(encoding="utf-8")) == store.load()
     assert list(cache_path.parent.glob(f".{cache_path.name}.*.tmp")) == []
+
+
+def test_transaction_serializes_concurrent_registry_writes(tmp_path: Path) -> None:
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    process_context = multiprocessing.get_context("spawn")
+    first_attempted = process_context.Event()
+    first_entered = process_context.Event()
+    second_attempted = process_context.Event()
+    unused_entered = process_context.Event()
+    release = process_context.Event()
+    results = process_context.Queue()
+    first = process_context.Process(
+        target=_registry_transaction_worker,
+        args=(
+            str(cache_path),
+            "workflow_write",
+            "First",
+            first_attempted,
+            first_entered,
+            release,
+            True,
+            results,
+        ),
+    )
+    second = process_context.Process(
+        target=_registry_transaction_worker,
+        args=(
+            str(cache_path),
+            "workflow_write",
+            "Second",
+            second_attempted,
+            unused_entered,
+            release,
+            False,
+            results,
+        ),
+    )
+
+    first.start()
+    assert first_attempted.wait(10)
+    assert first_entered.wait(10)
+    second.start()
+    assert second_attempted.wait(10)
+    release.set()
+    _join_process(first)
+    _join_process(second)
+
+    assert results.get(timeout=2) is True
+    assert results.get(timeout=2) is True
+    scoped = BubbleCLICacheStore(cache_path).load()["schema"]["profiles"]["concurrent"][
+        "workflow_refs"
+    ]["page:pg"]
+    assert set(scoped) == {"first", "second"}
+
+
+def test_transaction_serializes_removal_against_concurrent_write(tmp_path: Path) -> None:
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    initial = default_cache_payload()
+    initial["schema"]["profiles"]["concurrent"] = {
+        "element_refs": {
+            "page:pg": {
+                "target": {"name": "Target", "id": "target_id"},
+                "keep": {"name": "Keep", "id": "keep_id"},
+            }
+        }
+    }
+    assert BubbleCLICacheStore(cache_path).save(initial) is True
+
+    process_context = multiprocessing.get_context("spawn")
+    remove_attempted = process_context.Event()
+    remove_entered = process_context.Event()
+    write_attempted = process_context.Event()
+    unused_entered = process_context.Event()
+    release = process_context.Event()
+    results = process_context.Queue()
+    remover = process_context.Process(
+        target=_registry_transaction_worker,
+        args=(
+            str(cache_path),
+            "element_remove",
+            "target_id",
+            remove_attempted,
+            remove_entered,
+            release,
+            True,
+            results,
+        ),
+    )
+    writer = process_context.Process(
+        target=_registry_transaction_worker,
+        args=(
+            str(cache_path),
+            "element_write",
+            "New",
+            write_attempted,
+            unused_entered,
+            release,
+            False,
+            results,
+        ),
+    )
+
+    remover.start()
+    assert remove_attempted.wait(10)
+    assert remove_entered.wait(10)
+    writer.start()
+    assert write_attempted.wait(10)
+    release.set()
+    _join_process(remover)
+    _join_process(writer)
+
+    assert results.get(timeout=2) is True
+    assert results.get(timeout=2) is True
+    scoped = BubbleCLICacheStore(cache_path).load()["schema"]["profiles"]["concurrent"][
+        "element_refs"
+    ]["page:pg"]
+    assert set(scoped) == {"keep", "new"}
 
 
 def test_failed_serialization_preserves_previous_cache_and_cleans_temporary_file(

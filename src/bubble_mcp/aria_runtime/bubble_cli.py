@@ -32,7 +32,7 @@ import subprocess
 import tempfile
 from datetime import datetime
 from urllib.parse import urljoin
-from typing import Optional, Dict, List, Any, Tuple, Union
+from typing import Optional, Dict, List, Any, Tuple, Union, Callable
 try:
     import inquirer
 except ImportError:
@@ -448,6 +448,7 @@ class BubbleCLI:
             normalize_path=self._normalize_payload_path,
             reload=self._reload_cli_cache_from_disk,
             save=self._save_cli_cache,
+            transaction=self._transact_cli_cache,
         )
 
         self.color_mapper = ColorMapper(self.discovery.data)
@@ -528,6 +529,17 @@ class BubbleCLI:
     def _reload_cli_cache_from_disk(self) -> None:
         """Reload the current cache file so schema alias writes do not clobber newer subprocess updates."""
         self._cli_cache = self._cache_store.reload(self._cli_cache)
+
+    def _transact_cli_cache(self, mutation: Callable[[], bool]) -> bool:
+        """Apply an alias mutation to the latest cache under the store lock."""
+
+        def apply(latest: Dict[str, Any]) -> bool:
+            self._cli_cache = latest
+            return mutation()
+
+        updated, changed = self._cache_store.transaction(self._cli_cache, apply)
+        self._cli_cache = updated
+        return changed
 
     @staticmethod
     def _canonical_element_name_from_alias_payloads(payloads: List[Dict[str, Any]]) -> str:
