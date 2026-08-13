@@ -594,6 +594,21 @@ def test_bubble_cli_stale_context_writer_preserves_workflow_aliases(
     assert reloaded._lookup_cached_context("Home") == ("pg", "page")
 
 
+def test_bubble_cli_stale_event_writer_preserves_transactional_workflow_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alias_writer = _bubble_cli(tmp_path, monkeypatch)
+    stale_event_writer = _bubble_cli(tmp_path, monkeypatch)
+
+    alias_writer._cache_workflow_ref_alias("pg", "page", "Load", "wf_load")
+    stale_event_writer._cache_workflow_event("pg", "page", "wf_event")
+
+    reloaded = _bubble_cli(tmp_path, monkeypatch)
+    assert reloaded._lookup_cached_workflow_ref_alias("pg", "page", "Load")["key"] == "wf_load"
+    assert "page:pg:wf_event" in reloaded._schema_events_cache()
+
+
 def test_bubble_cli_element_lookup_sees_another_process_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import multiprocessing
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ import pytest
 
 from bubble_mcp.aria_runtime.cli_cache import (
     BubbleCLICacheStore,
+    apply_cache_delta,
     default_cache_payload,
     merge_cache_payloads,
 )
@@ -127,6 +129,58 @@ def test_merge_cache_payloads_recurses_and_prefers_canonical_incoming_values() -
     }
 
 
+def test_apply_cache_delta_preserves_concurrent_siblings_and_local_deletions() -> None:
+    base = {
+        "schema": {
+            "profiles": {
+                "app": {
+                    "workflow_refs": {"page:pg": {"remove": {"key": "wf_old"}}},
+                    "events": {"unchanged": {"id": "old"}},
+                }
+            }
+        }
+    }
+    pending = {
+        "schema": {
+            "profiles": {
+                "app": {
+                    "workflow_refs": {"page:pg": {}},
+                    "events": {"unchanged": {"id": "old"}, "local": {"id": "event_local"}},
+                }
+            }
+        }
+    }
+    latest = {
+        "schema": {
+            "profiles": {
+                "app": {
+                    "workflow_refs": {
+                        "page:pg": {
+                            "remove": {"key": "wf_old"},
+                            "concurrent": {"key": "wf_concurrent"},
+                        }
+                    },
+                    "events": {"unchanged": {"id": "newer"}},
+                }
+            }
+        }
+    }
+
+    assert apply_cache_delta(base, pending, latest) == {
+        "schema": {
+            "profiles": {
+                "app": {
+                    "workflow_refs": {
+                        "page:pg": {"concurrent": {"key": "wf_concurrent"}}
+                    },
+                    "events": {
+                        "unchanged": {"id": "newer"},
+                        "local": {"id": "event_local"},
+                    },
+                }
+            }
+        }
+    }
 @pytest.mark.parametrize("raw", ["{broken", "[]", "null", '"text"'])
 def test_load_repairs_missing_malformed_or_non_object_payloads(tmp_path: Path, raw: str) -> None:
     cache_path = tmp_path / ".bubble_cli_cache.json"
@@ -296,6 +350,70 @@ def test_transaction_serializes_removal_against_concurrent_write(tmp_path: Path)
         "element_refs"
     ]["page:pg"]
     assert set(scoped) == {"keep", "new"}
+
+
+def test_transaction_after_clear_starts_from_defaults_instead_of_stale_current(
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    store = BubbleCLICacheStore(cache_path)
+    stale = default_cache_payload()
+    stale["schema"]["profiles"]["app"] = {
+        "workflow_refs": {"page:pg": {"old": {"key": "wf_old"}}}
+    }
+    assert store.save(stale) is True
+    stale = store.load()
+    assert store.clear() is True
+
+    def add_event(payload: dict[str, Any]) -> bool:
+        profile = payload["schema"]["profiles"].setdefault("app", {})
+        profile["events"] = {"page:pg:wf_new": {"id": "event_new"}}
+        return True
+
+    updated, changed = store.transaction(stale, add_event)
+
+    assert changed is True
+    assert updated["schema"]["profiles"]["app"] == {
+        "events": {"page:pg:wf_new": {"id": "event_new"}}
+    }
+    assert store.load() == updated
+
+
+def test_migrate_legacy_reads_merges_and_saves_while_lock_is_held(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    legacy_path = tmp_path / ".bubble_cli_cache_legacy.json"
+    legacy_path.write_text('{"colors": {"legacy": {}}}', encoding="utf-8")
+    cache_path.write_text('{"fonts": {"Inter": {}}}', encoding="utf-8")
+    store = BubbleCLICacheStore(cache_path, legacy_path=legacy_path)
+    lock_state = {"held": False}
+    real_read = store._read_object
+
+    @contextmanager
+    def tracked_lock() -> Any:
+        assert lock_state["held"] is False
+        lock_state["held"] = True
+        try:
+            yield
+        finally:
+            lock_state["held"] = False
+
+    def tracked_read(path: Path) -> dict[str, Any] | None:
+        assert lock_state["held"] is True
+        return real_read(path)
+
+    def tracked_save(payload: dict[str, Any]) -> bool:
+        assert lock_state["held"] is True
+        return True
+
+    monkeypatch.setattr(store, "_exclusive_lock", tracked_lock)
+    monkeypatch.setattr(store, "_read_object", tracked_read)
+    monkeypatch.setattr(store, "_save_unlocked", tracked_save)
+
+    assert store.migrate_legacy() is True
+    assert lock_state["held"] is False
 
 
 def test_failed_serialization_preserves_previous_cache_and_cleans_temporary_file(
@@ -472,6 +590,25 @@ def test_bubble_cli_failed_save_preserves_previous_canonical_file(
     original = '{"colors": {"primary": {"rgba": "#155eef"}}}\n'
     cache_path.write_text(original, encoding="utf-8")
     cli._cli_cache = {"extension_data": object()}
+
+    assert cli._save_cli_cache() is None
+    assert cache_path.read_text(encoding="utf-8") == original
+
+
+def test_bubble_cli_deep_delta_failure_preserves_previous_canonical_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli, cache_path = _build_cli(tmp_path, monkeypatch)
+    original = '{"colors": {"primary": {"rgba": "#155eef"}}}\n'
+    cache_path.write_text(original, encoding="utf-8")
+    payload: dict[str, object] = {}
+    cursor = payload
+    for _ in range(sys.getrecursionlimit() + 100):
+        child: dict[str, object] = {}
+        cursor["nested"] = child
+        cursor = child
+    cli._cli_cache = {"extension_data": payload}
 
     assert cli._save_cli_cache() is None
     assert cache_path.read_text(encoding="utf-8") == original

@@ -15,6 +15,9 @@ normalization. Callbacks keep the registry independent from `BubbleCLI` while
 ensuring it sees cache dictionaries replaced after another MCP/CLI subprocess
 writes to disk. Production mutations run through a cache-store transaction that
 holds an inter-process sidecar lock across reload, mutation, and atomic save.
+Legacy `BubbleCLI` cache writers use a tracked base snapshot and apply only their
+base-to-pending delta onto the latest locked payload, so unrelated concurrent
+alias changes survive while intentional local deletions still propagate.
 
 `BubbleCLI` retains every existing method as a compatibility facade. Public MCP
 tool names, schemas, annotations, aliases, routing, outputs, preview defaults,
@@ -88,6 +91,10 @@ cannot mutate persisted registry state without an explicit registry operation.
 - Context-scope removal handles both modern scoped dictionaries and historical
   flat workflow/event keys.
 - Aliases remain profile-isolated under `schema.profiles.<profile>`.
+- A transaction after `clear()` starts from canonical defaults rather than a
+  caller's stale pre-clear snapshot.
+- Legacy migration rechecks, reads, merges, saves, and marks completion under
+  the same inter-process lock.
 
 ## Testing
 

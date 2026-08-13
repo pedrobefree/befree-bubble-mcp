@@ -68,7 +68,12 @@ from html_to_bubble import (
 from color_mapper import ColorMapper
 from source_query_builder import build_search_source_expression, build_message_chain
 from element_capabilities import TOOL_ELEMENT_MAP, element_supported_properties
-from cli_cache import BubbleCLICacheStore, default_cache_payload, merge_cache_payloads
+from cli_cache import (
+    BubbleCLICacheStore,
+    apply_cache_delta,
+    default_cache_payload,
+    merge_cache_payloads,
+)
 from context_alias_registry import ContextAliasRegistry
 
 PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
@@ -433,6 +438,7 @@ class BubbleCLI:
         )
         self._migrate_legacy_tmp_cache()
         self._cli_cache = self._load_cli_cache()
+        self._cli_cache_base = copy.deepcopy(self._cli_cache)
 
         self.profile_name = profile_name
         self.app_version = str(app_version or "test")
@@ -524,11 +530,25 @@ class BubbleCLI:
 
     def _save_cli_cache(self) -> None:
         """Save CLI cache to local JSON file."""
-        self._cache_store.save(self._cli_cache)
+        baseline = self._cli_cache_base
+        pending = self._cli_cache
+
+        def apply(latest: Dict[str, Any]) -> bool:
+            reconciled = apply_cache_delta(baseline, pending, latest)
+            if reconciled == latest:
+                return False
+            latest.clear()
+            latest.update(reconciled)
+            return True
+
+        updated, _changed = self._cache_store.transaction(baseline, apply)
+        self._cli_cache = updated
+        self._cli_cache_base = copy.deepcopy(updated)
 
     def _reload_cli_cache_from_disk(self) -> None:
         """Reload the current cache file so schema alias writes do not clobber newer subprocess updates."""
         self._cli_cache = self._cache_store.reload(self._cli_cache)
+        self._cli_cache_base = copy.deepcopy(self._cli_cache)
 
     def _transact_cli_cache(self, mutation: Callable[[], bool]) -> bool:
         """Apply an alias mutation to the latest cache under the store lock."""
@@ -539,6 +559,7 @@ class BubbleCLI:
 
         updated, changed = self._cache_store.transaction(self._cli_cache, apply)
         self._cli_cache = updated
+        self._cli_cache_base = copy.deepcopy(updated)
         return changed
 
     @staticmethod
@@ -1113,6 +1134,7 @@ class BubbleCLI:
             logger.error(f"Failed to clear cache: {self._cache_file}")
             return False
         self._cli_cache = default_cache_payload()
+        self._cli_cache_base = copy.deepcopy(self._cli_cache)
         if cache_existed:
             logger.success(f"Successfully cleared cache: {self._cache_file}")
         else:
