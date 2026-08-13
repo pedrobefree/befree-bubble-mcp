@@ -348,7 +348,10 @@ def sample_discovery() -> PathDiscovery:
                             "id": "raw-title",
                             "%x": "Text",
                             "%dn": "Raw title",
-                            "%p": {"%3": {"%e": {"0": "Raw copy"}}},
+                            "%p": {
+                                "text": {"%e": {"0": "Readable copy"}},
+                                "%3": {"%e": {"0": "Raw copy"}},
+                            },
                         }
                     },
                 }
@@ -381,6 +384,7 @@ def test_element_lookup_handles_text_names_ids_and_match_priority() -> None:
     discovery = sample_discovery()
     assert discovery.find_element_by_text("reuse", "hello world")["id"] == "first"
     assert discovery.find_element_by_text("reuse", "hero.png")["id"] == "image"
+    assert discovery.find_element_by_text("raw-reuse", "readable copy")["id"] == "raw-title"
     assert discovery.find_element_by_text("raw-reuse", "raw copy")["id"] == "raw-title"
     assert discovery.find_element_by_text("missing", "hello") is None
     assert discovery.find_element_by_text("reuse", "absent") is None

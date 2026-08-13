@@ -7278,15 +7278,16 @@ class PathDiscovery(DiscoveryDataBoundary):
                     candidates.append(f"{el_type_norm} {value}")
 
         # Label/content-like values shown by Bubble UI
-        text_plain = self._plain_text_from_expr(props.get("text") or props.get("%3"))
-        if text_plain:
-            candidates.append(text_plain)
-            if el_type_norm:
-                candidates.append(f"{el_type_norm} {text_plain}")
-            if el_type_norm.lower() == "button":
-                candidates.append(f"Button {text_plain}")
-            if el_type_norm.lower() == "text":
-                candidates.append(f"Text {text_plain}")
+        for text_expr in (props.get("text"), props.get("%3")):
+            text_plain = self._plain_text_from_expr(text_expr)
+            if text_plain:
+                candidates.append(text_plain)
+                if el_type_norm:
+                    candidates.append(f"{el_type_norm} {text_plain}")
+                if el_type_norm.lower() == "button":
+                    candidates.append(f"Button {text_plain}")
+                if el_type_norm.lower() == "text":
+                    candidates.append(f"Text {text_plain}")
 
         # Icon values shown in Icon and some Button editors
         icon_value = props.get("icon") or props.get("%9i")
