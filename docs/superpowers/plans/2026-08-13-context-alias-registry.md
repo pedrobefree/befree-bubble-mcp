@@ -98,7 +98,7 @@
 - [x] Benchmark 1,000 registry lookups and 100 alias mutations without timing assertions in pytest.
 - [x] Run full Python/Node, full branch coverage, Ruff, MyPy, security/package/setup/catalog/runtime/routing checks, and `git diff --check`.
 - [x] Update the roadmap with extracted lines, focused/global coverage, test totals, benchmark, and stable ratchet.
-- [ ] Run independent code review and resolve every Critical/Important finding with regression tests.
+- [x] Run independent code review and resolve every Critical/Important finding with regression tests.
 - [ ] Commit final documentation, push the branch, and open a draft PR against `main`.
 
 ## Self-Review

@@ -115,24 +115,28 @@ This family is being delivered through three bounded internal extractions:
 
 Stage 4.2 results:
 
-- removed 390 lines of direct alias lifecycle logic from `bubble_cli.py` and
-  replaced them with 70 lines of construction/facades (net reduction: 320);
-- added a 513-line focused registry boundary with 301 executable statements;
-- added 36 behavior and real-`BubbleCLI` integration tests;
-- `context_alias_registry.py`: 97.3% combined branch coverage in the full run;
-- full suite: 1,167 Python and 11 Node tests passed;
-- global combined coverage: 37.9947%;
-- global ratchet: 37.8%, retaining 0.19 percentage point of headroom;
+- removed 393 lines of direct alias lifecycle logic from `bubble_cli.py` and
+  replaced them with 108 lines of construction, facades, and shared-cache
+  reconciliation (net reduction: 285);
+- added a 553-line focused registry boundary with 317 executable statements;
+- added 53 behavior, real-`BubbleCLI`, and spawned-process concurrency tests;
+- `context_alias_registry.py`: 97.1% combined branch coverage in the full run;
+- full suite: 1,184 Python and 11 Node tests passed;
+- global combined coverage: 38.1217%;
+- global ratchet: 38.0%, retaining 0.12 percentage point of headroom;
 - catalog remained at 327 MCP tools, with zero uncovered tools and no changes
   to schemas, aliases, dispatch routes, previews, or result shapes;
-- benchmark: 1,000 registry lookups in 0.002945 second and 100 in-memory alias
-  mutations in 0.000118 second.
+- benchmark: 1,000 registry lookups in 0.002996 second and 100 in-memory alias
+  mutations in 0.000264 second.
 
 Stage 4.2 also closes three reliability gaps inherited from the direct
 implementation: concurrent workflow writers no longer overwrite sibling
 updates, returned element/workflow payloads cannot mutate cached state by
 reference, and context cleanup removes both modern scoped workflow buckets and
-historical flat keys.
+historical flat keys. The cache store now holds an inter-process lock across
+read-modify-write transactions and legacy migration; legacy whole-cache writers
+apply only their local three-way delta to the latest shared payload, and a
+post-clear transaction cannot resurrect stale state.
 
 ### Stage 5: Supporting debt
 
