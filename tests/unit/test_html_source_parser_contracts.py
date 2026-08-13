@@ -81,6 +81,7 @@ def test_public_parser_resolves_stylesheet_and_inline_importance_before_mapping(
     assert stylesheet_wins["computed_styles"]["color"] == "#111111"
     assert stylesheet_wins["computed_styles"]["width"] == "320px"
     assert "color" not in stylesheet_wins["styles"]
+    assert stylesheet_wins["text_segments"][0]["styles"]["color"] == "#111111"
     assert inline_wins["computed_styles"]["color"] == "#222222"
     assert inline_wins["styles"]["color"] == "#222222"
     assert "!important" not in str(inline_wins["computed_styles"])
@@ -192,6 +193,7 @@ def test_infer_from_framework_classes(classes: list[str], expected: dict[str, st
         ("data:image/svg+xml,%3Csvg%3E%3Cstyle%3Ea%7Bfill%3Aurl(jav%5C61script%3Aalert(1))%7D%3C/style%3E%3C/svg%3E", ""),
         ("data:image/svg+xml,%3Csvg%3E%3Cimage%20href='https%3A%2F%2Fexample.test%2Fpixel.png'/%3E%3C/svg%3E", ""),
         ("data:image/svg+xml,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E", "data:image/svg+xml,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E"),
+        ("data:image/svg+xml;utf8,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E", "data:image/svg+xml;utf8,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E"),
         ("#fragment", ""),
         (None, ""),
     ],

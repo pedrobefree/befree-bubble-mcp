@@ -8,7 +8,7 @@ from xml.etree import ElementTree
 
 
 _SVG_DATA_URL = re.compile(
-    r"^data:image/svg\+xml(?:;charset=[^;,]+)?(?P<base64>;base64)?,(?P<payload>.*)$",
+    r"^data:image/svg\+xml(?:;charset=[^;,]+)?(?:(?P<base64>;base64)|;utf8)?,(?P<payload>.*)$",
     flags=re.IGNORECASE | re.DOTALL,
 )
 _RASTER_DATA_URL = re.compile(

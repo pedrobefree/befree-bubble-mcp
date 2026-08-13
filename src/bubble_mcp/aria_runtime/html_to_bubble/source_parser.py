@@ -95,7 +95,7 @@ class HTMLParser:
             "attributes": attrs,
             "styles": styles,
             "computed_styles": computed,
-            "text_segments": self._extract_text_segments_tag(element, styles),
+            "text_segments": self._extract_text_segments_tag(element, {}),
             "children": children,
         }
         self._inject_media_url(node)
@@ -375,17 +375,22 @@ class HTMLParser:
             return
 
         merged_styles = dict(inherited_styles or {})
-        merged_styles.update(
-            {
-                key: clean
-                for key, value in self._parse_inline_styles(str(node.get("style", ""))).items()
-                for clean, _important in [self._split_css_important(value)]
-                if clean
-            }
-        )
+        merged_styles.update(self._resolved_tag_styles(node))
 
         for child in node.children:
             self._collect_tag_segments(child, merged_styles, out)
+
+    def _resolved_tag_styles(self, element: Tag) -> Dict[str, Any]:
+        """Resolve the same cascade used by semantic nodes for rich-text segments."""
+        attrs = self._normalize_attrs(dict(element.attrs))
+        computed = self._infer_from_classes(attrs.get("class", []))
+        priorities: Dict[str, tuple[int, tuple[int, int, int], int]] = {}
+        if self._style_rules:
+            matched, priorities = self._resolve_style_rules(element, attrs)
+            computed.update(matched)
+        raw_inline = self._parse_inline_styles(str(element.get("style", "")))
+        self._resolve_inline_styles(raw_inline, computed, priorities)
+        return computed
 
     def _normalize_attrs(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         out: Dict[str, Any] = {}

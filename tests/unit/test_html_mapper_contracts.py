@@ -101,6 +101,7 @@ def test_image_mapping_rejects_active_or_unsupported_urls(source: str) -> None:
         "/relative/image.webp",
         "data:image/png;base64,iVBORw0KGgo=",
         "data:image/svg+xml,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E",
+        "data:image/svg+xml;utf8,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E",
     ],
 )
 def test_image_mapping_accepts_safe_web_and_image_sources(source: str) -> None:
@@ -109,6 +110,18 @@ def test_image_mapping_accepts_safe_web_and_image_sources(source: str) -> None:
     )
     assert mapped is not None
     assert mapped["bubble_type"] == "Image"
+
+
+def test_mapped_text_payload_preserves_stylesheet_important_over_inline_style() -> None:
+    mapped = _map_html(
+        "<style>#hero { color: #111111 !important; }</style>"
+        '<p id="hero" style="color: #222222">Text</p>'
+    )
+
+    assert mapped is not None
+    text = mapped["children"][0]
+    assert text["bubble_type"] == "Text"
+    assert text["properties"]["font_color"] == "#111111"
 
 
 def test_unknown_source_tag_falls_back_to_a_container() -> None:
