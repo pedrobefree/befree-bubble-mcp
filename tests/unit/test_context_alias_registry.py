@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import copy
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -23,10 +25,13 @@ def _registry(
     profile: str = "alpha",
     reload_calls: list[str] | None = None,
     save_calls: list[str] | None = None,
+    reload_action: Callable[[], None] | None = None,
 ) -> ContextAliasRegistry:
     def reload() -> None:
         if reload_calls is not None:
             reload_calls.append("reload")
+        if reload_action is not None:
+            reload_action()
 
     def save() -> None:
         if save_calls is not None:
@@ -132,3 +137,145 @@ def test_lookup_context_prefers_reusable_before_page_for_ambiguous_alias() -> No
 
 def test_context_key_preserves_context_scope() -> None:
     assert ContextAliasRegistry.context_key("pg_home", "page") == "page:pg_home"
+
+
+def test_cache_element_reloads_and_preserves_existing_key_and_path() -> None:
+    disk_cache: dict[str, Any] = {
+        "schema": {
+            "profiles": {
+                "alpha": {
+                    "element_refs": {
+                        "page:pg_home": {
+                            "hero": {
+                                "name": "Hero",
+                                "id": "old_id",
+                                "key": "el_hero",
+                                "path": ["%el", "el_hero"],
+                                "context_id": "pg_home",
+                                "context_type": "page",
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    state: dict[str, Any] = {"cache": {}}
+    reloads: list[str] = []
+    saves: list[str] = []
+
+    def replace_from_disk() -> None:
+        state["cache"] = copy.deepcopy(disk_cache)
+
+    registry = _registry(
+        state,
+        reload_calls=reloads,
+        save_calls=saves,
+        reload_action=replace_from_disk,
+    )
+
+    assert registry.cache_element("pg_home", "page", "Hero", "new_id", element_type="Text") is True
+    assert registry.lookup_element_payload("pg_home", "page", "hero", reload=False) == {
+        "name": "Hero",
+        "id": "new_id",
+        "key": "el_hero",
+        "path": ["%el", "el_hero"],
+        "type": "Text",
+        "context_id": "pg_home",
+        "context_type": "page",
+    }
+    assert reloads == ["reload"]
+    assert saves == ["save"]
+
+
+def test_cache_element_rejects_empty_alias_or_element_without_io() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    reloads: list[str] = []
+    saves: list[str] = []
+    registry = _registry(state, reload_calls=reloads, save_calls=saves)
+
+    assert registry.cache_element("pg", "page", "", "el") is False
+    assert registry.cache_element("pg", "page", "Hero", "") is False
+    assert reloads == []
+    assert saves == []
+
+
+def test_cache_created_elements_deduplicates_aliases_and_saves_once() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    reloads: list[str] = []
+    saves: list[str] = []
+    registry = _registry(state, reload_calls=reloads, save_calls=saves)
+
+    changed = registry.cache_created_elements(
+        "pg_home",
+        "page",
+        ["Hero", " hero ", "Primary Hero"],
+        "obj_hero",
+        element_key="el_hero",
+        parent_path=["%el", "group_main"],
+        element_type="Image",
+    )
+
+    scoped = registry.bucket("element_refs")["page:pg_home"]
+    assert changed == 4
+    assert set(scoped) == {"hero", "primary hero", "el_hero", "obj_hero"}
+    assert scoped["hero"]["path"] == ["%el", "group_main", "%el", "el_hero"]
+    assert all(payload["id"] == "obj_hero" for payload in scoped.values())
+    assert reloads == ["reload"]
+    assert saves == ["save"]
+
+
+def test_element_lookups_reload_support_legacy_strings_and_return_defensive_copies() -> None:
+    state: dict[str, Any] = {
+        "cache": {
+            "schema": {
+                "profiles": {
+                    "alpha": {
+                        "element_refs": {
+                            "page:pg": {
+                                "legacy": "legacy_id",
+                                "hero": {"name": "Hero", "id": "hero_id", "path": ["%el", "hero"]},
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    reloads: list[str] = []
+    registry = _registry(state, reload_calls=reloads)
+
+    assert registry.lookup_element_id("pg", "page", "legacy") == "legacy_id"
+    payload = registry.lookup_element_payload("pg", "page", "hero")
+    assert payload == {"name": "Hero", "id": "hero_id", "path": ["%el", "hero"]}
+    assert payload is not None
+    payload["id"] = "mutated"
+    assert registry.lookup_element_payload("pg", "page", "hero", reload=False)["id"] == "hero_id"
+    assert reloads == ["reload", "reload"]
+
+
+@pytest.mark.parametrize(
+    ("selector", "value"),
+    [
+        ("element_id", "hero_id"),
+        ("element_key", "el_hero"),
+        ("element_path", ["%el", "group", "%el", "el_hero"]),
+    ],
+)
+def test_remove_element_aliases_supports_each_stable_selector(selector: str, value: Any) -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    registry = _registry(state, save_calls=saves)
+    registry.cache_element(
+        "pg",
+        "page",
+        "Hero",
+        "hero_id",
+        element_key="el_hero",
+        element_path=["%el", "group", "%el", "el_hero"],
+    )
+    saves.clear()
+
+    assert registry.remove_element_aliases("pg", "page", **{selector: value}) == 1
+    assert registry.lookup_element_payload("pg", "page", "hero", reload=False) is None
+    assert saves == ["save"]

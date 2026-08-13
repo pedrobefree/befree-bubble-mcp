@@ -47,11 +47,11 @@
 **Interfaces:**
 - Produces: `cache_element`, `cache_created_elements`, `lookup_element_id`, `lookup_element_payload`, and `remove_element_aliases`.
 
-- [ ] Write failing tests for scope, reload-before-write, path/key enrichment, deduplication, defensive copies, legacy strings, and removal by ID/key/path.
-- [ ] Run tests and verify failures because element operations are absent.
-- [ ] Implement the minimal element lifecycle and save only on changes.
-- [ ] Run focused tests and verify all pass.
-- [ ] Commit as `refactor: isolate element alias lifecycle`.
+- [x] Write failing tests for scope, reload-before-write, path/key enrichment, deduplication, defensive copies, legacy strings, and removal by ID/key/path.
+- [x] Run tests and verify failures because element operations are absent.
+- [x] Implement the minimal element lifecycle and save only on changes.
+- [x] Run focused tests and verify all pass.
+- [x] Commit as `refactor: isolate element alias lifecycle`.
 
 ### Task 3: Workflow and context-scope lifecycle
 

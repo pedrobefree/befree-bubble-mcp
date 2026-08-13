@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import time
 from collections.abc import Callable, MutableMapping
 from typing import Any
@@ -148,3 +149,212 @@ class ContextAliasRegistry:
             if context_id:
                 return context_id, context_type
         return None, None
+
+    def _element_scope(self, context_id: str, context_type: str, *, create: bool) -> dict[str, Any]:
+        refs = self.bucket("element_refs")
+        scope_key = self.context_key(context_id, context_type)
+        scoped = refs.get(scope_key)
+        if isinstance(scoped, dict):
+            return scoped
+        if create:
+            scoped = {}
+            refs[scope_key] = scoped
+            return scoped
+        return {}
+
+    def _upsert_element(
+        self,
+        *,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        element_id: str,
+        element_key: str | None,
+        element_path: list[str] | None,
+        element_type: str | None,
+    ) -> bool:
+        alias = str(alias_name or "").strip()
+        element = str(element_id or "").strip()
+        normalized_alias = self._normalize(alias)
+        if not alias or not element or not normalized_alias:
+            return False
+
+        scoped = self._element_scope(context_id, context_type, create=True)
+        existing = scoped.get(normalized_alias)
+        existing_key = ""
+        existing_path: list[str] = []
+        if isinstance(existing, dict):
+            existing_key = str(existing.get("key") or "").strip()
+            existing_path = self._normalize_path(existing.get("path"))
+
+        resolved_key = str(element_key or "").strip() or existing_key
+        resolved_path = self._normalize_path(element_path) or existing_path
+        payload: dict[str, Any] = {
+            "name": alias,
+            "id": element,
+            "context_id": context_id,
+            "context_type": context_type,
+        }
+        if resolved_key:
+            payload["key"] = resolved_key
+        if resolved_path:
+            payload["path"] = resolved_path
+        resolved_type = str(element_type or "").strip()
+        if resolved_type:
+            payload["type"] = resolved_type
+        if existing == payload:
+            return False
+        scoped[normalized_alias] = payload
+        return True
+
+    def cache_element(
+        self,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        element_id: str,
+        *,
+        element_key: str | None = None,
+        element_path: list[str] | None = None,
+        element_type: str | None = None,
+    ) -> bool:
+        """Persist one element alias after refreshing cross-process state."""
+        if not str(alias_name or "").strip() or not str(element_id or "").strip():
+            return False
+        self._reload()
+        changed = self._upsert_element(
+            context_id=context_id,
+            context_type=context_type,
+            alias_name=alias_name,
+            element_id=element_id,
+            element_key=element_key,
+            element_path=element_path,
+            element_type=element_type,
+        )
+        if changed:
+            self._save()
+        return changed
+
+    def cache_created_elements(
+        self,
+        context_id: str,
+        context_type: str,
+        aliases: list[str],
+        element_id: str,
+        *,
+        element_key: str | None = None,
+        parent_path: list[str] | None = None,
+        element_type: str | None = None,
+    ) -> int:
+        """Persist all stable aliases for a newly created element in one write."""
+        element = str(element_id or "").strip()
+        key = str(element_key or "").strip()
+        if not element and not key:
+            return 0
+
+        created_path = self._normalize_path(parent_path)
+        if key:
+            created_path.extend(["%el", key])
+        candidates = list(aliases or [])
+        if key:
+            candidates.append(key)
+        if element:
+            candidates.append(element)
+
+        self._reload()
+        changed = 0
+        seen: set[str] = set()
+        for raw_alias in candidates:
+            alias = str(raw_alias or "").strip()
+            normalized = self._normalize(alias)
+            if not alias or not normalized or normalized in seen:
+                continue
+            seen.add(normalized)
+            changed += int(
+                self._upsert_element(
+                    context_id=context_id,
+                    context_type=context_type,
+                    alias_name=alias,
+                    element_id=element or key,
+                    element_key=key or None,
+                    element_path=created_path or None,
+                    element_type=element_type,
+                )
+            )
+        if changed:
+            self._save()
+        return changed
+
+    def lookup_element_id(
+        self,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        *,
+        reload: bool = True,
+    ) -> str | None:
+        """Resolve modern object and legacy string alias payloads."""
+        alias = self._normalize(alias_name)
+        if not alias:
+            return None
+        if reload:
+            self._reload()
+        payload = self._element_scope(context_id, context_type, create=False).get(alias)
+        if isinstance(payload, dict):
+            value = str(payload.get("id") or "").strip()
+            return value or None
+        if isinstance(payload, str):
+            value = payload.strip()
+            return value or None
+        return None
+
+    def lookup_element_payload(
+        self,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        *,
+        reload: bool = True,
+    ) -> dict[str, Any] | None:
+        """Return a defensive copy of one modern element alias payload."""
+        alias = self._normalize(alias_name)
+        if not alias:
+            return None
+        if reload:
+            self._reload()
+        payload = self._element_scope(context_id, context_type, create=False).get(alias)
+        return copy.deepcopy(payload) if isinstance(payload, dict) else None
+
+    def remove_element_aliases(
+        self,
+        context_id: str,
+        context_type: str,
+        *,
+        element_id: str | None = None,
+        element_key: str | None = None,
+        element_path: list[str] | None = None,
+    ) -> int:
+        """Remove aliases matching any supplied stable element selector."""
+        self._reload()
+        scoped = self._element_scope(context_id, context_type, create=False)
+        target_id = str(element_id or "").strip()
+        target_key = str(element_key or "").strip()
+        target_path = self._normalize_path(element_path)
+        removed: list[str] = []
+        for alias, payload in scoped.items():
+            if not isinstance(payload, dict):
+                continue
+            payload_id = str(payload.get("id") or "").strip()
+            payload_key = str(payload.get("key") or "").strip()
+            payload_path = self._normalize_path(payload.get("path"))
+            if (
+                (target_id and payload_id == target_id)
+                or (target_key and payload_key == target_key)
+                or (target_path and payload_path == target_path)
+            ):
+                removed.append(alias)
+        for alias in removed:
+            scoped.pop(alias, None)
+        if removed:
+            self._save()
+        return len(removed)
