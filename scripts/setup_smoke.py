@@ -15,6 +15,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+SOURCE_ROOT = ROOT / "src"
 
 
 def _run(command: list[str], *, env: dict[str, str], check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -29,6 +30,19 @@ def _json_stdout(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     return json.loads(result.stdout)
 
 
+def setup_smoke_environment(config_dir: Path, base: dict[str, str] | None = None) -> dict[str, str]:
+    """Build an isolated CLI environment that can import this src-layout checkout."""
+    env = dict(os.environ if base is None else base)
+    existing_pythonpath = env.get("PYTHONPATH", "").strip()
+    env["PYTHONPATH"] = (
+        f"{SOURCE_ROOT}{os.pathsep}{existing_pythonpath}"
+        if existing_pythonpath
+        else str(SOURCE_ROOT)
+    )
+    env["BUBBLE_MCP_CONFIG_DIR"] = str(config_dir)
+    return env
+
+
 def _assert_next_actions(status: dict[str, Any]) -> None:
     actions = status.get("next_actions")
     if not isinstance(actions, list):
@@ -40,7 +54,7 @@ def _assert_next_actions(status: dict[str, Any]) -> None:
 
 def run_setup_smoke(*, python: str, keep_artifacts: bool) -> dict[str, Any]:
     config_dir = Path(tempfile.mkdtemp(prefix="befree-bubble-mcp-setup-smoke."))
-    env = {**os.environ, "BUBBLE_MCP_CONFIG_DIR": str(config_dir)}
+    env = setup_smoke_environment(config_dir)
     profile = "release-smoke"
     app_id = "example-app"
 
