@@ -17,7 +17,10 @@ writes to disk. Production mutations run through a cache-store transaction that
 holds an inter-process sidecar lock across reload, mutation, and atomic save.
 Legacy `BubbleCLI` cache writers use a tracked base snapshot and apply only their
 base-to-pending delta onto the latest locked payload, so unrelated concurrent
-alias changes survive while intentional local deletions still propagate.
+alias changes survive while intentional local deletions still propagate. Delta
+comparison is JSON-type-aware (`true` is distinct from `1`), and repairing a
+malformed bucket merges against concurrent valid children instead of replacing
+them.
 
 `BubbleCLI` retains every existing method as a compatibility facade. Public MCP
 tool names, schemas, annotations, aliases, routing, outputs, preview defaults,

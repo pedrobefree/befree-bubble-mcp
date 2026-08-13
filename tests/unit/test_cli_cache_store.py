@@ -150,6 +150,7 @@ def test_apply_cache_delta_preserves_concurrent_siblings_and_local_deletions() -
             }
         }
     }
+
     latest = {
         "schema": {
             "profiles": {
@@ -181,6 +182,32 @@ def test_apply_cache_delta_preserves_concurrent_siblings_and_local_deletions() -
             }
         }
     }
+
+
+@pytest.mark.parametrize(
+    ("base", "pending"),
+    [
+        ({"value": 1}, {"value": True}),
+        ({"value": 0}, {"value": False}),
+        ({"value": [1, {"nested": 0}]}, {"value": [True, {"nested": False}]}),
+    ],
+)
+def test_apply_cache_delta_distinguishes_booleans_from_numbers(
+    base: dict[str, Any],
+    pending: dict[str, Any],
+) -> None:
+    result = apply_cache_delta(base, pending, base)
+    assert json.dumps(result, sort_keys=True) == json.dumps(pending, sort_keys=True)
+
+
+def test_apply_cache_delta_merges_repaired_mapping_with_concurrent_children() -> None:
+    base = {"workflow_refs": []}
+    pending = {"workflow_refs": {}}
+    latest = {"workflow_refs": {"page:pg": {"load": {"key": "wf_load"}}}}
+
+    assert apply_cache_delta(base, pending, latest) == latest
+
+
 @pytest.mark.parametrize("raw", ["{broken", "[]", "null", '"text"'])
 def test_load_repairs_missing_malformed_or_non_object_payloads(tmp_path: Path, raw: str) -> None:
     cache_path = tmp_path / ".bubble_cli_cache.json"
@@ -667,3 +694,18 @@ def test_bubble_cli_cache_add_remove_round_trips_through_existing_facade(
     reloaded._remove_from_cache("colors", "primary")
     after_remove, _ = _build_cli(tmp_path, monkeypatch)
     assert "primary" not in after_remove._cli_cache["colors"]
+
+
+def test_bubble_cli_save_persists_boolean_correction_from_numeric_legacy_value(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _initial, cache_path = _build_cli(tmp_path, monkeypatch)
+    cache_path.write_text('{"extension_data": {"enabled": 1}}', encoding="utf-8")
+    cli, _ = _build_cli(tmp_path, monkeypatch)
+    cli._cli_cache["extension_data"]["enabled"] = True
+
+    cli._save_cli_cache()
+
+    persisted = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert persisted["extension_data"]["enabled"] is True

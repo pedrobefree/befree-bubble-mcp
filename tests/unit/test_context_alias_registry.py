@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -598,6 +599,38 @@ def test_bubble_cli_stale_event_writer_preserves_transactional_workflow_alias(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    alias_writer = _bubble_cli(tmp_path, monkeypatch)
+    stale_event_writer = _bubble_cli(tmp_path, monkeypatch)
+
+    alias_writer._cache_workflow_ref_alias("pg", "page", "Load", "wf_load")
+    stale_event_writer._cache_workflow_event("pg", "page", "wf_event")
+
+    reloaded = _bubble_cli(tmp_path, monkeypatch)
+    assert reloaded._lookup_cached_workflow_ref_alias("pg", "page", "Load")["key"] == "wf_load"
+    assert "page:pg:wf_event" in reloaded._schema_events_cache()
+
+
+def test_bubble_cli_stale_malformed_bucket_repair_preserves_concurrent_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    profile = f"stage42-{tmp_path.name}"
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    cache_path.write_text(
+        json.dumps(
+            {
+                "schema": {
+                    "profiles": {
+                        profile: {
+                            "workflow_refs": [],
+                            "events": {},
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     alias_writer = _bubble_cli(tmp_path, monkeypatch)
     stale_event_writer = _bubble_cli(tmp_path, monkeypatch)
 

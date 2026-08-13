@@ -40,6 +40,20 @@ def merge_cache_payloads(base: Any, incoming: Any) -> Any:
     return copy.deepcopy(incoming)
 
 
+def cache_payloads_equal(left: Any, right: Any) -> bool:
+    """Compare JSON-shaped values without conflating booleans and numbers."""
+    if isinstance(left, Mapping) and isinstance(right, Mapping):
+        return left.keys() == right.keys() and all(
+            cache_payloads_equal(left[key], right[key]) for key in left
+        )
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(
+            cache_payloads_equal(left_value, right_value)
+            for left_value, right_value in zip(left, right)
+        )
+    return type(left) is type(right) and left == right
+
+
 def apply_cache_delta(base: Any, pending: Any, latest: Any) -> Any:
     """Apply local changes from base→pending onto the latest shared payload."""
     if not isinstance(base, Mapping) or not isinstance(pending, Mapping):
@@ -58,11 +72,12 @@ def apply_cache_delta(base: Any, pending: Any, latest: Any) -> Any:
                 reconciled[key] = copy.deepcopy(pending_value)
             continue
         base_value = base[key]
-        if pending_value == base_value:
+        if cache_payloads_equal(pending_value, base_value):
             continue
         latest_value = reconciled.get(key)
-        if isinstance(base_value, Mapping) and isinstance(pending_value, Mapping):
-            reconciled[key] = apply_cache_delta(base_value, pending_value, latest_value)
+        if isinstance(pending_value, Mapping) and isinstance(latest_value, Mapping):
+            delta_base = base_value if isinstance(base_value, Mapping) else {}
+            reconciled[key] = apply_cache_delta(delta_base, pending_value, latest_value)
         else:
             reconciled[key] = copy.deepcopy(pending_value)
     return reconciled

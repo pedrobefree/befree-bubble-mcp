@@ -71,6 +71,7 @@ from element_capabilities import TOOL_ELEMENT_MAP, element_supported_properties
 from cli_cache import (
     BubbleCLICacheStore,
     apply_cache_delta,
+    cache_payloads_equal,
     default_cache_payload,
     merge_cache_payloads,
 )
@@ -535,7 +536,7 @@ class BubbleCLI:
 
         def apply(latest: Dict[str, Any]) -> bool:
             reconciled = apply_cache_delta(baseline, pending, latest)
-            if reconciled == latest:
+            if cache_payloads_equal(reconciled, latest):
                 return False
             latest.clear()
             latest.update(reconciled)
