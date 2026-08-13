@@ -358,3 +358,156 @@ class ContextAliasRegistry:
         if removed:
             self._save()
         return len(removed)
+
+    def _workflow_scope(self, context_id: str, context_type: str, *, create: bool) -> dict[str, Any]:
+        refs = self.bucket("workflow_refs")
+        scope_key = self.context_key(context_id, context_type)
+        scoped = refs.get(scope_key)
+        if isinstance(scoped, dict):
+            return scoped
+        if create:
+            scoped = {}
+            refs[scope_key] = scoped
+            return scoped
+        return {}
+
+    def cache_workflow(
+        self,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        workflow_key: str,
+        workflow_id: str | None = None,
+    ) -> bool:
+        """Persist one workflow alias after refreshing cross-process state."""
+        alias = str(alias_name or "").strip()
+        key = str(workflow_key or "").strip()
+        normalized = self._normalize(alias)
+        if not alias or not key or not normalized:
+            return False
+        self._reload()
+        scoped = self._workflow_scope(context_id, context_type, create=True)
+        payload: dict[str, Any] = {
+            "name": alias,
+            "key": key,
+            "context_id": context_id,
+            "context_type": context_type,
+            "updated_at": self._clock_ms(),
+        }
+        resolved_id = str(workflow_id or "").strip()
+        if resolved_id:
+            payload["id"] = resolved_id
+        if scoped.get(normalized) == payload:
+            return False
+        scoped[normalized] = payload
+        self._save()
+        return True
+
+    def lookup_workflow(
+        self,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        *,
+        reload: bool = True,
+    ) -> dict[str, Any] | None:
+        """Return a defensive copy of a valid workflow alias payload."""
+        alias = self._normalize(alias_name)
+        if not alias:
+            return None
+        if reload:
+            self._reload()
+        payload = self._workflow_scope(context_id, context_type, create=False).get(alias)
+        if not isinstance(payload, dict) or not str(payload.get("key") or "").strip():
+            return None
+        return copy.deepcopy(payload)
+
+    def remove_context_aliases(
+        self,
+        context_type: str,
+        *,
+        context_id: str | None = None,
+        context_name: str | None = None,
+        object_id: str | None = None,
+    ) -> int:
+        """Remove every alias token belonging to a matching context payload."""
+        self._reload()
+        context_kind = "reusable" if context_type == "reusable" else "page"
+        scoped = self.bucket("contexts").get(context_kind)
+        if not isinstance(scoped, dict):
+            return 0
+        target_id = str(context_id or "").strip()
+        target_object = str(object_id or "").strip()
+        target_name = self._normalize(context_name)
+        removed: list[str] = []
+        for alias, payload in scoped.items():
+            if not isinstance(payload, dict):
+                continue
+            payload_id = str(payload.get("context_id") or "").strip()
+            payload_object = str(payload.get("object_id") or "").strip()
+            payload_name = self._normalize(payload.get("name"))
+            if (
+                (target_id and payload_id == target_id)
+                or (target_object and payload_object == target_object)
+                or (target_name and payload_name == target_name)
+            ):
+                removed.append(alias)
+        for alias in removed:
+            scoped.pop(alias, None)
+        if removed:
+            self._save()
+        return len(removed)
+
+    def remove_workflow_aliases(
+        self,
+        context_id: str,
+        context_type: str,
+        *,
+        workflow_key: str | None = None,
+        workflow_id: str | None = None,
+        workflow_name: str | None = None,
+    ) -> int:
+        """Remove workflow aliases matching any supplied stable selector."""
+        self._reload()
+        scoped = self._workflow_scope(context_id, context_type, create=False)
+        target_key = str(workflow_key or "").strip()
+        target_id = str(workflow_id or "").strip()
+        target_name = self._normalize(workflow_name)
+        removed: list[str] = []
+        for alias, payload in scoped.items():
+            if not isinstance(payload, dict):
+                continue
+            payload_key = str(payload.get("key") or "").strip()
+            payload_id = str(payload.get("id") or "").strip()
+            payload_name = self._normalize(payload.get("name"))
+            if (
+                (target_key and payload_key == target_key)
+                or (target_id and payload_id == target_id)
+                or (target_name and payload_name == target_name)
+            ):
+                removed.append(alias)
+        for alias in removed:
+            scoped.pop(alias, None)
+        if removed:
+            self._save()
+        return len(removed)
+
+    def remove_context_scope(self, context_id: str, context_type: str) -> bool:
+        """Remove modern and historical registry entries scoped to one context."""
+        self._reload()
+        scope_key = self.context_key(context_id, context_type)
+        legacy_prefix = f"{scope_key}:"
+        changed = False
+        for bucket_name in ("element_refs", "workflow_refs", "events"):
+            bucket = self.bucket(bucket_name)
+            keys = [
+                key
+                for key in bucket
+                if str(key) == scope_key or str(key).startswith(legacy_prefix)
+            ]
+            for key in keys:
+                bucket.pop(key, None)
+                changed = True
+        if changed:
+            self._save()
+        return changed

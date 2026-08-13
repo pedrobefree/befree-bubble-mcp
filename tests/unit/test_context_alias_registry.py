@@ -139,6 +139,20 @@ def test_context_key_preserves_context_scope() -> None:
     assert ContextAliasRegistry.context_key("pg_home", "page") == "page:pg_home"
 
 
+def test_lookup_context_ignores_malformed_scopes_payloads_and_empty_ids() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    registry = _registry(state)
+    contexts = registry.bucket("contexts")
+    contexts["reusable"] = []
+    contexts["page"] = {
+        "string": "pg",
+        "empty": {"context_id": ""},
+    }
+
+    assert registry.lookup_context("string") == (None, None)
+    assert registry.lookup_context("empty") == (None, None)
+
+
 def test_cache_element_reloads_and_preserves_existing_key_and_path() -> None:
     disk_cache: dict[str, Any] = {
         "schema": {
@@ -200,6 +214,22 @@ def test_cache_element_rejects_empty_alias_or_element_without_io() -> None:
     assert saves == []
 
 
+def test_cache_element_is_idempotent_and_minimal_payload_omits_optional_fields() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    registry = _registry(state, save_calls=saves)
+
+    assert registry.cache_element("pg", "page", "Hero", "hero_id") is True
+    assert registry.cache_element("pg", "page", "Hero", "hero_id") is False
+    assert registry.lookup_element_payload("pg", "page", "Hero", reload=False) == {
+        "name": "Hero",
+        "id": "hero_id",
+        "context_id": "pg",
+        "context_type": "page",
+    }
+    assert saves == ["save"]
+
+
 def test_cache_created_elements_deduplicates_aliases_and_saves_once() -> None:
     state: dict[str, Any] = {"cache": {}}
     reloads: list[str] = []
@@ -222,6 +252,19 @@ def test_cache_created_elements_deduplicates_aliases_and_saves_once() -> None:
     assert scoped["hero"]["path"] == ["%el", "group_main", "%el", "el_hero"]
     assert all(payload["id"] == "obj_hero" for payload in scoped.values())
     assert reloads == ["reload"]
+    assert saves == ["save"]
+
+
+def test_cache_created_elements_supports_key_only_and_rejects_missing_identity() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    registry = _registry(state, save_calls=saves)
+
+    assert registry.cache_created_elements("pg", "page", ["", "Hero"], "") == 0
+    assert registry.cache_created_elements(
+        "pg", "page", ["", "Hero"], "", element_key="el_hero"
+    ) == 2
+    assert registry.lookup_element_id("pg", "page", "Hero", reload=False) == "el_hero"
     assert saves == ["save"]
 
 
@@ -254,6 +297,24 @@ def test_element_lookups_reload_support_legacy_strings_and_return_defensive_copi
     assert reloads == ["reload", "reload"]
 
 
+def test_element_lookups_and_removal_ignore_empty_missing_and_malformed_payloads() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    registry = _registry(state)
+    registry.bucket("element_refs")["page:pg"] = {
+        "missing_id": {"name": "Missing"},
+        "empty_legacy": "",
+        "number": 123,
+    }
+
+    assert registry.lookup_element_id("pg", "page", "") is None
+    assert registry.lookup_element_id("pg", "page", "missing_id", reload=False) is None
+    assert registry.lookup_element_id("pg", "page", "empty_legacy", reload=False) is None
+    assert registry.lookup_element_id("pg", "page", "number", reload=False) is None
+    assert registry.lookup_element_payload("pg", "page", "") is None
+    assert registry.lookup_element_payload("pg", "page", "number", reload=False) is None
+    assert registry.remove_element_aliases("pg", "page") == 0
+
+
 @pytest.mark.parametrize(
     ("selector", "value"),
     [
@@ -279,3 +340,175 @@ def test_remove_element_aliases_supports_each_stable_selector(selector: str, val
     assert registry.remove_element_aliases("pg", "page", **{selector: value}) == 1
     assert registry.lookup_element_payload("pg", "page", "hero", reload=False) is None
     assert saves == ["save"]
+
+
+def test_cache_workflow_reloads_preserves_siblings_and_uses_injected_clock() -> None:
+    disk_cache: dict[str, Any] = {
+        "schema": {
+            "profiles": {
+                "alpha": {
+                    "workflow_refs": {
+                        "page:pg": {
+                            "existing": {"name": "Existing", "key": "wf_existing"}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    state: dict[str, Any] = {"cache": {}}
+    reloads: list[str] = []
+    saves: list[str] = []
+
+    def replace_from_disk() -> None:
+        state["cache"] = copy.deepcopy(disk_cache)
+
+    registry = _registry(
+        state,
+        reload_calls=reloads,
+        save_calls=saves,
+        reload_action=replace_from_disk,
+    )
+
+    assert registry.cache_workflow("pg", "page", "On Load", "wf_load", "event_id") is True
+    scoped = registry.bucket("workflow_refs")["page:pg"]
+    assert scoped["existing"] == {"name": "Existing", "key": "wf_existing"}
+    assert scoped["on load"] == {
+        "name": "On Load",
+        "key": "wf_load",
+        "id": "event_id",
+        "context_id": "pg",
+        "context_type": "page",
+        "updated_at": 1_700_000_000_123,
+    }
+    assert reloads == ["reload"]
+    assert saves == ["save"]
+
+
+def test_cache_workflow_rejects_invalid_and_is_idempotent_without_optional_id() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    reloads: list[str] = []
+    saves: list[str] = []
+    registry = _registry(state, reload_calls=reloads, save_calls=saves)
+
+    assert registry.cache_workflow("pg", "page", "", "wf") is False
+    assert registry.cache_workflow("pg", "page", "Load", "") is False
+    assert registry.cache_workflow("pg", "page", "Load", "wf_load") is True
+    assert registry.cache_workflow("pg", "page", "Load", "wf_load") is False
+    assert registry.lookup_workflow("pg", "page", "Load", reload=False) == {
+        "name": "Load",
+        "key": "wf_load",
+        "context_id": "pg",
+        "context_type": "page",
+        "updated_at": 1_700_000_000_123,
+    }
+    assert reloads == ["reload", "reload"]
+    assert saves == ["save"]
+
+
+def test_workflow_lookup_rejects_invalid_payload_and_returns_defensive_copy() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    registry = _registry(state)
+    refs = registry.bucket("workflow_refs")
+    refs["page:pg"] = {
+        "invalid": {"name": "Invalid", "key": ""},
+        "valid": {"name": "Valid", "key": "wf_valid"},
+    }
+
+    assert registry.lookup_workflow("pg", "page", "invalid", reload=False) is None
+    payload = registry.lookup_workflow("pg", "page", "valid", reload=False)
+    assert payload == {"name": "Valid", "key": "wf_valid"}
+    assert payload is not None
+    payload["key"] = "mutated"
+    assert registry.lookup_workflow("pg", "page", "valid", reload=False)["key"] == "wf_valid"
+
+
+def test_workflow_lookup_handles_empty_alias_missing_scope_and_malformed_scope() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    registry = _registry(state)
+
+    assert registry.lookup_workflow("pg", "page", "") is None
+    assert registry.lookup_workflow("pg", "page", "missing", reload=False) is None
+    registry.bucket("workflow_refs")["page:pg"] = []
+    assert registry.lookup_workflow("pg", "page", "missing", reload=False) is None
+
+
+@pytest.mark.parametrize(
+    ("selector", "value"),
+    [
+        ("workflow_key", "wf_load"),
+        ("workflow_id", "event_id"),
+        ("workflow_name", "ON LOAD"),
+    ],
+)
+def test_remove_workflow_aliases_supports_each_stable_selector(selector: str, value: str) -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    registry = _registry(state, save_calls=saves)
+    registry.cache_workflow("pg", "page", "On Load", "wf_load", "event_id")
+    saves.clear()
+
+    assert registry.remove_workflow_aliases("pg", "page", **{selector: value}) == 1
+    assert registry.lookup_workflow("pg", "page", "On Load", reload=False) is None
+    assert saves == ["save"]
+
+
+@pytest.mark.parametrize(
+    ("selector", "value"),
+    [
+        ("context_id", "pg_home"),
+        ("object_id", "obj_home"),
+        ("context_name", "HOME PAGE"),
+    ],
+)
+def test_remove_context_aliases_removes_all_fanout_tokens(selector: str, value: str) -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    registry = _registry(state, save_calls=saves)
+    registry.cache_context("page", "Home Page", "pg_home", "obj_home")
+    saves.clear()
+
+    assert registry.remove_context_aliases("page", **{selector: value}) == 3
+    assert registry.lookup_context("Home Page") == (None, None)
+    assert saves == ["save"]
+
+
+def test_remove_context_scope_cleans_modern_and_legacy_keys_without_touching_siblings() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    registry = _registry(state, save_calls=saves)
+    profile = registry.profile_cache()
+    profile["element_refs"] = {
+        "page:pg": {"hero": {"id": "hero_id"}},
+        "page:other": {"keep": {"id": "keep_id"}},
+    }
+    profile["workflow_refs"] = {
+        "page:pg": {"load": {"key": "wf_load"}},
+        "page:pg:wf_legacy": {"name": "legacy"},
+        "page:other": {"keep": {"key": "wf_keep"}},
+    }
+    profile["events"] = {
+        "page:pg:wf_load": {"id": "event_load"},
+        "page:other:wf_keep": {"id": "event_keep"},
+    }
+
+    assert registry.remove_context_scope("pg", "page") is True
+    assert profile["element_refs"] == {"page:other": {"keep": {"id": "keep_id"}}}
+    assert profile["workflow_refs"] == {"page:other": {"keep": {"key": "wf_keep"}}}
+    assert profile["events"] == {"page:other:wf_keep": {"id": "event_keep"}}
+    assert saves == ["save"]
+    saves.clear()
+    assert registry.remove_context_scope("pg", "page") is False
+    assert saves == []
+
+
+def test_removals_ignore_malformed_payloads_and_unmatched_selectors() -> None:
+    state: dict[str, Any] = {"cache": {}}
+    saves: list[str] = []
+    registry = _registry(state, save_calls=saves)
+    registry.bucket("contexts")["page"] = {"legacy": "pg"}
+    registry.bucket("workflow_refs")["page:pg"] = {"legacy": "wf"}
+
+    assert registry.remove_context_aliases("page", context_id="missing") == 0
+    assert registry.remove_workflow_aliases("pg", "page", workflow_key="missing") == 0
+    assert saves == []

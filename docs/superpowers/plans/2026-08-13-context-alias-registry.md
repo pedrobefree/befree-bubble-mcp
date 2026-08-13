@@ -62,11 +62,11 @@
 **Interfaces:**
 - Produces: `cache_workflow`, `lookup_workflow`, `remove_context_aliases`, `remove_workflow_aliases`, and `remove_context_scope`.
 
-- [ ] Write failing tests for deterministic timestamps, reload-before-write, invalid payloads, all removal selectors, and modern/legacy scoped cleanup.
-- [ ] Run tests and verify workflow/lifecycle methods are absent.
-- [ ] Implement workflow/context cleanup with defensive lookups.
-- [ ] Run focused branch coverage and require at least 95%.
-- [ ] Commit as `refactor: isolate workflow alias lifecycle`.
+- [x] Write failing tests for deterministic timestamps, reload-before-write, invalid payloads, all removal selectors, and modern/legacy scoped cleanup.
+- [x] Run tests and verify workflow/lifecycle methods are absent.
+- [x] Implement workflow/context cleanup with defensive lookups.
+- [x] Run focused branch coverage and require at least 95%.
+- [x] Commit as `refactor: isolate workflow alias lifecycle`.
 
 ### Task 4: BubbleCLI compatibility facades
 
