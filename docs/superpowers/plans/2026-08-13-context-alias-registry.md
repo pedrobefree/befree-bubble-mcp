@@ -32,11 +32,11 @@
 **Interfaces:**
 - Produces: `ContextAliasRegistry.profile_cache`, `bucket`, `context_key`, `cache_context`, and `lookup_context`.
 
-- [ ] Write failing tests for profile isolation, invalid bucket repair, context alias fan-out, empty rejection, and reusable-before-page lookup.
-- [ ] Run the focused file and verify collection fails because the registry module is absent.
-- [ ] Implement the minimal callback-backed profile and context boundary.
-- [ ] Run focused tests and Ruff; verify all pass.
-- [ ] Commit as `refactor: extract context alias registry`.
+- [x] Write failing tests for profile isolation, invalid bucket repair, context alias fan-out, empty rejection, and reusable-before-page lookup.
+- [x] Run the focused file and verify collection fails because the registry module is absent.
+- [x] Implement the minimal callback-backed profile and context boundary.
+- [x] Run focused tests and Ruff; verify all pass.
+- [x] Commit as `refactor: extract context alias registry`.
 
 ### Task 2: Element alias lifecycle
 
