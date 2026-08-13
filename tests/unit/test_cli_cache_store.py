@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -49,10 +50,12 @@ def test_merge_cache_payloads_recurses_and_prefers_canonical_incoming_values() -
             "legacy_only": {"rgba": "#ffffff"},
         },
         "version": ["legacy"],
+        "nullable": "legacy-value",
     }
     canonical = {
         "colors": {"shared": {"rgba": "#155eef"}},
         "version": ["canonical"],
+        "nullable": None,
     }
 
     assert merge_cache_payloads(legacy, canonical) == {
@@ -61,6 +64,7 @@ def test_merge_cache_payloads_recurses_and_prefers_canonical_incoming_values() -
             "legacy_only": {"rgba": "#ffffff"},
         },
         "version": ["canonical"],
+        "nullable": None,
     }
 
 
@@ -128,6 +132,28 @@ def test_failed_serialization_preserves_previous_cache_and_cleans_temporary_file
     store = BubbleCLICacheStore(cache_path, warn=warnings.append)
 
     assert store.save({"extension_data": object()}) is False
+    assert cache_path.read_text(encoding="utf-8") == original
+    assert list(tmp_path.glob(f".{cache_path.name}.*.tmp")) == []
+    assert len(warnings) == 1
+
+
+def test_deeply_nested_serialization_failure_returns_false_and_preserves_cache(
+    tmp_path: Path,
+) -> None:
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    original = '{"colors": {}}\n'
+    cache_path.write_text(original, encoding="utf-8")
+    warnings: list[str] = []
+    payload: dict[str, object] = {}
+    cursor = payload
+    for _ in range(sys.getrecursionlimit() + 100):
+        child: dict[str, object] = {}
+        cursor["nested"] = child
+        cursor = child
+
+    store = BubbleCLICacheStore(cache_path, warn=warnings.append)
+
+    assert store.save(payload) is False
     assert cache_path.read_text(encoding="utf-8") == original
     assert list(tmp_path.glob(f".{cache_path.name}.*.tmp")) == []
     assert len(warnings) == 1
@@ -230,6 +256,23 @@ def test_migrate_legacy_creates_missing_canonical_cache(tmp_path: Path) -> None:
     assert store.load()["fonts"] == {"Inter": {"id": "font_inter"}}
 
 
+def test_migrate_legacy_runs_only_once_so_clear_survives_restart(tmp_path: Path) -> None:
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    legacy_path = tmp_path / ".bubble_cli_cache_legacy.json"
+    legacy_path.write_text(
+        '{"colors": {"legacy": {"rgba": "#ffffff"}}}',
+        encoding="utf-8",
+    )
+
+    first_store = BubbleCLICacheStore(cache_path, legacy_path=legacy_path)
+    assert first_store.migrate_legacy() is True
+    assert first_store.clear() is True
+
+    restarted_store = BubbleCLICacheStore(cache_path, legacy_path=legacy_path)
+    assert restarted_store.migrate_legacy() is False
+    assert restarted_store.load() == default_cache_payload()
+
+
 def test_migrate_legacy_reports_atomic_save_failure(tmp_path: Path) -> None:
     cache_path = tmp_path / "cache-as-directory"
     cache_path.mkdir()
@@ -271,6 +314,18 @@ def test_bubble_cli_reload_preserves_memory_when_disk_cache_is_malformed(
     cli._reload_cli_cache_from_disk()
 
     assert cli._cli_cache == in_memory
+
+
+def test_reload_preserves_current_mapping_exactly_when_disk_cache_is_missing(
+    tmp_path: Path,
+) -> None:
+    current = {"extension_data": {"keep": True}}
+
+    reloaded = BubbleCLICacheStore(tmp_path / "missing.json").reload(current)
+
+    assert reloaded == current
+    assert reloaded is not current
+    assert reloaded["extension_data"] is not current["extension_data"]
 
 
 def test_bubble_cli_clear_restores_complete_canonical_defaults(

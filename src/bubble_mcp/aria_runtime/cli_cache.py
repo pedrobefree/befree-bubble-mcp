@@ -26,7 +26,7 @@ def default_cache_payload() -> dict[str, Any]:
 
 
 def merge_cache_payloads(base: Any, incoming: Any) -> Any:
-    """Recursively merge payloads, preferring non-null incoming values."""
+    """Recursively merge payloads, preferring incoming values, including null."""
     if isinstance(base, dict) and isinstance(incoming, dict):
         merged = copy.deepcopy(base)
         for key, value in incoming.items():
@@ -35,7 +35,7 @@ def merge_cache_payloads(base: Any, incoming: Any) -> Any:
             else:
                 merged[key] = copy.deepcopy(value)
         return merged
-    return copy.deepcopy(incoming if incoming is not None else base)
+    return copy.deepcopy(incoming)
 
 
 def _normalize_payload(payload: Any) -> dict[str, Any]:
@@ -68,6 +68,9 @@ class BubbleCLICacheStore:
     ) -> None:
         self.cache_path = Path(cache_path)
         self.legacy_path = Path(legacy_path) if legacy_path is not None else None
+        self._legacy_marker_path = self.cache_path.with_name(
+            f"{self.cache_path.name}.legacy-migrated"
+        )
         self._warn = warn or (lambda _message: None)
 
     def load(self) -> dict[str, Any]:
@@ -80,7 +83,7 @@ class BubbleCLICacheStore:
     def reload(self, current: Mapping[str, Any]) -> dict[str, Any]:
         """Reload valid disk data without discarding the current state on read failure."""
         if not self.cache_path.exists():
-            return _normalize_payload(dict(current))
+            return copy.deepcopy(dict(current))
         payload = self._read_object(self.cache_path)
         if payload is None:
             return copy.deepcopy(dict(current))
@@ -118,7 +121,7 @@ class BubbleCLICacheStore:
             os.replace(temporary_path, self.cache_path)
             temporary_path = None
             return True
-        except (OSError, TypeError, ValueError) as exc:
+        except (OSError, RecursionError, TypeError, ValueError) as exc:
             self._warn(f"Could not save CLI cache {self.cache_path}: {exc}")
             return False
         finally:
@@ -140,7 +143,12 @@ class BubbleCLICacheStore:
     def migrate_legacy(self) -> bool:
         """Merge a legacy temp cache without overwriting canonical conflicts."""
         legacy_path = self.legacy_path
-        if legacy_path is None or legacy_path == self.cache_path or not legacy_path.exists():
+        if (
+            legacy_path is None
+            or legacy_path == self.cache_path
+            or not legacy_path.exists()
+            or self._legacy_marker_path.exists()
+        ):
             return False
 
         legacy = self._read_object(legacy_path)
@@ -151,4 +159,20 @@ class BubbleCLICacheStore:
         if self.cache_path.exists():
             canonical = self._read_object(self.cache_path) or {}
         merged = merge_cache_payloads(legacy, canonical)
-        return self.save(_normalize_payload(merged))
+        if not self.save(_normalize_payload(merged)):
+            return False
+        return self._mark_legacy_migrated()
+
+    def _mark_legacy_migrated(self) -> bool:
+        try:
+            self._legacy_marker_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._legacy_marker_path.open("x", encoding="utf-8") as handle:
+                handle.write("migrated\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            return True
+        except FileExistsError:
+            return True
+        except OSError as exc:
+            self._warn(f"Could not mark legacy CLI cache as migrated: {exc}")
+            return False

@@ -71,6 +71,9 @@ Legacy migration treats the canonical file as authoritative when both files
 contain the same scalar or list. Legacy-only nested data is retained. This
 prevents stale temp state from overwriting a newer profile cache. The legacy
 file is not deleted in this stage, preserving recovery and downgrade safety.
+After the canonical payload is saved, a durable sibling marker records that
+the one-way migration completed. Clearing the canonical cache preserves this
+marker so a later startup cannot resurrect stale legacy-only entries.
 
 ## Compatibility and MCP Boundaries
 

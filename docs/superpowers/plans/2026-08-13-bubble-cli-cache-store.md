@@ -18,6 +18,7 @@
 - Expected serialization and filesystem failures return failure/default state instead of escaping.
 - Atomic writes must use a temporary sibling and `os.replace`.
 - Canonical data wins conflicts during legacy migration; legacy-only nested data is retained.
+- Successful legacy migration records durable one-way state that survives canonical cache clears.
 - Context aliases and reference-resolution code are out of scope for Stage 4.1.
 - The global coverage ratchet may only increase and must retain at least 0.1 percentage point of headroom.
 
