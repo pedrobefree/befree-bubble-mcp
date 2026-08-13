@@ -7463,24 +7463,24 @@ class PathDiscovery(DiscoveryDataBoundary):
         # If parent_id provided, find it first
         # We can reuse find_element_by_name logic but we need ID search
         # Quick search
-        def find_node(obj):
+        def find_node_chain(obj):
             if isinstance(obj, dict):
                 if obj.get('id') == parent_id:
-                    return obj
-                elements = (
-                    self._sync_alias_mapping(obj, 'elements', '%el')
-                    if 'elements' in obj or '%el' in obj
-                    else {}
-                )
-                if isinstance(elements, dict):
-                    for k, v in elements.items():
-                        if k == "length": continue
-                        res = find_node(v)
-                        if res: return res
+                    return [obj]
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
+                for k, v in elements.items():
+                    if k == "length": continue
+                    chain = find_node_chain(v)
+                    if chain:
+                        return [obj, *chain]
             return None
 
-        parent_node = find_node(root)
-        if parent_node:
+        parent_chain = find_node_chain(root)
+        if parent_chain:
+            for ancestor in parent_chain:
+                if 'elements' in ancestor or '%el' in ancestor:
+                    self._sync_alias_mapping(ancestor, "elements", "%el")
+            parent_node = parent_chain[-1]
             # Match children key of the parent
             parent_children = self._sync_alias_mapping(parent_node, "elements", "%el")
             parent_children[dict_key] = new_el

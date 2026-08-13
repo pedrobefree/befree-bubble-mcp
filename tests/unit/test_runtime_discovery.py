@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -282,6 +283,82 @@ def test_path_discovery_injected_custom_workflow_isolated_from_caller_and_cache(
     }
     assert live == expected
     assert persisted == expected
+
+
+def test_path_discovery_nested_injection_leaves_unrelated_hybrid_siblings_untouched(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    sibling_readable = {"readable-child": {"id": "readable-child"}}
+    sibling_wire = {"wire-child": {"id": "wire-child"}}
+    sibling = {
+        "id": "sibling",
+        "elements": sibling_readable,
+        "%el": sibling_wire,
+    }
+    discovery = PathDiscovery()
+    discovery._data = {
+        "element_definitions": {
+            "reuse": {
+                "id": "reuse",
+                "elements": {
+                    "sibling-slot": sibling,
+                    "target-slot": {"id": "target", "elements": {}},
+                },
+            }
+        }
+    }
+    persisted: list[bool] = []
+    monkeypatch.setattr(discovery, "persist_disk_cache", lambda: persisted.append(True) or True)
+
+    discovery.inject_element(
+        "reuse",
+        "reusable",
+        "target",
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    assert sibling["elements"] is sibling_readable
+    assert sibling["%el"] is sibling_wire
+    assert sibling["elements"] is not sibling["%el"]
+    assert sibling["elements"] == {"readable-child": {"id": "readable-child"}}
+    assert sibling["%el"] == {"wire-child": {"id": "wire-child"}}
+    assert persisted == [True]
+
+
+def test_path_discovery_missing_nested_parent_does_not_mutate_or_persist(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    discovery = PathDiscovery()
+    discovery._data = {
+        "element_definitions": {
+            "reuse": {
+                "id": "reuse",
+                "elements": {"readable-slot": {"id": "readable"}},
+                "%el": {"wire-slot": {"id": "wire"}},
+            }
+        }
+    }
+    before = deepcopy(discovery.data)
+    root = discovery.data["element_definitions"]["reuse"]
+    readable = root["elements"]
+    wire = root["%el"]
+    persisted: list[bool] = []
+    monkeypatch.setattr(discovery, "persist_disk_cache", lambda: persisted.append(True) or True)
+
+    discovery.inject_element(
+        "reuse",
+        "reusable",
+        "missing-parent",
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    assert discovery.data == before
+    assert root["elements"] is readable
+    assert root["%el"] is wire
+    assert root["elements"] is not root["%el"]
+    assert persisted == []
 
 
 def test_path_discovery_cache_can_be_disabled(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
