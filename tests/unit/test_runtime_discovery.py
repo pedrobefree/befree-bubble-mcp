@@ -155,6 +155,22 @@ def test_path_discovery_persists_enriched_consolelog_cache(tmp_path: Path) -> No
     assert Path(f"{consolelog_path}.parsed-cache.pkl").exists()
 
 
+def test_path_discovery_persists_injected_workflow_across_instances(tmp_path: Path) -> None:
+    app_path = tmp_path / "app.bubble"
+    _write_json(app_path, {"element_definitions": {"reuse": {"elements": {}}}})
+    discovery = PathDiscovery(str(app_path))
+    _ = discovery.data
+
+    discovery.inject_workflow("reuse", "button", "click", "workflow", "reusable")
+
+    reloaded = PathDiscovery(str(app_path))
+    result = reloaded.find_workflow_for_element("reuse", "button", "click")
+    assert result is not None
+    assert result["id"] == "workflow"
+    root = reloaded.data["element_definitions"]["reuse"]
+    assert root["workflows"] is root["%wf"]
+
+
 def test_path_discovery_cache_can_be_disabled(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_CLI_DISCOVERY_CACHE", "off")
     app_path = tmp_path / "app.bubble"
