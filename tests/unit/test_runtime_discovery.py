@@ -208,6 +208,82 @@ def test_path_discovery_root_update_preserves_aliased_children_across_instances(
     assert set(persisted_root["elements"]) == {"readable-child", "wire-child"}
 
 
+def test_path_discovery_nested_injection_synchronizes_distinct_ancestor_aliases(
+    tmp_path: Path,
+) -> None:
+    app_path = tmp_path / "app.bubble"
+    _write_json(
+        app_path,
+        {
+            "element_definitions": {
+                "reuse": {
+                    "id": "reuse",
+                    "elements": {
+                        "parent-slot": {"id": "parent", "elements": {"readable": {}}}
+                    },
+                    "%el": {
+                        "parent-slot": {"id": "parent", "%el": {"wire": {}}}
+                    },
+                }
+            }
+        },
+    )
+    discovery = PathDiscovery(str(app_path))
+    _ = discovery.data
+
+    discovery.inject_element(
+        "reuse",
+        "reusable",
+        "parent",
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    reloaded = PathDiscovery(str(app_path))
+    root = reloaded.data["element_definitions"]["reuse"]
+    parent = root["%el"]["parent-slot"]
+    assert parent["elements"] is parent["%el"]
+    assert parent["%el"]["child-slot"]["id"] == "child"
+    assert reloaded.list_elements("reuse")[-1]["path"] == [
+        "%el",
+        "parent-slot",
+        "%el",
+        "child-slot",
+    ]
+
+
+def test_path_discovery_injected_custom_workflow_isolated_from_caller_and_cache(
+    tmp_path: Path,
+) -> None:
+    app_path = tmp_path / "app.bubble"
+    _write_json(app_path, {"element_definitions": {"reuse": {"id": "reuse"}}})
+    discovery = PathDiscovery(str(app_path))
+    _ = discovery.data
+    workflow_obj = {
+        "%x": "ElementEvent",
+        "%p": {"%ei": "button", "%et": "click"},
+        "actions": {"first": {"id": "first"}},
+    }
+
+    discovery.inject_workflow(
+        "reuse", "button", "click", "workflow", "reusable", workflow_obj
+    )
+    workflow_obj["%p"]["%ei"] = "mutated"
+    workflow_obj["actions"]["first"]["id"] = "mutated"
+
+    live = discovery.data["element_definitions"]["reuse"]["%wf"]["workflow"]
+    reloaded = PathDiscovery(str(app_path))
+    persisted = reloaded.data["element_definitions"]["reuse"]["%wf"]["workflow"]
+    expected = {
+        "%x": "ElementEvent",
+        "%p": {"%ei": "button", "%et": "click"},
+        "actions": {"first": {"id": "first"}},
+        "id": "workflow",
+    }
+    assert live == expected
+    assert persisted == expected
+
+
 def test_path_discovery_cache_can_be_disabled(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setenv("BUBBLE_CLI_DISCOVERY_CACHE", "off")
     app_path = tmp_path / "app.bubble"

@@ -40,6 +40,25 @@ def test_alias_mapping_readers_resolve_precedence() -> None:
     }
 
 
+def test_alias_mapping_reader_keeps_preferred_collision_order() -> None:
+    discovery = PathDiscovery()
+    target = {
+        "elements": {
+            "same": {"id": "readable"},
+            "preferred-only": {"id": "preferred-only"},
+        },
+        "%el": {
+            "same": {"id": "wire"},
+            "alternate-only": {"id": "alternate-only"},
+        },
+    }
+
+    resolved = discovery._read_alias_mapping(target, "elements", "%el")
+
+    assert list(resolved) == ["alternate-only", "same", "preferred-only"]
+    assert resolved["same"] == {"id": "readable"}
+
+
 def test_alias_mapping_readers_fall_back_from_empty_preferred_mapping() -> None:
     discovery = PathDiscovery()
 
@@ -674,6 +693,46 @@ def test_find_workflow_prefers_latest_and_falls_back_to_raw_nested_tree() -> Non
     assert discovery.find_workflow_for_element("reuse", "missing") is None
     assert discovery.find_workflow_for_element("missing", "button") is None
     assert discovery.find_workflow_for_element("mixed-properties", "mixed-button")["id"] == "mixed"
+
+
+def test_find_workflow_prefers_newest_root_and_nested_workflows_with_raw_fallback() -> None:
+    def workflow(workflow_id: str, element_id: str) -> dict[str, Any]:
+        return {
+            "id": workflow_id,
+            "%x": "ElementEvent",
+            "%p": {"%ei": element_id, "%et": "click"},
+        }
+
+    discovery = discovery_with(
+        {
+            "element_definitions": {
+                "reuse": {
+                    "workflows": {
+                        "root-old": workflow("root-old", "root-button"),
+                        "root-new": workflow("root-new", "root-button"),
+                    },
+                    "%wf": {"root-raw": workflow("root-raw", "root-raw-button")},
+                    "elements": {
+                        "parent": {
+                            "id": "parent",
+                            "workflows": {
+                                "nested-old": workflow("nested-old", "nested-button"),
+                                "nested-new": workflow("nested-new", "nested-button"),
+                            },
+                            "%wf": {
+                                "nested-raw": workflow("nested-raw", "nested-raw-button")
+                            },
+                        }
+                    },
+                }
+            }
+        }
+    )
+
+    assert discovery.find_workflow_for_element("reuse", "root-button")["id"] == "root-new"
+    assert discovery.find_workflow_for_element("reuse", "nested-button")["id"] == "nested-new"
+    assert discovery.find_workflow_for_element("reuse", "root-raw-button")["id"] == "root-raw"
+    assert discovery.find_workflow_for_element("reuse", "nested-raw-button")["id"] == "nested-raw"
 
 
 def test_inject_workflow_synchronizes_hybrid_aliases(monkeypatch) -> None:  # type: ignore[no-untyped-def]

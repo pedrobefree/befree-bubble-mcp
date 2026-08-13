@@ -289,3 +289,43 @@ git diff --check origin/main...HEAD
 ```
 
 Expected: PR #17 points at both the plan and implementation commits, contains the structural-update comment, and the committed branch diff is clean; remote CI may remain infrastructure-blocked by the existing billing lock.
+
+### Task 6: Close remaining in-scope alias and workflow counterexamples
+
+**Files:**
+- Modify: `src/bubble_mcp/aria_runtime/bubble_sdk.py`
+- Test: `tests/unit/test_runtime_sdk_path_discovery.py`
+- Test: `tests/unit/test_runtime_discovery.py`
+
+**Interfaces:**
+- Consumes: the alias readers/synchronizer and cache persistence introduced by Tasks 1-4.
+- Produces: canonical nested writes, stable preferred ordering, consistent newest-first workflow lookup, and payload isolation between callers and the persisted discovery cache.
+
+- [ ] **Step 1: Reproduce all four review findings in RED**
+
+Add behavioral regressions proving:
+
+1. When an ancestor slot exists as distinct objects in `elements` and `%el`, nested injection synchronizes the ancestor before mutation and the returned canonical `%el` path resolves to the injected child after a fresh-instance cache readback.
+2. Same-ID collisions retain both the preferred value and the preferred mapping's insertion order; alternate-only IDs remain present.
+3. Root and nested workflow searches both choose the newest matching preferred workflow, while retaining raw-only workflows as fallback.
+4. Mutating nested `%p` or `actions` in the caller's `workflow_obj` after injection cannot mutate the live cache or create a difference from a freshly loaded instance.
+
+Run the new tests against `020f0b1` and record the expected four failures before production edits.
+
+- [ ] **Step 2: Implement the minimum structural fixes**
+
+- Build read unions from alternate-only records followed by the entire preferred mapping.
+- Use a write-aware recursive element traversal that synchronizes `elements/%el` at every ancestor before descending.
+- Apply newest-first iteration consistently to nested workflow buckets.
+- Deep-copy a custom workflow payload before defaults, insertion, and persistence.
+- Do not alter unrelated BubbleAppMapper behavior, public method signatures, or non-discovery runtime code.
+
+- [ ] **Step 3: Verify focused and clean full-suite behavior**
+
+Run the new regressions, then the three focused discovery files. Because the primary checkout contains unrelated untracked duplicate test files, run the clean full Python suite from a temporary detached worktree at the committed HEAD, using the existing venv interpreter with `PYTHONPATH=<temp-worktree>/src`.
+
+Also run Ruff on changed tracked files, MyPy on `src`, the runtime coverage and agent-routing smokes, and `git diff --check`.
+
+- [ ] **Step 4: Commit, review, push, and update PR #17**
+
+Stage only the plan, `bubble_sdk.py`, and the two intended tracked test files. Inspect the staged diff, commit intentionally, obtain independent spec/quality review, push the existing branch, update PR #17, and verify the remote head. Keep the PR Draft.

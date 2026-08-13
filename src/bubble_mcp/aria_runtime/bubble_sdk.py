@@ -10,6 +10,7 @@ import random
 import string
 import requests
 import tempfile
+from copy import deepcopy
 from datetime import datetime
 import re
 from typing import Dict, List, Any, Optional, Union, Tuple
@@ -6617,8 +6618,12 @@ class PathDiscovery(DiscoveryDataBoundary):
         if alternate_mapping is None or preferred_mapping is alternate_mapping:
             return preferred_mapping
 
-        # Preserve preferred values on collisions while retaining alternate-only records.
-        return {**alternate_mapping, **preferred_mapping}
+        # Preserve alternate-only records before the preferred mapping, which
+        # retains preferred values and its insertion order on collisions.
+        return {
+            **{key: value for key, value in alternate_mapping.items() if key not in preferred_mapping},
+            **preferred_mapping,
+        }
 
     @staticmethod
     def _read_nonempty_alias_mapping(
@@ -7462,7 +7467,11 @@ class PathDiscovery(DiscoveryDataBoundary):
             if isinstance(obj, dict):
                 if obj.get('id') == parent_id:
                     return obj
-                elements = self._read_alias_mapping(obj, 'elements', '%el')
+                elements = (
+                    self._sync_alias_mapping(obj, 'elements', '%el')
+                    if 'elements' in obj or '%el' in obj
+                    else {}
+                )
                 if isinstance(elements, dict):
                     for k, v in elements.items():
                         if k == "length": continue
@@ -7531,7 +7540,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 # Search workflows direct list if any
                 workflows = self._read_alias_mapping(obj, 'workflows', '%wf')
                 if isinstance(workflows, dict):
-                    for key, value in workflows.items():
+                    for key, value in reversed(list(workflows.items())):
                         if key == "length": continue
                         child_path = path_parts + (['%wf', key] if '%wf' in obj or '%x' in obj else ['workflows', key])
                         result = search_workflow(value, child_path)
@@ -7595,7 +7604,7 @@ class PathDiscovery(DiscoveryDataBoundary):
 
         # Keep injected workflow shape aligned with what was created.
         if isinstance(workflow_obj, dict):
-            wf_obj = dict(workflow_obj)
+            wf_obj = deepcopy(workflow_obj)
             wf_obj.setdefault("id", wf_id)
             wf_obj.setdefault("actions", {})
         else:
