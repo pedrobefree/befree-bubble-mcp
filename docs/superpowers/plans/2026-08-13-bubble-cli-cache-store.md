@@ -92,23 +92,23 @@ Commit: `refactor: make CLI cache writes atomic`
 **Interfaces:**
 - Produces: `BubbleCLICacheStore.migrate_legacy() -> bool`.
 
-- [ ] **Step 1: Write failing migration tests**
+- [x] **Step 1: Write failing migration tests**
 
 Cover absent/same legacy paths, malformed legacy JSON, legacy-only data retention, canonical scalar conflict precedence, nested dictionary merge, and save failure propagation.
 
-- [ ] **Step 2: Run migration tests and verify RED**
+- [x] **Step 2: Run migration tests and verify RED**
 
 Expected: failures because `migrate_legacy` is absent.
 
-- [ ] **Step 3: Implement migration**
+- [x] **Step 3: Implement migration**
 
 Load both raw object payloads, merge legacy as the base and canonical as incoming, normalize once, and persist atomically. Return `False` for no migration or any invalid/failing path.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run cache-store tests with branch coverage. Expected: at least 95% combined coverage for `cli_cache.py`.
 
-- [ ] **Step 5: Commit migration**
+- [x] **Step 5: Commit migration**
 
 Commit: `refactor: isolate legacy cache migration`
 

@@ -74,12 +74,20 @@ class BubbleCLICacheStore:
         """Return normalized cache data, or defaults when the file is unusable."""
         if not self.cache_path.exists():
             return default_cache_payload()
+        payload = self._read_object(self.cache_path)
+        return _normalize_payload(payload)
+
+    def _read_object(self, path: Path) -> dict[str, Any] | None:
         try:
-            with self.cache_path.open("r", encoding="utf-8") as handle:
-                return _normalize_payload(json.load(handle))
+            with path.open("r", encoding="utf-8") as handle:
+                payload = json.load(handle)
         except (json.JSONDecodeError, OSError, UnicodeError) as exc:
-            self._warn(f"Could not load CLI cache {self.cache_path}: {exc}")
-            return default_cache_payload()
+            self._warn(f"Could not load CLI cache {path}: {exc}")
+            return None
+        if not isinstance(payload, dict):
+            self._warn(f"Could not load CLI cache {path}: top-level JSON must be an object")
+            return None
+        return payload
 
     def save(self, payload: Mapping[str, Any]) -> bool:
         """Atomically persist a normalized payload without exposing partial JSON."""
@@ -119,3 +127,19 @@ class BubbleCLICacheStore:
         except OSError as exc:
             self._warn(f"Could not clear CLI cache {self.cache_path}: {exc}")
             return False
+
+    def migrate_legacy(self) -> bool:
+        """Merge a legacy temp cache without overwriting canonical conflicts."""
+        legacy_path = self.legacy_path
+        if legacy_path is None or legacy_path == self.cache_path or not legacy_path.exists():
+            return False
+
+        legacy = self._read_object(legacy_path)
+        if legacy is None:
+            return False
+
+        canonical: dict[str, Any] = {}
+        if self.cache_path.exists():
+            canonical = self._read_object(self.cache_path) or {}
+        merged = merge_cache_payloads(legacy, canonical)
+        return self.save(_normalize_payload(merged))
