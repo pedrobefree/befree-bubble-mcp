@@ -84,6 +84,23 @@ def test_parse_snapshot_hydrates_missing_geometry_without_overwriting_renderer_r
     }
 
 
+def test_snapshot_computed_style_is_not_overwritten_by_inline_declarations() -> None:
+    parsed = HTMLParser().parse_snapshot(
+        {
+            "type": "element",
+            "tag": "p",
+            "attributes": {"style": "color: #222222 !important; width: 320px"},
+            "computedStyle": {"color": "#111111", "width": "300px"},
+            "rect": {},
+            "children": [],
+        }
+    )
+
+    assert parsed["computed_styles"] == {"color": "#111111", "width": "300px"}
+    assert parsed["styles"] == {}
+    assert parsed["rect"] == {"width": 300.0}
+
+
 def test_progressbar_snapshot_uses_normalized_renderer_classes() -> None:
     parsed = HTMLParser().parse_snapshot(
         {
@@ -181,6 +198,5 @@ def test_geometry_hydration_ignores_invalid_nodes_and_preserves_existing_values(
     }
     parser._hydrate_rendered_inline_geometry(node)
 
-    assert node["computed_styles"]["width"] == "500px"
+    assert node["computed_styles"]["width"] == "400px"
     assert node["rect"] == {"width": 300, "left": 4, "top": 20.0, "y": 20.0}
-

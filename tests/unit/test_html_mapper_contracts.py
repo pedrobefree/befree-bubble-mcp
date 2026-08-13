@@ -85,6 +85,8 @@ def test_map_tree_rejects_empty_hidden_and_skipped_source_without_exceptions() -
         "ftp://example.test/image.png",
         "data:text/html,<script>alert(1)</script>",
         "data:image/svg+xml,<svg onload='alert(1)'></svg>",
+        "data:image/svg+xml,%3Csvg%3E%3Ca%20href='%26%23106%3Bavascript%3Aalert(1)'/%3E%3C/svg%3E",
+        "data:image/svg+xml,%3Csvg%3E%3Cimage%20href='https%3A%2F%2Fexample.test%2Fpixel.png'/%3E%3C/svg%3E",
         "https://example.test/image.png\njavascript:alert(1)",
     ],
 )

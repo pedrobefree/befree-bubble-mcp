@@ -28,4 +28,3 @@ def test_setup_smoke_cli_runs_from_non_editable_checkout(tmp_path: Path) -> None
 
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["ok"] is True
-

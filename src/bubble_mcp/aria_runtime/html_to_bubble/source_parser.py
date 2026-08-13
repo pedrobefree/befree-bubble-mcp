@@ -73,10 +73,13 @@ class HTMLParser:
 
         attrs = self._normalize_attrs(dict(element.attrs))
         classes = attrs.get("class", [])
-        styles = self._parse_inline_styles(str(element.get("style", "")))
+        raw_styles = self._parse_inline_styles(str(element.get("style", "")))
         computed = self._infer_from_classes(classes)
+        rule_priorities: Dict[str, tuple[int, tuple[int, int, int], int]] = {}
         if self._style_rules:
-            computed.update(self._apply_style_rules(element, attrs))
+            matched, rule_priorities = self._resolve_style_rules(element, attrs)
+            computed.update(matched)
+        styles = self._resolve_inline_styles(raw_styles, computed, rule_priorities)
         text = self._extract_text(element)
 
         children: List[Dict[str, Any]] = []
@@ -128,6 +131,14 @@ class HTMLParser:
         return rules
 
     def _apply_style_rules(self, element: Tag, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        matched, _priorities = self._resolve_style_rules(element, attrs)
+        return matched
+
+    def _resolve_style_rules(
+        self,
+        element: Tag,
+        attrs: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], Dict[str, tuple[int, tuple[int, int, int], int]]]:
         matched: Dict[str, Any] = {}
         priorities: Dict[str, tuple[int, tuple[int, int, int], int]] = {}
         tag_name = element.name.lower()
@@ -142,14 +153,33 @@ class HTMLParser:
             specificity = self._selector_specificity(selector)
             for k, v in (rule.get("styles", {}) or {}).items():
                 key = str(k).strip().lower()
-                raw_value = str(v).strip()
-                important = bool(re.search(r"\s*!important\s*$", raw_value, flags=re.IGNORECASE))
-                value = re.sub(r"\s*!important\s*$", "", raw_value, flags=re.IGNORECASE).strip()
+                value, important = self._split_css_important(v)
                 priority = (int(important), specificity, source_order)
                 if key and value and priority >= priorities.get(key, (-1, (-1, -1, -1), -1)):
                     matched[key] = value
                     priorities[key] = priority
-        return matched
+        return matched, priorities
+
+    def _resolve_inline_styles(
+        self,
+        raw_styles: Dict[str, str],
+        computed: Dict[str, Any],
+        rule_priorities: Dict[str, tuple[int, tuple[int, int, int], int]],
+    ) -> Dict[str, str]:
+        winners: Dict[str, str] = {}
+        for key, raw_value in raw_styles.items():
+            value, important = self._split_css_important(raw_value)
+            rule_is_important = bool(rule_priorities.get(key, (0, (0, 0, 0), 0))[0])
+            if value and (important or not rule_is_important):
+                computed[key] = value
+                winners[key] = value
+        return winners
+
+    def _split_css_important(self, raw_value: Any) -> tuple[str, bool]:
+        value = str(raw_value).strip()
+        important = bool(re.search(r"\s*!important\s*$", value, flags=re.IGNORECASE))
+        clean = re.sub(r"\s*!important\s*$", "", value, flags=re.IGNORECASE).strip()
+        return clean, important
 
     def _selector_specificity(self, selector: str) -> tuple[int, int, int]:
         simple = selector.strip()
@@ -196,7 +226,12 @@ class HTMLParser:
 
         tag = self._clean_text(str(node.get("tag", ""))).lower() or "div"
         attrs = self._normalize_attrs(dict(node.get("attributes", {}) or {}))
-        inline_styles = self._parse_inline_styles(str(attrs.get("style", "")))
+        raw_inline_styles = self._parse_inline_styles(str(attrs.get("style", "")))
+        normalized_inline_styles = {
+            key: self._split_css_important(value)[0]
+            for key, value in raw_inline_styles.items()
+            if self._split_css_important(value)[0]
+        }
         computed = {
             str(k).strip().lower(): str(v).strip()
             for k, v in dict(node.get("computedStyle", {}) or {}).items()
@@ -206,8 +241,13 @@ class HTMLParser:
         # only a last-resort fallback when extractor style data is missing.
         if computed:
             merged_computed = dict(computed)
+            inline_styles = {
+                key: value for key, value in normalized_inline_styles.items() if key not in merged_computed
+            }
         else:
             merged_computed = dict(self._infer_from_classes(attrs.get("class", [])))
+            merged_computed.update(normalized_inline_styles)
+            inline_styles = normalized_inline_styles
         text = self._clean_text(str(node.get("text", "")))
 
         children: List[Dict[str, Any]] = []
@@ -335,7 +375,14 @@ class HTMLParser:
             return
 
         merged_styles = dict(inherited_styles or {})
-        merged_styles.update(self._parse_inline_styles(str(node.get("style", ""))))
+        merged_styles.update(
+            {
+                key: clean
+                for key, value in self._parse_inline_styles(str(node.get("style", ""))).items()
+                for clean, _important in [self._split_css_important(value)]
+                if clean
+            }
+        )
 
         for child in node.children:
             self._collect_tag_segments(child, merged_styles, out)

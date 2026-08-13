@@ -67,6 +67,27 @@ def test_css_cascade_honors_importance_specificity_and_source_order() -> None:
     assert styles["background"] == "#aaaaaa"
 
 
+def test_public_parser_resolves_stylesheet_and_inline_importance_before_mapping() -> None:
+    parser = HTMLParser()
+    stylesheet_wins = parser.parse(
+        "<style>#hero { color: #111111 !important; }</style>"
+        '<p id="hero" style="color: #222222; width: 320px">Text</p>'
+    )["children"][1]
+    inline_wins = parser.parse(
+        "<style>#hero { color: #111111 !important; }</style>"
+        '<p id="hero" style="color: #222222 !important">Text</p>'
+    )["children"][1]
+
+    assert stylesheet_wins["computed_styles"]["color"] == "#111111"
+    assert stylesheet_wins["computed_styles"]["width"] == "320px"
+    assert "color" not in stylesheet_wins["styles"]
+    assert inline_wins["computed_styles"]["color"] == "#222222"
+    assert inline_wins["styles"]["color"] == "#222222"
+    assert "!important" not in str(inline_wins["computed_styles"])
+    assert "!important" not in str(inline_wins["styles"])
+    assert "!important" not in str(inline_wins["text_segments"])
+
+
 def test_parse_inline_segments_preserve_spacing_breaks_and_styles() -> None:
     node = HTMLParser().parse(
         '<p style="font-size: 16px">Hello <strong style="font-weight:700">world</strong><br> again</p>'
@@ -167,6 +188,9 @@ def test_infer_from_framework_classes(classes: list[str], expected: dict[str, st
         ("ftp://example.test/a.png", ""),
         ("data:text/html,<script>alert(1)</script>", ""),
         ("data:image/svg+xml,<svg onload='alert(1)'></svg>", ""),
+        ("data:image/svg+xml,%3Csvg%3E%3Ca%20href='%26%23106%3Bavascript%3Aalert(1)'/%3E%3C/svg%3E", ""),
+        ("data:image/svg+xml,%3Csvg%3E%3Cstyle%3Ea%7Bfill%3Aurl(jav%5C61script%3Aalert(1))%7D%3C/style%3E%3C/svg%3E", ""),
+        ("data:image/svg+xml,%3Csvg%3E%3Cimage%20href='https%3A%2F%2Fexample.test%2Fpixel.png'/%3E%3C/svg%3E", ""),
         ("data:image/svg+xml,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E", "data:image/svg+xml,%3Csvg%20viewBox='0%200%201%201'%3E%3C/svg%3E"),
         ("#fragment", ""),
         (None, ""),

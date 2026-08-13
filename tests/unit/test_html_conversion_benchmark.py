@@ -59,4 +59,3 @@ def test_benchmark_cli_reports_invalid_fixture(capsys: pytest.CaptureFixture[str
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
     assert "missing.html" in payload["error"]
-
