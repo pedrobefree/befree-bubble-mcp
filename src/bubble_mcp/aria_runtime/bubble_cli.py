@@ -69,6 +69,7 @@ from color_mapper import ColorMapper
 from source_query_builder import build_search_source_expression, build_message_chain
 from element_capabilities import TOOL_ELEMENT_MAP, element_supported_properties
 from cli_cache import BubbleCLICacheStore, default_cache_payload, merge_cache_payloads
+from context_alias_registry import ContextAliasRegistry
 
 PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
     # Application rights
@@ -440,6 +441,14 @@ class BubbleCLI:
         self.nl_config = nl_config or {}
         self.render_config = render_config or {}
         self.style_defaults = style_defaults or {}
+        self._alias_registry = ContextAliasRegistry(
+            cache=lambda: self._cli_cache,
+            profile_key=self._schema_profile_key,
+            normalize=self._norm_lookup,
+            normalize_path=self._normalize_payload_path,
+            reload=self._reload_cli_cache_from_disk,
+            save=self._save_cli_cache,
+        )
 
         self.color_mapper = ColorMapper(self.discovery.data)
         # Seed with cached colors
@@ -1166,95 +1175,31 @@ class BubbleCLI:
         return self.profile_name or "default"
 
     def _schema_profile_cache(self) -> Dict[str, Any]:
-        schema = self._cli_cache.setdefault("schema", {})
-        if not isinstance(schema, dict):
-            schema = {}
-            self._cli_cache["schema"] = schema
-        profiles = schema.setdefault("profiles", {})
-        if not isinstance(profiles, dict):
-            profiles = {}
-            schema["profiles"] = profiles
-        key = self._schema_profile_key()
-        profile_cache = profiles.setdefault(
-            key,
-            {
-                "option_sets": {},
-                "user_types": {},
-                "app_texts": {},
-                "events": {},
-                "workflow_refs": {},
-                "element_refs": {},
-                "components": {},
-                "contexts": {"page": {}, "reusable": {}},
-            }
-        )
-        if not isinstance(profile_cache, dict):
-            profile_cache = {
-                "option_sets": {},
-                "user_types": {},
-                "app_texts": {},
-                "events": {},
-                "workflow_refs": {},
-                "element_refs": {},
-                "components": {},
-                "contexts": {"page": {}, "reusable": {}},
-            }
-            profiles[key] = profile_cache
-        profile_cache.setdefault("option_sets", {})
-        profile_cache.setdefault("user_types", {})
-        profile_cache.setdefault("app_texts", {})
-        profile_cache.setdefault("events", {})
-        profile_cache.setdefault("workflow_refs", {})
-        profile_cache.setdefault("element_refs", {})
-        profile_cache.setdefault("components", {})
-        profile_cache.setdefault("contexts", {"page": {}, "reusable": {}})
-        if not isinstance(profile_cache["option_sets"], dict):
-            profile_cache["option_sets"] = {}
-        if not isinstance(profile_cache["user_types"], dict):
-            profile_cache["user_types"] = {}
-        if not isinstance(profile_cache["app_texts"], dict):
-            profile_cache["app_texts"] = {}
-        if not isinstance(profile_cache["events"], dict):
-            profile_cache["events"] = {}
-        if not isinstance(profile_cache["workflow_refs"], dict):
-            profile_cache["workflow_refs"] = {}
-        if not isinstance(profile_cache["element_refs"], dict):
-            profile_cache["element_refs"] = {}
-        if not isinstance(profile_cache["components"], dict):
-            profile_cache["components"] = {}
-        if not isinstance(profile_cache["contexts"], dict):
-            profile_cache["contexts"] = {"page": {}, "reusable": {}}
-        profile_cache["contexts"].setdefault("page", {})
-        profile_cache["contexts"].setdefault("reusable", {})
-        if not isinstance(profile_cache["contexts"]["page"], dict):
-            profile_cache["contexts"]["page"] = {}
-        if not isinstance(profile_cache["contexts"]["reusable"], dict):
-            profile_cache["contexts"]["reusable"] = {}
-        return profile_cache
+        return self._alias_registry.profile_cache()
 
     def _schema_option_sets_cache(self) -> Dict[str, Any]:
-        return self._schema_profile_cache()["option_sets"]
+        return self._alias_registry.bucket("option_sets")
 
     def _schema_user_types_cache(self) -> Dict[str, Any]:
-        return self._schema_profile_cache()["user_types"]
+        return self._alias_registry.bucket("user_types")
 
     def _schema_app_texts_cache(self) -> Dict[str, Any]:
-        return self._schema_profile_cache()["app_texts"]
+        return self._alias_registry.bucket("app_texts")
 
     def _schema_events_cache(self) -> Dict[str, Any]:
-        return self._schema_profile_cache()["events"]
+        return self._alias_registry.bucket("events")
 
     def _schema_workflow_refs_cache(self) -> Dict[str, Any]:
-        return self._schema_profile_cache()["workflow_refs"]
+        return self._alias_registry.bucket("workflow_refs")
 
     def _schema_element_refs_cache(self) -> Dict[str, Any]:
-        return self._schema_profile_cache()["element_refs"]
+        return self._alias_registry.bucket("element_refs")
 
     def _schema_components_cache(self) -> Dict[str, Any]:
-        return self._schema_profile_cache()["components"]
+        return self._alias_registry.bucket("components")
 
     def _schema_contexts_cache(self) -> Dict[str, Any]:
-        return self._schema_profile_cache()["contexts"]
+        return self._alias_registry.bucket("contexts")
 
     def _cache_context_alias(
         self,
@@ -1263,27 +1208,7 @@ class BubbleCLI:
         context_id: str,
         object_id: Optional[str] = None,
     ) -> None:
-        ctype = "reusable" if str(context_type).strip().lower() == "reusable" else "page"
-        cid = str(context_id or "").strip()
-        name = str(context_name or "").strip()
-        oid = str(object_id or "").strip()
-        if not cid:
-            return
-
-        contexts = self._schema_contexts_cache()
-        bucket = contexts.setdefault(ctype, {})
-        if not isinstance(bucket, dict):
-            bucket = {}
-            contexts[ctype] = bucket
-
-        payload = {"name": name, "context_id": cid, "object_id": oid}
-        # Save aliases by name, context key and object id for robust lookup.
-        for token in (name, cid, oid):
-            normalized = self._norm_lookup(token)
-            if normalized:
-                bucket[normalized] = payload
-
-        self._save_cli_cache()
+        self._alias_registry.cache_context(context_type, context_name, context_id, object_id)
 
     def _cache_component_entry(
         self,
@@ -1335,33 +1260,11 @@ class BubbleCLI:
         self._save_cli_cache()
 
     def _lookup_cached_context(self, name_or_id: str) -> Tuple[Optional[str], Optional[str]]:
-        normalized = self._norm_lookup(name_or_id)
-        if not normalized:
-            return None, None
-
-        contexts = self._schema_contexts_cache()
-
-        reusable_bucket = contexts.get("reusable", {})
-        if isinstance(reusable_bucket, dict):
-            payload = reusable_bucket.get(normalized)
-            if isinstance(payload, dict):
-                context_id = str(payload.get("context_id") or "").strip()
-                if context_id:
-                    return context_id, "reusable"
-
-        page_bucket = contexts.get("page", {})
-        if isinstance(page_bucket, dict):
-            payload = page_bucket.get(normalized)
-            if isinstance(payload, dict):
-                context_id = str(payload.get("context_id") or "").strip()
-                if context_id:
-                    return context_id, "page"
-
-        return None, None
+        return self._alias_registry.lookup_context(name_or_id)
 
     @staticmethod
     def _cache_element_ref_context_key(context_id: str, context_type: str) -> str:
-        return f"{context_type}:{context_id}"
+        return ContextAliasRegistry.context_key(context_id, context_type)
 
     def _cache_element_ref_alias(
         self,
@@ -1373,52 +1276,15 @@ class BubbleCLI:
         element_path: Optional[List[str]] = None,
         element_type: Optional[str] = None,
     ) -> None:
-        alias = str(alias_name or "").strip()
-        element = str(element_id or "").strip()
-        if not alias or not element:
-            return
-
-        normalized = self._norm_lookup(alias)
-        if not normalized:
-            return
-
-        # MCP/CLI tool calls often run in separate subprocesses. Reload before
-        # mutating element_refs so newly created aliases are not lost when a
-        # later process started from an older cache snapshot.
-        self._reload_cli_cache_from_disk()
-        cache = self._schema_element_refs_cache()
-        ctx_key = self._cache_element_ref_context_key(context_id, context_type)
-        ctx_cache = cache.setdefault(ctx_key, {})
-        if not isinstance(ctx_cache, dict):
-            ctx_cache = {}
-            cache[ctx_key] = ctx_cache
-
-        existing_payload = ctx_cache.get(normalized)
-        existing_key = ""
-        existing_path: Optional[List[str]] = None
-        if isinstance(existing_payload, dict):
-            existing_key = str(existing_payload.get("key") or "").strip()
-            existing_path = self._normalize_payload_path(existing_payload.get("path"))
-
-        resolved_key = str(element_key or "").strip() or existing_key
-        resolved_path = self._normalize_payload_path(element_path) or existing_path
-
-        payload: Dict[str, Any] = {
-            "name": alias,
-            "id": element,
-            "context_id": context_id,
-            "context_type": context_type
-        }
-        resolved_type = str(element_type or "").strip()
-        if resolved_key:
-            payload["key"] = resolved_key
-        if isinstance(resolved_path, list) and resolved_path:
-            payload["path"] = resolved_path
-        if resolved_type:
-            payload["type"] = resolved_type
-
-        ctx_cache[normalized] = payload
-        self._save_cli_cache()
+        self._alias_registry.cache_element(
+            context_id,
+            context_type,
+            alias_name,
+            element_id,
+            element_key=element_key,
+            element_path=element_path,
+            element_type=element_type,
+        )
 
     def _cache_created_element_aliases(
         self,
@@ -1431,39 +1297,15 @@ class BubbleCLI:
         element_type: Optional[str] = None,
     ) -> None:
         """Persist aliases for newly created elements so future CLI/MCP calls can resolve them."""
-        eid = str(element_id or "").strip()
-        ekey = str(element_key or "").strip()
-        if not eid and not ekey:
-            return
-
-        created_path: List[str] = []
-        if isinstance(parent_path, list):
-            created_path.extend([str(p) for p in parent_path if str(p).strip()])
-        if ekey:
-            created_path.extend(["%el", ekey])
-
-        alias_candidates = list(aliases or [])
-        if ekey:
-            alias_candidates.append(ekey)
-        if eid:
-            alias_candidates.append(eid)
-
-        seen: set[str] = set()
-        for raw_alias in alias_candidates:
-            alias = str(raw_alias or "").strip()
-            norm = self._norm_lookup(alias)
-            if not alias or not norm or norm in seen:
-                continue
-            seen.add(norm)
-            self._cache_element_ref_alias(
-                context_id=context_id,
-                context_type=context_type,
-                alias_name=alias,
-                element_id=eid or ekey,
-                element_key=ekey or None,
-                element_path=created_path or None,
-                element_type=element_type,
-            )
+        self._alias_registry.cache_created_elements(
+            context_id,
+            context_type,
+            aliases,
+            element_id,
+            element_key=element_key,
+            parent_path=parent_path,
+            element_type=element_type,
+        )
 
     def _resolve_cached_element_alias(
         self,
@@ -1490,28 +1332,7 @@ class BubbleCLI:
         context_type: str,
         alias_name: str
     ) -> Optional[str]:
-        # Always reload so newly created aliases from other subprocesses are visible.
-        self._reload_cli_cache_from_disk()
-        alias = str(alias_name or "").strip()
-        if not alias:
-            return None
-        normalized = self._norm_lookup(alias)
-        if not normalized:
-            return None
-
-        cache = self._schema_element_refs_cache()
-        ctx_key = self._cache_element_ref_context_key(context_id, context_type)
-        ctx_cache = cache.get(ctx_key, {})
-        if not isinstance(ctx_cache, dict):
-            return None
-        payload = ctx_cache.get(normalized)
-        if isinstance(payload, dict):
-            value = payload.get("id")
-            if isinstance(value, str) and value.strip():
-                return value.strip()
-        elif isinstance(payload, str) and payload.strip():
-            return payload.strip()
-        return None
+        return self._alias_registry.lookup_element_id(context_id, context_type, alias_name)
 
     def _lookup_cached_element_ref_payload(
         self,
@@ -1519,21 +1340,7 @@ class BubbleCLI:
         context_type: str,
         alias_name: str
     ) -> Optional[Dict[str, Any]]:
-        alias = str(alias_name or "").strip()
-        if not alias:
-            return None
-        normalized = self._norm_lookup(alias)
-        if not normalized:
-            return None
-        cache = self._schema_element_refs_cache()
-        ctx_key = self._cache_element_ref_context_key(context_id, context_type)
-        ctx_cache = cache.get(ctx_key, {})
-        if not isinstance(ctx_cache, dict):
-            return None
-        payload = ctx_cache.get(normalized)
-        if isinstance(payload, dict):
-            return payload
-        return None
+        return self._alias_registry.lookup_element_payload(context_id, context_type, alias_name)
 
     def _resolve_cached_element_alias(
         self,
@@ -2261,62 +2068,15 @@ class BubbleCLI:
         context_name: Optional[str] = None,
         object_id: Optional[str] = None,
     ) -> None:
-        contexts = self._schema_contexts_cache()
-        bucket = contexts.get("reusable" if context_type == "reusable" else "page", {})
-        if not isinstance(bucket, dict) or not bucket:
-            return
-
-        target_context_id = str(context_id or "").strip()
-        target_object_id = str(object_id or "").strip()
-        target_name = self._norm_lookup(context_name)
-        to_remove: List[str] = []
-
-        for alias_key, payload in bucket.items():
-            if not isinstance(payload, dict):
-                continue
-            payload_context_id = str(payload.get("context_id") or "").strip()
-            payload_object_id = str(payload.get("object_id") or "").strip()
-            payload_name = self._norm_lookup(payload.get("name"))
-            if target_context_id and payload_context_id == target_context_id:
-                to_remove.append(alias_key)
-                continue
-            if target_object_id and payload_object_id == target_object_id:
-                to_remove.append(alias_key)
-                continue
-            if target_name and payload_name == target_name:
-                to_remove.append(alias_key)
-
-        for alias_key in to_remove:
-            bucket.pop(alias_key, None)
-
-        if to_remove:
-            self._save_cli_cache()
+        self._alias_registry.remove_context_aliases(
+            context_type,
+            context_id=context_id,
+            context_name=context_name,
+            object_id=object_id,
+        )
 
     def _remove_context_scoped_cache_entries(self, context_id: str, context_type: str) -> None:
-        ctx_key = self._cache_element_ref_context_key(context_id, context_type)
-        changed = False
-
-        element_refs = self._schema_element_refs_cache()
-        if isinstance(element_refs, dict) and ctx_key in element_refs:
-            element_refs.pop(ctx_key, None)
-            changed = True
-
-        workflow_refs = self._schema_workflow_refs_cache()
-        if isinstance(workflow_refs, dict):
-            workflow_keys = [key for key in workflow_refs.keys() if str(key).startswith(f"{context_type}:{context_id}:")]
-            for key in workflow_keys:
-                workflow_refs.pop(key, None)
-                changed = True
-
-        events = self._schema_events_cache()
-        if isinstance(events, dict):
-            event_keys = [key for key in events.keys() if str(key).startswith(f"{context_type}:{context_id}:")]
-            for key in event_keys:
-                events.pop(key, None)
-                changed = True
-
-        if changed:
-            self._save_cli_cache()
+        self._alias_registry.remove_context_scope(context_id, context_type)
 
     def _collect_context_object_ids_from_index(self, context_id: str, context_type: str) -> List[str]:
         data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
@@ -2369,38 +2129,13 @@ class BubbleCLI:
         workflow_id: Optional[str] = None,
         workflow_name: Optional[str] = None,
     ) -> None:
-        cache = self._schema_workflow_refs_cache()
-        ctx_key = self._cache_element_ref_context_key(context_id, context_type)
-        ctx_cache = cache.get(ctx_key, {})
-        if not isinstance(ctx_cache, dict) or not ctx_cache:
-            return
-
-        wf_key = str(workflow_key or "").strip()
-        wf_id = str(workflow_id or "").strip()
-        wf_name = str(workflow_name or "").strip()
-        wf_name_norm = self._norm_lookup(wf_name) if wf_name else ""
-
-        to_remove: List[str] = []
-        for alias_key, payload in ctx_cache.items():
-            if not isinstance(payload, dict):
-                continue
-            payload_key = str(payload.get("key") or "").strip()
-            payload_id = str(payload.get("id") or "").strip()
-            payload_name = str(payload.get("name") or "").strip()
-            payload_name_norm = self._norm_lookup(payload_name) if payload_name else ""
-            if wf_key and payload_key == wf_key:
-                to_remove.append(alias_key)
-                continue
-            if wf_id and payload_id == wf_id:
-                to_remove.append(alias_key)
-                continue
-            if wf_name_norm and payload_name_norm == wf_name_norm:
-                to_remove.append(alias_key)
-                continue
-        for alias_key in to_remove:
-            ctx_cache.pop(alias_key, None)
-        if to_remove:
-            self._save_cli_cache()
+        self._alias_registry.remove_workflow_aliases(
+            context_id,
+            context_type,
+            workflow_key=workflow_key,
+            workflow_id=workflow_id,
+            workflow_name=workflow_name,
+        )
 
     def _remove_cached_element_aliases(
         self,
@@ -2410,34 +2145,13 @@ class BubbleCLI:
         element_key: Optional[str] = None,
         element_path: Optional[List[str]] = None,
     ) -> None:
-        cache = self._schema_element_refs_cache()
-        ctx_key = self._cache_element_ref_context_key(context_id, context_type)
-        ctx_cache = cache.get(ctx_key, {})
-        if not isinstance(ctx_cache, dict) or not ctx_cache:
-            return
-        eid = str(element_id or "").strip()
-        ekey = str(element_key or "").strip()
-        epath = self._normalize_payload_path(element_path) if isinstance(element_path, list) and element_path else []
-        to_remove: List[str] = []
-        for alias_key, payload in ctx_cache.items():
-            if not isinstance(payload, dict):
-                continue
-            pid = str(payload.get("id") or "").strip()
-            pkey = str(payload.get("key") or "").strip()
-            ppath = self._normalize_payload_path(payload.get("path")) if isinstance(payload.get("path"), list) else []
-            if eid and pid == eid:
-                to_remove.append(alias_key)
-                continue
-            if ekey and pkey == ekey:
-                to_remove.append(alias_key)
-                continue
-            if epath and ppath == epath:
-                to_remove.append(alias_key)
-                continue
-        for alias_key in to_remove:
-            ctx_cache.pop(alias_key, None)
-        if to_remove:
-            self._save_cli_cache()
+        self._alias_registry.remove_element_aliases(
+            context_id,
+            context_type,
+            element_id=element_id,
+            element_key=element_key,
+            element_path=element_path,
+        )
 
     @staticmethod
     def _set_nested_dict_value(target: Dict[str, Any], parts: List[str], value: Any) -> None:
@@ -56606,31 +56320,13 @@ class BubbleCLI:
         workflow_key: str,
         workflow_id: Optional[str] = None
     ) -> None:
-        alias = str(alias_name or "").strip()
-        wf_key = str(workflow_key or "").strip()
-        if not alias or not wf_key:
-            return
-        normalized = self._norm_lookup(alias)
-        if not normalized:
-            return
-        cache = self._schema_workflow_refs_cache()
-        ctx_key = self._cache_element_ref_context_key(context_id, context_type)
-        ctx_cache = cache.setdefault(ctx_key, {})
-        if not isinstance(ctx_cache, dict):
-            ctx_cache = {}
-            cache[ctx_key] = ctx_cache
-        payload: Dict[str, Any] = {
-            "name": alias,
-            "key": wf_key,
-            "context_id": context_id,
-            "context_type": context_type,
-            "updated_at": int(time.time() * 1000),
-        }
-        wf_id = str(workflow_id or "").strip()
-        if wf_id:
-            payload["id"] = wf_id
-        ctx_cache[normalized] = payload
-        self._save_cli_cache()
+        self._alias_registry.cache_workflow(
+            context_id,
+            context_type,
+            alias_name,
+            workflow_key,
+            workflow_id,
+        )
 
     def _lookup_cached_workflow_ref_alias(
         self,
@@ -56638,23 +56334,7 @@ class BubbleCLI:
         context_type: str,
         alias_name: str
     ) -> Optional[Dict[str, Any]]:
-        alias = str(alias_name or "").strip()
-        if not alias:
-            return None
-        normalized = self._norm_lookup(alias)
-        if not normalized:
-            return None
-        cache = self._schema_workflow_refs_cache()
-        ctx_key = self._cache_element_ref_context_key(context_id, context_type)
-        ctx_cache = cache.get(ctx_key, {})
-        if not isinstance(ctx_cache, dict):
-            return None
-        payload = ctx_cache.get(normalized)
-        if isinstance(payload, dict):
-            wf_key = str(payload.get("key") or "").strip()
-            if wf_key:
-                return payload
-        return None
+        return self._alias_registry.lookup_workflow(context_id, context_type, alias_name)
 
     def _cache_workflow_event(
         self,

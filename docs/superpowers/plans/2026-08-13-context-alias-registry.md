@@ -79,11 +79,11 @@
 - Consumes: `ContextAliasRegistry` Tasks 1-3.
 - Preserves: schema bucket methods and all context/element/workflow cache and removal method signatures.
 
-- [ ] Write failing real-`BubbleCLI` tests for independent-process element/workflow visibility, context lookup precedence, enrichment, and removals.
-- [ ] Run integration tests and confirm failures caused by direct legacy registry logic.
-- [ ] Construct the registry after cache initialization and delegate existing methods without changing their return types.
-- [ ] Run CLI, MCP server, stdio, catalog and routing compatibility suites.
-- [ ] Commit as `refactor: delegate BubbleCLI alias registry`.
+- [x] Write failing real-`BubbleCLI` tests for independent-process element/workflow visibility, context lookup precedence, enrichment, and removals.
+- [x] Run integration tests and confirm failures caused by direct legacy registry logic.
+- [x] Construct the registry after cache initialization and delegate existing methods without changing their return types.
+- [x] Run CLI and MCP server compatibility suites; retain stdio, catalog, and routing as final gates.
+- [x] Commit as `refactor: delegate BubbleCLI alias registry`.
 
 ### Task 5: Validation, roadmap, review, and draft PR
 

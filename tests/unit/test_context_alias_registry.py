@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from bubble_mcp.aria_runtime.context_alias_registry import ContextAliasRegistry
+from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
 
 
 def _normalize(value: Any) -> str:
@@ -45,6 +47,19 @@ def _registry(
         reload=reload,
         save=save,
         clock_ms=lambda: 1_700_000_000_123,
+    )
+
+
+def _bubble_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> BubbleCLI:
+    app_path = tmp_path / "app.json"
+    if not app_path.exists():
+        app_path.write_text("{}", encoding="utf-8")
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", str(cache_path))
+    return BubbleCLI(
+        app_json_path=str(app_path),
+        appname="context-alias-registry-test",
+        profile_name=f"stage42-{tmp_path.name}",
     )
 
 
@@ -512,3 +527,110 @@ def test_removals_ignore_malformed_payloads_and_unmatched_selectors() -> None:
     assert registry.remove_context_aliases("page", context_id="missing") == 0
     assert registry.remove_workflow_aliases("pg", "page", workflow_key="missing") == 0
     assert saves == []
+
+
+def test_bubble_cli_workflow_alias_writes_preserve_other_process_updates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _bubble_cli(tmp_path, monkeypatch)
+    stale_second = _bubble_cli(tmp_path, monkeypatch)
+
+    first._cache_workflow_ref_alias("pg", "page", "First", "wf_first", "event_first")
+    stale_second._cache_workflow_ref_alias("pg", "page", "Second", "wf_second", "event_second")
+
+    reloaded = _bubble_cli(tmp_path, monkeypatch)
+    assert reloaded._lookup_cached_workflow_ref_alias("pg", "page", "First")["key"] == "wf_first"
+    assert reloaded._lookup_cached_workflow_ref_alias("pg", "page", "Second")["key"] == "wf_second"
+
+
+def test_bubble_cli_element_lookup_sees_another_process_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reader = _bubble_cli(tmp_path, monkeypatch)
+    writer = _bubble_cli(tmp_path, monkeypatch)
+
+    writer._cache_element_ref_alias("pg", "page", "Hero", "hero_id")
+
+    assert reader._lookup_cached_element_ref_alias("pg", "page", "Hero") == "hero_id"
+
+
+def test_bubble_cli_context_lookup_preserves_reusable_precedence(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _bubble_cli(tmp_path, monkeypatch)
+    cli._cache_context_alias("page", "Shared", "pg_shared")
+    cli._cache_context_alias("reusable", "Shared", "re_shared")
+
+    assert cli._lookup_cached_context("Shared") == ("re_shared", "reusable")
+
+
+def test_bubble_cli_element_recache_preserves_key_and_path_enrichment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _bubble_cli(tmp_path, monkeypatch)
+    cli._cache_element_ref_alias(
+        "pg",
+        "page",
+        "Hero",
+        "hero_id",
+        element_key="el_hero",
+        element_path=["%el", "el_hero"],
+    )
+
+    cli._cache_element_ref_alias("pg", "page", "Hero", "hero_id")
+
+    assert cli._lookup_cached_element_ref_payload("pg", "page", "Hero") == {
+        "name": "Hero",
+        "id": "hero_id",
+        "context_id": "pg",
+        "context_type": "page",
+        "key": "el_hero",
+        "path": ["%el", "el_hero"],
+    }
+
+
+def test_bubble_cli_element_payload_lookup_cannot_mutate_cached_alias(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _bubble_cli(tmp_path, monkeypatch)
+    cli._cache_element_ref_alias(
+        "pg",
+        "page",
+        "Hero",
+        "hero_id",
+        element_key="el_hero",
+        element_path=["%el", "el_hero"],
+    )
+
+    payload = cli._lookup_cached_element_ref_payload("pg", "page", "Hero")
+    assert payload is not None
+    payload["id"] = "mutated"
+
+    assert cli._lookup_cached_element_ref_payload("pg", "page", "Hero")["id"] == "hero_id"
+
+
+def test_bubble_cli_context_scope_removal_cleans_modern_workflow_bucket(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli = _bubble_cli(tmp_path, monkeypatch)
+    profile = cli._schema_profile_cache()
+    profile["element_refs"] = {"page:pg": {"hero": {"id": "hero_id"}}}
+    profile["workflow_refs"] = {
+        "page:pg": {"load": {"key": "wf_load"}},
+        "page:other": {"keep": {"key": "wf_keep"}},
+    }
+    profile["events"] = {"page:pg:wf_load": {}, "page:other:wf_keep": {}}
+    cli._save_cli_cache()
+
+    cli._remove_context_scoped_cache_entries("pg", "page")
+
+    profile = cli._schema_profile_cache()
+    assert profile["element_refs"] == {}
+    assert profile["workflow_refs"] == {"page:other": {"keep": {"key": "wf_keep"}}}
+    assert profile["events"] == {"page:other:wf_keep": {}}
