@@ -5,7 +5,9 @@ import re
 import unicodedata
 from html import escape
 from typing import Any, Dict, List, Optional
-from urllib.parse import quote, urljoin
+from urllib.parse import quote
+
+from .url_policy import normalize_media_url
 
 
 class HTMLToBubbleMapper:
@@ -42,7 +44,7 @@ class HTMLToBubbleMapper:
         "a": "map_link_or_button",
         "input": "map_input",
         "textarea": "map_input",
-        "select": "map_input",
+        "select": "map_select",
         "img": "map_image",
         "iframe": "map_container",
         "svg": "map_shape",
@@ -3640,6 +3642,54 @@ class HTMLToBubbleMapper:
             },
         }
 
+    def map_select(self, element: Dict[str, Any], depth: int = 0) -> Optional[Dict[str, Any]]:
+        attrs = element.get("attributes", {}) or {}
+        input_mapping = self.map_input(element, depth=depth)
+        if not input_mapping:
+            return None
+
+        options: List[Dict[str, Any]] = []
+
+        def _collect_options(nodes: Any) -> None:
+            if not isinstance(nodes, list):
+                return
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                if str(node.get("type", "")).lower() == "option":
+                    option_attrs = node.get("attributes", {}) or {}
+                    label = self._clean_text(option_attrs.get("label", "")) or self._deep_text(node)
+                    value = self._clean_text(option_attrs.get("value", "")) or label
+                    options.append(
+                        {
+                            "label": label,
+                            "value": value,
+                            "selected": "selected" in option_attrs,
+                            "disabled": "disabled" in option_attrs,
+                        }
+                    )
+                    continue
+                _collect_options(node.get("children", []))
+
+        _collect_options(element.get("children", []))
+        selected = next((option for option in options if option["selected"]), None)
+        properties = dict(input_mapping.get("properties", {}) or {})
+        properties.pop("content_format", None)
+        properties.update(
+            {
+                "name": self._name_from_element(element, fallback="Dropdown"),
+                "placeholder": self._clean_text(attrs.get("placeholder", "")) or "Choose an option...",
+                "choices": "\n".join(option["label"] for option in options),
+                "options": options,
+                "selected_option": (
+                    {"label": selected["label"], "value": selected["value"]} if selected else None
+                ),
+                "required": "required" in attrs,
+                "disabled": "disabled" in attrs,
+            }
+        )
+        return {"bubble_type": "Dropdown", "properties": properties}
+
     def map_image(self, element: Dict[str, Any], depth: int = 0) -> Optional[Dict[str, Any]]:
         attrs = element.get("attributes", {}) or {}
         node_type = str(element.get("type", "")).lower()
@@ -3660,7 +3710,7 @@ class HTMLToBubbleMapper:
         )
         src = self._clean_text(str(src or ""))
         if src:
-            src = self._absolutize_url(src) or src
+            src = self._absolutize_url(src)
         if node_type != "img":
             if self._is_complex_player_node(element):
                 return {
@@ -3856,6 +3906,9 @@ class HTMLToBubbleMapper:
             svg_markup = self._serialize_svg_node(element, width=width, height=height)
             if not svg_markup:
                 return None
+            image_url = normalize_media_url(f"data:image/svg+xml;utf8,{quote(svg_markup)}")
+            if not image_url:
+                return None
             horiz_alignment = self._parent_horiz_alignment_from_styles(element)
             if horiz_alignment is None:
                 horiz_alignment = self._geometry_horiz_alignment(element, width, default="center")
@@ -3863,7 +3916,7 @@ class HTMLToBubbleMapper:
                 "bubble_type": "Image",
                 "properties": {
                     "name": self._name_from_element(element, fallback="SVG"),
-                    "image_url": f"data:image/svg+xml;utf8,{quote(svg_markup)}",
+                    "image_url": image_url,
                     "width": width,
                     "height": height,
                     "fixed_size": True,
@@ -5174,21 +5227,10 @@ class HTMLToBubbleMapper:
         gaps.sort()
         return gaps[len(gaps) // 2]
 
-    def _bootstrap_col_span(self, classes: List[str]) -> Optional[int]:
-        return None
-
     def _is_bootstrap_container(self, classes: List[str], layout: str) -> bool:
         if layout != "column":
             return False
         return any(cls in {"container", "container-fluid"} for cls in classes)
-
-    def _infer_bootstrap_gutter(
-        self,
-        element: Dict[str, Any],
-        classes: List[str],
-        layout: str,
-    ) -> int:
-        return 0
 
     def _parse_dimension(self, value: Any) -> Optional[int]:
         if value is None:
@@ -5198,7 +5240,7 @@ class HTMLToBubbleMapper:
             return None
         if re.fullmatch(r"\d+", s):
             return int(s)
-        m = re.match(r"(\d+(?:\.\d+)?)(px|rem|em)?", s)
+        m = re.fullmatch(r"(\d+(?:\.\d+)?)(px|rem|em)?", s)
         if not m:
             return None
         num = float(m.group(1))
@@ -5215,7 +5257,7 @@ class HTMLToBubbleMapper:
             return None
         sign = -1 if s.startswith("-") else 1
         s = s.lstrip("+-")
-        m = re.match(r"(\d+(?:\.\d+)?)(px|rem|em)?", s)
+        m = re.fullmatch(r"(\d+(?:\.\d+)?)(px|rem|em)?", s)
         if not m:
             return None
         num = float(m.group(1))
@@ -5635,20 +5677,7 @@ class HTMLToBubbleMapper:
         return f"<{tag}{attr_blob}>{text_value}{children_markup}</{tag}>"
 
     def _absolutize_url(self, raw_url: Any) -> Optional[str]:
-        if raw_url is None:
-            return None
-        url = self._clean_text(str(raw_url))
-        if not url:
-            return None
-        if (url.startswith("'") and url.endswith("'")) or (url.startswith('"') and url.endswith('"')):
-            url = url[1:-1].strip()
-        if not url or url.startswith("#") or url.lower().startswith("javascript:"):
-            return None
-        if url.lower().startswith(("http://", "https://", "data:")):
-            return url
-        if self.base_url.lower().startswith(("http://", "https://")):
-            return urljoin(self.base_url, url)
-        return url
+        return normalize_media_url(raw_url, base_url=self.base_url)
 
     def _extract_css_filter(self, styles: Dict[str, Any]) -> Optional[str]:
         raw = self._clean_text(styles.get("filter", ""))
@@ -6094,7 +6123,7 @@ class HTMLToBubbleMapper:
         node_type = str(element.get("type", "")).lower()
         if node_type == "fragment":
             return True
-        if node_type == "svg":
+        if node_type in {"svg", "button", "input", "textarea", "select"}:
             return False
         display = self._clean_text(styles.get("display", "")).lower()
         if display == "contents":

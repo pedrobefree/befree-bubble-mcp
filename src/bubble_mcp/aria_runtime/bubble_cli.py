@@ -36711,6 +36711,66 @@ class BubbleCLI:
                         full_body["%p"] = full_props
                     element_type = "Image"
 
+                elif action == "create_dropdown":
+                    extra_props: Dict[str, Any] = {}
+                    visual_kwargs: Dict[str, Any] = {}
+                    _pipeline_nonant(extra_props, params)
+                    _forward_extra_props(
+                        extra_props,
+                        params,
+                        [
+                            "vert_alignment",
+                            "horiz_alignment",
+                        ],
+                    )
+                    _forward_extra_props(
+                        visual_kwargs,
+                        params,
+                        [
+                            "margin_left",
+                            "margin_right",
+                            "margin_top",
+                            "margin_bottom",
+                            "padding_left",
+                            "padding_right",
+                            "padding_top",
+                            "padding_bottom",
+                            "border_radius",
+                            "border_width",
+                            "border_color",
+                            "border_style",
+                            "bg_color",
+                            "font_color",
+                            "text_color",
+                            "font_size",
+                        ],
+                    )
+                    dropdown_width = _to_int(params.get("width"), None)
+                    dropdown_height = _to_int(params.get("height"), None)
+                    full_body = eb.dropdown(
+                        _pipeline_name("dd", _clean_text(str(params.get("name", ""))), "dropdown"),
+                        placeholder=_clean_text(str(params.get("placeholder", "Choose an option..."))),
+                        choice_style="static",
+                        choices=str(params.get("choices") or ""),
+                        choice_type="text",
+                        required=bool(params.get("required", False)),
+                        disabled=bool(params.get("disabled", False)),
+                        width=dropdown_width,
+                        height=dropdown_height or 48,
+                        width_unset=dropdown_width is None,
+                        min_width=params.get("min_width_css"),
+                        max_width=params.get("max_width_css"),
+                        fixed_width=bool(params.get("single_width", False)),
+                        min_height=params.get("min_height_css"),
+                        max_height=params.get("max_height_css"),
+                        fixed_height=bool(params.get("single_height", False)),
+                        **visual_kwargs,
+                        extra_props=extra_props,
+                    )
+                    if isinstance(full_body, dict):
+                        full_body.pop("%s1", None)
+                    element_type = "Dropdown"
+
                 elif action == "create_input":
                     extra_props: Dict[str, Any] = {}
                     visual_kwargs: Dict[str, Any] = {}

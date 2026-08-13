@@ -68,6 +68,16 @@ class BubbleCommandBuilder:
             )
             return
 
+        if bubble_type == "Dropdown":
+            commands.append(
+                {
+                    "action": "create_dropdown",
+                    "parent_ref": parent_ref,
+                    "params": props,
+                }
+            )
+            return
+
         if bubble_type == "Input":
             commands.append(
                 {

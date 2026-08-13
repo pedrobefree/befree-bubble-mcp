@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      .page-shell {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+        width: 960px;
+        padding: 24px;
+        background-image: linear-gradient(to right, #101828 0%, #344054 100%);
+      }
+      .feature-row {
+        display: flex;
+        flex-direction: row;
+        gap: 16px;
+        width: 912px;
+      }
+      .feature-card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 448px;
+        padding: 16px;
+        border: 1px solid #d0d5dd;
+        border-radius: 12px;
+        background-color: #ffffff;
+      }
+      .hidden-source { display: none; }
+    </style>
+  </head>
+  <body>
+    <main id="contract-page" class="page-shell">
+      <header>
+        <h1 style="font-size: 40px; line-height: 48px; color: #ffffff">
+          Reliable <strong style="font-weight: 700; color: #84caff">imports</strong>
+        </h1>
+        <p style="font-size: 16px; line-height: 24px; color: #eaecf0">
+          Layout, typography, media, and controls.
+        </p>
+      </header>
+      <section class="feature-row">
+        <article class="feature-card">
+          <img
+            src="../assets/preview.png"
+            alt="Import preview"
+            style="display: block; width: 320px; height: 180px; max-width: 100%"
+          >
+          <h2 style="font-size: 24px; color: #101828">Visual fidelity</h2>
+          <a href="/docs/import" style="display: inline-flex; color: #155eef">Read documentation</a>
+        </article>
+        <article class="feature-card">
+          <label for="email" style="font-size: 14px; color: #344054">Email</label>
+          <input
+            id="email"
+            type="email"
+            placeholder="name@example.com"
+            style="width: 300px; height: 44px; border: 1px solid #98a2b3; border-radius: 8px"
+          >
+          <textarea
+            id="notes"
+            placeholder="Notes"
+            style="width: 300px; height: 88px; border: 1px solid #98a2b3"
+          ></textarea>
+          <button style="width: 160px; height: 44px; background-color: #155eef; color: #ffffff">
+            Start import
+          </button>
+        </article>
+      </section>
+      <div
+        class="responsive-banner"
+        style="position: relative; width: 100%; max-width: 912px; min-height: 120px; background: radial-gradient(circle, #84caff 0%, #155eef 100%)"
+      >
+        <span style="font-size: 18px; color: #ffffff">Responsive by default</span>
+      </div>
+      <div class="hidden-source">Do not import</div>
+      <script>throw new Error("must never execute")</script>
+    </main>
+  </body>
+</html>

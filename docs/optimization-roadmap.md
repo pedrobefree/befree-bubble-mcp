@@ -29,32 +29,53 @@ Completed in this round:
 
 ## Coverage Stages
 
-### Stage 2: SDK contracts
+### Stage 2: SDK contracts — completed
 
-Target `aria_runtime/bubble_sdk.py`, currently 49.6% with 1,520 missing
-statements. Test loaders, payload builders, identifiers, style/action builders,
-and error paths as separate contracts. Extract cohesive boundaries when tests
-need excessive object construction or monkeypatching.
+PRs #15 through #17 covered loaders, payload builders, identifiers,
+style/action builders, discovery aliases, and error paths as separate
+contracts. `bubble_sdk.py` reached 100% of its 3,311 executable lines and 94.0%
+branch coverage; the extracted discovery boundary and app mapper also reached
+100% line coverage.
 
-Exit criteria:
+The stage completed with 973 passing tests and a 35.0% global ratchet. The
+illustrative `bubble_sdk.py` `__main__` block remains excluded from executable
+coverage.
 
-- each extracted boundary is at least 90%;
-- `bubble_sdk.py` reaches at least 70%;
-- the global ratchet is raised to the highest stable value with at least 0.1
-  percentage point of headroom.
+### Stage 3: HTML import pipeline — completed
 
-### Stage 3: HTML import pipeline
+The stage started with 3,317 missing mapper statements and parser coverage of
+38.1% (`parser.py`) and 35.5% (`source_parser.py`). The implementation added
+boundary-focused parser tests, deterministic layout/typography/responsive/media/
+control goldens, malformed-source contracts, and a repeatable JSON benchmark.
 
-Target the legacy HTML mapper, source parser, and parser. The mapper is the
-second-largest debt block, with 3,317 missing statements. Organize fixtures by
-layout, typography, responsive constraints, media, reusable components, and
-malformed source.
+Results on 2026-08-13:
+
+- `parser.py`: 93.3% combined branch coverage;
+- `source_parser.py`: 93.9% combined branch coverage;
+- `mapper.py`: 46.0%, up from 30.1% in the focused baseline;
+- full suite: 1,100 Python and 11 Node tests passed;
+- global combined coverage: 37.0441%;
+- global ratchet: 36.8%, retaining 0.24 percentage point of headroom;
+- `hero.html` benchmark: 0.016024 seconds per 20 conversions versus the
+  0.015476-second pre-change baseline (+3.5%, no material regression).
+
+Production hardening in this stage normalized renderer snapshot classes and
+boolean attributes, made geometry hydration linear in the parsed tree, applied
+the same geometry contract to rendered snapshots, preserved semantic controls
+with child options, enforced CSS cascade and `!important` precedence, rejected
+unsafe URL schemes, and limited SVG data URLs to a strict passive XML allowlist.
+Percentage dimensions are no longer interpreted as pixels. Two unused
+Bootstrap stub helpers were removed.
 
 Exit criteria:
 
 - parser modules reach at least 85%;
 - mapper families have deterministic golden payloads and failure contracts;
 - HTML conversion benchmarks show no material regression.
+
+All Stage 3 exit criteria are satisfied. Remaining mapper branches stay in
+scope for future coverage growth when their behavior is exercised by real HTML
+families rather than private-method-only tests.
 
 ### Stage 4: Bubble CLI decomposition
 

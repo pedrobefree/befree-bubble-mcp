@@ -10,6 +10,20 @@ from .source_parser import HTMLParser as _SourceHTMLParser
 class HTMLParser(_SourceHTMLParser):
     """Runtime override for progressbar normalization in rendered HTML imports."""
 
+    GEOMETRY_STYLE_KEYS = {
+        "position",
+        "width",
+        "height",
+        "min-width",
+        "max-width",
+        "min-height",
+        "max-height",
+        "left",
+        "right",
+        "top",
+        "bottom",
+    }
+
     def parse_element(self, element: Any) -> Optional[Dict[str, Any]]:
         node = super().parse_element(element)
         self._hydrate_rendered_inline_geometry(node)
@@ -19,6 +33,7 @@ class HTMLParser(_SourceHTMLParser):
 
     def _parse_snapshot_node(self, node: Any) -> Optional[Dict[str, Any]]:
         parsed = super()._parse_snapshot_node(node)
+        self._hydrate_rendered_inline_geometry(parsed)
         self._normalize_progressbar_node(parsed)
         self._normalize_interactive_container_text(parsed)
         return parsed
@@ -48,7 +63,14 @@ class HTMLParser(_SourceHTMLParser):
         styles = dict(node.get("styles", {}) or {})
         computed = dict(node.get("computed_styles", {}) or {})
         if styles:
-            computed.update({str(k).strip().lower(): str(v).strip() for k, v in styles.items() if str(k).strip()})
+            computed.update(
+                {
+                    str(k).strip().lower(): str(v).strip()
+                    for k, v in styles.items()
+                    if str(k).strip().lower() in self.GEOMETRY_STYLE_KEYS
+                    and str(k).strip().lower() not in computed
+                }
+            )
             node["computed_styles"] = computed
 
         rect = dict(node.get("rect", {}) or {})
@@ -69,10 +91,6 @@ class HTMLParser(_SourceHTMLParser):
             rect["y"] = top
         if rect:
             node["rect"] = rect
-
-        for child in list(node.get("children", []) or []):
-            if isinstance(child, dict):
-                self._hydrate_rendered_inline_geometry(child)
 
     def _normalize_interactive_container_text(self, node: Optional[Dict[str, Any]]) -> None:
         if not isinstance(node, dict):

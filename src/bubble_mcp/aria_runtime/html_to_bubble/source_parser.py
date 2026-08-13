@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import re
 from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
+
+from .url_policy import normalize_media_url
 
 
 class HTMLParser:
@@ -72,10 +73,13 @@ class HTMLParser:
 
         attrs = self._normalize_attrs(dict(element.attrs))
         classes = attrs.get("class", [])
-        styles = self._parse_inline_styles(str(element.get("style", "")))
+        raw_styles = self._parse_inline_styles(str(element.get("style", "")))
         computed = self._infer_from_classes(classes)
+        rule_priorities: Dict[str, tuple[int, tuple[int, int, int], int]] = {}
         if self._style_rules:
-            computed.update(self._apply_style_rules(element, attrs))
+            matched, rule_priorities = self._resolve_style_rules(element, attrs)
+            computed.update(matched)
+        styles = self._resolve_inline_styles(raw_styles, computed, rule_priorities)
         text = self._extract_text(element)
 
         children: List[Dict[str, Any]] = []
@@ -91,7 +95,7 @@ class HTMLParser:
             "attributes": attrs,
             "styles": styles,
             "computed_styles": computed,
-            "text_segments": self._extract_text_segments_tag(element, styles),
+            "text_segments": self._extract_text_segments_tag(element, {}),
             "children": children,
         }
         self._inject_media_url(node)
@@ -127,27 +131,70 @@ class HTMLParser:
         return rules
 
     def _apply_style_rules(self, element: Tag, attrs: Dict[str, Any]) -> Dict[str, Any]:
+        matched, _priorities = self._resolve_style_rules(element, attrs)
+        return matched
+
+    def _resolve_style_rules(
+        self,
+        element: Tag,
+        attrs: Dict[str, Any],
+    ) -> tuple[Dict[str, Any], Dict[str, tuple[int, tuple[int, int, int], int]]]:
         matched: Dict[str, Any] = {}
+        priorities: Dict[str, tuple[int, tuple[int, int, int], int]] = {}
         tag_name = element.name.lower()
         element_id = str(attrs.get("id", "")).strip()
         classes = attrs.get("class", []) or []
-        for rule in self._style_rules:
+        for source_order, rule in enumerate(self._style_rules):
             selector = str(rule.get("selector", "")).strip()
             if not selector:
                 continue
             if not self._selector_matches(tag_name, element_id, classes, selector):
                 continue
+            specificity = self._selector_specificity(selector)
             for k, v in (rule.get("styles", {}) or {}).items():
-                matched[str(k).strip().lower()] = v
-        return matched
+                key = str(k).strip().lower()
+                value, important = self._split_css_important(v)
+                priority = (int(important), specificity, source_order)
+                if key and value and priority >= priorities.get(key, (-1, (-1, -1, -1), -1)):
+                    matched[key] = value
+                    priorities[key] = priority
+        return matched, priorities
+
+    def _resolve_inline_styles(
+        self,
+        raw_styles: Dict[str, str],
+        computed: Dict[str, Any],
+        rule_priorities: Dict[str, tuple[int, tuple[int, int, int], int]],
+    ) -> Dict[str, str]:
+        winners: Dict[str, str] = {}
+        for key, raw_value in raw_styles.items():
+            value, important = self._split_css_important(raw_value)
+            rule_is_important = bool(rule_priorities.get(key, (0, (0, 0, 0), 0))[0])
+            if value and (important or not rule_is_important):
+                computed[key] = value
+                winners[key] = value
+        return winners
+
+    def _split_css_important(self, raw_value: Any) -> tuple[str, bool]:
+        value = str(raw_value).strip()
+        important = bool(re.search(r"\s*!important\s*$", value, flags=re.IGNORECASE))
+        clean = re.sub(r"\s*!important\s*$", "", value, flags=re.IGNORECASE).strip()
+        return clean, important
+
+    def _selector_specificity(self, selector: str) -> tuple[int, int, int]:
+        simple = selector.strip()
+        ids = len(re.findall(r"#[A-Za-z0-9_-]+", simple))
+        classes = len(re.findall(r"\.[A-Za-z0-9_-]+", simple))
+        classes += len(re.findall(r":(?!:)[A-Za-z0-9_-]+", simple))
+        base = re.split(r"[.#:]", simple, maxsplit=1)[0].strip()
+        tags = int(bool(base and base != "*"))
+        return ids, classes, tags
 
     def _selector_matches(self, tag: str, element_id: str, classes: List[str], selector: str) -> bool:
         s = selector.strip()
         if not s:
             return False
         if ":" in s:
-            s = s.split(":", 1)[0].strip()
-        if not s:
             return False
         if any(ch in s for ch in (" ", ">", "+", "~", "[")):
             return False
@@ -177,7 +224,12 @@ class HTMLParser:
 
         tag = self._clean_text(str(node.get("tag", ""))).lower() or "div"
         attrs = self._normalize_attrs(dict(node.get("attributes", {}) or {}))
-        inline_styles = self._parse_inline_styles(str(attrs.get("style", "")))
+        raw_inline_styles = self._parse_inline_styles(str(attrs.get("style", "")))
+        normalized_inline_styles = {
+            key: self._split_css_important(value)[0]
+            for key, value in raw_inline_styles.items()
+            if self._split_css_important(value)[0]
+        }
         computed = {
             str(k).strip().lower(): str(v).strip()
             for k, v in dict(node.get("computedStyle", {}) or {}).items()
@@ -187,8 +239,13 @@ class HTMLParser:
         # only a last-resort fallback when extractor style data is missing.
         if computed:
             merged_computed = dict(computed)
+            inline_styles = {
+                key: value for key, value in normalized_inline_styles.items() if key not in merged_computed
+            }
         else:
             merged_computed = dict(self._infer_from_classes(attrs.get("class", [])))
+            merged_computed.update(normalized_inline_styles)
+            inline_styles = normalized_inline_styles
         text = self._clean_text(str(node.get("text", "")))
 
         children: List[Dict[str, Any]] = []
@@ -316,18 +373,36 @@ class HTMLParser:
             return
 
         merged_styles = dict(inherited_styles or {})
-        merged_styles.update(self._parse_inline_styles(str(node.get("style", ""))))
+        merged_styles.update(self._resolved_tag_styles(node))
 
         for child in node.children:
             self._collect_tag_segments(child, merged_styles, out)
 
+    def _resolved_tag_styles(self, element: Tag) -> Dict[str, Any]:
+        """Resolve the same cascade used by semantic nodes for rich-text segments."""
+        attrs = self._normalize_attrs(dict(element.attrs))
+        computed = self._infer_from_classes(attrs.get("class", []))
+        priorities: Dict[str, tuple[int, tuple[int, int, int], int]] = {}
+        if self._style_rules:
+            matched, priorities = self._resolve_style_rules(element, attrs)
+            computed.update(matched)
+        raw_inline = self._parse_inline_styles(str(element.get("style", "")))
+        self._resolve_inline_styles(raw_inline, computed, priorities)
+        return computed
+
     def _normalize_attrs(self, attrs: Dict[str, Any]) -> Dict[str, Any]:
         out: Dict[str, Any] = {}
         for key, value in attrs.items():
-            if isinstance(value, list):
-                out[key] = [str(v).strip() for v in value if str(v).strip()]
+            normalized_key = str(key).strip().lower()
+            if normalized_key == "class":
+                raw_classes = value if isinstance(value, list) else str(value or "").split()
+                out[normalized_key] = [str(v).strip() for v in raw_classes if str(v).strip()]
+            elif isinstance(value, list):
+                out[normalized_key] = [str(v).strip() for v in value if str(v).strip()]
+            elif value is None:
+                out[normalized_key] = ""
             else:
-                out[key] = str(value).strip()
+                out[normalized_key] = str(value).strip()
         if "class" not in out:
             out["class"] = []
         return out
@@ -356,6 +431,8 @@ class HTMLParser:
                     parts.append(t)
         joined = self._clean_text(" ".join(parts))
         if joined:
+            if element.name and element.name.lower() in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                return self._compact_fragmented_text(joined)
             return joined
 
         # Some animated headings split each glyph into nested block wrappers.
@@ -395,6 +472,12 @@ class HTMLParser:
             k = key.strip().lower()
             v = value.strip()
             if k and v:
+                previous = out.get(k)
+                if previous is not None:
+                    _previous_value, previous_important = self._split_css_important(previous)
+                    _current_value, current_important = self._split_css_important(v)
+                    if previous_important and not current_important:
+                        continue
                 out[k] = v
         return out
 
@@ -528,20 +611,7 @@ class HTMLParser:
                 return
 
     def _absolutize_url(self, raw_url: Any) -> str:
-        if raw_url is None:
-            return ""
-        url = self._clean_text(str(raw_url))
-        if not url:
-            return ""
-        if (url.startswith("'") and url.endswith("'")) or (url.startswith('"') and url.endswith('"')):
-            url = url[1:-1].strip()
-        if not url or url.startswith("#") or url.lower().startswith("javascript:"):
-            return ""
-        if url.lower().startswith(("http://", "https://", "data:")):
-            return url
-        if self.base_url.lower().startswith(("http://", "https://")):
-            return urljoin(self.base_url, url)
-        return url
+        return normalize_media_url(raw_url, base_url=self.base_url) or ""
 
     def _normalize_segment_raw_text(self, raw_text: str, leading: bool = False, trailing: bool = False) -> str:
         if not raw_text:
