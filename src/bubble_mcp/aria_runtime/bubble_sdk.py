@@ -6597,6 +6597,60 @@ class PathDiscovery(DiscoveryDataBoundary):
             logger=logger,
         )
 
+    @staticmethod
+    def _read_alias_mapping(
+        obj: Any,
+        preferred_key: str,
+        alternate_key: str,
+    ) -> Dict[str, Any]:
+        """Resolve two mapping aliases without mutating their source object."""
+        if not isinstance(obj, dict):
+            return {}
+
+        preferred = obj.get(preferred_key)
+        alternate = obj.get(alternate_key)
+        preferred_mapping = preferred if isinstance(preferred, dict) else None
+        alternate_mapping = alternate if isinstance(alternate, dict) else None
+
+        if preferred_mapping is None:
+            return alternate_mapping if alternate_mapping is not None else {}
+        if alternate_mapping is None or preferred_mapping is alternate_mapping:
+            return preferred_mapping
+
+        # Preserve preferred values on collisions while retaining alternate-only records.
+        return {**alternate_mapping, **preferred_mapping}
+
+    @staticmethod
+    def _read_nonempty_alias_mapping(
+        obj: Any,
+        preferred_key: str,
+        alternate_key: str,
+    ) -> Dict[str, Any]:
+        """Resolve property-like aliases, falling back when the preferred map is empty."""
+        if not isinstance(obj, dict):
+            return {}
+
+        preferred = obj.get(preferred_key)
+        alternate = obj.get(alternate_key)
+        if isinstance(preferred, dict) and preferred:
+            return preferred
+        if isinstance(alternate, dict):
+            return alternate
+        return preferred if isinstance(preferred, dict) else {}
+
+    @classmethod
+    def _sync_alias_mapping(
+        cls,
+        obj: Dict[str, Any],
+        preferred_key: str,
+        alternate_key: str,
+    ) -> Dict[str, Any]:
+        """Install one shared mutable mapping under both aliases and return it."""
+        resolved = cls._read_alias_mapping(obj, preferred_key, alternate_key)
+        obj[preferred_key] = resolved
+        obj[alternate_key] = resolved
+        return resolved
+
     def _load_crawler_index(self, path: Optional[str]) -> Optional[Dict[str, Any]]:
         """
         Load a crawler-index JSON and convert its array-based pages/reusables
@@ -6979,7 +7033,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         Find reusable element ID by name (case-insensitive).
         Returns: reusable_id or None
         """
-        reusables = self.data.get('element_definitions', {}) or self.data.get('%ed', {})
+        reusables = self._read_alias_mapping(self.data, 'element_definitions', '%ed')
         if not reusables or not isinstance(reusables, dict):
             return None
 
@@ -6997,7 +7051,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         Find page ID by name (case-insensitive).
         Returns: page_id or None
         """
-        pages = self.data.get('pages') or self.data.get('%p3')
+        pages = self._read_alias_mapping(self.data, 'pages', '%p3')
         if not pages or not isinstance(pages, dict):
             return None
 
@@ -7029,7 +7083,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                         return {'path': path_parts, 'id': obj.get('id'), 'element': obj}
 
                 # Search children
-                elements = obj.get('elements') or obj.get('%el', {})
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7085,7 +7139,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 elif any(name_lower in candidate for candidate in normalized_candidates):
                     fuzzy_matches.append(match)
 
-                elements = obj.get('elements') or obj.get('%el', {})
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7121,7 +7175,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 if str(obj.get('id')) == str(element_id):
                     return {'path': path_parts, 'id': obj.get('id'), 'element': obj}
 
-                elements = obj.get('elements') or obj.get('%el', {})
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7157,7 +7211,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                         return {'path': path_parts, 'id': obj.get('id'), 'element': obj}
 
                 # Search children
-                elements = obj.get('elements') or obj.get('%el', {})
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7205,7 +7259,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         if not isinstance(obj, dict):
             return []
-        props = obj.get("properties", {}) if isinstance(obj.get("properties"), dict) else {}
+        props = self._read_nonempty_alias_mapping(obj, "properties", "%p")
         el_type = obj.get("type") or obj.get("%x") or ""
         el_type_norm = str(el_type).strip()
 
@@ -7213,6 +7267,8 @@ class PathDiscovery(DiscoveryDataBoundary):
         base_names = [
             obj.get("name", ""),
             obj.get("default_name", ""),
+            obj.get("%nm", ""),
+            obj.get("%dn", ""),
             props.get("element_name", "")
         ]
         for value in base_names:
@@ -7222,7 +7278,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                     candidates.append(f"{el_type_norm} {value}")
 
         # Label/content-like values shown by Bubble UI
-        text_plain = self._plain_text_from_expr(props.get("text"))
+        text_plain = self._plain_text_from_expr(props.get("text") or props.get("%3"))
         if text_plain:
             candidates.append(text_plain)
             if el_type_norm:
@@ -7349,10 +7405,6 @@ class PathDiscovery(DiscoveryDataBoundary):
             root = self.data[target_key][context_id]
             logger.info(f"Auto-created context root for {context_id} in {target_key}")
 
-        # Determine children key based on root format
-        # In raw format, it's %el. In standard format, it's elements.
-        children_key = "%el" if "%el" in root or "%x" in root else "elements"
-
         # Prepare element structure for discovery (simplified)
         # discovery looks for 'name', 'default_name', 'id'
         extracted_name = element_data.get('%dn') or element_data.get('%nm') or element_data.get('name', '')
@@ -7389,10 +7441,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 logger.info(f" Updated context root {context_id} with name '{extracted_name}'")
                 return
 
-            children = root.get(children_key)
-            if not isinstance(children, dict):
-                children = {}
-                root[children_key] = children
+            children = self._sync_alias_mapping(root, "elements", "%el")
             children[dict_key] = new_el
             self.persist_disk_cache()
             logger.info(f" Injected {new_el['default_name']} ({dict_key}) into {context_id} root")
@@ -7405,7 +7454,7 @@ class PathDiscovery(DiscoveryDataBoundary):
             if isinstance(obj, dict):
                 if obj.get('id') == parent_id:
                     return obj
-                elements = obj.get('elements') or obj.get('%el')
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for k, v in elements.items():
                         if k == "length": continue
@@ -7416,11 +7465,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         parent_node = find_node(root)
         if parent_node:
             # Match children key of the parent
-            node_children_key = "%el" if "%el" in parent_node or "%x" in parent_node else "elements"
-            parent_children = parent_node.get(node_children_key)
-            if not isinstance(parent_children, dict):
-                parent_children = {}
-                parent_node[node_children_key] = parent_children
+            parent_children = self._sync_alias_mapping(parent_node, "elements", "%el")
             parent_children[dict_key] = new_el
             self.persist_disk_cache()
             logger.info(f" Injected {new_el['default_name']} ({dict_key}) into parent {parent_id}")
@@ -7446,11 +7491,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 # Check if it's a workflow event
                 obj_type = obj.get('%x') or obj.get('type')
                 if obj_type:
-                    props = obj.get('%p')
-                    if not isinstance(props, dict):
-                        props = obj.get('properties', {})
-                    if not isinstance(props, dict):
-                        props = {}
+                    props = self._read_nonempty_alias_mapping(obj, '%p', 'properties')
                     target_el = props.get('%ei') or props.get('element_id')
                     event_kind = props.get('%et') or props.get('event_type')
 
@@ -7471,7 +7512,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                             return {'path': path_parts, 'id': obj.get('id'), 'workflow': obj}
 
                 # Search children
-                elements = obj.get('elements') or obj.get('%el')
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7480,7 +7521,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                         if result: return result
 
                 # Search workflows direct list if any
-                workflows = obj.get('workflows') or obj.get('%wf')
+                workflows = self._read_alias_mapping(obj, 'workflows', '%wf')
                 if isinstance(workflows, dict):
                     for key, value in workflows.items():
                         if key == "length": continue
@@ -7490,12 +7531,14 @@ class PathDiscovery(DiscoveryDataBoundary):
             return None
 
         # Optimization: Look in 'workflows' key first if it exists
-        if 'workflows' in root:
-             # Iterate newest first so action writes target the latest workflow.
-             for wf_id, wf_data in reversed(list(root['workflows'].items())):
-                 result = search_workflow(wf_data, ['workflows', wf_id]) # Path structure might vary
-                 if result:
-                     return result
+        root_workflows = self._read_alias_mapping(root, 'workflows', '%wf')
+        if root_workflows:
+            # Iterate newest first so action writes target the latest workflow.
+            for wf_id, wf_data in reversed(list(root_workflows.items())):
+                path_key = '%wf' if '%wf' in root or '%x' in root else 'workflows'
+                result = search_workflow(wf_data, [path_key, wf_id])
+                if result:
+                    return result
 
         # Fallback to full search (legacy structure)
         return search_workflow(root)
@@ -7519,10 +7562,10 @@ class PathDiscovery(DiscoveryDataBoundary):
                     "id": value.get("id"),
                     "element": value
                 })
-                children = value.get("elements") or value.get("%el", {})
+                children = self._read_alias_mapping(value, "elements", "%el")
                 walk(children, path_parts + ["%el", key])
 
-        root_elements = root.get("elements") or root.get("%el", {})
+        root_elements = self._read_alias_mapping(root, "elements", "%el")
         walk(root_elements, [])
         return results
 
@@ -7540,11 +7583,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         if not root:
             return
 
-        workflows_key = "%wf" if "%wf" in root or "%x" in root else "workflows"
-        workflows = root.get(workflows_key)
-        if not isinstance(workflows, dict):
-            workflows = {}
-            root[workflows_key] = workflows
+        workflows = self._sync_alias_mapping(root, "workflows", "%wf")
 
         # Keep injected workflow shape aligned with what was created.
         if isinstance(workflow_obj, dict):
@@ -7594,11 +7633,7 @@ class PathDiscovery(DiscoveryDataBoundary):
 
     def get_element_properties(self, element: Dict) -> Dict:
         """Extract all properties from element"""
-        properties = element.get('properties')
-        if isinstance(properties, dict):
-            return properties
-        wire_properties = element.get('%p')
-        return wire_properties if isinstance(wire_properties, dict) else {}
+        return self._read_nonempty_alias_mapping(element, 'properties', '%p')
 
 
 # ==========================================

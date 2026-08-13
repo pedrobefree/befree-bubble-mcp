@@ -17,6 +17,55 @@ def discovery_with(data: dict[str, Any]) -> PathDiscovery:
     return discovery
 
 
+def test_alias_mapping_readers_resolve_precedence() -> None:
+    discovery = PathDiscovery()
+    assert discovery._read_alias_mapping([], "elements", "%el") == {}
+    assert discovery._read_alias_mapping({}, "elements", "%el") == {}
+
+    shared: dict[str, Any] = {}
+    assert discovery._read_alias_mapping(
+        {"elements": shared, "%el": shared}, "elements", "%el"
+    ) is shared
+
+    target = {
+        "elements": {"same": {"id": "readable"}},
+        "%el": {"same": {"id": "wire"}, "wire": {"id": "wire"}},
+    }
+
+    resolved = discovery._read_alias_mapping(target, "elements", "%el")
+
+    assert resolved == {
+        "same": {"id": "readable"},
+        "wire": {"id": "wire"},
+    }
+
+
+def test_alias_mapping_readers_fall_back_from_empty_preferred_mapping() -> None:
+    discovery = PathDiscovery()
+
+    assert discovery._read_nonempty_alias_mapping(
+        {"properties": {}, "%p": {"%dn": "wire"}}, "properties", "%p"
+    ) == {"%dn": "wire"}
+    assert discovery._read_nonempty_alias_mapping(
+        {"properties": {"name": "readable"}, "%p": {"%dn": "wire"}},
+        "properties",
+        "%p",
+    ) == {"name": "readable"}
+
+
+def test_sync_alias_mapping_unifies_divergent_buckets() -> None:
+    discovery = PathDiscovery()
+    target = {
+        "elements": {"readable": {"id": "readable"}},
+        "%el": {"wire": {"id": "wire"}},
+    }
+
+    synchronized = discovery._sync_alias_mapping(target, "elements", "%el")
+
+    assert target["elements"] is synchronized
+    assert target["%el"] is synchronized
+
+
 def test_load_crawler_index_rejects_missing_invalid_and_empty_sources(tmp_path: Path) -> None:
     discovery = PathDiscovery()
     missing = tmp_path / "missing.json"
@@ -291,7 +340,18 @@ def sample_discovery() -> PathDiscovery:
                 }
             },
             "%ed": {
-                "raw-reuse": {"id": "raw-reuse", "%nm": "Raw reusable", "%el": {}}
+                "raw-reuse": {
+                    "id": "raw-reuse",
+                    "%nm": "Raw reusable",
+                    "%el": {
+                        "raw-title": {
+                            "id": "raw-title",
+                            "%x": "Text",
+                            "%dn": "Raw title",
+                            "%p": {"%3": {"%e": {"0": "Raw copy"}}},
+                        }
+                    },
+                }
             },
             "pages": {"index": {"id": "index", "name": "Home", "elements": {}}},
             "%p3": {"raw-page": {"id": "raw-page", "%nm": "Raw page", "%el": {}}},
@@ -308,9 +368,9 @@ def test_context_and_name_lookup_support_standard_and_raw_aliases() -> None:
     assert discovery._get_context_root("missing", "reusable") is None
     assert discovery._get_context_root("missing", "page") is None
     assert discovery.find_reusable("header") == "reuse"
-    assert discovery.find_reusable("raw reusable") is None
+    assert discovery.find_reusable("raw reusable") == "raw-reuse"
     assert discovery.find_page("HOME") == "index"
-    assert discovery.find_page("raw page") is None
+    assert discovery.find_page("raw page") == "raw-page"
 
     discovery._data = {"element_definitions": [], "pages": []}
     assert discovery.find_reusable("missing") is None
@@ -321,6 +381,7 @@ def test_element_lookup_handles_text_names_ids_and_match_priority() -> None:
     discovery = sample_discovery()
     assert discovery.find_element_by_text("reuse", "hello world")["id"] == "first"
     assert discovery.find_element_by_text("reuse", "hero.png")["id"] == "image"
+    assert discovery.find_element_by_text("raw-reuse", "raw copy")["id"] == "raw-title"
     assert discovery.find_element_by_text("missing", "hello") is None
     assert discovery.find_element_by_text("reuse", "absent") is None
 
@@ -334,6 +395,7 @@ def test_element_lookup_handles_text_names_ids_and_match_priority() -> None:
     assert fuzzy_prefix["id"] == "group"
     assert discovery.find_element_by_name("reuse", "absent") is None
     assert discovery.find_element_by_name("missing", "Title") is None
+    assert discovery.find_element_by_name("raw-reuse", "Raw title")["id"] == "raw-title"
 
     assert discovery.find_element_by_id("reuse", "last")["path"] == [
         "elements",
@@ -417,6 +479,7 @@ def test_inject_element_handles_new_root_root_update_and_nested_parent(monkeypat
     )
     root = discovery.data["element_definitions"]["new-reusable"]
     assert root["elements"]["child-slot"]["id"] == "child-id"
+    assert root["elements"] is root["%el"]
     root["elements"]["child-slot"]["elements"] = "invalid"
 
     discovery.inject_element(
@@ -427,6 +490,8 @@ def test_inject_element_handles_new_root_root_update_and_nested_parent(monkeypat
         "nested-slot",
     )
     assert root["elements"]["child-slot"]["elements"]["nested-slot"]["id"] == "nested-id"
+    child = root["elements"]["child-slot"]
+    assert child["elements"] is child["%el"]
 
     discovery.inject_element(
         "new-reusable",
@@ -542,7 +607,17 @@ def test_find_workflow_prefers_latest_and_falls_back_to_raw_nested_tree() -> Non
                             "properties": "invalid",
                         },
                     }
-                }
+                },
+                "mixed-properties": {
+                    "workflows": {
+                        "mixed": {
+                            "id": "mixed",
+                            "type": "ElementEvent",
+                            "%p": {},
+                            "properties": {"element_id": "mixed-button", "event_type": "click"},
+                        }
+                    }
+                },
             },
             "%ed": {
                 "raw": {
@@ -572,6 +647,27 @@ def test_find_workflow_prefers_latest_and_falls_back_to_raw_nested_tree() -> Non
     assert raw["path"] == ["%el", "child", "%wf", "raw-wf"]
     assert discovery.find_workflow_for_element("reuse", "missing") is None
     assert discovery.find_workflow_for_element("missing", "button") is None
+    assert discovery.find_workflow_for_element("mixed-properties", "mixed-button")["id"] == "mixed"
+
+
+def test_inject_workflow_synchronizes_hybrid_aliases(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    discovery = discovery_with(
+        {
+            "element_definitions": {
+                "hybrid": {
+                    "%x": "Group",
+                    "workflows": {"existing": {"id": "existing"}},
+                }
+            }
+        }
+    )
+    monkeypatch.setattr(discovery, "persist_disk_cache", lambda: True)
+
+    discovery.inject_workflow("hybrid", "button", "click", "workflow", "reusable")
+    root = discovery.data["element_definitions"]["hybrid"]
+
+    assert root["workflows"] is root["%wf"]
+    assert discovery.find_workflow_for_element("hybrid", "button")["id"] == "workflow"
 
 
 def test_list_and_inject_workflows_support_standard_and_raw_contexts(monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -588,6 +684,20 @@ def test_list_and_inject_workflows_support_standard_and_raw_contexts(monkeypatch
                     }
                 },
                 "invalid-root": {"id": "invalid-root", "elements": "invalid"},
+                "hybrid": {
+                    "%x": "Group",
+                    "elements": {
+                        "standard": {
+                            "id": "standard",
+                            "elements": {"nested-standard": {"id": "nested-standard"}},
+                            "%el": {"nested-wire": {"id": "nested-wire"}},
+                        }
+                    },
+                    "%el": {"wire": {"id": "wire", "%x": "Text"}},
+                    "workflows": {
+                        "existing": {"id": "existing", "%x": "PageLoaded", "%p": {}}
+                    },
+                },
             },
             "%ed": {
                 "raw": {
@@ -612,6 +722,12 @@ def test_list_and_inject_workflows_support_standard_and_raw_contexts(monkeypatch
             "element": {"id": "raw-one", "%x": "Text"},
         }
     ]
+    assert [item["id"] for item in discovery.list_elements("hybrid")] == [
+        "wire",
+        "standard",
+        "nested-wire",
+        "nested-standard",
+    ]
 
     discovery.inject_workflow("reuse", "one", "click", "wf", "reusable")
     assert discovery.data["element_definitions"]["reuse"]["workflows"]["wf"]["%p"] == {
@@ -625,8 +741,12 @@ def test_list_and_inject_workflows_support_standard_and_raw_contexts(monkeypatch
         "id": "raw-wf",
         "actions": {},
     }
+    discovery.inject_workflow("hybrid", "standard", "click", "hybrid-wf", "reusable")
+    hybrid = discovery.data["element_definitions"]["hybrid"]
+    assert hybrid["workflows"] is hybrid["%wf"]
+    assert discovery.find_workflow_for_element("hybrid", "standard")["id"] == "hybrid-wf"
     discovery.inject_workflow("missing", "one", "click", "ignored", "reusable")
-    assert len(persisted) == 2
+    assert len(persisted) == 3
 
 
 def test_path_and_element_accessors_normalize_wire_aliases() -> None:
@@ -648,3 +768,10 @@ def test_path_and_element_accessors_normalize_wire_aliases() -> None:
         "name": "readable"
     }
     assert discovery.get_element_properties({"%p": {"%dn": "wire"}}) == {"%dn": "wire"}
+    assert discovery.get_element_properties({"properties": {}, "%p": {"%dn": "wire"}}) == {
+        "%dn": "wire"
+    }
+    assert discovery.get_element_properties(
+        {"properties": {"name": "readable"}, "%p": {"%dn": "wire"}}
+    ) == {"name": "readable"}
+    assert discovery.get_element_properties([]) == {}  # type: ignore[arg-type]
