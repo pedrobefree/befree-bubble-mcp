@@ -93,6 +93,47 @@ Extract and test one functional family at a time:
 Each extraction must preserve the existing `BubbleCLI` method as a compatibility
 facade until callers and catalog dispatch use the new boundary.
 
+#### Family 1: profile, cache, context, and reference resolution
+
+This family is being delivered through three bounded internal extractions:
+
+1. **Stage 4.1 — durable cache store: completed in PR #19.**
+   `BubbleCLICacheStore` now owns normalized JSON persistence, crash-safe atomic
+   replacement, legacy migration, and unreadable-cache recovery. The boundary
+   reached 95.3% focused combined branch coverage; the complete suite contained
+   1,131 Python and 11 Node tests. A 100-cycle load/save benchmark completed in
+   0.0286 second.
+2. **Stage 4.2 — context/element/workflow alias registry: completed on
+   2026-08-13.** `ContextAliasRegistry` now owns canonical profile buckets,
+   context alias fan-out and precedence, element enrichment and legacy payloads,
+   workflow aliases, defensive lookups, cross-process refresh, and scoped
+   cleanup. `BubbleCLI` retains its prior methods as compatibility facades.
+3. **Stage 4.3 — discovery-backed reference resolution: next.** Extract context
+   discovery traversal, cached element materialization, capture parsing,
+   `inspect_context`, and `resolve_refs` behind a resolver that consumes the
+   cache store and alias registry without owning persistence.
+
+Stage 4.2 results:
+
+- removed 390 lines of direct alias lifecycle logic from `bubble_cli.py` and
+  replaced them with 70 lines of construction/facades (net reduction: 320);
+- added a 513-line focused registry boundary with 301 executable statements;
+- added 36 behavior and real-`BubbleCLI` integration tests;
+- `context_alias_registry.py`: 97.3% combined branch coverage in the full run;
+- full suite: 1,167 Python and 11 Node tests passed;
+- global combined coverage: 37.9947%;
+- global ratchet: 37.8%, retaining 0.19 percentage point of headroom;
+- catalog remained at 327 MCP tools, with zero uncovered tools and no changes
+  to schemas, aliases, dispatch routes, previews, or result shapes;
+- benchmark: 1,000 registry lookups in 0.002945 second and 100 in-memory alias
+  mutations in 0.000118 second.
+
+Stage 4.2 also closes three reliability gaps inherited from the direct
+implementation: concurrent workflow writers no longer overwrite sibling
+updates, returned element/workflow payloads cannot mutate cached state by
+reference, and context cleanup removes both modern scoped workflow buckets and
+historical flat keys.
+
 ### Stage 5: Supporting debt
 
 After the three dominant blocks, prioritize modules by risk and missing lines:
