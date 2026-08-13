@@ -1,6 +1,7 @@
 import json
 import os
 import pickle
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -153,6 +154,211 @@ def test_path_discovery_persists_enriched_consolelog_cache(tmp_path: Path) -> No
     assert discovery.data["pages"]["index"]["%nm"] == "index"
     assert discovery.persist_disk_cache() is True
     assert Path(f"{consolelog_path}.parsed-cache.pkl").exists()
+
+
+def test_path_discovery_persists_injected_workflow_across_instances(tmp_path: Path) -> None:
+    app_path = tmp_path / "app.bubble"
+    _write_json(app_path, {"element_definitions": {"reuse": {"elements": {}}}})
+    discovery = PathDiscovery(str(app_path))
+    _ = discovery.data
+
+    discovery.inject_workflow("reuse", "button", "click", "workflow", "reusable")
+
+    reloaded = PathDiscovery(str(app_path))
+    result = reloaded.find_workflow_for_element("reuse", "button", "click")
+    assert result is not None
+    assert result["id"] == "workflow"
+    root = reloaded.data["element_definitions"]["reuse"]
+    assert root["workflows"] is root["%wf"]
+
+
+@pytest.mark.parametrize(
+    ("context_type", "container_key"),
+    [("reusable", "element_definitions"), ("page", "pages")],
+)
+def test_path_discovery_root_update_preserves_aliased_children_across_instances(
+    tmp_path: Path,
+    context_type: str,
+    container_key: str,
+) -> None:
+    app_path = tmp_path / "app.bubble"
+    _write_json(
+        app_path,
+        {
+            container_key: {
+                "root": {
+                    "id": "root",
+                    "elements": {"readable-child": {"id": "readable-child"}},
+                    "%el": {"wire-child": {"id": "wire-child"}},
+                }
+            }
+        },
+    )
+    discovery = PathDiscovery(str(app_path))
+    _ = discovery.data
+
+    discovery.inject_element("root", context_type, None, {"id": "root", "%x": "Group", "%dn": "Updated"})
+
+    root = discovery.data[container_key]["root"]
+    assert root["elements"] is root["%el"]
+    assert set(root["elements"]) == {"readable-child", "wire-child"}
+
+    reloaded = PathDiscovery(str(app_path))
+    persisted_root = reloaded.data[container_key]["root"]
+    assert persisted_root["elements"] is persisted_root["%el"]
+    assert set(persisted_root["elements"]) == {"readable-child", "wire-child"}
+
+
+def test_path_discovery_nested_injection_synchronizes_distinct_ancestor_aliases(
+    tmp_path: Path,
+) -> None:
+    app_path = tmp_path / "app.bubble"
+    _write_json(
+        app_path,
+        {
+            "element_definitions": {
+                "reuse": {
+                    "id": "reuse",
+                    "elements": {
+                        "parent-slot": {"id": "parent", "elements": {"readable": {}}}
+                    },
+                    "%el": {
+                        "parent-slot": {"id": "parent", "%el": {"wire": {}}}
+                    },
+                }
+            }
+        },
+    )
+    discovery = PathDiscovery(str(app_path))
+    _ = discovery.data
+
+    discovery.inject_element(
+        "reuse",
+        "reusable",
+        "parent",
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    reloaded = PathDiscovery(str(app_path))
+    root = reloaded.data["element_definitions"]["reuse"]
+    parent = root["%el"]["parent-slot"]
+    assert parent["elements"] is parent["%el"]
+    assert parent["%el"]["child-slot"]["id"] == "child"
+    assert reloaded.list_elements("reuse")[-1]["path"] == [
+        "%el",
+        "parent-slot",
+        "%el",
+        "child-slot",
+    ]
+
+
+def test_path_discovery_injected_custom_workflow_isolated_from_caller_and_cache(
+    tmp_path: Path,
+) -> None:
+    app_path = tmp_path / "app.bubble"
+    _write_json(app_path, {"element_definitions": {"reuse": {"id": "reuse"}}})
+    discovery = PathDiscovery(str(app_path))
+    _ = discovery.data
+    workflow_obj = {
+        "%x": "ElementEvent",
+        "%p": {"%ei": "button", "%et": "click"},
+        "actions": {"first": {"id": "first"}},
+    }
+
+    discovery.inject_workflow(
+        "reuse", "button", "click", "workflow", "reusable", workflow_obj
+    )
+    workflow_obj["%p"]["%ei"] = "mutated"
+    workflow_obj["actions"]["first"]["id"] = "mutated"
+
+    live = discovery.data["element_definitions"]["reuse"]["%wf"]["workflow"]
+    reloaded = PathDiscovery(str(app_path))
+    persisted = reloaded.data["element_definitions"]["reuse"]["%wf"]["workflow"]
+    expected = {
+        "%x": "ElementEvent",
+        "%p": {"%ei": "button", "%et": "click"},
+        "actions": {"first": {"id": "first"}},
+        "id": "workflow",
+    }
+    assert live == expected
+    assert persisted == expected
+
+
+def test_path_discovery_nested_injection_leaves_unrelated_hybrid_siblings_untouched(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    sibling_readable = {"readable-child": {"id": "readable-child"}}
+    sibling_wire = {"wire-child": {"id": "wire-child"}}
+    sibling = {
+        "id": "sibling",
+        "elements": sibling_readable,
+        "%el": sibling_wire,
+    }
+    discovery = PathDiscovery()
+    discovery._data = {
+        "element_definitions": {
+            "reuse": {
+                "id": "reuse",
+                "elements": {
+                    "sibling-slot": sibling,
+                    "target-slot": {"id": "target", "elements": {}},
+                },
+            }
+        }
+    }
+    persisted: list[bool] = []
+    monkeypatch.setattr(discovery, "persist_disk_cache", lambda: persisted.append(True) or True)
+
+    discovery.inject_element(
+        "reuse",
+        "reusable",
+        "target",
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    assert sibling["elements"] is sibling_readable
+    assert sibling["%el"] is sibling_wire
+    assert sibling["elements"] is not sibling["%el"]
+    assert sibling["elements"] == {"readable-child": {"id": "readable-child"}}
+    assert sibling["%el"] == {"wire-child": {"id": "wire-child"}}
+    assert persisted == [True]
+
+
+def test_path_discovery_missing_nested_parent_does_not_mutate_or_persist(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    discovery = PathDiscovery()
+    discovery._data = {
+        "element_definitions": {
+            "reuse": {
+                "id": "reuse",
+                "elements": {"readable-slot": {"id": "readable"}},
+                "%el": {"wire-slot": {"id": "wire"}},
+            }
+        }
+    }
+    before = deepcopy(discovery.data)
+    root = discovery.data["element_definitions"]["reuse"]
+    readable = root["elements"]
+    wire = root["%el"]
+    persisted: list[bool] = []
+    monkeypatch.setattr(discovery, "persist_disk_cache", lambda: persisted.append(True) or True)
+
+    discovery.inject_element(
+        "reuse",
+        "reusable",
+        "missing-parent",
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    assert discovery.data == before
+    assert root["elements"] is readable
+    assert root["%el"] is wire
+    assert root["elements"] is not root["%el"]
+    assert persisted == []
 
 
 def test_path_discovery_cache_can_be_disabled(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]

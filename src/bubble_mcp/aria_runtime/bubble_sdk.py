@@ -10,6 +10,7 @@ import random
 import string
 import requests
 import tempfile
+from copy import deepcopy
 from datetime import datetime
 import re
 from typing import Dict, List, Any, Optional, Union, Tuple
@@ -6597,6 +6598,64 @@ class PathDiscovery(DiscoveryDataBoundary):
             logger=logger,
         )
 
+    @staticmethod
+    def _read_alias_mapping(
+        obj: Any,
+        preferred_key: str,
+        alternate_key: str,
+    ) -> Dict[str, Any]:
+        """Resolve two mapping aliases without mutating their source object."""
+        if not isinstance(obj, dict):
+            return {}
+
+        preferred = obj.get(preferred_key)
+        alternate = obj.get(alternate_key)
+        preferred_mapping = preferred if isinstance(preferred, dict) else None
+        alternate_mapping = alternate if isinstance(alternate, dict) else None
+
+        if preferred_mapping is None:
+            return alternate_mapping if alternate_mapping is not None else {}
+        if alternate_mapping is None or preferred_mapping is alternate_mapping:
+            return preferred_mapping
+
+        # Preserve alternate-only records before the preferred mapping, which
+        # retains preferred values and its insertion order on collisions.
+        return {
+            **{key: value for key, value in alternate_mapping.items() if key not in preferred_mapping},
+            **preferred_mapping,
+        }
+
+    @staticmethod
+    def _read_nonempty_alias_mapping(
+        obj: Any,
+        preferred_key: str,
+        alternate_key: str,
+    ) -> Dict[str, Any]:
+        """Resolve property-like aliases, falling back when the preferred map is empty."""
+        if not isinstance(obj, dict):
+            return {}
+
+        preferred = obj.get(preferred_key)
+        alternate = obj.get(alternate_key)
+        if isinstance(preferred, dict) and preferred:
+            return preferred
+        if isinstance(alternate, dict):
+            return alternate
+        return preferred if isinstance(preferred, dict) else {}
+
+    @classmethod
+    def _sync_alias_mapping(
+        cls,
+        obj: Dict[str, Any],
+        preferred_key: str,
+        alternate_key: str,
+    ) -> Dict[str, Any]:
+        """Install one shared mutable mapping under both aliases and return it."""
+        resolved = cls._read_alias_mapping(obj, preferred_key, alternate_key)
+        obj[preferred_key] = resolved
+        obj[alternate_key] = resolved
+        return resolved
+
     def _load_crawler_index(self, path: Optional[str]) -> Optional[Dict[str, Any]]:
         """
         Load a crawler-index JSON and convert its array-based pages/reusables
@@ -6944,52 +7003,53 @@ class PathDiscovery(DiscoveryDataBoundary):
         if context_type == "reusable":
             standard = self.data.get('element_definitions', {})
             raw = self.data.get('%ed', {})
-            res = None
-            if isinstance(standard, dict):
-                res = standard.get(context_id)
-            if not res and isinstance(raw, dict):
-                res = raw.get(context_id)
-            if not res:
+            if isinstance(standard, dict) and isinstance(standard.get(context_id), dict):
+                return standard[context_id]
+            if isinstance(raw, dict) and isinstance(raw.get(context_id), dict):
+                return raw[context_id]
+            else:
                 reusable_ids: List[str] = []
                 if isinstance(standard, dict):
                     reusable_ids.extend(list(standard.keys()))
                 if isinstance(raw, dict):
                     reusable_ids.extend([rid for rid in raw.keys() if rid not in reusable_ids])
                 logger.info(f" [DEBUG] _get_context_root: '{context_id}' not found in reusables. IDs: {reusable_ids}")
-            return res
+            return None
         else:
             standard = self.data.get('pages', {})
             raw = self.data.get('%p3', {})
-            res = None
-            if isinstance(standard, dict):
-                res = standard.get(context_id)
-            if not res and isinstance(raw, dict):
-                res = raw.get(context_id)
-            if not res:
+            if isinstance(standard, dict) and isinstance(standard.get(context_id), dict):
+                return standard[context_id]
+            if isinstance(raw, dict) and isinstance(raw.get(context_id), dict):
+                return raw[context_id]
+            else:
                 page_ids: List[str] = []
                 if isinstance(standard, dict):
                     page_ids.extend(list(standard.keys()))
                 if isinstance(raw, dict):
                     page_ids.extend([pid for pid in raw.keys() if pid not in page_ids])
                 logger.info(f" [DEBUG] _get_context_root: '{context_id}' not found in pages. IDs: {page_ids}")
-            return res
+            return None
 
     def find_reusable(self, name: str) -> Optional[str]:
         """
         Find reusable element ID by name (case-insensitive).
         Returns: reusable_id or None
         """
-        reusables = self.data.get('element_definitions', {}) or self.data.get('%ed', {})
-        if not reusables or not isinstance(reusables, dict):
-            return None
-
         name_lower = self._norm_lookup(name)
-        for el_id, el_data in reusables.items():
-            if isinstance(el_data, dict):
-                el_name = el_data.get('name') or el_data.get('%nm', '')
-                if self._norm_lookup(el_name) == name_lower:
-                    logger.info(f" [DEBUG] find_reusable: '{name}' -> '{el_id}'")
-                    return el_id
+        seen_ids = set()
+        for reusables in (self.data.get('element_definitions'), self.data.get('%ed')):
+            if not isinstance(reusables, dict):
+                continue
+            for el_id, el_data in reusables.items():
+                if el_id in seen_ids:
+                    continue
+                seen_ids.add(el_id)
+                if isinstance(el_data, dict):
+                    el_name = el_data.get('name') or el_data.get('%nm', '')
+                    if self._norm_lookup(el_name) == name_lower:
+                        logger.info(f" [DEBUG] find_reusable: '{name}' -> '{el_id}'")
+                        return el_id
         return None
 
     def find_page(self, name: str) -> Optional[str]:
@@ -6997,16 +7057,19 @@ class PathDiscovery(DiscoveryDataBoundary):
         Find page ID by name (case-insensitive).
         Returns: page_id or None
         """
-        pages = self.data.get('pages') or self.data.get('%p3')
-        if not pages or not isinstance(pages, dict):
-            return None
-
         name_lower = self._norm_lookup(name)
-        for page_id, page_data in pages.items():
-            if isinstance(page_data, dict):
-                page_name = page_data.get('name') or page_data.get('%nm', '')
-                if self._norm_lookup(page_name) == name_lower:
-                    return page_id
+        seen_ids = set()
+        for pages in (self.data.get('pages'), self.data.get('%p3')):
+            if not isinstance(pages, dict):
+                continue
+            for page_id, page_data in pages.items():
+                if page_id in seen_ids:
+                    continue
+                seen_ids.add(page_id)
+                if isinstance(page_data, dict):
+                    page_name = page_data.get('name') or page_data.get('%nm', '')
+                    if self._norm_lookup(page_name) == name_lower:
+                        return page_id
         return None
 
     def find_element_by_text(self, context_id: str, text: str, context_type: str = "reusable") -> Optional[Dict]:
@@ -7016,7 +7079,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             return None
 
         needle = self._norm_lookup(text)
@@ -7029,7 +7092,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                         return {'path': path_parts, 'id': obj.get('id'), 'element': obj}
 
                 # Search children
-                elements = obj.get('elements') or obj.get('%el', {})
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7064,7 +7127,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             return None
 
         name_lower = self._norm_lookup(name)
@@ -7085,7 +7148,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 elif any(name_lower in candidate for candidate in normalized_candidates):
                     fuzzy_matches.append(match)
 
-                elements = obj.get('elements') or obj.get('%el', {})
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7109,7 +7172,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         Returns: {'path': [...], 'id': str, 'element': dict} or None
         """
         root = self._get_context_root(context_id, context_type)
-        if not root:
+        if root is None:
             logger.warning(f" [DEBUG] find_element_by_id: root not found for {context_id}")
             return None
 
@@ -7121,7 +7184,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 if str(obj.get('id')) == str(element_id):
                     return {'path': path_parts, 'id': obj.get('id'), 'element': obj}
 
-                elements = obj.get('elements') or obj.get('%el', {})
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7143,7 +7206,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             return None
 
         name_lower = self._norm_lookup(name)
@@ -7157,7 +7220,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                         return {'path': path_parts, 'id': obj.get('id'), 'element': obj}
 
                 # Search children
-                elements = obj.get('elements') or obj.get('%el', {})
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7205,7 +7268,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         if not isinstance(obj, dict):
             return []
-        props = obj.get("properties", {}) if isinstance(obj.get("properties"), dict) else {}
+        props = self._read_nonempty_alias_mapping(obj, "properties", "%p")
         el_type = obj.get("type") or obj.get("%x") or ""
         el_type_norm = str(el_type).strip()
 
@@ -7213,6 +7276,8 @@ class PathDiscovery(DiscoveryDataBoundary):
         base_names = [
             obj.get("name", ""),
             obj.get("default_name", ""),
+            obj.get("%nm", ""),
+            obj.get("%dn", ""),
             props.get("element_name", "")
         ]
         for value in base_names:
@@ -7222,15 +7287,16 @@ class PathDiscovery(DiscoveryDataBoundary):
                     candidates.append(f"{el_type_norm} {value}")
 
         # Label/content-like values shown by Bubble UI
-        text_plain = self._plain_text_from_expr(props.get("text"))
-        if text_plain:
-            candidates.append(text_plain)
-            if el_type_norm:
-                candidates.append(f"{el_type_norm} {text_plain}")
-            if el_type_norm.lower() == "button":
-                candidates.append(f"Button {text_plain}")
-            if el_type_norm.lower() == "text":
-                candidates.append(f"Text {text_plain}")
+        for text_expr in (props.get("text"), props.get("%3")):
+            text_plain = self._plain_text_from_expr(text_expr)
+            if text_plain:
+                candidates.append(text_plain)
+                if el_type_norm:
+                    candidates.append(f"{el_type_norm} {text_plain}")
+                if el_type_norm.lower() == "button":
+                    candidates.append(f"Button {text_plain}")
+                if el_type_norm.lower() == "text":
+                    candidates.append(f"Text {text_plain}")
 
         # Icon values shown in Icon and some Button editors
         icon_value = props.get("icon") or props.get("%9i")
@@ -7322,7 +7388,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         # Get Root
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             # Auto-create context root for newly created reusables/pages
             # This handles the case where create_reusable sends via webhook
             # but the local JSON hasn't been refreshed yet.
@@ -7330,28 +7396,16 @@ class PathDiscovery(DiscoveryDataBoundary):
             # Also try raw format keys
             raw_key = '%ed' if context_type == "reusable" else '%p3'
 
-            # Determine which top-level key exists in data, prefer standard format
-            if container_key in self.data:
-                target_key = container_key
-            elif raw_key in self.data:
-                target_key = raw_key
-            else:
-                # Create standard format container
-                self.data[container_key] = {}
-                target_key = container_key
+            contexts = self._sync_alias_mapping(self.data, container_key, raw_key)
 
             # Create a minimal root entry
-            self.data[target_key][context_id] = {
+            contexts[context_id] = {
                 "id": context_id,
                 "name": element_data.get('%dn', '') or element_data.get('name', ''),
                 "elements": {}
             }
-            root = self.data[target_key][context_id]
-            logger.info(f"Auto-created context root for {context_id} in {target_key}")
-
-        # Determine children key based on root format
-        # In raw format, it's %el. In standard format, it's elements.
-        children_key = "%el" if "%el" in root or "%x" in root else "elements"
+            root = contexts[context_id]
+            logger.info(f"Auto-created context root for {context_id} in {container_key}")
 
         # Prepare element structure for discovery (simplified)
         # discovery looks for 'name', 'default_name', 'id'
@@ -7382,66 +7436,48 @@ class PathDiscovery(DiscoveryDataBoundary):
 
         # If parent_id is None or same as context (Root), add to root elements
         if not parent_id or parent_id == context_id:
-             # Check if we are updating the root itself
-             # We need to make sure we're updating the PERSISTENT self.data
-             container_key = 'element_definitions' if context_type == "reusable" else 'pages'
-             if container_key not in self.data and (container_key == 'element_definitions' and '%ed' in self.data):
-                 container_key = '%ed'
-             elif container_key not in self.data and (container_key == 'pages' and '%p3' in self.data):
-                 container_key = '%p3'
+            # Root creations use no distinct element slot. Child creations do.
+            if not element_key or element_key == context_id or element_key == extracted_name:
+                root.update({key: value for key, value in new_el.items() if key != "elements"})
+                self._sync_alias_mapping(root, "elements", "%el")
+                self.persist_disk_cache()
+                logger.info(f" Updated context root {context_id} with name '{extracted_name}'")
+                return
 
-             if container_key not in self.data:
-                 self.data[container_key] = {}
-
-             container = self.data[container_key]
-
-             # If this is the root itself or if it has the same ID, update it
-             if context_id in container and (not element_key or element_key == context_id or element_key == extracted_name):
-                 container[context_id].update(new_el)
-                 self.persist_disk_cache()
-                 logger.info(f" Updated context root {context_id} with name '{extracted_name}'")
-                 return
-
-             # Fallback: if it's the root but not in container, add it!
-             if context_id not in container:
-                 container[context_id] = new_el
-                 self.persist_disk_cache()
-                 logger.info(f" Added new context root {context_id} with name '{extracted_name}'")
-                 return
-
-             if children_key not in root:
-                 root[children_key] = {}
-             root[children_key][dict_key] = new_el
-             self.persist_disk_cache()
-             logger.info(f" Injected {new_el['default_name']} ({dict_key}) into {context_id} root")
-             return
+            children = self._sync_alias_mapping(root, "elements", "%el")
+            children[dict_key] = new_el
+            self.persist_disk_cache()
+            logger.info(f" Injected {new_el['default_name']} ({dict_key}) into {context_id} root")
+            return
 
         # If parent_id provided, find it first
         # We can reuse find_element_by_name logic but we need ID search
         # Quick search
-        def find_node(obj):
+        def find_node_chain(obj):
             if isinstance(obj, dict):
                 if obj.get('id') == parent_id:
-                    return obj
-                elements = obj.get('elements') or obj.get('%el')
-                if isinstance(elements, dict):
-                    for k, v in elements.items():
-                        if k == "length": continue
-                        res = find_node(v)
-                        if res: return res
+                    return [obj]
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
+                for k, v in elements.items():
+                    if k == "length": continue
+                    chain = find_node_chain(v)
+                    if chain:
+                        return [obj, *chain]
             return None
 
-        parent_node = find_node(root)
-        if parent_node:
-             # Match children key of the parent
-             node_children_key = "%el" if "%el" in parent_node or "%x" in parent_node else "elements"
-             if node_children_key not in parent_node:
-                 parent_node[node_children_key] = {}
-             parent_node[node_children_key][dict_key] = new_el
-             self.persist_disk_cache()
-             logger.info(f" Injected {new_el['default_name']} ({dict_key}) into parent {parent_id}")
+        parent_chain = find_node_chain(root)
+        if parent_chain:
+            for ancestor in parent_chain:
+                if 'elements' in ancestor or '%el' in ancestor:
+                    self._sync_alias_mapping(ancestor, "elements", "%el")
+            parent_node = parent_chain[-1]
+            # Match children key of the parent
+            parent_children = self._sync_alias_mapping(parent_node, "elements", "%el")
+            parent_children[dict_key] = new_el
+            self.persist_disk_cache()
+            logger.info(f" Injected {new_el['default_name']} ({dict_key}) into parent {parent_id}")
         else:
-             logger.warning(f"Injection failed: Parent {parent_id} not found")
+            logger.warning(f"Injection failed: Parent {parent_id} not found")
 
     def find_workflow_for_element(self, context_id: str, element_id: str, event_type: str = "click", context_type: str = "reusable") -> Optional[Dict]:
         """
@@ -7450,7 +7486,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             return None
 
         # Workflows are usually in 'workflows' dict or equivalent
@@ -7462,11 +7498,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                 # Check if it's a workflow event
                 obj_type = obj.get('%x') or obj.get('type')
                 if obj_type:
-                    props = obj.get('%p', {})
-                    if not isinstance(props, dict):
-                        props = obj.get('properties', {})
-                    if not isinstance(props, dict):
-                        props = {}
+                    props = self._read_nonempty_alias_mapping(obj, '%p', 'properties')
                     target_el = props.get('%ei') or props.get('element_id')
                     event_kind = props.get('%et') or props.get('event_type')
 
@@ -7487,7 +7519,7 @@ class PathDiscovery(DiscoveryDataBoundary):
                             return {'path': path_parts, 'id': obj.get('id'), 'workflow': obj}
 
                 # Search children
-                elements = obj.get('elements') or obj.get('%el')
+                elements = self._read_alias_mapping(obj, 'elements', '%el')
                 if isinstance(elements, dict):
                     for key, value in elements.items():
                         if key == "length": continue
@@ -7496,9 +7528,9 @@ class PathDiscovery(DiscoveryDataBoundary):
                         if result: return result
 
                 # Search workflows direct list if any
-                workflows = obj.get('workflows') or obj.get('%wf')
+                workflows = self._read_alias_mapping(obj, 'workflows', '%wf')
                 if isinstance(workflows, dict):
-                    for key, value in workflows.items():
+                    for key, value in reversed(list(workflows.items())):
                         if key == "length": continue
                         child_path = path_parts + (['%wf', key] if '%wf' in obj or '%x' in obj else ['workflows', key])
                         result = search_workflow(value, child_path)
@@ -7506,24 +7538,22 @@ class PathDiscovery(DiscoveryDataBoundary):
             return None
 
         # Optimization: Look in 'workflows' key first if it exists
-        if 'workflows' in root:
-             # Iterate newest first so action writes target the latest workflow.
-             for wf_id, wf_data in reversed(list(root['workflows'].items())):
-                 result = search_workflow(wf_data, ['workflows', wf_id]) # Path structure might vary
-                 if result:
-                     return result
+        root_workflows = self._read_alias_mapping(root, 'workflows', '%wf')
+        if root_workflows:
+            # Iterate newest first so action writes target the latest workflow.
+            for wf_id, wf_data in reversed(list(root_workflows.items())):
+                path_key = '%wf' if '%wf' in root or '%x' in root else 'workflows'
+                result = search_workflow(wf_data, [path_key, wf_id])
+                if result:
+                    return result
 
         # Fallback to full search (legacy structure)
         return search_workflow(root)
 
     def list_elements(self, context_id: str, context_type: str = "reusable") -> List[Dict]:
         """List all elements with their paths in a context."""
-        if context_type == "reusable":
-            root = self.data.get('element_definitions', {}).get(context_id)
-        else:
-            root = self.data.get('pages', {}).get(context_id)
-
-        if not root:
+        root = self._get_context_root(context_id, context_type)
+        if root is None:
             return []
 
         results = []
@@ -7539,9 +7569,11 @@ class PathDiscovery(DiscoveryDataBoundary):
                     "id": value.get("id"),
                     "element": value
                 })
-                walk(value.get("elements", {}), path_parts + ["%el", key])
+                children = self._read_alias_mapping(value, "elements", "%el")
+                walk(children, path_parts + ["%el", key])
 
-        walk(root.get("elements", {}), [])
+        root_elements = self._read_alias_mapping(root, "elements", "%el")
+        walk(root_elements, [])
         return results
 
     def inject_workflow(
@@ -7554,19 +7586,15 @@ class PathDiscovery(DiscoveryDataBoundary):
         workflow_obj: Optional[Dict] = None
     ):
         """Inject workflow into discovery"""
-        if context_type == "reusable":
-            root = self.data.get('element_definitions', {}).get(context_id)
-        else:
-            root = self.data.get('pages', {}).get(context_id)
+        root = self._get_context_root(context_id, context_type)
+        if root is None:
+            return
 
-        if not root: return
-
-        if 'workflows' not in root:
-            root['workflows'] = {}
+        workflows = self._sync_alias_mapping(root, "workflows", "%wf")
 
         # Keep injected workflow shape aligned with what was created.
         if isinstance(workflow_obj, dict):
-            wf_obj = dict(workflow_obj)
+            wf_obj = deepcopy(workflow_obj)
             wf_obj.setdefault("id", wf_id)
             wf_obj.setdefault("actions", {})
         else:
@@ -7580,7 +7608,8 @@ class PathDiscovery(DiscoveryDataBoundary):
                 "actions": {}
             }
 
-        root['workflows'][wf_id] = wf_obj
+        workflows[wf_id] = wf_obj
+        self.persist_disk_cache()
         logger.info(f" Injected Workflow {wf_id} for element {element_id}")
 
     def build_path_array(self, context_id: str, element_path: List[str], context_type: str = "reusable") -> List[str]:
@@ -7611,7 +7640,7 @@ class PathDiscovery(DiscoveryDataBoundary):
 
     def get_element_properties(self, element: Dict) -> Dict:
         """Extract all properties from element"""
-        return element.get('properties', {})
+        return self._read_nonempty_alias_mapping(element, 'properties', '%p')
 
 
 # ==========================================
@@ -7730,7 +7759,7 @@ class WebhookClient:
 # EXAMPLE USAGE
 # ==========================================
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - illustrative manual example
     print("=" * 70)
     print("BUBBLE SDK - Examples")
     print("=" * 70)
