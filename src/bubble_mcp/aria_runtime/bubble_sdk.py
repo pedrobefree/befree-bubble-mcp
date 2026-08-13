@@ -7003,35 +7003,33 @@ class PathDiscovery(DiscoveryDataBoundary):
         if context_type == "reusable":
             standard = self.data.get('element_definitions', {})
             raw = self.data.get('%ed', {})
-            res = None
-            if isinstance(standard, dict):
-                res = standard.get(context_id)
-            if not res and isinstance(raw, dict):
-                res = raw.get(context_id)
-            if not res:
+            if isinstance(standard, dict) and context_id in standard:
+                return standard[context_id]
+            if isinstance(raw, dict) and context_id in raw:
+                return raw[context_id]
+            else:
                 reusable_ids: List[str] = []
                 if isinstance(standard, dict):
                     reusable_ids.extend(list(standard.keys()))
                 if isinstance(raw, dict):
                     reusable_ids.extend([rid for rid in raw.keys() if rid not in reusable_ids])
                 logger.info(f" [DEBUG] _get_context_root: '{context_id}' not found in reusables. IDs: {reusable_ids}")
-            return res
+            return None
         else:
             standard = self.data.get('pages', {})
             raw = self.data.get('%p3', {})
-            res = None
-            if isinstance(standard, dict):
-                res = standard.get(context_id)
-            if not res and isinstance(raw, dict):
-                res = raw.get(context_id)
-            if not res:
+            if isinstance(standard, dict) and context_id in standard:
+                return standard[context_id]
+            if isinstance(raw, dict) and context_id in raw:
+                return raw[context_id]
+            else:
                 page_ids: List[str] = []
                 if isinstance(standard, dict):
                     page_ids.extend(list(standard.keys()))
                 if isinstance(raw, dict):
                     page_ids.extend([pid for pid in raw.keys() if pid not in page_ids])
                 logger.info(f" [DEBUG] _get_context_root: '{context_id}' not found in pages. IDs: {page_ids}")
-            return res
+            return None
 
     def find_reusable(self, name: str) -> Optional[str]:
         """
@@ -7081,7 +7079,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             return None
 
         needle = self._norm_lookup(text)
@@ -7129,7 +7127,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             return None
 
         name_lower = self._norm_lookup(name)
@@ -7174,7 +7172,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         Returns: {'path': [...], 'id': str, 'element': dict} or None
         """
         root = self._get_context_root(context_id, context_type)
-        if not root:
+        if root is None:
             logger.warning(f" [DEBUG] find_element_by_id: root not found for {context_id}")
             return None
 
@@ -7208,7 +7206,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             return None
 
         name_lower = self._norm_lookup(name)
@@ -7390,7 +7388,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         # Get Root
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             # Auto-create context root for newly created reusables/pages
             # This handles the case where create_reusable sends via webhook
             # but the local JSON hasn't been refreshed yet.
@@ -7398,24 +7396,16 @@ class PathDiscovery(DiscoveryDataBoundary):
             # Also try raw format keys
             raw_key = '%ed' if context_type == "reusable" else '%p3'
 
-            # Determine which top-level key exists in data, prefer standard format
-            if container_key in self.data:
-                target_key = container_key
-            elif raw_key in self.data:
-                target_key = raw_key
-            else:
-                # Create standard format container
-                self.data[container_key] = {}
-                target_key = container_key
+            contexts = self._sync_alias_mapping(self.data, container_key, raw_key)
 
             # Create a minimal root entry
-            self.data[target_key][context_id] = {
+            contexts[context_id] = {
                 "id": context_id,
                 "name": element_data.get('%dn', '') or element_data.get('name', ''),
                 "elements": {}
             }
-            root = self.data[target_key][context_id]
-            logger.info(f"Auto-created context root for {context_id} in {target_key}")
+            root = contexts[context_id]
+            logger.info(f"Auto-created context root for {context_id} in {container_key}")
 
         # Prepare element structure for discovery (simplified)
         # discovery looks for 'name', 'default_name', 'id'
@@ -7496,7 +7486,7 @@ class PathDiscovery(DiscoveryDataBoundary):
         """
         root = self._get_context_root(context_id, context_type)
 
-        if not root:
+        if root is None:
             return None
 
         # Workflows are usually in 'workflows' dict or equivalent
@@ -7563,7 +7553,7 @@ class PathDiscovery(DiscoveryDataBoundary):
     def list_elements(self, context_id: str, context_type: str = "reusable") -> List[Dict]:
         """List all elements with their paths in a context."""
         root = self._get_context_root(context_id, context_type)
-        if not root:
+        if root is None:
             return []
 
         results = []
@@ -7597,7 +7587,7 @@ class PathDiscovery(DiscoveryDataBoundary):
     ):
         """Inject workflow into discovery"""
         root = self._get_context_root(context_id, context_type)
-        if not root:
+        if root is None:
             return
 
         workflows = self._sync_alias_mapping(root, "workflows", "%wf")

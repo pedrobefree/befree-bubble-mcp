@@ -421,6 +421,67 @@ def test_context_name_lookup_prefers_readable_aliases_for_duplicate_names() -> N
     assert discovery.find_page("duplicate") == "readable-page"
 
 
+@pytest.mark.parametrize(
+    ("context_type", "preferred_key", "alternate_key"),
+    [
+        ("reusable", "element_definitions", "%ed"),
+        ("page", "pages", "%p3"),
+    ],
+)
+def test_context_root_prefers_present_empty_readable_record(
+    context_type: str,
+    preferred_key: str,
+    alternate_key: str,
+) -> None:
+    preferred_root: dict[str, Any] = {}
+    raw_root = {"id": "shared", "%x": "Group", "%dn": "Raw"}
+    discovery = discovery_with(
+        {
+            preferred_key: {"shared": preferred_root},
+            alternate_key: {"shared": raw_root},
+        }
+    )
+
+    assert discovery._get_context_root("shared", context_type) is preferred_root
+
+
+@pytest.mark.parametrize(
+    ("context_type", "preferred_key", "alternate_key"),
+    [
+        ("reusable", "element_definitions", "%ed"),
+        ("page", "pages", "%p3"),
+    ],
+)
+def test_inject_element_mutates_present_empty_preferred_context_root(
+    context_type: str,
+    preferred_key: str,
+    alternate_key: str,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    preferred_root: dict[str, Any] = {}
+    raw_root = {"id": "shared", "%x": "Group", "%dn": "Raw"}
+    discovery = discovery_with(
+        {
+            preferred_key: {"shared": preferred_root},
+            alternate_key: {"shared": raw_root},
+        }
+    )
+    monkeypatch.setattr(discovery, "persist_disk_cache", lambda: True)
+
+    discovery.inject_element(
+        "shared",
+        context_type,
+        None,
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    assert discovery.data[preferred_key]["shared"] is preferred_root
+    assert preferred_root["%el"]["child-slot"]["id"] == "child"
+    assert discovery.data[alternate_key]["shared"] is raw_root
+    assert "%el" not in raw_root
+
+
 def test_element_lookup_handles_text_names_ids_and_match_priority() -> None:
     discovery = sample_discovery()
     assert discovery.find_element_by_text("reuse", "hello world")["id"] == "first"
@@ -572,6 +633,44 @@ def test_inject_element_uses_existing_empty_context_container(
     )
 
     assert discovery.data[container_key]["new"]["elements"]["child-slot"]["id"] == "child"
+
+
+@pytest.mark.parametrize(
+    ("context_type", "preferred_key", "alternate_key", "preferred_value", "alternate_value"),
+    [
+        ("reusable", "element_definitions", "%ed", [], {}),
+        ("page", "pages", "%p3", "invalid", {}),
+        ("reusable", "element_definitions", "%ed", [], "invalid"),
+        ("page", "pages", "%p3", "invalid", []),
+    ],
+)
+def test_inject_element_repairs_invalid_top_level_context_aliases(
+    context_type: str,
+    preferred_key: str,
+    alternate_key: str,
+    preferred_value: object,
+    alternate_value: object,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    discovery = discovery_with(
+        {preferred_key: preferred_value, alternate_key: alternate_value}
+    )
+    alternate_mapping = alternate_value if isinstance(alternate_value, dict) else None
+    monkeypatch.setattr(discovery, "persist_disk_cache", lambda: True)
+
+    discovery.inject_element(
+        "new",
+        context_type,
+        None,
+        {"id": "child", "%x": "Text", "%dn": "Child"},
+        "child-slot",
+    )
+
+    repaired = discovery.data[preferred_key]
+    assert repaired is discovery.data[alternate_key]
+    if alternate_mapping is not None:
+        assert repaired is alternate_mapping
+    assert repaired["new"]["%el"]["child-slot"]["id"] == "child"
 
 
 def test_inject_element_supports_raw_roots_and_missing_parents(monkeypatch) -> None:  # type: ignore[no-untyped-def]
