@@ -195,8 +195,6 @@ class HTMLParser:
         if not s:
             return False
         if ":" in s:
-            s = s.split(":", 1)[0].strip()
-        if not s:
             return False
         if any(ch in s for ch in (" ", ">", "+", "~", "[")):
             return False
@@ -474,6 +472,12 @@ class HTMLParser:
             k = key.strip().lower()
             v = value.strip()
             if k and v:
+                previous = out.get(k)
+                if previous is not None:
+                    _previous_value, previous_important = self._split_css_important(previous)
+                    _current_value, current_important = self._split_css_important(v)
+                    if previous_important and not current_important:
+                        continue
                 out[k] = v
         return out
 

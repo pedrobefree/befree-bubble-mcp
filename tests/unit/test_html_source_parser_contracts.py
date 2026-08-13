@@ -12,7 +12,7 @@ def test_parse_applies_supported_css_and_normalizes_semantic_text() -> None:
           /* ignored */
           *, .card.primary { box-sizing: border-box; }
           #hero { color: rgb(1, 2, 3); }
-          button.cta:hover { font-weight: 700; }
+          button.cta { font-weight: 700; }
           .parent .child, [data-kind] { opacity: 0.5; }
           .empty { ; }
         </style>
@@ -65,6 +65,32 @@ def test_css_cascade_honors_importance_specificity_and_source_order() -> None:
     assert styles["color"] == "#111111"
     assert styles["padding"] == "1px"
     assert styles["background"] == "#aaaaaa"
+
+
+def test_css_cascade_preserves_important_across_repeated_declarations() -> None:
+    parser = HTMLParser()
+    inline = parser.parse(
+        '<p style="color: #111111 !important; color: #222222">Inline</p>'
+    )["children"][0]
+    stylesheet = parser.parse(
+        "<style>.title { color: #333333 !important; color: #444444; }</style>"
+        '<p class="title">Stylesheet</p>'
+    )["children"][1]
+
+    assert inline["computed_styles"]["color"] == "#111111"
+    assert inline["styles"]["color"] == "#111111"
+    assert stylesheet["computed_styles"]["color"] == "#333333"
+
+
+def test_static_parser_does_not_apply_pseudo_state_rules_as_base_styles() -> None:
+    parsed = HTMLParser().parse(
+        "<style>.button:hover { color: #ff0000; } .button { color: #0000ff; }</style>"
+        '<button class="button">Continue</button>'
+    )
+
+    button = parsed["children"][1]
+    assert button["computed_styles"]["color"] == "#0000ff"
+    assert button["text_segments"][0]["styles"]["color"] == "#0000ff"
 
 
 def test_public_parser_resolves_stylesheet_and_inline_importance_before_mapping() -> None:
@@ -239,7 +265,7 @@ def test_private_parsing_boundaries_reject_noise() -> None:
     assert parser._selector_matches("div", "hero", ["card", "primary"], "div.card") is True
     assert parser._selector_matches("span", "hero", ["card"], "div.card") is False
     assert parser._selector_matches("div", "hero", ["card"], ".missing") is False
-    assert parser._selector_matches("div", "hero", ["card"], ".card:hover") is True
+    assert parser._selector_matches("div", "hero", ["card"], ".card:hover") is False
     assert parser._selector_matches("div", "hero", ["card"], ".parent .card") is False
     assert parser._selector_matches("div", "hero", ["card"], "") is False
     assert parser._selector_matches("div", "hero", ["card"], ":hover") is False

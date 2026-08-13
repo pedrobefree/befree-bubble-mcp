@@ -44,7 +44,7 @@ class HTMLToBubbleMapper:
         "a": "map_link_or_button",
         "input": "map_input",
         "textarea": "map_input",
-        "select": "map_input",
+        "select": "map_select",
         "img": "map_image",
         "iframe": "map_container",
         "svg": "map_shape",
@@ -3642,6 +3642,54 @@ class HTMLToBubbleMapper:
             },
         }
 
+    def map_select(self, element: Dict[str, Any], depth: int = 0) -> Optional[Dict[str, Any]]:
+        attrs = element.get("attributes", {}) or {}
+        input_mapping = self.map_input(element, depth=depth)
+        if not input_mapping:
+            return None
+
+        options: List[Dict[str, Any]] = []
+
+        def _collect_options(nodes: Any) -> None:
+            if not isinstance(nodes, list):
+                return
+            for node in nodes:
+                if not isinstance(node, dict):
+                    continue
+                if str(node.get("type", "")).lower() == "option":
+                    option_attrs = node.get("attributes", {}) or {}
+                    label = self._clean_text(option_attrs.get("label", "")) or self._deep_text(node)
+                    value = self._clean_text(option_attrs.get("value", "")) or label
+                    options.append(
+                        {
+                            "label": label,
+                            "value": value,
+                            "selected": "selected" in option_attrs,
+                            "disabled": "disabled" in option_attrs,
+                        }
+                    )
+                    continue
+                _collect_options(node.get("children", []))
+
+        _collect_options(element.get("children", []))
+        selected = next((option for option in options if option["selected"]), None)
+        properties = dict(input_mapping.get("properties", {}) or {})
+        properties.pop("content_format", None)
+        properties.update(
+            {
+                "name": self._name_from_element(element, fallback="Dropdown"),
+                "placeholder": self._clean_text(attrs.get("placeholder", "")) or "Choose an option...",
+                "choices": "\n".join(option["label"] for option in options),
+                "options": options,
+                "selected_option": (
+                    {"label": selected["label"], "value": selected["value"]} if selected else None
+                ),
+                "required": "required" in attrs,
+                "disabled": "disabled" in attrs,
+            }
+        )
+        return {"bubble_type": "Dropdown", "properties": properties}
+
     def map_image(self, element: Dict[str, Any], depth: int = 0) -> Optional[Dict[str, Any]]:
         attrs = element.get("attributes", {}) or {}
         node_type = str(element.get("type", "")).lower()
@@ -3858,6 +3906,9 @@ class HTMLToBubbleMapper:
             svg_markup = self._serialize_svg_node(element, width=width, height=height)
             if not svg_markup:
                 return None
+            image_url = normalize_media_url(f"data:image/svg+xml;utf8,{quote(svg_markup)}")
+            if not image_url:
+                return None
             horiz_alignment = self._parent_horiz_alignment_from_styles(element)
             if horiz_alignment is None:
                 horiz_alignment = self._geometry_horiz_alignment(element, width, default="center")
@@ -3865,7 +3916,7 @@ class HTMLToBubbleMapper:
                 "bubble_type": "Image",
                 "properties": {
                     "name": self._name_from_element(element, fallback="SVG"),
-                    "image_url": f"data:image/svg+xml;utf8,{quote(svg_markup)}",
+                    "image_url": image_url,
                     "width": width,
                     "height": height,
                     "fixed_size": True,

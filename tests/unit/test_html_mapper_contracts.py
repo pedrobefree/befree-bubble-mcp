@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from bubble_mcp.aria_runtime.html_to_bubble import HTMLParser, HTMLToBubbleMapper
+from bubble_mcp.aria_runtime.html_to_bubble import BubbleCommandBuilder, HTMLParser, HTMLToBubbleMapper
 
 
 FIXTURE = Path("tests/fixtures/html/import-pipeline-contracts.html")
@@ -49,7 +49,7 @@ def test_golden_fixture_covers_required_mapper_families() -> None:
         ('<a href="/next">Next</a>', "Text", "content", "Next"),
         ('<input type="email" placeholder="Email">', "Input", "placeholder", "Email"),
         ('<textarea placeholder="Notes"></textarea>', "Input", "placeholder", "Notes"),
-        ('<select><option>One</option></select>', "Input", "content_format", "text"),
+        ('<select><option>One</option></select>', "Dropdown", "choices", "One"),
         ('<img src="/asset.png" alt="Asset">', "Image", "alt_text", "Asset"),
         ('<svg viewBox="0 0 10 10"><path d="M0 0h10v10z"></path></svg>', "Image", "name", "SVG svg"),
     ],
@@ -110,6 +110,51 @@ def test_image_mapping_accepts_safe_web_and_image_sources(source: str) -> None:
     )
     assert mapped is not None
     assert mapped["bubble_type"] == "Image"
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        '<svg><script>alert(1)</script><path d="M0 0h10v10z"></path></svg>',
+        '<svg><a href="javascript:alert(1)"><path d="M0 0h10v10z"></path></a></svg>',
+        '<svg><image href="https://example.test/pixel.png"></image></svg>',
+    ],
+)
+def test_inline_svg_mapping_rejects_non_passive_content(html: str) -> None:
+    mapped = _map_html(html)
+
+    assert mapped is None
+
+
+def test_select_mapping_preserves_options_selection_and_dropdown_command() -> None:
+    mapped = _map_html(
+        '<select name="plan" required>'
+        '<option value="free">Free</option>'
+        '<option value="pro" selected>Pro</option>'
+        '<option value="legacy" disabled>Legacy</option>'
+        "</select>"
+    )
+
+    assert mapped is not None
+    dropdown = mapped["children"][0]
+    assert dropdown["bubble_type"] == "Dropdown"
+    assert dropdown["properties"]["choices"] == "Free\nPro\nLegacy"
+    assert dropdown["properties"]["options"] == [
+        {"label": "Free", "value": "free", "selected": False, "disabled": False},
+        {"label": "Pro", "value": "pro", "selected": True, "disabled": False},
+        {"label": "Legacy", "value": "legacy", "selected": False, "disabled": True},
+    ]
+    assert dropdown["properties"]["selected_option"] == {"label": "Pro", "value": "pro"}
+    assert dropdown["properties"]["required"] is True
+
+    commands = BubbleCommandBuilder().build_commands("index", "root", mapped)
+    assert commands == [
+        {
+            "action": "create_dropdown",
+            "parent_ref": "__ROOT__",
+            "params": dropdown["properties"],
+        }
+    ]
 
 
 def test_mapped_text_payload_preserves_stylesheet_important_over_inline_style() -> None:

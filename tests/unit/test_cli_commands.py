@@ -24,6 +24,50 @@ def payload_from_dry_run_output(output: str) -> dict:  # type: ignore[type-arg]
     return json.loads(output[output.index("{") :])
 
 
+def test_create_from_html_materializes_select_as_static_dropdown(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "pages": {
+                    "pg1": {
+                        "id": "pg1",
+                        "name": "index",
+                        "type": "Page",
+                        "properties": {},
+                        "elements": {},
+                    }
+                },
+                "%p3": {
+                    "pg1": {
+                        "id": "pg1",
+                        "%nm": "index",
+                        "%x": "Page",
+                        "%el": {},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    html_path = tmp_path / "select.html"
+    html_path.write_text(
+        '<select name="plan" required><option>Free</option><option selected>Pro</option></select>',
+        encoding="utf-8",
+    )
+    cli = BubbleCLI(app_json_path=str(app_path), appname="cli-test")
+
+    assert cli.create_from_html("index", "root", str(html_path), dry_run=True) is True
+
+    payload = payload_from_dry_run_output(capsys.readouterr().out)
+    create_change = first_change(payload, "CreateElement")
+    assert create_change["body"]["%x"] == "Dropdown"
+    properties = create_change["body"]["%p"]
+    assert properties["choices_style"] == "static"
+    assert properties["%ch"] == "Free\nPro"
+    assert properties["%1m"] is True
+
+
 def test_cli_metrics_logs_forwards_filter_and_pagination(monkeypatch, capsys) -> None:  # type: ignore[no-untyped-def]
     captured: dict[str, object] = {}
 
