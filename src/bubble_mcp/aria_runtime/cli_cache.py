@@ -77,6 +77,15 @@ class BubbleCLICacheStore:
         payload = self._read_object(self.cache_path)
         return _normalize_payload(payload)
 
+    def reload(self, current: Mapping[str, Any]) -> dict[str, Any]:
+        """Reload valid disk data without discarding the current state on read failure."""
+        if not self.cache_path.exists():
+            return _normalize_payload(dict(current))
+        payload = self._read_object(self.cache_path)
+        if payload is None:
+            return copy.deepcopy(dict(current))
+        return _normalize_payload(payload)
+
     def _read_object(self, path: Path) -> dict[str, Any] | None:
         try:
             with path.open("r", encoding="utf-8") as handle:

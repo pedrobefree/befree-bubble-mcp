@@ -10,6 +10,20 @@ from bubble_mcp.aria_runtime.cli_cache import (
     default_cache_payload,
     merge_cache_payloads,
 )
+from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
+
+
+def _build_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[BubbleCLI, Path]:
+    app_path = tmp_path / "app.json"
+    app_path.write_text("{}", encoding="utf-8")
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", str(cache_path))
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        appname="cache-store-test",
+        profile_name=f"stage41-{tmp_path.name}",
+    )
+    return cli, cache_path
 
 
 def test_default_cache_payload_returns_independent_canonical_buckets() -> None:
@@ -229,3 +243,59 @@ def test_migrate_legacy_reports_atomic_save_failure(tmp_path: Path) -> None:
     )
     assert cache_path.is_dir()
     assert any("Could not save CLI cache" in warning for warning in warnings)
+
+
+def test_bubble_cli_failed_save_preserves_previous_canonical_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli, cache_path = _build_cli(tmp_path, monkeypatch)
+    original = '{"colors": {"primary": {"rgba": "#155eef"}}}\n'
+    cache_path.write_text(original, encoding="utf-8")
+    cli._cli_cache = {"extension_data": object()}
+
+    assert cli._save_cli_cache() is None
+    assert cache_path.read_text(encoding="utf-8") == original
+
+
+def test_bubble_cli_reload_preserves_memory_when_disk_cache_is_malformed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli, cache_path = _build_cli(tmp_path, monkeypatch)
+    in_memory = default_cache_payload()
+    in_memory["extension_data"] = {"keep": True}
+    cli._cli_cache = in_memory
+    cache_path.write_text("{broken", encoding="utf-8")
+
+    cli._reload_cli_cache_from_disk()
+
+    assert cli._cli_cache == in_memory
+
+
+def test_bubble_cli_clear_restores_complete_canonical_defaults(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli, cache_path = _build_cli(tmp_path, monkeypatch)
+    cache_path.write_text('{"colors": {"primary": {}}}', encoding="utf-8")
+    cli._cli_cache = {"colors": {"primary": {}}}
+
+    assert cli.clear_cache() is True
+    assert cli._cli_cache == default_cache_payload()
+    assert cache_path.exists() is False
+
+
+def test_bubble_cli_cache_add_remove_round_trips_through_existing_facade(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli, _cache_path = _build_cli(tmp_path, monkeypatch)
+    cli._add_to_cache("colors", "primary", {"rgba": "#155eef"})
+
+    reloaded, _ = _build_cli(tmp_path, monkeypatch)
+    assert reloaded._cli_cache["colors"]["primary"] == {"rgba": "#155eef"}
+
+    reloaded._remove_from_cache("colors", "primary")
+    after_remove, _ = _build_cli(tmp_path, monkeypatch)
+    assert "primary" not in after_remove._cli_cache["colors"]

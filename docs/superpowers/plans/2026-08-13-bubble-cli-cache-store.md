@@ -123,23 +123,23 @@ Commit: `refactor: isolate legacy cache migration`
 - Consumes: `BubbleCLICacheStore` from Tasks 1-3.
 - Preserves: `_load_cli_cache`, `_merge_cache_payloads`, `_migrate_legacy_tmp_cache`, `_save_cli_cache`, `_reload_cli_cache_from_disk`, and `clear_cache` signatures.
 
-- [ ] **Step 1: Write failing facade integration tests**
+- [x] **Step 1: Write failing facade integration tests**
 
-Initialize a real `BubbleCLI` with a temporary app JSON and `BUBBLE_CLI_CACHE_PATH`. Assert store construction, persisted add/remove round trips, malformed recovery, clear defaults, and that reload preserves current in-memory state when a disk read fails.
+Initialize a real `BubbleCLI` with a temporary app JSON and `BUBBLE_CLI_CACHE_PATH`. Assert persisted add/remove round trips, failed serialization preserves the prior file, clear restores complete defaults, and reload preserves current in-memory state when a disk read fails.
 
-- [ ] **Step 2: Run facade tests and verify RED**
+- [x] **Step 2: Run facade tests and verify RED**
 
-Expected: the store-construction assertion fails because `BubbleCLI` still performs cache I/O directly.
+Expected: atomic-save, reload-preservation, and complete-clear assertions fail because `BubbleCLI` still performs cache I/O directly.
 
-- [ ] **Step 3: Delegate existing facade methods**
+- [x] **Step 3: Delegate existing facade methods**
 
 Construct the store before cache initialization, delegate each facade method, retain logger messages and return contracts, and remove direct JSON persistence from `bubble_cli.py`.
 
-- [ ] **Step 4: Run focused compatibility suites**
+- [x] **Step 4: Run focused compatibility suites**
 
 Run cache-store tests, CLI command tests, MCP server tests, stdio tests, catalog quality, and runtime coverage smoke. Expected: all pass with unchanged tool counts.
 
-- [ ] **Step 5: Commit the facade integration**
+- [x] **Step 5: Commit the facade integration**
 
 Commit: `refactor: delegate BubbleCLI cache persistence`
 

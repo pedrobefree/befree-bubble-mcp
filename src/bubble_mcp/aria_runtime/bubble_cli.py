@@ -68,6 +68,7 @@ from html_to_bubble import (
 from color_mapper import ColorMapper
 from source_query_builder import build_search_source_expression, build_message_chain
 from element_capabilities import TOOL_ELEMENT_MAP, element_supported_properties
+from cli_cache import BubbleCLICacheStore, default_cache_payload, merge_cache_payloads
 
 PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
     # Application rights
@@ -424,6 +425,11 @@ class BubbleCLI:
         suffix = (profile_name or os.path.basename(cache_dir) or "default").replace("/", "_")
         self._legacy_tmp_cache_file = os.path.join(tempfile.gettempdir(), f".bubble_cli_cache_{suffix}.json")
         self._cache_file = cache_file
+        self._cache_store = BubbleCLICacheStore(
+            self._cache_file,
+            legacy_path=self._legacy_tmp_cache_file,
+            warn=logger.warning,
+        )
         self._migrate_legacy_tmp_cache()
         self._cli_cache = self._load_cli_cache()
 
@@ -497,86 +503,22 @@ class BubbleCLI:
 
     def _load_cli_cache(self) -> Dict[str, Any]:
         """Load CLI cache from local JSON file."""
-        cache: Dict[str, Any] = {}
-        if os.path.exists(self._cache_file):
-            try:
-                with open(self._cache_file, 'r') as f:
-                    loaded = json.load(f)
-                    if isinstance(loaded, dict):
-                        cache = loaded
-            except (json.JSONDecodeError, IOError):
-                cache = {}
-
-        # Backward-compatible defaults
-        cache.setdefault("colors", {})
-        cache.setdefault("fonts", {})
-        cache.setdefault("styles", {})
-        cache.setdefault("components", {})
-        cache.setdefault("schema", {})
-        if not isinstance(cache["schema"], dict):
-            cache["schema"] = {}
-        cache["schema"].setdefault("profiles", {})
-        if not isinstance(cache["schema"]["profiles"], dict):
-            cache["schema"]["profiles"] = {}
-
-        return cache
+        return self._cache_store.load()
 
     @staticmethod
     def _merge_cache_payloads(base: Any, incoming: Any) -> Any:
-        if isinstance(base, dict) and isinstance(incoming, dict):
-            merged = dict(base)
-            for key, value in incoming.items():
-                if key in merged:
-                    merged[key] = BubbleCLI._merge_cache_payloads(merged[key], value)
-                else:
-                    merged[key] = value
-            return merged
-        return incoming if incoming is not None else base
+        return merge_cache_payloads(base, incoming)
 
     def _migrate_legacy_tmp_cache(self) -> None:
-        legacy_path = str(getattr(self, "_legacy_tmp_cache_file", "") or "").strip()
-        if not legacy_path or legacy_path == self._cache_file or not os.path.exists(legacy_path):
-            return
-        try:
-            with open(legacy_path, "r") as f:
-                legacy_payload = json.load(f)
-            if not isinstance(legacy_payload, dict):
-                return
-            canonical_payload: Dict[str, Any] = {}
-            if os.path.exists(self._cache_file):
-                try:
-                    with open(self._cache_file, "r") as f:
-                        loaded = json.load(f)
-                    if isinstance(loaded, dict):
-                        canonical_payload = loaded
-                except Exception:
-                    canonical_payload = {}
-            merged = self._merge_cache_payloads(canonical_payload, legacy_payload)
-            cache_dir = os.path.dirname(os.path.abspath(self._cache_file))
-            os.makedirs(cache_dir, exist_ok=True)
-            with open(self._cache_file, "w") as f:
-                json.dump(merged, f, indent=2)
-        except Exception as e:
-            logger.warning(f"Could not migrate legacy temp CLI cache: {e}")
+        self._cache_store.migrate_legacy()
 
     def _save_cli_cache(self) -> None:
         """Save CLI cache to local JSON file."""
-        try:
-            cache_dir = os.path.dirname(os.path.abspath(self._cache_file))
-            os.makedirs(cache_dir, exist_ok=True)
-            with open(self._cache_file, 'w') as f:
-                json.dump(self._cli_cache, f, indent=2)
-        except IOError as e:
-            logger.warning(f"Could not save CLI cache: {e}")
+        self._cache_store.save(self._cli_cache)
 
     def _reload_cli_cache_from_disk(self) -> None:
         """Reload the current cache file so schema alias writes do not clobber newer subprocess updates."""
-        try:
-            latest = self._load_cli_cache()
-        except Exception:
-            return
-        if isinstance(latest, dict):
-            self._cli_cache = latest
+        self._cli_cache = self._cache_store.reload(self._cli_cache)
 
     @staticmethod
     def _canonical_element_name_from_alias_payloads(payloads: List[Dict[str, Any]]) -> str:
@@ -1145,16 +1087,15 @@ class BubbleCLI:
 
     def clear_cache(self) -> bool:
         """Manually clear the persistent CLI cache file."""
-        if os.path.exists(self._cache_file):
-            try:
-                os.remove(self._cache_file)
-                self._cli_cache = {"colors": {}, "fonts": {}, "styles": {}, "schema": {"profiles": {}}}
-                logger.success(f"Successfully cleared cache: {self._cache_file}")
-                return True
-            except IOError as e:
-                logger.error(f"Failed to clear cache: {e}")
-                return False
-        logger.info("No cache file found to clear.")
+        cache_existed = os.path.exists(self._cache_file)
+        if not self._cache_store.clear():
+            logger.error(f"Failed to clear cache: {self._cache_file}")
+            return False
+        self._cli_cache = default_cache_payload()
+        if cache_existed:
+            logger.success(f"Successfully cleared cache: {self._cache_file}")
+        else:
+            logger.info("No cache file found to clear.")
         return True
 
     def refresh_profile_cache(
