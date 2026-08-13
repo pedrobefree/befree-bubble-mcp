@@ -3660,7 +3660,7 @@ class HTMLToBubbleMapper:
         )
         src = self._clean_text(str(src or ""))
         if src:
-            src = self._absolutize_url(src) or src
+            src = self._absolutize_url(src)
         if node_type != "img":
             if self._is_complex_player_node(element):
                 return {
@@ -5174,21 +5174,10 @@ class HTMLToBubbleMapper:
         gaps.sort()
         return gaps[len(gaps) // 2]
 
-    def _bootstrap_col_span(self, classes: List[str]) -> Optional[int]:
-        return None
-
     def _is_bootstrap_container(self, classes: List[str], layout: str) -> bool:
         if layout != "column":
             return False
         return any(cls in {"container", "container-fluid"} for cls in classes)
-
-    def _infer_bootstrap_gutter(
-        self,
-        element: Dict[str, Any],
-        classes: List[str],
-        layout: str,
-    ) -> int:
-        return 0
 
     def _parse_dimension(self, value: Any) -> Optional[int]:
         if value is None:
@@ -5198,7 +5187,7 @@ class HTMLToBubbleMapper:
             return None
         if re.fullmatch(r"\d+", s):
             return int(s)
-        m = re.match(r"(\d+(?:\.\d+)?)(px|rem|em)?", s)
+        m = re.fullmatch(r"(\d+(?:\.\d+)?)(px|rem|em)?", s)
         if not m:
             return None
         num = float(m.group(1))
@@ -6094,7 +6083,7 @@ class HTMLToBubbleMapper:
         node_type = str(element.get("type", "")).lower()
         if node_type == "fragment":
             return True
-        if node_type == "svg":
+        if node_type in {"svg", "button", "input", "textarea", "select"}:
             return False
         display = self._clean_text(styles.get("display", "")).lower()
         if display == "contents":

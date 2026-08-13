@@ -1,0 +1,230 @@
+{
+  "bubble_type": "__fragment__",
+  "children": [
+    {
+      "bubble_type": "Group",
+      "children": [
+        {
+          "bubble_type": "Group",
+          "children": [
+            {
+              "bubble_type": "Text",
+              "children": [],
+              "properties": {
+                "content": "Reliable [b][color=#84caff]imports[/color][/b]",
+                "font_color": "#ffffff",
+                "font_size": 40,
+                "font_weight": "400",
+                "line_height": 1.2,
+                "name": "Reliable imports",
+                "width": 420
+              }
+            },
+            {
+              "bubble_type": "Text",
+              "children": [],
+              "properties": {
+                "content": "Layout, typography, media, and controls.",
+                "fit_width": false,
+                "font_color": "#eaecf0",
+                "font_size": 16,
+                "font_weight": "400",
+                "line_height": 1.5,
+                "name": "Layout typography media and controls",
+                "width": 360
+              }
+            }
+          ],
+          "properties": {
+            "fit_height": true,
+            "fit_width": false,
+            "gap": 0,
+            "layout": "column",
+            "name": "Layout typography media and controls",
+            "width": 540
+          }
+        },
+        {
+          "bubble_type": "Group",
+          "children": [
+            {
+              "bubble_type": "Group",
+              "children": [
+                {
+                  "bubble_type": "Image",
+                  "children": [],
+                  "properties": {
+                    "alt_text": "Import preview",
+                    "height": 180,
+                    "image_url": "https://example.test/assets/preview.png",
+                    "max_width_css": "320px",
+                    "name": "Content Image",
+                    "width": 320
+                  }
+                },
+                {
+                  "bubble_type": "Text",
+                  "children": [],
+                  "properties": {
+                    "content": "Visual fidelity",
+                    "font_color": "#101828",
+                    "font_size": 24,
+                    "font_weight": "400",
+                    "line_height": 1.1,
+                    "name": "Visual fidelity",
+                    "width": 320
+                  }
+                },
+                {
+                  "bubble_type": "Text",
+                  "children": [],
+                  "properties": {
+                    "content": "Read documentation",
+                    "fit_width": false,
+                    "font_color": "#155eef",
+                    "font_size": 16,
+                    "font_weight": "400",
+                    "line_height": 1.4,
+                    "name": "Read documentation",
+                    "width": 220
+                  }
+                }
+              ],
+              "properties": {
+                "bg_color": "#ffffff",
+                "border_radius": 12,
+                "fit_height": true,
+                "fit_width": false,
+                "gap": 8,
+                "layout": "column",
+                "name": "feature card",
+                "width": 448
+              }
+            },
+            {
+              "bubble_type": "Group",
+              "children": [
+                {
+                  "bubble_type": "Text",
+                  "children": [],
+                  "properties": {
+                    "content": "Email",
+                    "fit_width": false,
+                    "font_color": "#344054",
+                    "font_size": 14,
+                    "font_weight": "400",
+                    "line_height": 1.4,
+                    "name": "Email",
+                    "width": 220
+                  }
+                },
+                {
+                  "bubble_type": "Input",
+                  "children": [],
+                  "properties": {
+                    "border_radius": 8,
+                    "height": 44,
+                    "name": "Input input",
+                    "placeholder": "name@example.com",
+                    "width": 300
+                  }
+                },
+                {
+                  "bubble_type": "Input",
+                  "children": [],
+                  "properties": {
+                    "height": 88,
+                    "name": "Input textarea",
+                    "placeholder": "Notes",
+                    "width": 300
+                  }
+                },
+                {
+                  "bubble_type": "Button",
+                  "children": [],
+                  "properties": {
+                    "bg_color": "#155eef",
+                    "border_radius": 10,
+                    "fit_width": false,
+                    "font_color": "#ffffff",
+                    "font_size": 16,
+                    "font_weight": "600",
+                    "height": 44,
+                    "label": "Start import",
+                    "name": "Start import",
+                    "width": 160
+                  }
+                }
+              ],
+              "properties": {
+                "bg_color": "#ffffff",
+                "border_radius": 12,
+                "fit_height": true,
+                "fit_width": false,
+                "gap": 8,
+                "layout": "column",
+                "name": "feature card",
+                "width": 448
+              }
+            }
+          ],
+          "properties": {
+            "fit_height": true,
+            "fit_width": true,
+            "gap": 16,
+            "layout": "row",
+            "name": "feature",
+            "width": 912
+          }
+        },
+        {
+          "bubble_type": "Group",
+          "children": [
+            {
+              "bubble_type": "Text",
+              "children": [],
+              "properties": {
+                "content": "Responsive by default",
+                "fit_width": false,
+                "font_color": "#ffffff",
+                "font_size": 18,
+                "font_weight": "400",
+                "line_height": 1.4,
+                "name": "Responsive by default",
+                "width": 220
+              }
+            }
+          ],
+          "properties": {
+            "background_style": "gradient",
+            "bg_color": "radial-gradient(circle, #84caff 0%, #155eef 100%)",
+            "fit_height": true,
+            "fit_width": false,
+            "gap": 0,
+            "gradient_end_color": "#155eef",
+            "gradient_start_color": "#84caff",
+            "gradient_style": "radial",
+            "layout": "column",
+            "max_width_css": "912px",
+            "min_height_css": "120px",
+            "name": "responsive banner",
+            "width": 912
+          }
+        }
+      ],
+      "properties": {
+        "background_style": "gradient",
+        "fit_height": true,
+        "gap": 24,
+        "gradient_direction": "right",
+        "gradient_end_color": "#101828",
+        "gradient_start_color": "#344054",
+        "gradient_style": "linear",
+        "layout": "column",
+        "name": "contract page",
+        "width": 960
+      }
+    }
+  ],
+  "properties": {}
+}
