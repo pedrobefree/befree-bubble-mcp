@@ -176,9 +176,9 @@ class ContextReferenceResolver:
     def normalize_capture_path(self, raw_path: Any) -> list[str]:
         try:
             parts = self._host._parse_path_array(raw_path)
-        except (TypeError, ValueError):
+            return self._host._normalize_payload_path(parts) if parts else []
+        except (RecursionError, TypeError, ValueError):
             return []
-        return self._host._normalize_payload_path(parts) if parts else []
 
     @staticmethod
     def _context_type_from_prefix(prefix: str) -> str | None:
@@ -197,6 +197,24 @@ class ContextReferenceResolver:
         if index is None:
             return None, None
         return index, str(path_parts[index])
+
+    @classmethod
+    def _canonical_capture_element_path(
+        cls,
+        path_parts: list[str],
+    ) -> tuple[str, str, list[str]] | None:
+        element_path = (
+            path_parts[:-1]
+            if path_parts and path_parts[-1] in {"%nm", "%dn"}
+            else path_parts
+        )
+        if len(element_path) < 4:
+            return None
+        context_type = cls._context_type_from_prefix(element_path[0])
+        context_id = str(element_path[1] or "").strip()
+        if not context_type or not context_id or not cls._is_element_path(element_path[2:]):
+            return None
+        return context_type, context_id, element_path
 
     def sync_element_ref_cache(
         self,
@@ -228,21 +246,18 @@ class ContextReferenceResolver:
 
         names_by_path: dict[str, dict[str, Any]] = {}
 
-        def register_name(path_parts: list[str], candidate_name: Any) -> None:
+        def register_name(
+            context_type: str,
+            context_id: str,
+            element_path: list[str],
+            candidate_name: Any,
+        ) -> None:
             if not isinstance(candidate_name, str):
                 return
             name = candidate_name.strip()
-            normalized = self._host._normalize_payload_path(path_parts)
-            if not name or len(normalized) < 4:
+            element_id = str(element_path[-1] or "").strip()
+            if not name or not element_id:
                 return
-            context_type = self._context_type_from_prefix(normalized[0])
-            element_index, element_id = self._find_last_element_token(normalized)
-            if not context_type or element_index is None or not element_id:
-                return
-            context_id = str(normalized[1] or "").strip()
-            if not context_id:
-                return
-            element_path = normalized[: element_index + 1]
             key = ".".join(element_path)
             record = names_by_path.setdefault(
                 key,
@@ -262,23 +277,41 @@ class ContextReferenceResolver:
             path_parts = self.normalize_capture_path(row.get("path"))
             if not path_parts:
                 continue
+            canonical = self._canonical_capture_element_path(path_parts)
+            if canonical is None:
+                continue
+            context_type, context_id, element_path = canonical
             intent = row.get("intent")
             intent_name = str(intent.get("name") or "") if isinstance(intent, dict) else str(intent or "")
             body = row.get("body")
             if path_parts[-1] in {"%nm", "%dn"} and isinstance(body, str):
-                register_name(path_parts[:-1], body)
-            if intent_name == "CreateElement" and isinstance(body, dict):
-                register_name(path_parts, body.get("%nm") or body.get("%dn") or body.get("name") or body.get("default_name"))
+                register_name(context_type, context_id, element_path, body)
+            if (
+                len(path_parts) == len(element_path)
+                and intent_name == "CreateElement"
+                and isinstance(body, dict)
+            ):
+                register_name(
+                    context_type,
+                    context_id,
+                    element_path,
+                    body.get("%nm")
+                    or body.get("%dn")
+                    or body.get("name")
+                    or body.get("default_name"),
+                )
 
-            element_index, _ = self._find_last_element_token(path_parts)
-            if element_index is not None:
-                element_path = path_parts[: element_index + 1]
-                node = self._host._get_value_at_path(element_path)
-                if isinstance(node, dict):
-                    register_name(
-                        element_path,
-                        node.get("%nm") or node.get("%dn") or node.get("name") or node.get("default_name"),
-                    )
+            node = self._host._get_value_at_path(element_path)
+            if isinstance(node, dict):
+                register_name(
+                    context_type,
+                    context_id,
+                    element_path,
+                    node.get("%nm")
+                    or node.get("%dn")
+                    or node.get("name")
+                    or node.get("default_name"),
+                )
 
         mappings: list[dict[str, str]] = []
         for record in names_by_path.values():
@@ -454,7 +487,7 @@ class ContextReferenceResolver:
         kind = (ref_kind or "auto").strip().lower()
         lookup_kind = kind if kind in {"name", "text", "id", "key"} else "auto"
         matches: list[tuple[int, dict[str, Any]]] = []
-        seen: set[str] = set()
+        match_positions: dict[str, int] = {}
 
         def push(
             item: dict[str, Any],
@@ -466,9 +499,6 @@ class ContextReferenceResolver:
             normalized = dict(item)
             path = self._host._normalize_payload_path(normalized.get("path", []))
             normalized["path"] = path
-            match_key = f"{normalized.get('id')}|{'.'.join(path)}|{key_hint or ''}"
-            if match_key in seen:
-                return
             element = normalized.get("element", {})
             score = (
                 score_override
@@ -479,7 +509,19 @@ class ContextReferenceResolver:
             )
             if score < 0:
                 return
-            seen.add(match_key)
+            element_id = str(normalized.get("id") or "").strip()
+            match_key = (
+                f"id:{element_id}"
+                if element_id
+                else f"path:{'.'.join(path)}|key:{key_hint or ''}"
+            )
+            previous_position = match_positions.get(match_key)
+            if previous_position is not None:
+                previous_score, previous_item = matches[previous_position]
+                if score > previous_score:
+                    matches[previous_position] = (score, previous_item)
+                return
+            match_positions[match_key] = len(matches)
             matches.append((score, normalized))
 
         def push_matching(items: list[dict[str, Any]]) -> None:
@@ -498,17 +540,18 @@ class ContextReferenceResolver:
         for item in self._host._list_index_context_elements(context_id, context_type):
             if not isinstance(item, dict):
                 continue
-            alias_id = str(item.get("id") or "")
+            canonical_id = str(item.get("id") or "")
+            alias_id = str(item.get("alias_id") or "")
             element_key = str(item.get("key") or "")
             element = item.get("element", {}) if isinstance(item.get("element"), dict) else {}
             if lookup_kind == "id":
-                if alias_id == str(element_ref):
+                if str(element_ref) in {canonical_id, alias_id}:
                     push(item, element_key, 400)
             elif lookup_kind == "key":
                 if element_key and element_key == str(element_ref):
                     push(item, element_key)
             elif lookup_kind == "auto":
-                if alias_id == str(element_ref):
+                if str(element_ref) in {canonical_id, alias_id}:
                     push(item, element_key, 400)
                 elif element_key and element_key == str(element_ref):
                     push(item, element_key, 390)

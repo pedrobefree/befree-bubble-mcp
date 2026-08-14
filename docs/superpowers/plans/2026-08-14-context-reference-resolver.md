@@ -90,13 +90,15 @@
 - [x] Run independent code review and resolve every Critical/Important finding with regression tests.
 - [x] Commit the final validation documentation; publication remains a separate explicit user request.
 
-Task 4 results on 2026-08-14: 1,238 Python and 11 Node tests passed; the
-resolver reached 95.9% focused combined branch coverage; global combined
-coverage reached 38.8053%; and the ratchet remains 38.7% with 0.1053 point of
-headroom. Independent re-review marked all three Important findings addressed
-with no new Critical/Important breakage. The benchmark and complete validation
-evidence are recorded in the Stage 4.3 roadmap entry and the ignored SDD Task 4
-report.
+Task 4 results on 2026-08-14: 1,239 Python and 11 Node tests passed; the
+resolver reached 96.3% focused combined branch coverage; global combined
+coverage reached 38.8893%; and the ratchet remains 38.7% with 0.1893 point of
+headroom. The first independent re-review marked three Important findings
+addressed. A final branch review found two additional Important gaps in the
+production index row contract and malformed-capture isolation; both now have
+production-shaped regressions and are addressed. The benchmark and complete
+validation evidence are recorded in the Stage 4.3 roadmap entry and ignored SDD
+reports.
 
 ## Self-Review
 

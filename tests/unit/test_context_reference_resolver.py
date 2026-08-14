@@ -324,6 +324,62 @@ def test_sync_element_ref_cache_keeps_valid_mappings_when_capture_rows_are_malfo
     assert host._alias_registry.lookup_element_id("pg_home", "page", "Save") == "save"
 
 
+def test_sync_element_ref_cache_isolates_deep_and_hybrid_rows_and_persists_valid_siblings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text("{}", encoding="utf-8")
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", str(cache_path))
+    cli = BubbleCLI(app_json_path=str(app_path), profile_name="resolver-capture-recursion")
+    deep_path = "[" * 1100 + '"nested"' + "]" * 1100
+    capture_path = tmp_path / "page_payloads.json"
+    capture_path.write_text(
+        json.dumps(
+            [
+                {"path": ["%p3", "pg", "%el", "hero", "%nm"], "body": "Hero"},
+                {"path": deep_path, "body": "Deep"},
+                {
+                    "path": [
+                        "%p3",
+                        "pg",
+                        "unexpected",
+                        "value",
+                        "%el",
+                        "bogus",
+                        "%nm",
+                    ],
+                    "body": "Bogus",
+                },
+                {
+                    "path": ["%p3", "pg", "%el", "save"],
+                    "intent": {"name": "CreateElement"},
+                    "body": {"%dn": "Save"},
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    real_parse_path_array = cli._parse_path_array
+
+    def parse_path_array_with_platform_independent_recursion(raw_path: Any) -> list[str]:
+        if raw_path == deep_path:
+            raise RecursionError("deep JSON array")
+        return real_parse_path_array(raw_path)
+
+    monkeypatch.setattr(cli, "_parse_path_array", parse_path_array_with_platform_independent_recursion)
+
+    assert cli.sync_element_ref_cache(str(capture_path), quiet=True) is True
+    reloaded = BubbleCLI(
+        app_json_path=str(app_path),
+        profile_name="resolver-capture-recursion",
+    )
+    assert reloaded._lookup_cached_element_ref_alias("pg", "page", "Hero") == "hero"
+    assert reloaded._lookup_cached_element_ref_alias("pg", "page", "Save") == "save"
+    assert reloaded._lookup_cached_element_ref_alias("pg", "page", "Bogus") is None
+
+
 def test_bubble_cli_facades_delegate_cached_stub_materialization(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     app_path = tmp_path / "app.json"
     app_path.write_text("{}", encoding="utf-8")
@@ -987,26 +1043,62 @@ def test_find_elements_defensively_skips_malformed_sources_and_covers_index_rout
     assert resolver.find_element_by_ref("pg", "page", "missing") is None
 
 
-def test_find_elements_auto_ranks_direct_index_alias_id_before_hybrid_lower_priority_match() -> None:
-    host = _TraversalHost({})
-    host.index_rows = [
-        {
-            "id": "target",
-            "key": "direct-key",
-            "element": {"name": "target"},
-        },
-        {
-            "id": "key-candidate",
-            "key": "target",
-            "element": {},
-        },
-    ]
-
-    matches = ContextReferenceResolver(host).find_elements_by_ref(
-        "pg", "page", "target", "auto"
+def test_find_elements_consumes_real_index_aliases_and_upgrades_duplicate_score(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "pages": {
+                    "pg": {
+                        "id": "pg",
+                        "name": "Home",
+                        "elements": {
+                            "target-key": {
+                                "id": "target-id",
+                                "name": "index-alias",
+                            },
+                            "index-alias": {
+                                "id": "key-candidate",
+                                "name": "Other candidate",
+                            },
+                        },
+                    }
+                },
+                "_index": {
+                    "id_to_path": {
+                        "index-alias": "%p3.pg.%el.target-key",
+                        "direct-id-alias": "%p3.pg.%el.target-key",
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
     )
+    monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", str(tmp_path / ".bubble_cli_cache.json"))
+    cli = BubbleCLI(app_json_path=str(app_path), profile_name="resolver-index-contract")
 
-    assert [row["id"] for row in matches] == ["target", "key-candidate"]
+    assert [
+        (row["id"], row["alias_id"])
+        for row in cli._list_index_context_elements("pg", "page")
+    ] == [
+        ("target-id", "index-alias"),
+        ("target-id", "direct-id-alias"),
+    ]
+    assert [
+        row["id"]
+        for row in cli._find_elements_by_ref("pg", "page", "index-alias", "auto")
+    ] == ["target-id", "key-candidate"]
+    assert [
+        row["id"]
+        for row in cli._find_elements_by_ref("pg", "page", "direct-id-alias", "id")
+    ] == ["target-id"]
+    assert [
+        row["id"]
+        for row in cli._find_elements_by_ref("pg", "page", "target-id", "id")
+    ] == ["target-id"]
 
 
 def test_select_element_match_reports_missing_ambiguous_and_out_of_range(
