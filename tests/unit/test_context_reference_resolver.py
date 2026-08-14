@@ -942,9 +942,24 @@ def test_match_scoring_covers_supported_kinds_and_payload_shapes(
     resolver = ContextReferenceResolver(_TraversalHost({}))
     assert resolver._score_raw_element_match(element, ref, kind, key) == score
     assert resolver._match_raw_element(element, ref, kind, key) is (score >= 0)
-    assert resolver._extract_element_text_payload(element) == (
-        None if not isinstance(element, dict) else resolver._extract_element_text_payload(element)
-    )
+
+
+@pytest.mark.parametrize(
+    ("element", "expected"),
+    [
+        ({"%p": {"%3": "Raw text"}}, "Raw text"),
+        ({"properties": {"text": "Readable text"}}, "Readable text"),
+        ({"properties": {"%3": {"%e": {"0": "Rich", "1": " text"}}}}, {"%e": {"0": "Rich", "1": " text"}}),
+        ({"properties": {}}, None),
+        ({"properties": "malformed"}, None),
+        (None, None),
+    ],
+)
+def test_extract_element_text_payload_returns_literal_mapping_variants(
+    element: Any,
+    expected: Any,
+) -> None:
+    assert ContextReferenceResolver._extract_element_text_payload(element) == expected
 
 
 def test_find_elements_defensively_skips_malformed_sources_and_covers_index_routes() -> None:
@@ -970,6 +985,28 @@ def test_find_elements_defensively_skips_malformed_sources_and_covers_index_rout
     assert [row["id"] for row in resolver.find_elements_by_ref("pg", "page", "Named", "name")] == ["named-id"]
     assert [row["id"] for row in resolver.find_elements_by_ref("pg", "page", "alias-key", "unexpected")] == ["alias-id"]
     assert resolver.find_element_by_ref("pg", "page", "missing") is None
+
+
+def test_find_elements_auto_ranks_direct_index_alias_id_before_hybrid_lower_priority_match() -> None:
+    host = _TraversalHost({})
+    host.index_rows = [
+        {
+            "id": "target",
+            "key": "direct-key",
+            "element": {"name": "target"},
+        },
+        {
+            "id": "key-candidate",
+            "key": "target",
+            "element": {},
+        },
+    ]
+
+    matches = ContextReferenceResolver(host).find_elements_by_ref(
+        "pg", "page", "target", "auto"
+    )
+
+    assert [row["id"] for row in matches] == ["target", "key-candidate"]
 
 
 def test_select_element_match_reports_missing_ambiguous_and_out_of_range(

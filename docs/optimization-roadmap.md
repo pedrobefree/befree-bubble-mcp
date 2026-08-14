@@ -145,12 +145,12 @@ Stage 4.3 results:
 - removed 910 lines of direct discovery/reference logic from `bubble_cli.py`
   and retained 52 lines of resolver construction and compatibility facades
   (net reduction: 858 lines in the legacy class);
-- added the 1,122-line resolver boundary with 564 executable statements and 47
+- added the 1,129-line resolver boundary with 569 executable statements and 54
   focused behavior/facade tests;
-- `context_reference_resolver.py`: 96.0% focused combined branch coverage;
-- full suite: 1,231 Python and 11 Node tests passed;
-- global combined coverage: 38.8004%;
-- global ratchet: 38.7%, retaining 0.1004 percentage point of headroom;
+- `context_reference_resolver.py`: 95.9% focused combined branch coverage;
+- full suite: 1,238 Python and 11 Node tests passed;
+- global combined coverage: 38.8053%;
+- global ratchet: 38.7%, retaining 0.1053 percentage point of headroom;
 - catalog remained at 327 MCP tools, with zero uncovered tools and no changes
   to schemas, aliases, annotations, dispatch routes, previews, or result
   shapes;
@@ -162,10 +162,13 @@ Stage 4.3 results:
   deltas are visible at this microsecond scale, but the absolute facade cost is
   below 1.1 microseconds per operation and is not a material regression.
 
-The final review also hardened malformed source rows and direct index-backed
-ID matching. Non-mapping discovery/raw/module rows are skipped without
-discarding valid siblings, and an `_index.id_to_path` alias can resolve by its
-canonical ID even when the embedded element payload omits a duplicate `id`.
+Implementer self-review and independent-review fix round 1/5 hardened malformed
+source rows and direct index-backed ID/key ranking. Non-mapping
+discovery/raw/module rows are skipped without discarding valid siblings, and
+an `_index.id_to_path` alias receives its canonical ID/key score before any
+lower-priority embedded name/text match. Literal tests also cover raw and
+readable text-property shapes plus malformed payloads. Independent re-review is
+pending.
 
 **Next boundary — Family 2 visual mutations.** Extract visual element
 create/update/delete orchestration behind a typed boundary that consumes the

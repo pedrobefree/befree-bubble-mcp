@@ -507,10 +507,17 @@ class ContextReferenceResolver:
             elif lookup_kind == "key":
                 if element_key and element_key == str(element_ref):
                     push(item, element_key)
+            elif lookup_kind == "auto":
+                if alias_id == str(element_ref):
+                    push(item, element_key, 400)
+                elif element_key and element_key == str(element_ref):
+                    push(item, element_key, 390)
+                elif element and self._match_raw_element(
+                    element, element_ref, lookup_kind, element_key
+                ):
+                    push(item, element_key)
             elif element and self._match_raw_element(element, element_ref, lookup_kind, element_key):
                 push(item, element_key)
-            elif lookup_kind == "auto" and (alias_id == str(element_ref) or element_key == str(element_ref)):
-                push(item, element_key, 400 if alias_id == str(element_ref) else 390)
 
         matches.sort(key=lambda match: match[0], reverse=True)
         return [item for _, item in matches]
