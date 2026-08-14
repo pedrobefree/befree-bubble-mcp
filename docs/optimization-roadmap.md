@@ -108,10 +108,12 @@ This family is being delivered through three bounded internal extractions:
    context alias fan-out and precedence, element enrichment and legacy payloads,
    workflow aliases, defensive lookups, cross-process refresh, and scoped
    cleanup. `BubbleCLI` retains its prior methods as compatibility facades.
-3. **Stage 4.3 — discovery-backed reference resolution: next.** Extract context
-   discovery traversal, cached element materialization, capture parsing,
-   `inspect_context`, and `resolve_refs` behind a resolver that consumes the
-   cache store and alias registry without owning persistence.
+3. **Stage 4.3 — discovery-backed reference resolution: completed on
+   2026-08-14.** `ContextReferenceResolver` now owns context discovery
+   traversal, cached element materialization, capture parsing, element
+   matching/selection, `inspect_context`, and `resolve_refs`. It consumes the
+   cache store and alias registry through a typed host without owning
+   persistence or alias lifecycle.
 
 Stage 4.2 results:
 
@@ -137,6 +139,48 @@ historical flat keys. The cache store now holds an inter-process lock across
 read-modify-write transactions and legacy migration; legacy whole-cache writers
 apply only their local three-way delta to the latest shared payload, and a
 post-clear transaction cannot resurrect stale state.
+
+Stage 4.3 results:
+
+- removed 910 lines of direct discovery/reference logic from `bubble_cli.py`
+  and retained 52 lines of resolver construction and compatibility facades
+  (net reduction: 858 lines in the legacy class);
+- added the 1,182-line resolver boundary with 586 executable statements and 56
+  focused behavior/facade tests;
+- `context_reference_resolver.py`: 96.4% focused combined branch coverage;
+- full suite: 1,240 Python and 11 Node tests passed;
+- global combined coverage: 38.9001%;
+- global ratchet: 38.8%, retaining 0.1001 percentage point of headroom;
+- catalog remained at 327 MCP tools, with zero uncovered tools and no changes
+  to schemas, aliases, annotations, dispatch routes, previews, or result
+  shapes;
+- median benchmark on the same literal synthetic dataset: 1,000 context
+  enumerations took 0.002088 second versus 0.001749 second before extraction
+  (+0.000339 second); 1,000 element resolutions took 0.009162 second versus
+  0.008161 second (+0.001001 second); and 100 context inspections took
+  0.001513 second versus 0.001441 second (+0.000072 second). The percentage
+  deltas are visible at this microsecond scale, but the absolute facade cost is
+  below 1.1 microseconds per operation and is not a material regression.
+
+Implementer self-review and completed independent review hardened malformed
+source rows and resolved the first three Important findings: hybrid index
+aliases receive their canonical ID/key score before lower-priority embedded
+name/text matches; literal tests cover raw, readable, missing, malformed, and
+non-mapping text-property payloads; and the review record distinguishes the
+implementer pass from independent review. A final branch review then identified
+two further Important gaps. Production-shaped regressions now prove the real
+index `id`/`alias_id` row contract, highest-score logical deduplication, and
+durable row-local capture handling that skips both deep recursion failures and
+noncanonical interior path segments while preserving valid siblings.
+The closing review also restored generic property observations such as
+`%p3.pg.%el.hero.%p.%3` as valid cache evidence while continuing to reject a
+later/interleaved `%el` restart, with a real-`BubbleCLI` persistence regression.
+
+**Next boundary — Family 2 visual mutations.** Extract visual element
+create/update/delete orchestration behind a typed boundary that consumes the
+Stage 4.3 resolver for target selection while preserving every existing
+preview default, confirmation gate, payload shape, dispatch route, and CLI/MCP
+result contract.
 
 ### Stage 5: Supporting debt
 

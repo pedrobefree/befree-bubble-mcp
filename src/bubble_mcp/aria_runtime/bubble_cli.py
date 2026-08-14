@@ -76,6 +76,7 @@ from cli_cache import (
     merge_cache_payloads,
 )
 from context_alias_registry import ContextAliasRegistry
+from context_reference_resolver import ContextReferenceResolver
 
 PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
     # Application rights
@@ -457,6 +458,7 @@ class BubbleCLI:
             save=self._save_cli_cache,
             transaction=self._transact_cli_cache,
         )
+        self._context_reference_resolver = ContextReferenceResolver(self)
 
         self.color_mapper = ColorMapper(self.discovery.data)
         # Seed with cached colors
@@ -1437,77 +1439,12 @@ class BubbleCLI:
         cached_payload: Optional[Dict[str, Any]],
         alias_name: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Rebuild a minimal local discovery chain from a cached alias path."""
-        if not isinstance(cached_payload, dict):
-            return cached_payload
-
-        normalized_path = self._normalize_payload_path(cached_payload.get("path"))
-        if not normalized_path:
-            return cached_payload
-
-        element_id = str(cached_payload.get("id") or cached_payload.get("key") or "").strip()
-        element_key = str(cached_payload.get("key") or element_id).strip()
-        element_name = str(cached_payload.get("name") or alias_name or element_key or element_id).strip()
-        if not element_key:
-            return cached_payload
-
-        root = self.discovery._get_context_root(context_id, context_type)
-        if not isinstance(root, dict):
-            container_key = "element_definitions" if context_type == "reusable" else "pages"
-            raw_key = "%ed" if context_type == "reusable" else "%p3"
-            if container_key in self.discovery.data:
-                target_key = container_key
-            elif raw_key in self.discovery.data:
-                target_key = raw_key
-            else:
-                self.discovery.data[container_key] = {}
-                target_key = container_key
-            self.discovery.data[target_key][context_id] = {
-                "id": context_id,
-                "name": context_id,
-                "elements": {},
-            }
-            root = self.discovery.data[target_key][context_id]
-
-        node = root
-        for index in range(0, len(normalized_path), 2):
-            if normalized_path[index] != "%el" or index + 1 >= len(normalized_path):
-                continue
-            current_key = str(normalized_path[index + 1] or "").strip()
-            if not current_key:
-                continue
-            children_key = "%el" if "%el" in node or "%x" in node else "elements"
-            children = node.get(children_key)
-            if not isinstance(children, dict):
-                children = {}
-                node[children_key] = children
-
-            child = children.get(current_key)
-            is_leaf = index + 2 >= len(normalized_path)
-            if not isinstance(child, dict):
-                child = {
-                    "id": element_id if is_leaf and element_id else current_key,
-                    "type": "Unknown",
-                    "default_name": element_name if is_leaf else current_key,
-                    "name": element_name if is_leaf else current_key,
-                    "elements": {},
-                }
-                children[current_key] = child
-            elif is_leaf:
-                if element_id:
-                    child["id"] = element_id
-                if element_name:
-                    child["default_name"] = child.get("default_name") or element_name
-                    child["name"] = child.get("name") or element_name
-            node = child
-
-        materialized = dict(cached_payload)
-        materialized["path"] = normalized_path
-        materialized["id"] = element_id or materialized.get("id")
-        materialized["key"] = element_key or materialized.get("key")
-        materialized["name"] = element_name or materialized.get("name")
-        materialized["element"] = node
-        return materialized
+        return self._context_reference_resolver.materialize_cached_element_stub(
+            context_id,
+            context_type,
+            cached_payload,
+            alias_name=alias_name,
+        )
 
     def list_element_ref_aliases(
         self,
@@ -1663,13 +1600,7 @@ class BubbleCLI:
         return idx, str(path_parts[idx])
 
     def _normalize_capture_path(self, raw_path: Any) -> List[str]:
-        try:
-            parts = self._parse_path_array(raw_path)
-            if not parts:
-                return []
-            return self._normalize_payload_path(parts)
-        except ValueError:
-            return []
+        return self._context_reference_resolver.normalize_capture_path(raw_path)
 
     def _collect_alias_ids_for_element_path(
         self,
@@ -1758,148 +1689,12 @@ class BubbleCLI:
         dry_run: bool = False,
         quiet: bool = False
     ) -> bool:
-        """
-        Import friendly element aliases from captured editor traffic.
-        Expected input format: scripts/capture_editor_traffic.js output (JSON array).
-        """
-        cap_path = str(capture_file or "").strip() or "page_payloads.json"
-        if not os.path.isabs(cap_path):
-            cap_path = os.path.abspath(cap_path)
-        if not os.path.isfile(cap_path):
-            if not quiet:
-                logger.error(f"Capture file not found: {cap_path}")
-            return False
-
-        try:
-            with open(cap_path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except Exception as e:
-            if not quiet:
-                logger.error(f"Could not read capture file: {e}")
-            return False
-
-        if not isinstance(raw, list):
-            if not quiet:
-                logger.error("Capture file must be a JSON array.")
-            return False
-
-        # Aggregate best-known names by concrete element path.
-        names_by_path: Dict[str, Dict[str, Any]] = {}
-
-        def register_name(path_parts: List[str], candidate_name: Optional[str]) -> None:
-            name = str(candidate_name or "").strip()
-            if not name:
-                return
-            norm_parts = self._normalize_payload_path(path_parts)
-            if len(norm_parts) < 4:
-                return
-            ctype = self._context_type_from_prefix(norm_parts[0])
-            if not ctype:
-                return
-            ctx_id = str(norm_parts[1])
-            el_idx, el_token = self._find_last_element_token(norm_parts)
-            if el_idx is None or not el_token:
-                return
-            element_path = norm_parts[:el_idx + 1]
-            key = ".".join(element_path)
-            if not key:
-                return
-            rec = names_by_path.setdefault(
-                key,
-                {"context_id": ctx_id, "context_type": ctype, "element_id": el_token, "names": set()}
-            )
-            rec["names"].add(name)
-
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            path_parts = self._normalize_capture_path(item.get("path"))
-            if not path_parts:
-                continue
-
-            intent_name = ""
-            intent_payload = item.get("intent")
-            if isinstance(intent_payload, dict):
-                intent_name = str(intent_payload.get("name") or "")
-            elif isinstance(intent_payload, str):
-                intent_name = intent_payload
-
-            body = item.get("body")
-
-            # Direct name/default name writes.
-            if len(path_parts) >= 1 and path_parts[-1] in {"%nm", "%dn"} and isinstance(body, str):
-                register_name(path_parts[:-1], body)
-
-            # CreateElement payload may carry %nm/%dn.
-            if intent_name == "CreateElement" and isinstance(body, dict):
-                maybe_name = body.get("%nm") or body.get("%dn") or body.get("name") or body.get("default_name")
-                register_name(path_parts, maybe_name if isinstance(maybe_name, str) else None)
-
-            # Generic path observation: attempt to resolve current element names from source data.
-            el_idx, _ = self._find_last_element_token(path_parts)
-            if el_idx is not None:
-                element_path = path_parts[:el_idx + 1]
-                node = self._get_value_at_path(element_path)
-                if isinstance(node, dict):
-                    maybe_name = (
-                        node.get("%nm")
-                        or node.get("%dn")
-                        or node.get("name")
-                        or node.get("default_name")
-                    )
-                    if isinstance(maybe_name, str):
-                        register_name(element_path, maybe_name)
-
-        mappings_applied: List[Dict[str, str]] = []
-        for element_path_str, payload in names_by_path.items():
-            ctx_id = payload.get("context_id")
-            ctype = payload.get("context_type")
-            element_id = payload.get("element_id")
-            names = payload.get("names", set())
-            if not isinstance(ctx_id, str) or not isinstance(ctype, str) or not isinstance(element_id, str):
-                continue
-            if not isinstance(names, set) or not names:
-                continue
-
-            element_path = element_path_str.split(".")
-            alias_ids = self._collect_alias_ids_for_element_path(ctx_id, ctype, element_path)
-            target_ids = [element_id] + [aid for aid in alias_ids if aid != element_id]
-
-            for name in sorted(names, key=lambda x: self._norm_lookup(x)):
-                for target_id in target_ids:
-                    mappings_applied.append(
-                        {
-                            "context_type": ctype,
-                            "context_id": ctx_id,
-                            "name": name,
-                            "id": target_id,
-                        }
-                    )
-                    if not dry_run:
-                        self._cache_element_ref_alias(ctx_id, ctype, name, target_id)
-
-        # Deduplicate report rows
-        dedup: Dict[str, Dict[str, str]] = {}
-        for row in mappings_applied:
-            key = f"{row['context_type']}:{row['context_id']}:{self._norm_lookup(row['name'])}:{row['id']}"
-            dedup[key] = row
-        rows = sorted(
-            dedup.values(),
-            key=lambda r: (
-                r.get("context_type", ""),
-                r.get("context_id", ""),
-                self._norm_lookup(r.get("name", "")),
-                r.get("id", ""),
-            ),
+        return self._context_reference_resolver.sync_element_ref_cache(
+            capture_file,
+            as_json=as_json,
+            dry_run=dry_run,
+            quiet=quiet,
         )
-
-        if as_json:
-            logger.log(json.dumps(rows, indent=2, ensure_ascii=False))
-        elif not quiet:
-            logger.info(
-                f"{'[DRY RUN] ' if dry_run else ''}Imported {len(rows)} element alias mappings from {cap_path}"
-            )
-        return True
 
     def _nl_get(self, key: str, default: Any = None) -> Any:
         return self.nl_config.get(key, default)
@@ -5470,97 +5265,9 @@ class BubbleCLI:
         return -1
 
     def _find_elements_by_ref(self, context_id: str, context_type: str, element_ref: str, ref_kind: str = "auto") -> List[Dict[str, Any]]:
-        kind = (ref_kind or "auto").strip().lower()
-        matches: List[Tuple[int, Dict[str, Any]]] = []
-        seen_keys: set[str] = set()
-
-        def push(item: Dict[str, Any], key_hint: Optional[str] = None) -> None:
-            if not isinstance(item, dict):
-                return
-            normalized = dict(item)
-            normalized_path = self._normalize_payload_path(normalized.get("path", []))
-            normalized["path"] = normalized_path
-            match_key = f"{normalized.get('id')}|{'.'.join(normalized_path)}|{key_hint or ''}"
-            if match_key in seen_keys:
-                return
-            score = self._score_raw_element_match(
-                normalized.get("element", {}) if isinstance(normalized.get("element"), dict) else {},
-                element_ref,
-                kind,
-                element_key=key_hint,
-            )
-            if score < 0:
-                return
-            seen_keys.add(match_key)
-            matches.append((score, normalized))
-
-        elements = self.discovery.list_elements(context_id, context_type=context_type)
-        lookup_kind = kind if kind in {"name", "text", "id", "key"} else "auto"
-        for item in elements:
-            path_parts = item.get("path", [])
-            element_key = path_parts[-1] if isinstance(path_parts, list) and path_parts else None
-            if self._match_raw_element(item.get("element", {}), element_ref, lookup_kind, element_key=element_key):
-                push(item, key_hint=str(element_key or ""))
-
-        # Fallback for raw console.log structures
-        raw_elements = self._list_raw_context_elements(context_id, context_type)
-        for item in raw_elements:
-            path_parts = item.get("path", [])
-            element_key = path_parts[-1] if isinstance(path_parts, list) and path_parts else None
-            if self._match_raw_element(item.get("element", {}), element_ref, lookup_kind, element_key=element_key):
-                push(item, key_hint=str(element_key or ""))
-
-        # Fallback for parsed module files: src/bubble_modules/<app>/pages|element_definitions
-        module_elements = self._list_module_context_elements(context_id, context_type)
-        for item in module_elements:
-            if self._match_raw_element(
-                item.get("element", {}),
-                element_ref,
-                lookup_kind,
-                element_key=item.get("key")
-            ):
-                push(item, key_hint=str(item.get("key") or ""))
-
-        # Fallback for _index.id_to_path aliases (event-target element ids, etc.).
-        index_elements = self._list_index_context_elements(context_id, context_type)
-        for item in index_elements:
-            alias_id = str(item.get("id") or "")
-            element_key = str(item.get("key") or "")
-            element_payload = item.get("element", {}) if isinstance(item.get("element"), dict) else {}
-
-            if lookup_kind == "id":
-                if alias_id == str(element_ref):
-                    push(item, key_hint=element_key)
-                continue
-
-            if lookup_kind == "key":
-                if element_key and element_key == str(element_ref):
-                    push(item, key_hint=element_key)
-                continue
-
-            if lookup_kind in {"name", "text"}:
-                if element_payload and self._match_raw_element(
-                    element_payload,
-                    element_ref,
-                    lookup_kind,
-                    element_key=element_key
-                ):
-                    push(item, key_hint=element_key)
-                continue
-
-            # auto
-            if alias_id == str(element_ref) or (element_key and element_key == str(element_ref)):
-                push(item, key_hint=element_key)
-                continue
-            if element_payload and self._match_raw_element(
-                element_payload,
-                element_ref,
-                "auto",
-                element_key=element_key
-            ):
-                push(item, key_hint=element_key)
-        matches.sort(key=lambda item: item[0], reverse=True)
-        return [item for _, item in matches]
+        return self._context_reference_resolver.find_elements_by_ref(
+            context_id, context_type, element_ref, ref_kind=ref_kind
+        )
 
     def _find_element_by_ref(
         self,
@@ -5570,13 +5277,9 @@ class BubbleCLI:
         ref_kind: str = "auto",
         match_index: int = 1
     ) -> Optional[Dict[str, Any]]:
-        matches = self._find_elements_by_ref(context_id, context_type, element_ref, ref_kind=ref_kind)
-        if not matches:
-            return None
-        idx = max(1, int(match_index)) - 1
-        if idx >= len(matches):
-            return None
-        return matches[idx]
+        return self._context_reference_resolver.find_element_by_ref(
+            context_id, context_type, element_ref, ref_kind=ref_kind, match_index=match_index
+        )
 
     def list_app_texts(self, language: Optional[str] = None, as_json: bool = False) -> bool:
         catalog = self._get_app_text_catalog(include_cache=True)
@@ -5692,241 +5395,15 @@ class BubbleCLI:
         ref_kind: str = "auto",
         match_index: Optional[int] = None
     ) -> Tuple[Optional[str], Optional[str], Optional[Dict[str, Any]]]:
-        context_id, context_type = self._find_context(context_name)
-        if not context_id:
-            logger.error(f"Context '{context_name}' not found.")
-            return None, None, None
-
-        matches = self._find_elements_by_ref(context_id, context_type, element_ref, ref_kind=ref_kind)
-        if not matches:
-            logger.error(f"Element '{element_ref}' not found in '{context_name}' by {ref_kind}.")
-            return None, None, None
-
-        resolved_match_index = match_index if match_index is not None else (len(matches) if len(matches) > 1 else 1)
-        if len(matches) > 1 and ref_kind in {"text", "name", "auto"}:
-            logger.warning(
-                f"Multiple matches found ({len(matches)}) for '{element_ref}' in '{context_name}'. "
-                f"Using match #{resolved_match_index}. Use --match-index or --ref-kind id/key to target explicitly."
-            )
-            for idx, item in enumerate(matches[:5], start=1):
-                path_str = ".".join(item.get("path", []))
-                logger.info(f"  [{idx}] id={item.get('id')} path={path_str}")
-
-        pick_idx = max(1, int(resolved_match_index)) - 1
-        if pick_idx >= len(matches):
-            logger.error(f"match-index {resolved_match_index} out of range; found {len(matches)} matches.")
-            return None, None, None
-        return context_id, context_type, matches[pick_idx]
+        return self._context_reference_resolver.select_element_match(
+            context_name, element_ref, ref_kind=ref_kind, match_index=match_index
+        )
 
     def _iter_contexts(self, scope: str = "all") -> List[Dict[str, str]]:
-        """Enumerate page/reusable contexts from discovery data and module indexes."""
-        normalized_scope = (scope or "all").strip().lower()
-        include_pages = normalized_scope in {"all", "pages", "page"}
-        include_reusables = normalized_scope in {"all", "reusables", "reusable"}
-
-        contexts: Dict[Tuple[str, str], Dict[str, str]] = {}
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-
-        if include_pages:
-            pages = data.get("pages")
-            if isinstance(pages, dict):
-                for context_id, payload in pages.items():
-                    if not isinstance(payload, dict):
-                        continue
-                    name = payload.get("name") or payload.get("%nm") or str(context_id)
-                    contexts[("page", str(context_id))] = {
-                        "id": str(context_id),
-                        "type": "page",
-                        "name": str(name)
-                    }
-
-            raw_pages = data.get("%p3")
-            if isinstance(raw_pages, dict):
-                for context_id, payload in raw_pages.items():
-                    if not isinstance(payload, dict):
-                        continue
-                    if str(payload.get("%x", "")).lower() == "reusableelement":
-                        continue
-                    key = ("page", str(context_id))
-                    if key in contexts:
-                        continue
-                    name = payload.get("%nm") or payload.get("name") or str(context_id)
-                    contexts[key] = {
-                        "id": str(context_id),
-                        "type": "page",
-                        "name": str(name)
-                    }
-
-            for context_id, display_name in self._load_modules_index("page").items():
-                key = ("page", str(context_id))
-                if key not in contexts:
-                    contexts[key] = {
-                        "id": str(context_id),
-                        "type": "page",
-                        "name": str(display_name or context_id)
-                    }
-
-        if include_reusables:
-            reusables = data.get("element_definitions")
-            if isinstance(reusables, dict):
-                for context_id, payload in reusables.items():
-                    if not isinstance(payload, dict):
-                        continue
-                    name = payload.get("name") or payload.get("%nm") or str(context_id)
-                    contexts[("reusable", str(context_id))] = {
-                        "id": str(context_id),
-                        "type": "reusable",
-                        "name": str(name)
-                    }
-
-            raw_reusables = data.get("%ed")
-            if isinstance(raw_reusables, dict):
-                for context_id, payload in raw_reusables.items():
-                    if not isinstance(payload, dict):
-                        continue
-                    key = ("reusable", str(context_id))
-                    if key in contexts:
-                        continue
-                    name = payload.get("%nm") or payload.get("name") or str(context_id)
-                    contexts[key] = {
-                        "id": str(context_id),
-                        "type": "reusable",
-                        "name": str(name)
-                    }
-
-            for context_id, display_name in self._load_modules_index("reusable").items():
-                key = ("reusable", str(context_id))
-                if key not in contexts:
-                    contexts[key] = {
-                        "id": str(context_id),
-                        "type": "reusable",
-                        "name": str(display_name or context_id)
-                    }
-
-        # Include contexts persisted in CLI cache, useful right after create-page/reusable.
-        cached_contexts = self._schema_contexts_cache()
-        if include_pages:
-            page_cache = cached_contexts.get("page", {})
-            if isinstance(page_cache, dict):
-                for payload in page_cache.values():
-                    if not isinstance(payload, dict):
-                        continue
-                    context_id = str(payload.get("context_id") or "").strip()
-                    if not context_id:
-                        continue
-                    key = ("page", context_id)
-                    if key in contexts:
-                        continue
-                    context_name = str(payload.get("name") or context_id)
-                    contexts[key] = {"id": context_id, "type": "page", "name": context_name}
-        if include_reusables:
-            reusable_cache = cached_contexts.get("reusable", {})
-            if isinstance(reusable_cache, dict):
-                for payload in reusable_cache.values():
-                    if not isinstance(payload, dict):
-                        continue
-                    context_id = str(payload.get("context_id") or "").strip()
-                    if not context_id:
-                        continue
-                    key = ("reusable", context_id)
-                    if key in contexts:
-                        continue
-                    context_name = str(payload.get("name") or context_id)
-                    contexts[key] = {"id": context_id, "type": "reusable", "name": context_name}
-
-        rows = list(contexts.values())
-        rows.sort(key=lambda item: (item.get("type", ""), self._norm_lookup(item.get("name")), item.get("id", "")))
-        return rows
+        return self._context_reference_resolver.iter_contexts(scope)
 
     def _collect_context_elements(self, context_id: str, context_type: str) -> List[Dict[str, Any]]:
-        """Collect context elements across discovery/raw/module/index sources with deduped rows."""
-        rows_by_key: Dict[str, Dict[str, Any]] = {}
-
-        def _looks_like_opaque_ref(value: Any) -> bool:
-            raw = str(value or "").strip()
-            if not raw:
-                return True
-            return bool(re.fullmatch(r"[A-Za-z0-9]{3,8}", raw)) and not any(ch in raw for ch in "_- ")
-
-        def _is_placeholder(value: Any) -> bool:
-            return str(value or "").strip() == "[truncated_max_depth]"
-
-        def _row_score(row: Dict[str, Any]) -> int:
-            name = str(row.get("name") or "").strip()
-            element_type = str(row.get("type") or "").strip()
-            path = row.get("path") or []
-            element_id = str(row.get("id") or "").strip()
-            score = 0
-            if name:
-                score += 2
-                if not _looks_like_opaque_ref(name):
-                    score += 5
-            if element_type and element_type.lower() != "unknown":
-                score += 4
-            if isinstance(path, list) and path:
-                score += 2
-            if element_id and not _looks_like_opaque_ref(element_id):
-                score += 1
-            return score
-
-        def push(item: Dict[str, Any]) -> None:
-            if not isinstance(item, dict):
-                return
-            path = self._normalize_payload_path(item.get("path", []))
-            element = item.get("element") if isinstance(item.get("element"), dict) else {}
-            element_id = str(element.get("id") or item.get("id") or "").strip()
-            key = str(item.get("key") or (path[-1] if path else "")).strip()
-            name = (
-                str(
-                    element.get("%dn")
-                    or element.get("%nm")
-                    or element.get("name")
-                    or element.get("default_name")
-                    or ""
-                ).strip()
-            )
-            element_type = str(element.get("%x") or element.get("type") or "").strip()
-            style_id = str(element.get("%s1") or "").strip()
-            if _is_placeholder(element_id) or _is_placeholder(name) or _is_placeholder(element_type):
-                return
-            if any(_is_placeholder(part) for part in path):
-                return
-            if not element_id and not name and not element_type:
-                return
-            dedupe_key = f"{element_id}|{'.'.join(path)}|{key}"
-            candidate = {
-                "id": element_id or None,
-                "key": key or None,
-                "name": name,
-                "type": element_type,
-                "style_id": style_id or None,
-                "path": path,
-            }
-            current = rows_by_key.get(dedupe_key)
-            if not current or _row_score(candidate) > _row_score(current):
-                rows_by_key[dedupe_key] = candidate
-
-        for item in self.discovery.list_elements(context_id, context_type=context_type):
-            push(item)
-        for item in self._list_raw_context_elements(context_id, context_type):
-            push(item)
-        for item in self._list_module_context_elements(context_id, context_type):
-            push(item)
-        for item in self._list_index_context_elements(context_id, context_type):
-            push(item)
-        for item in self._list_cached_context_elements(context_id, context_type):
-            push(item)
-
-        rows = list(rows_by_key.values())
-        rows.sort(
-            key=lambda r: (
-                self._norm_lookup(r.get("name")),
-                self._norm_lookup(r.get("type")),
-                ".".join(r.get("path", [])),
-                str(r.get("id") or ""),
-            )
-        )
-        return rows
+        return self._context_reference_resolver.collect_context_elements(context_id, context_type)
 
     def inspect_context(
         self,
@@ -5938,152 +5415,15 @@ class BubbleCLI:
         limit: int = 200,
         as_json: bool = False,
     ) -> bool:
-        """
-        Inspect one context or list contexts with counts/details.
-        """
-        limit_n = max(1, int(limit))
-
-        def style_name_map() -> Dict[str, str]:
-            mapping: Dict[str, str] = {}
-            for style in self.discovery.list_styles():
-                sid = str(style.get("id") or "").strip()
-                sname = str(style.get("name") or "").strip()
-                if sid:
-                    mapping[sid] = sname
-            return mapping
-
-        if context_name:
-            context_id, context_type = self._find_context(context_name)
-            if not context_id:
-                logger.error(f"Context '{context_name}' not found.")
-                return False
-
-            contexts = self._iter_contexts(scope="all")
-            context_label = next(
-                (row.get("name") for row in contexts if row.get("id") == context_id and row.get("type") == context_type),
-                context_name,
-            )
-
-            elements = self._collect_context_elements(context_id, context_type)
-            workflows = self._list_context_workflows(context_id, context_type)
-
-            output: Dict[str, Any] = {
-                "context": {
-                    "id": context_id,
-                    "type": context_type,
-                    "name": context_label,
-                },
-                "counts": {
-                    "elements": len(elements),
-                    "workflows": len(workflows),
-                },
-            }
-
-            if include_elements:
-                output["elements"] = elements[:limit_n]
-                output["elements_truncated"] = len(elements) > limit_n
-
-            if include_workflows:
-                wf_rows: List[Dict[str, Any]] = []
-                for wf in workflows[:limit_n]:
-                    wf_obj = wf.get("workflow", {}) if isinstance(wf.get("workflow"), dict) else {}
-                    wf_props = wf_obj.get("%p") if isinstance(wf_obj.get("%p"), dict) else wf_obj.get("properties", {})
-                    if not isinstance(wf_props, dict):
-                        wf_props = {}
-                    wf_rows.append({
-                        "key": str(wf.get("key") or ""),
-                        "id": str(wf.get("id") or ""),
-                        "type": str(wf.get("type") or wf_obj.get("%x") or wf_obj.get("type") or ""),
-                        "name": str(wf.get("name") or ""),
-                        "element_id": str(wf_props.get("%ei") or wf_props.get("element_id") or "") or None,
-                    })
-                output["workflows"] = wf_rows
-                output["workflows_truncated"] = len(workflows) > limit_n
-
-            if include_styles:
-                style_ids = sorted({
-                    str(r.get("style_id") or "").strip()
-                    for r in elements
-                    if str(r.get("style_id") or "").strip()
-                })
-                styles_by_id = style_name_map()
-                output["styles_used"] = [
-                    {"id": sid, "name": styles_by_id.get(sid) or ""}
-                    for sid in style_ids[:limit_n]
-                ]
-                output["styles_used_truncated"] = len(style_ids) > limit_n
-                output["counts"]["styles_used"] = len(style_ids)
-
-            if as_json:
-                print(json.dumps(output, indent=2, ensure_ascii=False))
-                return True
-
-            logger.log(
-                f"Context: {output['context']['name']} ({output['context']['type']}, {output['context']['id']})"
-            )
-            logger.log(
-                f"Counts: elements={output['counts']['elements']} workflows={output['counts']['workflows']}"
-            )
-            if include_styles:
-                logger.log(f"Styles used: {output['counts'].get('styles_used', 0)}")
-            if include_elements:
-                logger.log(f"Elements (showing up to {limit_n}):")
-                for row in output.get("elements", []):
-                    logger.log(
-                        f"  - {row.get('name') or '<unnamed>'} "
-                        f"[{row.get('type') or 'unknown'}] id={row.get('id') or '?'}"
-                    )
-            if include_workflows:
-                logger.log(f"Workflows (showing up to {limit_n}):")
-                for wf in output.get("workflows", []):
-                    logger.log(
-                        f"  - key={wf.get('key')} id={wf.get('id')} type={wf.get('type')} "
-                        f"element={wf.get('element_id') or '-'}"
-                    )
-            return True
-
-        # Multi-context listing mode
-        contexts = self._iter_contexts(scope=scope)
-        rows: List[Dict[str, Any]] = []
-        for ctx in contexts:
-            context_id = str(ctx.get("id") or "")
-            context_type = str(ctx.get("type") or "")
-            context_row: Dict[str, Any] = {
-                "id": context_id,
-                "type": context_type,
-                "name": str(ctx.get("name") or ""),
-            }
-            if include_elements:
-                context_row["elements_count"] = len(self._collect_context_elements(context_id, context_type))
-            if include_workflows:
-                context_row["workflows_count"] = len(self._list_context_workflows(context_id, context_type))
-            if include_styles:
-                style_ids = {
-                    str(r.get("style_id") or "").strip()
-                    for r in self._collect_context_elements(context_id, context_type)
-                    if str(r.get("style_id") or "").strip()
-                }
-                context_row["styles_used_count"] = len(style_ids)
-            rows.append(context_row)
-
-        if as_json:
-            print(json.dumps(rows, indent=2, ensure_ascii=False))
-            return True
-
-        logger.log(f"Contexts ({len(rows)}):")
-        for row in rows:
-            suffix = []
-            if "elements_count" in row:
-                suffix.append(f"elements={row.get('elements_count')}")
-            if "workflows_count" in row:
-                suffix.append(f"workflows={row.get('workflows_count')}")
-            if "styles_used_count" in row:
-                suffix.append(f"styles={row.get('styles_used_count')}")
-            suffix_text = f" ({', '.join(suffix)})" if suffix else ""
-            logger.log(
-                f"- {row.get('name') or '<unnamed>'} [{row.get('type')}] id={row.get('id')}{suffix_text}"
-            )
-        return True
+        return self._context_reference_resolver.inspect_context(
+            context_name,
+            scope,
+            include_elements,
+            include_workflows,
+            include_styles,
+            limit,
+            as_json,
+        )
 
     def resolve_refs(
         self,
@@ -6105,222 +5445,24 @@ class BubbleCLI:
         option_value_ref: Optional[str] = None,
         as_json: bool = False,
     ) -> bool:
-        """
-        Resolve user-friendly references into canonical ids/keys.
-        """
-        payload: Dict[str, Any] = {}
-        errors: List[str] = []
-
-        context_id: Optional[str] = None
-        context_type: Optional[str] = None
-        if context_name:
-            context_id, context_type = self._find_context(context_name)
-            if not context_id:
-                errors.append(f"Context '{context_name}' not found.")
-            else:
-                payload["context"] = {"name": context_name, "id": context_id, "type": context_type}
-
-        if parent_ref:
-            if not context_id:
-                errors.append("parent_ref requires a resolvable context.")
-            else:
-                parent_found = self._resolve_parent_element(
-                    context_id,
-                    context_type or "page",
-                    context_name or context_id,
-                    parent_ref
-                )
-                if not parent_found:
-                    errors.append(f"Parent '{parent_ref}' not found.")
-                else:
-                    payload["parent"] = {
-                        "ref": parent_ref,
-                        "id": parent_found.get("id"),
-                        "path": parent_found.get("path", []),
-                    }
-
-        if element_ref:
-            if not context_id:
-                errors.append("element_ref requires a resolvable context.")
-            else:
-                element_found = self._find_element_by_ref(
-                    context_id,
-                    context_type or "page",
-                    element_ref,
-                    ref_kind=element_ref_kind,
-                    match_index=max(1, int(match_index)),
-                )
-                if not element_found and element_ref_kind in {"auto", "id"}:
-                    element_found = self._resolve_element_alias_from_id_to_path(
-                        context_id,
-                        context_type or "page",
-                        str(element_ref),
-                    )
-                if not element_found:
-                    element_found = self._resolve_cached_element_alias(
-                        context_id,
-                        context_type or "page",
-                        element_ref,
-                    )
-                if not element_found:
-                    errors.append(
-                        f"Element '{element_ref}' not found in '{context_name or context_id}' by {element_ref_kind}."
-                    )
-                else:
-                    element_payload = (
-                        element_found.get("element")
-                        if isinstance(element_found.get("element"), dict)
-                        else {}
-                    )
-                    path = self._normalize_payload_path(element_found.get("path", []))
-                    payload["element"] = {
-                        "ref": element_ref,
-                        "id": str(element_found.get("id") or ""),
-                        "key": str(element_found.get("key") or (path[-1] if path else "")) or None,
-                        "name": (
-                            element_payload.get("%dn")
-                            or element_payload.get("%nm")
-                            or element_payload.get("name")
-                            or element_payload.get("default_name")
-                            or ""
-                        ),
-                        "type": element_payload.get("%x") or element_payload.get("type") or "",
-                        "path": path,
-                    }
-
-        if event_ref:
-            if not context_id:
-                errors.append("event_ref requires a resolvable context.")
-            else:
-                workflow = self._resolve_workflow_ref(
-                    context_id,
-                    context_type or "page",
-                    event_ref,
-                    ref_kind=event_ref_kind,
-                )
-                if not workflow:
-                    errors.append(
-                        f"Workflow '{event_ref}' not found in '{context_name or context_id}' by {event_ref_kind}."
-                    )
-                else:
-                    wf_obj = workflow.get("workflow", {}) if isinstance(workflow.get("workflow"), dict) else {}
-                    wf_props = (
-                        wf_obj.get("%p") if isinstance(wf_obj.get("%p"), dict)
-                        else wf_obj.get("properties", {}) if isinstance(wf_obj.get("properties"), dict)
-                        else {}
-                    )
-                    payload["event"] = {
-                        "ref": event_ref,
-                        "key": str(workflow.get("key") or ""),
-                        "id": str(workflow.get("id") or ""),
-                        "type": str(workflow.get("type") or wf_obj.get("%x") or wf_obj.get("type") or ""),
-                        "name": str(workflow.get("name") or ""),
-                        "element_id": str(wf_props.get("%ei") or wf_props.get("element_id") or "") or None,
-                    }
-
-        if style_ref:
-            style_id = self.find_style_id(style_ref, element_type=style_element_type)
-            if not style_id:
-                errors.append(f"Style '{style_ref}' not found.")
-            else:
-                style_obj = {}
-                data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-                if isinstance(data.get("styles"), dict):
-                    style_obj = data.get("styles", {}).get(style_id, {}) if isinstance(data.get("styles", {}).get(style_id), dict) else {}
-                payload["style"] = {
-                    "ref": style_ref,
-                    "id": style_id,
-                    "name": style_obj.get("%d") or style_ref,
-                    "type": style_obj.get("%x") or style_element_type or "",
-                }
-
-        if data_type_ref:
-            dt_kind = (data_type_ref_kind or "auto").strip().lower()
-            if dt_kind == "auto":
-                data_type_key = self._resolve_data_type_key(data_type_ref, ref_kind="key")
-                if not data_type_key:
-                    data_type_key = self._resolve_data_type_key(data_type_ref, ref_kind="label")
-            else:
-                data_type_key = self._resolve_data_type_key(
-                    data_type_ref,
-                    ref_kind="label" if dt_kind in {"label", "name", "display"} else "key",
-                )
-            if not data_type_key:
-                errors.append(f"Data type '{data_type_ref}' not found.")
-            else:
-                dt_meta = self._get_user_types(include_cache=True).get(data_type_key, {})
-                payload["data_type"] = {
-                    "ref": data_type_ref,
-                    "key": data_type_key,
-                    "display": (
-                        dt_meta.get("%d") if isinstance(dt_meta, dict) else ""
-                    ) or "",
-                }
-
-        resolved_option_set_key: Optional[str] = None
-        if option_set_ref:
-            os_kind = (option_set_ref_kind or "auto").strip().lower()
-            resolved_option_set_key = self._resolve_option_set_key(
-                option_set_ref,
-                ref_kind=os_kind if os_kind in {"key", "label", "name", "display", "auto"} else "auto",
-            )
-            if not resolved_option_set_key:
-                errors.append(f"Option set '{option_set_ref}' not found.")
-            else:
-                os_meta = self._get_option_sets(include_cache=True).get(resolved_option_set_key, {})
-                payload["option_set"] = {
-                    "ref": option_set_ref,
-                    "key": resolved_option_set_key,
-                    "display": (
-                        os_meta.get("%d") or os_meta.get("display")
-                        if isinstance(os_meta, dict)
-                        else ""
-                    ) or "",
-                }
-
-        if option_value_ref:
-            if not resolved_option_set_key:
-                errors.append("option_value_ref requires a resolvable option_set_ref.")
-            else:
-                value_key = self._resolve_option_value_key(
-                    resolved_option_set_key,
-                    option_value_ref,
-                    ref_kind="key",
-                )
-                if not value_key:
-                    errors.append(
-                        f"Option value '{option_value_ref}' not found in option set '{resolved_option_set_key}'."
-                    )
-                else:
-                    values_map = self._get_option_set_values(resolved_option_set_key) or {}
-                    value_meta = values_map.get(value_key, {}) if isinstance(values_map, dict) else {}
-                    payload["option_value"] = {
-                        "ref": option_value_ref,
-                        "key": value_key,
-                        "db_value": value_meta.get("db_value") if isinstance(value_meta, dict) else None,
-                        "display": (
-                            value_meta.get("%d") or value_meta.get("display")
-                            if isinstance(value_meta, dict)
-                            else ""
-                        ) or "",
-                    }
-
-        payload["ok"] = len(errors) == 0
-        payload["errors"] = errors
-
-        if as_json:
-            print(json.dumps(payload, indent=2, ensure_ascii=False))
-            return payload["ok"] or bool(payload)
-
-        if payload.get("context"):
-            c = payload["context"]
-            logger.log(f"Context: {c.get('name')} -> {c.get('type')}:{c.get('id')}")
-        for key in ("parent", "element", "event", "style", "data_type", "option_set", "option_value"):
-            if key in payload:
-                logger.log(f"{key}: {json.dumps(payload[key], ensure_ascii=False)}")
-        for err in errors:
-            logger.error(err)
-        return len(errors) == 0
+        return self._context_reference_resolver.resolve_refs(
+            context_name=context_name,
+            parent_ref=parent_ref,
+            parent_match_index=parent_match_index,
+            element_ref=element_ref,
+            element_ref_kind=element_ref_kind,
+            match_index=match_index,
+            event_ref=event_ref,
+            event_ref_kind=event_ref_kind,
+            style_ref=style_ref,
+            style_element_type=style_element_type,
+            data_type_ref=data_type_ref,
+            data_type_ref_kind=data_type_ref_kind,
+            option_set_ref=option_set_ref,
+            option_set_ref_kind=option_set_ref_kind,
+            option_value_ref=option_value_ref,
+            as_json=as_json,
+        )
 
     def verify_write(
         self,
