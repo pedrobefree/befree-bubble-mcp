@@ -755,3 +755,417 @@ def test_bubble_cli_inspection_and_resolution_facades_preserve_arguments(
             },
         ),
     ]
+
+
+def test_materialization_defensively_handles_missing_roots_and_updates_existing_raw_leaf() -> None:
+    invalid_host, invalid_resolver = _resolver({})
+    invalid_host.discovery.data = None  # type: ignore[assignment]
+    invalid_host.discovery._get_context_root = lambda *_args: None  # type: ignore[method-assign]
+    payload = {"id": "hero-id", "key": "hero", "path": ["%el", "hero"]}
+    assert invalid_resolver.materialize_cached_element_stub("pg", "page", None) is None
+    assert invalid_resolver.materialize_cached_element_stub("pg", "page", payload) is payload
+
+    host, resolver = _resolver(
+        {
+            "%p3": {
+                "pg": {
+                    "%x": "Page",
+                    "%el": {"hero": {"id": "old-id", "%x": "Text", "%el": None}},
+                }
+            }
+        }
+    )
+    result = resolver.materialize_cached_element_stub(
+        "pg",
+        "page",
+        {"id": "hero-id", "key": "hero", "name": "Hero", "path": ["%el", "hero"]},
+    )
+    assert result is not None
+    assert result["element"]["id"] == "hero-id"
+    assert result["element"]["default_name"] == "Hero"
+    assert result["element"]["name"] == "Hero"
+
+    nested = resolver.materialize_cached_element_stub(
+        "pg",
+        "page",
+        {"key": "copy", "path": ["%el", "hero", "%el", "copy"]},
+    )
+    assert nested is not None
+    assert nested["element"]["id"] == "copy"
+    assert host.discovery.data["%p3"]["pg"]["%el"]["hero"]["%el"]["copy"]["name"] == "copy"
+
+
+def test_capture_helpers_cover_empty_unknown_and_reusable_paths() -> None:
+    _, resolver = _resolver({})
+    assert resolver.normalize_capture_path([]) == []
+    assert resolver.normalize_capture_path("[not-json") == []
+    assert resolver._context_type_from_prefix("pages") == "page"
+    assert resolver._context_type_from_prefix("%ed") == "reusable"
+    assert resolver._context_type_from_prefix("unknown") is None
+    assert resolver._find_last_element_token(["%p3", "pg"]) == (None, None)
+    assert resolver._find_last_element_token(["%el", "parent", "%el", "child"]) == (3, "child")
+
+
+def test_sync_element_ref_cache_reports_file_errors_and_supports_json_dry_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host, resolver = _resolver(
+        {
+            "element_definitions": {
+                "nav": {
+                    "elements": {
+                        "group": {
+                            "elements": {"save": {"default_name": "Saved node"}}
+                        }
+                    }
+                }
+            }
+        }
+    )
+    errors: list[str] = []
+    logs: list[str] = []
+    infos: list[str] = []
+    monkeypatch.setattr(resolver_module.logger, "error", errors.append)
+    monkeypatch.setattr(resolver_module.logger, "log", logs.append)
+    monkeypatch.setattr(resolver_module.logger, "info", infos.append)
+
+    assert resolver.sync_element_ref_cache(str(tmp_path / "missing.json")) is False
+    assert errors[-1].startswith("Capture file not found:")
+    invalid_json = tmp_path / "invalid.json"
+    invalid_json.write_text("{", encoding="utf-8")
+    assert resolver.sync_element_ref_cache(str(invalid_json)) is False
+    assert errors[-1].startswith("Could not read capture file:")
+    object_json = tmp_path / "object.json"
+    object_json.write_text("{}", encoding="utf-8")
+    assert resolver.sync_element_ref_cache(str(object_json)) is False
+    assert errors[-1] == "Capture file must be a JSON array."
+
+    capture = tmp_path / "capture.json"
+    capture.write_text(
+        json.dumps(
+            [
+                None,
+                {"path": None, "body": "ignored"},
+                {"path": ["%p3", "", "%el", "bad"], "intent": "CreateElement", "body": {}},
+                {"path": ["unknown", "ctx", "%el", "bad", "%nm"], "body": "Unknown"},
+                {"path": ["%ed", "nav", "%el", "group", "%el", "save"]},
+                {
+                    "path": ["%ed", "nav", "%el", "group", "%el", "save"],
+                    "intent": "CreateElement",
+                    "body": {"name": "Explicit"},
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+    host._collect_alias_ids_for_element_path = lambda *_args: ["save", "save-alias"]  # type: ignore[method-assign]
+    assert resolver.sync_element_ref_cache("capture.json", as_json=True, dry_run=True) is True
+    rows = json.loads(logs[-1])
+    assert rows == [
+        {"context_type": "reusable", "context_id": "nav", "name": "Explicit", "id": "save"},
+        {"context_type": "reusable", "context_id": "nav", "name": "Explicit", "id": "save-alias"},
+        {"context_type": "reusable", "context_id": "nav", "name": "Saved node", "id": "save"},
+        {"context_type": "reusable", "context_id": "nav", "name": "Saved node", "id": "save-alias"},
+    ]
+    assert host._alias_registry.lookup_element_id("nav", "reusable", "Explicit") is None
+    assert resolver.sync_element_ref_cache("capture.json", dry_run=True) is True
+    assert infos[-1].startswith("[DRY RUN] Imported 4 element alias mappings")
+
+
+def test_iter_contexts_skips_malformed_duplicates_and_raw_reusable_pages() -> None:
+    host = _TraversalHost(
+        {
+            "pages": {
+                "bad": None,
+                "same": {"name": "Readable"},
+            },
+            "%p3": {
+                "bad-raw": None,
+                "same": {"%nm": "Raw duplicate"},
+                "reusable-in-pages": {"%x": "ReusableElement", "%nm": "Skip me"},
+                "raw": {"name": "Raw page"},
+            },
+            "element_definitions": "malformed",
+            "%ed": {"raw-reusable": {"name": "Raw reusable"}},
+        }
+    )
+    host.module_indexes["page"] = {"same": "Module duplicate", "module": ""}
+    host.cached_contexts = {  # type: ignore[assignment]
+        "page": "malformed",
+        "reusable": {
+            "bad": None,
+            "empty": {"context_id": ""},
+            "duplicate": {"context_id": "raw-reusable", "name": "Duplicate"},
+            "cached": {"context_id": "cached", "name": "Cached"},
+        },
+    }
+    resolver = ContextReferenceResolver(host)
+
+    assert resolver.iter_contexts("all") == [
+        {"id": "module", "type": "page", "name": "module"},
+        {"id": "raw", "type": "page", "name": "Raw page"},
+        {"id": "same", "type": "page", "name": "Readable"},
+        {"id": "cached", "type": "reusable", "name": "Cached"},
+        {"id": "raw-reusable", "type": "reusable", "name": "Raw reusable"},
+    ]
+    host.discovery.data = None  # type: ignore[assignment]
+    host.cached_contexts = {}  # type: ignore[assignment]
+    assert resolver.iter_contexts("unknown") == []
+
+
+@pytest.mark.parametrize(
+    ("element", "ref", "kind", "key", "score"),
+    [
+        (None, "x", "auto", None, -1),
+        ({"id": "id"}, "id", "id", None, 400),
+        ({"id": "id"}, "other", "id", "other", 400),
+        ({}, "key", "key", "key", 390),
+        ({"name": "Save button"}, "save", "name", None, 200),
+        ({"properties": {"text": "Welcome home"}}, "welcome home", "text", None, 280),
+        ({"properties": {"%3": "Welcome home"}}, "welcome", "text", None, 180),
+        ({"default_name": "Exact"}, "exact", "auto", None, 300),
+        ({"properties": {"text": "Exact text"}}, "exact text", "auto", None, 280),
+        ({"name": "Partial name"}, "partial", "auto", None, 200),
+        ({"properties": {"text": "Partial text"}}, "partial", "auto", None, 180),
+        ({"name": "Nope"}, "missing", "weird", None, -1),
+    ],
+)
+def test_match_scoring_covers_supported_kinds_and_payload_shapes(
+    element: Any,
+    ref: str,
+    kind: str,
+    key: str | None,
+    score: int,
+) -> None:
+    resolver = ContextReferenceResolver(_TraversalHost({}))
+    assert resolver._score_raw_element_match(element, ref, kind, key) == score
+    assert resolver._match_raw_element(element, ref, kind, key) is (score >= 0)
+    assert resolver._extract_element_text_payload(element) == (
+        None if not isinstance(element, dict) else resolver._extract_element_text_payload(element)
+    )
+
+
+def test_find_elements_defensively_skips_malformed_sources_and_covers_index_routes() -> None:
+    host = _TraversalHost({})
+    host.raw_rows = [
+        None,
+        {"path": ["%el", "duplicate"], "id": "same", "element": {"id": "same", "name": "Same"}},
+        {"path": ["%el", "duplicate"], "id": "same", "element": {"id": "same", "name": "Same"}},
+        {"path": [], "id": "pathless", "key": "pathless-key", "element": {"id": "pathless", "name": "Pathless"}},
+    ]  # type: ignore[list-item]
+    host.module_rows = [{"id": "no-match", "element": {"name": "Other"}}]
+    host.index_rows = [
+        None,
+        {"id": "alias-id", "key": "alias-key", "element": {}},
+        {"id": "named-id", "key": "named-key", "element": {"name": "Named"}},
+    ]  # type: ignore[list-item]
+    resolver = ContextReferenceResolver(host)
+
+    assert [row["id"] for row in resolver.find_elements_by_ref("pg", "page", "same", "auto")] == ["same"]
+    assert [row["id"] for row in resolver.find_elements_by_ref("pg", "page", "pathless-key", "key")] == ["pathless"]
+    assert [row["id"] for row in resolver.find_elements_by_ref("pg", "page", "alias-id", "id")] == ["alias-id"]
+    assert [row["id"] for row in resolver.find_elements_by_ref("pg", "page", "alias-key", "key")] == ["alias-id"]
+    assert [row["id"] for row in resolver.find_elements_by_ref("pg", "page", "Named", "name")] == ["named-id"]
+    assert [row["id"] for row in resolver.find_elements_by_ref("pg", "page", "alias-key", "unexpected")] == ["alias-id"]
+    assert resolver.find_element_by_ref("pg", "page", "missing") is None
+
+
+def test_select_element_match_reports_missing_ambiguous_and_out_of_range(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _TraversalHost({})
+    resolver = ContextReferenceResolver(host)
+    errors: list[str] = []
+    warnings: list[str] = []
+    infos: list[str] = []
+    monkeypatch.setattr(resolver_module.logger, "error", errors.append)
+    monkeypatch.setattr(resolver_module.logger, "warning", warnings.append)
+    monkeypatch.setattr(resolver_module.logger, "info", infos.append)
+    assert resolver.select_element_match("Missing", "Hero") == (None, None, None)
+
+    host.context_matches["Home"] = ("pg", None)
+    assert resolver.select_element_match("Home", "Missing", "id") == (None, None, None)
+    host.discovery_rows = [
+        {"context_type": "page", "id": "one", "path": ["%el", "one"], "element": {"name": "Hero"}},
+        {"context_type": "page", "id": "two", "path": ["%el", "two"], "element": {"name": "Hero copy"}},
+    ]
+    assert resolver.select_element_match("Home", "Hero", "name", match_index=5) == (None, None, None)
+    assert warnings == [
+        "Multiple matches found (2) for 'Hero' in 'Home'. Using match #5. Use --match-index or --ref-kind id/key to target explicitly."
+    ]
+    assert len(infos) == 2
+    assert errors[-1] == "match-index 5 out of range; found 2 matches."
+    assert resolver.select_element_match("Home", "Hero", "name")[-1]["id"] == "two"  # type: ignore[index]
+
+
+def test_collect_context_elements_skips_invalid_rows_and_prefers_richer_duplicate() -> None:
+    host = _TraversalHost({})
+    host.raw_rows = [
+        None,
+        {"id": "", "path": [], "element": {}},
+        {"id": "bad", "path": ["%el", "[truncated_max_depth]"], "element": {"id": "bad"}},
+        {"id": "abc", "key": "hero", "path": ["%el", "hero"], "element": {"id": "abc", "name": "abc", "type": "Unknown"}},
+    ]  # type: ignore[list-item]
+    host.module_rows = [
+        {"id": "abc", "key": "hero", "path": ["%el", "hero"], "element": {"id": "abc", "name": "Hero banner", "type": "Group", "%s1": "style"}},
+        {"id": "readable-id", "key": "copy", "path": [], "element": {"id": "readable-id", "default_name": "Copy", "type": "Text"}},
+    ]
+    rows = ContextReferenceResolver(host).collect_context_elements("pg", "page")
+    assert rows == [
+        {"id": "readable-id", "key": "copy", "name": "Copy", "type": "Text", "style_id": None, "path": []},
+        {"id": "abc", "key": "hero", "name": "Hero banner", "type": "Group", "style_id": "style", "path": ["%el", "hero"]},
+    ]
+
+
+def test_inspect_context_covers_missing_and_human_detail_fallbacks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _TraversalHost({"pages": {"pg": {"name": "Home"}}})
+    resolver = ContextReferenceResolver(host)
+    errors: list[str] = []
+    messages: list[str] = []
+    monkeypatch.setattr(resolver_module.logger, "error", errors.append)
+    monkeypatch.setattr(resolver_module.logger, "log", messages.append)
+    assert resolver.inspect_context("Missing") is False
+    assert errors == ["Context 'Missing' not found."]
+
+    host.context_matches["Home"] = ("pg", "page")
+    host.discovery_rows = [
+        {"context_type": "page", "path": ["%el", "unknown"], "element": {"name": "", "type": "", "id": "opaque"}},
+    ]
+    host.workflow_rows = [
+        {"key": "wf", "id": "event", "workflow": {"%x": "Loaded", "properties": "bad"}},
+    ]
+    assert resolver.inspect_context(
+        "Home", include_elements=True, include_workflows=True, include_styles=True, limit=0
+    ) is True
+    assert messages == [
+        "Context: Home (page, pg)",
+        "Counts: elements=1 workflows=1",
+        "Styles used: 0",
+        "Elements (showing up to 1):",
+        "  - <unnamed> [unknown] id=opaque",
+        "Workflows (showing up to 1):",
+        "  - key=wf id=event type=Loaded element=-",
+    ]
+
+
+def test_inspect_context_listing_json_without_optional_counts(capsys: pytest.CaptureFixture[str]) -> None:
+    host = _TraversalHost({"pages": {"pg": {}}})
+    resolver = ContextReferenceResolver(host)
+    assert resolver.inspect_context(scope="page", as_json=True) is True
+    assert json.loads(capsys.readouterr().out) == [{"id": "pg", "type": "page", "name": "pg"}]
+
+
+def test_resolve_refs_covers_fallback_successes_and_human_output(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _TraversalHost({"pages": {"pg": {}}, "styles": {"style": "malformed"}})
+    host.context_matches["Home"] = ("pg", None)
+    host.id_path_aliases["element-id"] = {
+        "id": "element-id",
+        "path": ["%el", "element-key"],
+        "element": {"default_name": "Fallback", "type": "Group"},
+    }
+    host.cached_aliases["cached"] = {
+        "id": "cached-id",
+        "key": "cached-key",
+        "path": [],
+        "element": "malformed",
+    }
+    host.workflow_matches["auto:Load"] = {
+        "key": "wf",
+        "id": "event",
+        "workflow": {"type": "Loaded", "properties": {"element_id": "element-id"}},
+    }
+    host.style_matches[":Style"] = "style"
+    host.data_type_matches[("label", "Thing")] = "thing"
+    host.user_types["thing"] = {"%d": "Thing label"}
+    host.option_set_matches["auto:Status"] = "status"
+    host.option_sets["status"] = {"display": "Status display"}
+    host.option_value_matches[("status", "active")] = "active"
+    host.option_values["status"] = {"active": {"display": "Active display"}}
+    resolver = ContextReferenceResolver(host)
+    messages: list[str] = []
+    errors: list[str] = []
+    monkeypatch.setattr(resolver_module.logger, "log", messages.append)
+    monkeypatch.setattr(resolver_module.logger, "error", errors.append)
+
+    assert resolver.resolve_refs(
+        context_name="Home",
+        element_ref="element-id",
+        element_ref_kind="id",
+        event_ref="Load",
+        style_ref="Style",
+        data_type_ref="Thing",
+        data_type_ref_kind="display",
+        option_set_ref="Status",
+        option_set_ref_kind="unsupported",
+        option_value_ref="active",
+    ) is True
+    assert errors == []
+    assert messages[0] == "Context: Home -> None:pg"
+    assert [message.split(":", 1)[0] for message in messages[1:]] == [
+        "element", "event", "style", "data_type", "option_set", "option_value"
+    ]
+
+    messages.clear()
+    assert resolver.resolve_refs(context_name="Home", element_ref="cached", element_ref_kind="name") is True
+    assert '"key": "cached-key"' in messages[-1]
+
+
+def test_resolve_refs_reports_each_lookup_failure_and_defensive_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _TraversalHost({})
+    host.context_matches["Home"] = ("pg", "page")
+    host.data_type_matches[("key", "Thing")] = "thing"
+    host.user_types["thing"] = None  # type: ignore[assignment]
+    host.option_set_matches["key:Status"] = "status"
+    host.option_sets["status"] = None  # type: ignore[assignment]
+    host.option_value_matches[("status", "active")] = "active"
+    host.option_values["status"] = None  # type: ignore[assignment]
+    resolver = ContextReferenceResolver(host)
+    errors: list[str] = []
+    monkeypatch.setattr(resolver_module.logger, "error", errors.append)
+
+    assert resolver.resolve_refs(
+        context_name="Home",
+        parent_ref="Missing parent",
+        element_ref="Missing element",
+        element_ref_kind="name",
+        event_ref="Missing event",
+        style_ref="Missing style",
+        data_type_ref="Thing",
+        data_type_ref_kind="key",
+        option_set_ref="Status",
+        option_set_ref_kind="key",
+        option_value_ref="active",
+    ) is False
+    assert errors == [
+        "Parent 'Missing parent' not found.",
+        "Element 'Missing element' not found in 'Home' by name.",
+        "Workflow 'Missing event' not found in 'Home' by auto.",
+        "Style 'Missing style' not found.",
+    ]
+
+    errors.clear()
+    assert resolver.resolve_refs(
+        context_name="Missing",
+        data_type_ref="No type",
+        option_set_ref="No set",
+        option_value_ref="No value",
+    ) is False
+    assert errors == [
+        "Context 'Missing' not found.",
+        "Data type 'No type' not found.",
+        "Option set 'No set' not found.",
+        "option_value_ref requires a resolvable option_set_ref.",
+    ]
+
+    host.option_value_matches.clear()
+    errors.clear()
+    assert resolver.resolve_refs(option_set_ref="Status", option_set_ref_kind="key", option_value_ref="missing") is False
+    assert errors == ["Option value 'missing' not found in option set 'status'."]

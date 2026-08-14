@@ -456,7 +456,11 @@ class ContextReferenceResolver:
         matches: list[tuple[int, dict[str, Any]]] = []
         seen: set[str] = set()
 
-        def push(item: dict[str, Any], key_hint: str | None = None) -> None:
+        def push(
+            item: dict[str, Any],
+            key_hint: str | None = None,
+            score_override: int | None = None,
+        ) -> None:
             if not isinstance(item, dict):
                 return
             normalized = dict(item)
@@ -466,8 +470,12 @@ class ContextReferenceResolver:
             if match_key in seen:
                 return
             element = normalized.get("element", {})
-            score = self._score_raw_element_match(
-                element if isinstance(element, dict) else {}, element_ref, kind, key_hint
+            score = (
+                score_override
+                if score_override is not None
+                else self._score_raw_element_match(
+                    element if isinstance(element, dict) else {}, element_ref, kind, key_hint
+                )
             )
             if score < 0:
                 return
@@ -476,7 +484,9 @@ class ContextReferenceResolver:
 
         def push_matching(items: list[dict[str, Any]]) -> None:
             for item in items:
-                path = item.get("path", []) if isinstance(item, dict) else []
+                if not isinstance(item, dict):
+                    continue
+                path = item.get("path", [])
                 key = path[-1] if isinstance(path, list) and path else item.get("key")
                 if self._match_raw_element(item.get("element", {}), element_ref, lookup_kind, str(key or "")):
                     push(item, str(key or ""))
@@ -493,14 +503,14 @@ class ContextReferenceResolver:
             element = item.get("element", {}) if isinstance(item.get("element"), dict) else {}
             if lookup_kind == "id":
                 if alias_id == str(element_ref):
-                    push(item, element_key)
+                    push(item, element_key, 400)
             elif lookup_kind == "key":
                 if element_key and element_key == str(element_ref):
                     push(item, element_key)
             elif element and self._match_raw_element(element, element_ref, lookup_kind, element_key):
                 push(item, element_key)
             elif lookup_kind == "auto" and (alias_id == str(element_ref) or element_key == str(element_ref)):
-                push(item, element_key)
+                push(item, element_key, 400 if alias_id == str(element_ref) else 390)
 
         matches.sort(key=lambda match: match[0], reverse=True)
         return [item for _, item in matches]

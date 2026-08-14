@@ -32,11 +32,11 @@
 - Consumes: host discovery data, path parsing/normalization, cache path, and `ContextAliasRegistry.cache_element`.
 - Produces: `materialize_cached_element_stub`, `normalize_capture_path`, `sync_element_ref_cache`, and thin `BubbleCLI` facades.
 
-- [ ] Write failing tests proving cached paths preserve existing siblings, raw/readable roots both materialize, malformed paths return unchanged payloads, and mixed capture rows retain valid mappings.
-- [ ] Run `./.venv/bin/python -m pytest tests/unit/test_context_reference_resolver.py -q` and verify failure because the resolver module is absent.
-- [ ] Implement the minimal typed host and capture/materialization methods.
-- [ ] Delegate the corresponding `BubbleCLI` methods and run focused CLI compatibility tests.
-- [ ] Commit as `refactor: extract reference capture boundary`.
+- [x] Write failing tests proving cached paths preserve existing siblings, raw/readable roots both materialize, malformed paths return unchanged payloads, and mixed capture rows retain valid mappings.
+- [x] Run `./.venv/bin/python -m pytest tests/unit/test_context_reference_resolver.py -q` and verify failure because the resolver module is absent.
+- [x] Implement the minimal typed host and capture/materialization methods.
+- [x] Delegate the corresponding `BubbleCLI` methods and run focused CLI compatibility tests.
+- [x] Commit as `refactor: extract reference capture boundary`.
 
 ### Task 2: Extract discovery traversal and element resolution
 
@@ -49,11 +49,11 @@
 - Consumes: discovery lists, raw/index/module readers, alias-registry lookups, and normalization callbacks.
 - Produces: `iter_contexts`, `collect_context_elements`, `find_elements_by_ref`, `find_element_by_ref`, and `select_element_match`.
 
-- [ ] Write failing literal-fixture tests for scope filtering, reusable/page ambiguity, source deduplication, cached-only rows, text/name/key/id matching, ranking, and one-based selection.
-- [ ] Run focused tests and verify failures name missing resolver behavior.
-- [ ] Move traversal and matching logic into the resolver; leave wrappers for legacy callers.
-- [ ] Run focused tests plus existing CLI/context suites and verify exact rows and ordering.
-- [ ] Commit as `refactor: isolate discovery reference traversal`.
+- [x] Write failing literal-fixture tests for scope filtering, reusable/page ambiguity, source deduplication, cached-only rows, text/name/key/id matching, ranking, and one-based selection.
+- [x] Run focused tests and verify failures name missing resolver behavior.
+- [x] Move traversal and matching logic into the resolver; leave wrappers for legacy callers.
+- [x] Run focused tests plus existing CLI/context suites and verify exact rows and ordering.
+- [x] Commit as `refactor: isolate discovery reference traversal`.
 
 ### Task 3: Extract inspection and multi-domain reference orchestration
 
@@ -67,11 +67,11 @@
 - Consumes: Tasks 1-2 plus existing workflow/style/data-type/option-set resolvers.
 - Produces: `inspect_context` and `resolve_refs` with unchanged JSON, log, truncation, and boolean semantics.
 
-- [ ] Write failing tests for single/list inspection, truncation, styles/workflows, mixed successes/errors, required-context errors, and `match_index` clamping.
-- [ ] Run focused tests and verify failures are caused by missing resolver orchestration.
-- [ ] Move inspection and resolution orchestration into the resolver and delegate both `BubbleCLI` entry points.
-- [ ] Run CLI dispatcher and MCP catalog/routing tests to prove compatibility.
-- [ ] Commit as `refactor: delegate context reference resolution`.
+- [x] Write failing tests for single/list inspection, truncation, styles/workflows, mixed successes/errors, required-context errors, and `match_index` clamping.
+- [x] Run focused tests and verify failures are caused by missing resolver orchestration.
+- [x] Move inspection and resolution orchestration into the resolver and delegate both `BubbleCLI` entry points.
+- [x] Run CLI dispatcher and MCP catalog/routing tests to prove compatibility.
+- [x] Commit as `refactor: delegate context reference resolution`.
 
 ### Task 4: Coverage, performance, roadmap, and review
 
@@ -83,12 +83,18 @@
 **Interfaces:**
 - Produces: measured Stage 4.3 results and review-ready implementation evidence.
 
-- [ ] Measure pre/post lookup, resolution, and inspection timings with literal synthetic data and no timing assertions in pytest.
-- [ ] Run focused branch coverage and raise the resolver to at least 95% combined branch coverage.
-- [ ] Run the full Python/Node suites, global sharded coverage, Ruff, MyPy, security/package/setup/catalog/runtime/routing checks, and `git diff --check`.
-- [ ] Update the roadmap with moved lines, focused/global coverage, test totals, benchmark, and the next Family 2 boundary.
-- [ ] Run independent code review and resolve every Critical/Important finding with regression tests.
-- [ ] Commit the final validation documentation; publication remains a separate explicit user request.
+- [x] Measure pre/post lookup, resolution, and inspection timings with literal synthetic data and no timing assertions in pytest.
+- [x] Run focused branch coverage and raise the resolver to at least 95% combined branch coverage.
+- [x] Run the full Python/Node suites, global sharded coverage, Ruff, MyPy, security/package/setup/catalog/runtime/routing checks, and `git diff --check`.
+- [x] Update the roadmap with moved lines, focused/global coverage, test totals, benchmark, and the next Family 2 boundary.
+- [x] Run independent code review and resolve every Critical/Important finding with regression tests.
+- [x] Commit the final validation documentation; publication remains a separate explicit user request.
+
+Task 4 results on 2026-08-14: 1,231 Python and 11 Node tests passed; the
+resolver reached 96.0% focused combined branch coverage; global combined
+coverage reached 38.8004%; and the ratchet moved to 38.7% with 0.1004 point of
+headroom. The benchmark and complete validation evidence are recorded in the
+Stage 4.3 roadmap entry and the ignored SDD Task 4 report.
 
 ## Self-Review
 
