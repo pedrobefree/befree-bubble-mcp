@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from bubble_mcp.aria_runtime import context_reference_resolver as resolver_module
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
 from bubble_mcp.aria_runtime.context_alias_registry import ContextAliasRegistry
 from bubble_mcp.aria_runtime.context_reference_resolver import ContextReferenceResolver
@@ -43,6 +44,9 @@ class _Discovery:
         return None
 
     def list_elements(self, context_id: str, context_type: str) -> list[dict[str, Any]]:
+        return []
+
+    def list_styles(self) -> list[dict[str, Any]]:
         return []
 
 
@@ -120,11 +124,25 @@ class _TraversalHost(_Host):
         self.module_indexes: dict[str, dict[str, str]] = {"page": {}, "reusable": {}}
         self.cached_contexts: dict[str, dict[str, dict[str, str]]] = {"page": {}, "reusable": {}}
         self.context_matches: dict[str, tuple[str | None, str | None]] = {}
+        self.workflow_rows: list[dict[str, Any]] = []
+        self.style_rows: list[dict[str, Any]] = []
+        self.parent_matches: dict[str, dict[str, Any]] = {}
+        self.cached_aliases: dict[str, dict[str, Any]] = {}
+        self.id_path_aliases: dict[str, dict[str, Any]] = {}
+        self.workflow_matches: dict[str, dict[str, Any]] = {}
+        self.style_matches: dict[str, str] = {}
+        self.data_type_matches: dict[tuple[str, str], str] = {}
+        self.user_types: dict[str, dict[str, Any]] = {}
+        self.option_set_matches: dict[str, str] = {}
+        self.option_sets: dict[str, dict[str, Any]] = {}
+        self.option_value_matches: dict[tuple[str, str], str] = {}
+        self.option_values: dict[str, dict[str, dict[str, Any]]] = {}
 
         def list_elements(_context_id: str, context_type: str) -> list[dict[str, Any]]:
             return [row for row in self.discovery_rows if row.get("context_type") == context_type]
 
         self.discovery.list_elements = list_elements  # type: ignore[method-assign]
+        self.discovery.list_styles = lambda: self.style_rows  # type: ignore[method-assign]
 
     def _list_raw_context_elements(self, _context_id: str, _context_type: str) -> list[dict[str, Any]]:
         return self.raw_rows
@@ -146,6 +164,69 @@ class _TraversalHost(_Host):
 
     def _find_context(self, name: str) -> tuple[str | None, str | None]:
         return self.context_matches.get(name, (None, None))
+
+    def _list_context_workflows(self, _context_id: str, _context_type: str) -> list[dict[str, Any]]:
+        return self.workflow_rows
+
+    def _resolve_parent_element(
+        self,
+        _context_id: str,
+        _context_type: str,
+        _context_name: str,
+        parent_ref: str,
+    ) -> dict[str, Any] | None:
+        return self.parent_matches.get(parent_ref)
+
+    def _resolve_element_alias_from_id_to_path(
+        self,
+        _context_id: str,
+        _context_type: str,
+        element_ref: str,
+    ) -> dict[str, Any] | None:
+        return self.id_path_aliases.get(element_ref)
+
+    def _resolve_cached_element_alias(
+        self,
+        _context_id: str,
+        _context_type: str,
+        element_ref: str,
+    ) -> dict[str, Any] | None:
+        return self.cached_aliases.get(element_ref)
+
+    def _resolve_workflow_ref(
+        self,
+        _context_id: str,
+        _context_type: str,
+        event_ref: str,
+        ref_kind: str = "auto",
+    ) -> dict[str, Any] | None:
+        return self.workflow_matches.get(f"{ref_kind}:{event_ref}")
+
+    def find_style_id(self, style_ref: str, element_type: str | None = None) -> str | None:
+        return self.style_matches.get(f"{element_type or ''}:{style_ref}")
+
+    def _resolve_data_type_key(self, data_type_ref: str, ref_kind: str = "key") -> str | None:
+        return self.data_type_matches.get((ref_kind, data_type_ref))
+
+    def _get_user_types(self, include_cache: bool = True) -> dict[str, dict[str, Any]]:
+        return self.user_types
+
+    def _resolve_option_set_key(self, option_set_ref: str, ref_kind: str = "auto") -> str | None:
+        return self.option_set_matches.get(f"{ref_kind}:{option_set_ref}")
+
+    def _get_option_sets(self, include_cache: bool = True) -> dict[str, dict[str, Any]]:
+        return self.option_sets
+
+    def _resolve_option_value_key(
+        self,
+        option_set_key: str,
+        value_ref: str,
+        ref_kind: str = "key",
+    ) -> str | None:
+        return self.option_value_matches.get((option_set_key, value_ref))
+
+    def _get_option_set_values(self, option_set_key: str) -> dict[str, dict[str, Any]]:
+        return self.option_values.get(option_set_key, {})
 
     @staticmethod
     def _extract_plain_text_value(raw_value: Any) -> str:
@@ -369,3 +450,308 @@ def test_bubble_cli_traversal_facades_delegate_to_reference_resolver(
     assert cli._select_element_match("Home", "hero", match_index=2) == ("pg_home", "page", selected)
     assert cli._iter_contexts("page") == [{"id": "page-owned", "type": "page", "name": "Owned"}]
     assert cli._collect_context_elements("pg_home", "page") == [{"id": "element-owned"}]
+
+
+def test_inspect_context_json_preserves_details_truncation_styles_and_workflows(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = _TraversalHost({"pages": {"pg_home": {"name": "Home"}}})
+    host.context_matches["Homepage"] = ("pg_home", "page")
+    host.discovery_rows = [
+        {
+            "context_type": "page",
+            "path": ["%el", "alpha"],
+            "id": "alpha-id",
+            "key": "alpha",
+            "element": {"id": "alpha-id", "%nm": "Alpha", "%x": "Text", "%s1": "style-z"},
+        },
+        {
+            "context_type": "page",
+            "path": ["%el", "beta"],
+            "id": "beta-id",
+            "key": "beta",
+            "element": {"id": "beta-id", "%nm": "Beta", "%x": "Button", "%s1": "style-a"},
+        },
+    ]
+    host.workflow_rows = [
+        {
+            "key": "wf-click",
+            "id": "event-click",
+            "type": "ButtonClicked",
+            "name": "Click alpha",
+            "workflow": {"%p": {"%ei": "alpha-id"}},
+        },
+        {
+            "key": "wf-load",
+            "id": "event-load",
+            "workflow": {"%x": "PageLoaded", "properties": {"element_id": "beta-id"}},
+        },
+    ]
+    host.style_rows = [
+        {"id": "style-a", "name": "Primary button"},
+        {"id": "style-z", "name": "Body copy"},
+    ]
+    resolver = ContextReferenceResolver(host)
+
+    assert resolver.inspect_context(
+        "Homepage",
+        include_elements=True,
+        include_workflows=True,
+        include_styles=True,
+        limit=1,
+        as_json=True,
+    ) is True
+    assert capsys.readouterr().out == json.dumps(
+        {
+            "context": {"id": "pg_home", "type": "page", "name": "Home"},
+            "counts": {"elements": 2, "workflows": 2, "styles_used": 2},
+            "elements": [
+                {
+                    "id": "alpha-id",
+                    "key": "alpha",
+                    "name": "Alpha",
+                    "type": "Text",
+                    "style_id": "style-z",
+                    "path": ["%el", "alpha"],
+                }
+            ],
+            "elements_truncated": True,
+            "workflows": [
+                {
+                    "key": "wf-click",
+                    "id": "event-click",
+                    "type": "ButtonClicked",
+                    "name": "Click alpha",
+                    "element_id": "alpha-id",
+                }
+            ],
+            "workflows_truncated": True,
+            "styles_used": [{"id": "style-a", "name": "Primary button"}],
+            "styles_used_truncated": True,
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n"
+
+
+def test_inspect_context_listing_preserves_counts_and_human_log_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _TraversalHost({"pages": {"pg_home": {"name": "Home"}}})
+    host.discovery_rows = [
+        {
+            "context_type": "page",
+            "path": ["%el", "hero"],
+            "id": "hero-id",
+            "key": "hero",
+            "element": {"id": "hero-id", "%nm": "Hero", "%x": "Text", "%s1": "style-body"},
+        }
+    ]
+    host.workflow_rows = [{"key": "wf-load", "id": "event-load"}]
+    messages: list[str] = []
+    monkeypatch.setattr(resolver_module.logger, "log", messages.append)
+    resolver = ContextReferenceResolver(host)
+
+    assert resolver.inspect_context(
+        scope="page",
+        include_elements=True,
+        include_workflows=True,
+        include_styles=True,
+    ) is True
+    assert messages == [
+        "Contexts (1):",
+        "- Home [page] id=pg_home (elements=1, workflows=1, styles=1)",
+    ]
+
+
+def test_resolve_refs_json_keeps_mixed_results_and_clamps_match_index(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    host = _TraversalHost(
+        {
+            "pages": {"pg_home": {"name": "Home"}},
+            "styles": {"style-primary": {"%d": "Primary", "%x": "Button"}},
+        }
+    )
+    host.context_matches["Homepage"] = ("pg_home", "page")
+    host.parent_matches["Shell"] = {"id": "shell-id", "path": ["%el", "shell"]}
+    host.discovery_rows = [
+        {
+            "context_type": "page",
+            "path": ["%el", "first"],
+            "id": "first-id",
+            "key": "first",
+            "element": {"id": "first-id", "%nm": "Hero", "%x": "Text"},
+        },
+        {
+            "context_type": "page",
+            "path": ["%el", "second"],
+            "id": "second-id",
+            "key": "second",
+            "element": {"id": "second-id", "%nm": "Hero", "%x": "Group"},
+        },
+    ]
+    host.workflow_matches["name:Submit"] = {
+        "key": "wf-submit",
+        "id": "event-submit",
+        "type": "ButtonClicked",
+        "name": "Submit",
+        "workflow": {"%p": {"%ei": "first-id"}},
+    }
+    host.style_matches["Button:Primary"] = "style-primary"
+    host.option_set_matches["label:Status"] = "status-key"
+    host.option_sets["status-key"] = {"%d": "Status"}
+    host.option_value_matches[("status-key", "active")] = "active-key"
+    host.option_values["status-key"] = {
+        "active-key": {"db_value": "active", "%d": "Active"}
+    }
+    resolver = ContextReferenceResolver(host)
+
+    assert resolver.resolve_refs(
+        context_name="Homepage",
+        parent_ref="Shell",
+        element_ref="Hero",
+        element_ref_kind="name",
+        match_index=0,
+        event_ref="Submit",
+        event_ref_kind="name",
+        style_ref="Primary",
+        style_element_type="Button",
+        data_type_ref="Missing thing",
+        option_set_ref="Status",
+        option_set_ref_kind="label",
+        option_value_ref="active",
+        as_json=True,
+    ) is True
+    assert capsys.readouterr().out == json.dumps(
+        {
+            "context": {"name": "Homepage", "id": "pg_home", "type": "page"},
+            "parent": {"ref": "Shell", "id": "shell-id", "path": ["%el", "shell"]},
+            "element": {
+                "ref": "Hero",
+                "id": "first-id",
+                "key": "first",
+                "name": "Hero",
+                "type": "Text",
+                "path": ["%el", "first"],
+            },
+            "event": {
+                "ref": "Submit",
+                "key": "wf-submit",
+                "id": "event-submit",
+                "type": "ButtonClicked",
+                "name": "Submit",
+                "element_id": "first-id",
+            },
+            "style": {
+                "ref": "Primary",
+                "id": "style-primary",
+                "name": "Primary",
+                "type": "Button",
+            },
+            "option_set": {"ref": "Status", "key": "status-key", "display": "Status"},
+            "option_value": {
+                "ref": "active",
+                "key": "active-key",
+                "db_value": "active",
+                "display": "Active",
+            },
+            "ok": False,
+            "errors": ["Data type 'Missing thing' not found."],
+        },
+        indent=2,
+        ensure_ascii=False,
+    ) + "\n"
+
+
+def test_resolve_refs_human_mode_reports_required_context_errors_in_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _TraversalHost({})
+    errors: list[str] = []
+    monkeypatch.setattr(resolver_module.logger, "error", errors.append)
+    resolver = ContextReferenceResolver(host)
+
+    assert resolver.resolve_refs(
+        parent_ref="Shell",
+        element_ref="Hero",
+        event_ref="Submit",
+        option_value_ref="active",
+    ) is False
+    assert errors == [
+        "parent_ref requires a resolvable context.",
+        "element_ref requires a resolvable context.",
+        "event_ref requires a resolvable context.",
+        "option_value_ref requires a resolvable option_set_ref.",
+    ]
+
+
+def test_bubble_cli_inspection_and_resolution_facades_preserve_arguments(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app_path = tmp_path / "app.json"
+    app_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", str(tmp_path / ".bubble_cli_cache.json"))
+    cli = BubbleCLI(app_json_path=str(app_path), profile_name="resolver-orchestration-facade")
+    calls: list[tuple[str, tuple[Any, ...], dict[str, Any]]] = []
+
+    def inspect(*args: Any, **kwargs: Any) -> bool:
+        calls.append(("inspect", args, kwargs))
+        return False
+
+    def resolve(*args: Any, **kwargs: Any) -> bool:
+        calls.append(("resolve", args, kwargs))
+        return True
+
+    monkeypatch.setattr(cli._context_reference_resolver, "inspect_context", inspect, raising=False)
+    monkeypatch.setattr(cli._context_reference_resolver, "resolve_refs", resolve, raising=False)
+
+    assert cli.inspect_context("Homepage", "page", True, True, True, 7, True) is False
+    assert cli.resolve_refs(
+        context_name="Homepage",
+        parent_ref="Shell",
+        parent_match_index=2,
+        element_ref="Hero",
+        element_ref_kind="name",
+        match_index=3,
+        event_ref="Submit",
+        event_ref_kind="id",
+        style_ref="Primary",
+        style_element_type="Button",
+        data_type_ref="Thing",
+        data_type_ref_kind="label",
+        option_set_ref="Status",
+        option_set_ref_kind="key",
+        option_value_ref="active",
+        as_json=True,
+    ) is True
+    assert calls == [
+        (
+            "inspect",
+            ("Homepage", "page", True, True, True, 7, True),
+            {},
+        ),
+        (
+            "resolve",
+            (),
+            {
+                "context_name": "Homepage",
+                "parent_ref": "Shell",
+                "parent_match_index": 2,
+                "element_ref": "Hero",
+                "element_ref_kind": "name",
+                "match_index": 3,
+                "event_ref": "Submit",
+                "event_ref_kind": "id",
+                "style_ref": "Primary",
+                "style_element_type": "Button",
+                "data_type_ref": "Thing",
+                "data_type_ref_kind": "label",
+                "option_set_ref": "Status",
+                "option_set_ref_kind": "key",
+                "option_value_ref": "active",
+                "as_json": True,
+            },
+        ),
+    ]
