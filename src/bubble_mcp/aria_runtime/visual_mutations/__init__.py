@@ -1,6 +1,11 @@
 """Typed orchestration boundary for Bubble visual element mutations."""
 
-from .protocols import VisualElementTarget, VisualMutationHost
+from .protocols import VisualCreationTarget, VisualElementTarget, VisualMutationHost
 from .service import VisualMutationService
 
-__all__ = ["VisualElementTarget", "VisualMutationHost", "VisualMutationService"]
+__all__ = [
+    "VisualCreationTarget",
+    "VisualElementTarget",
+    "VisualMutationHost",
+    "VisualMutationService",
+]
