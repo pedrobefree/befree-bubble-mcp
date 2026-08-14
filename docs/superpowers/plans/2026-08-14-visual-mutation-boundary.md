@@ -224,7 +224,7 @@ gh pr create --draft --base main --head codex/visual-mutations-4-4a-delete
 - Produces: `VisualCreationTarget`, `VisualCreationService.prepare(...)`, and `VisualCreationService.finish(...)`.
 - Consumes: shared targets, existing element-specific bodies/payload builders, discovery injection, and alias registry facades.
 
-- [ ] **Step 1: Branch from Stage 4.4a and write failing literal creation lifecycle tests**
+- [x] **Step 1: Branch from Stage 4.4a and write failing literal creation lifecycle tests**
 
 ```bash
 git checkout -b codex/visual-mutations-4-4b-create
@@ -232,13 +232,13 @@ git checkout -b codex/visual-mutations-4-4b-create
 
 Test root and nested targets plus preview, execute, failure, injection warning, alias deduplication, and returned element ID/key. Expected payloads and side effects must be literals, not computed with production helpers.
 
-- [ ] **Step 2: Run the new tests and verify RED**
+- [x] **Step 2: Run the new tests and verify RED**
 
 Run: `./.venv/bin/python -m pytest tests/unit/test_visual_mutation_creations.py -q`
 
 Expected: import failure because `creations.py` does not exist.
 
-- [ ] **Step 3: Implement creation records and lifecycle**
+- [x] **Step 3: Implement creation records and lifecycle**
 
 ```python
 @dataclass(frozen=True)
@@ -265,15 +265,15 @@ def finish(
 
 `finish` must preserve dispatch-before-alias order and must make discovery injection warnings non-fatal exactly where the current facade does.
 
-- [ ] **Step 4: Delegate common preparation/finalization from every visual create method**
+- [x] **Step 4: Delegate common preparation/finalization from every visual create method**
 
 Cover `create_text`, `create_button`, container methods, inputs/controls, media, HTML/link/alert/map, popup, and reusable instance. Keep `create_from_html`, page/reusable, style, and app-text methods untouched. Element-specific builder/property code remains in place.
 
-- [ ] **Step 5: Run creation matrices, existing builder/compiler tests, and focused coverage**
+- [x] **Step 5: Run creation matrices, existing builder/compiler tests, and focused coverage**
 
 Run creation tests plus `test_cli_commands.py`, compiler tests, visual defaults tests, Bubble SDK builder tests, and relevant HTML regressions. Require at least 95% combined branch coverage for `creations.py`.
 
-- [ ] **Step 6: Commit, push, and open draft PR B against Stage 4.4a**
+- [x] **Step 6: Commit, push, and open draft PR B against Stage 4.4a**
 
 ```bash
 git add src/bubble_mcp/aria_runtime/visual_mutations src/bubble_mcp/aria_runtime/bubble_cli.py tests/unit/test_visual_mutation_creations.py
