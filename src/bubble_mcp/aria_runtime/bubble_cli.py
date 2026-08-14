@@ -76,6 +76,7 @@ from cli_cache import (
     merge_cache_payloads,
 )
 from context_alias_registry import ContextAliasRegistry
+from context_reference_resolver import ContextReferenceResolver
 
 PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
     # Application rights
@@ -457,6 +458,7 @@ class BubbleCLI:
             save=self._save_cli_cache,
             transaction=self._transact_cli_cache,
         )
+        self._context_reference_resolver = ContextReferenceResolver(self)
 
         self.color_mapper = ColorMapper(self.discovery.data)
         # Seed with cached colors
@@ -1437,77 +1439,12 @@ class BubbleCLI:
         cached_payload: Optional[Dict[str, Any]],
         alias_name: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Rebuild a minimal local discovery chain from a cached alias path."""
-        if not isinstance(cached_payload, dict):
-            return cached_payload
-
-        normalized_path = self._normalize_payload_path(cached_payload.get("path"))
-        if not normalized_path:
-            return cached_payload
-
-        element_id = str(cached_payload.get("id") or cached_payload.get("key") or "").strip()
-        element_key = str(cached_payload.get("key") or element_id).strip()
-        element_name = str(cached_payload.get("name") or alias_name or element_key or element_id).strip()
-        if not element_key:
-            return cached_payload
-
-        root = self.discovery._get_context_root(context_id, context_type)
-        if not isinstance(root, dict):
-            container_key = "element_definitions" if context_type == "reusable" else "pages"
-            raw_key = "%ed" if context_type == "reusable" else "%p3"
-            if container_key in self.discovery.data:
-                target_key = container_key
-            elif raw_key in self.discovery.data:
-                target_key = raw_key
-            else:
-                self.discovery.data[container_key] = {}
-                target_key = container_key
-            self.discovery.data[target_key][context_id] = {
-                "id": context_id,
-                "name": context_id,
-                "elements": {},
-            }
-            root = self.discovery.data[target_key][context_id]
-
-        node = root
-        for index in range(0, len(normalized_path), 2):
-            if normalized_path[index] != "%el" or index + 1 >= len(normalized_path):
-                continue
-            current_key = str(normalized_path[index + 1] or "").strip()
-            if not current_key:
-                continue
-            children_key = "%el" if "%el" in node or "%x" in node else "elements"
-            children = node.get(children_key)
-            if not isinstance(children, dict):
-                children = {}
-                node[children_key] = children
-
-            child = children.get(current_key)
-            is_leaf = index + 2 >= len(normalized_path)
-            if not isinstance(child, dict):
-                child = {
-                    "id": element_id if is_leaf and element_id else current_key,
-                    "type": "Unknown",
-                    "default_name": element_name if is_leaf else current_key,
-                    "name": element_name if is_leaf else current_key,
-                    "elements": {},
-                }
-                children[current_key] = child
-            elif is_leaf:
-                if element_id:
-                    child["id"] = element_id
-                if element_name:
-                    child["default_name"] = child.get("default_name") or element_name
-                    child["name"] = child.get("name") or element_name
-            node = child
-
-        materialized = dict(cached_payload)
-        materialized["path"] = normalized_path
-        materialized["id"] = element_id or materialized.get("id")
-        materialized["key"] = element_key or materialized.get("key")
-        materialized["name"] = element_name or materialized.get("name")
-        materialized["element"] = node
-        return materialized
+        return self._context_reference_resolver.materialize_cached_element_stub(
+            context_id,
+            context_type,
+            cached_payload,
+            alias_name=alias_name,
+        )
 
     def list_element_ref_aliases(
         self,
@@ -1663,13 +1600,7 @@ class BubbleCLI:
         return idx, str(path_parts[idx])
 
     def _normalize_capture_path(self, raw_path: Any) -> List[str]:
-        try:
-            parts = self._parse_path_array(raw_path)
-            if not parts:
-                return []
-            return self._normalize_payload_path(parts)
-        except ValueError:
-            return []
+        return self._context_reference_resolver.normalize_capture_path(raw_path)
 
     def _collect_alias_ids_for_element_path(
         self,
@@ -1758,148 +1689,12 @@ class BubbleCLI:
         dry_run: bool = False,
         quiet: bool = False
     ) -> bool:
-        """
-        Import friendly element aliases from captured editor traffic.
-        Expected input format: scripts/capture_editor_traffic.js output (JSON array).
-        """
-        cap_path = str(capture_file or "").strip() or "page_payloads.json"
-        if not os.path.isabs(cap_path):
-            cap_path = os.path.abspath(cap_path)
-        if not os.path.isfile(cap_path):
-            if not quiet:
-                logger.error(f"Capture file not found: {cap_path}")
-            return False
-
-        try:
-            with open(cap_path, "r", encoding="utf-8") as f:
-                raw = json.load(f)
-        except Exception as e:
-            if not quiet:
-                logger.error(f"Could not read capture file: {e}")
-            return False
-
-        if not isinstance(raw, list):
-            if not quiet:
-                logger.error("Capture file must be a JSON array.")
-            return False
-
-        # Aggregate best-known names by concrete element path.
-        names_by_path: Dict[str, Dict[str, Any]] = {}
-
-        def register_name(path_parts: List[str], candidate_name: Optional[str]) -> None:
-            name = str(candidate_name or "").strip()
-            if not name:
-                return
-            norm_parts = self._normalize_payload_path(path_parts)
-            if len(norm_parts) < 4:
-                return
-            ctype = self._context_type_from_prefix(norm_parts[0])
-            if not ctype:
-                return
-            ctx_id = str(norm_parts[1])
-            el_idx, el_token = self._find_last_element_token(norm_parts)
-            if el_idx is None or not el_token:
-                return
-            element_path = norm_parts[:el_idx + 1]
-            key = ".".join(element_path)
-            if not key:
-                return
-            rec = names_by_path.setdefault(
-                key,
-                {"context_id": ctx_id, "context_type": ctype, "element_id": el_token, "names": set()}
-            )
-            rec["names"].add(name)
-
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            path_parts = self._normalize_capture_path(item.get("path"))
-            if not path_parts:
-                continue
-
-            intent_name = ""
-            intent_payload = item.get("intent")
-            if isinstance(intent_payload, dict):
-                intent_name = str(intent_payload.get("name") or "")
-            elif isinstance(intent_payload, str):
-                intent_name = intent_payload
-
-            body = item.get("body")
-
-            # Direct name/default name writes.
-            if len(path_parts) >= 1 and path_parts[-1] in {"%nm", "%dn"} and isinstance(body, str):
-                register_name(path_parts[:-1], body)
-
-            # CreateElement payload may carry %nm/%dn.
-            if intent_name == "CreateElement" and isinstance(body, dict):
-                maybe_name = body.get("%nm") or body.get("%dn") or body.get("name") or body.get("default_name")
-                register_name(path_parts, maybe_name if isinstance(maybe_name, str) else None)
-
-            # Generic path observation: attempt to resolve current element names from source data.
-            el_idx, _ = self._find_last_element_token(path_parts)
-            if el_idx is not None:
-                element_path = path_parts[:el_idx + 1]
-                node = self._get_value_at_path(element_path)
-                if isinstance(node, dict):
-                    maybe_name = (
-                        node.get("%nm")
-                        or node.get("%dn")
-                        or node.get("name")
-                        or node.get("default_name")
-                    )
-                    if isinstance(maybe_name, str):
-                        register_name(element_path, maybe_name)
-
-        mappings_applied: List[Dict[str, str]] = []
-        for element_path_str, payload in names_by_path.items():
-            ctx_id = payload.get("context_id")
-            ctype = payload.get("context_type")
-            element_id = payload.get("element_id")
-            names = payload.get("names", set())
-            if not isinstance(ctx_id, str) or not isinstance(ctype, str) or not isinstance(element_id, str):
-                continue
-            if not isinstance(names, set) or not names:
-                continue
-
-            element_path = element_path_str.split(".")
-            alias_ids = self._collect_alias_ids_for_element_path(ctx_id, ctype, element_path)
-            target_ids = [element_id] + [aid for aid in alias_ids if aid != element_id]
-
-            for name in sorted(names, key=lambda x: self._norm_lookup(x)):
-                for target_id in target_ids:
-                    mappings_applied.append(
-                        {
-                            "context_type": ctype,
-                            "context_id": ctx_id,
-                            "name": name,
-                            "id": target_id,
-                        }
-                    )
-                    if not dry_run:
-                        self._cache_element_ref_alias(ctx_id, ctype, name, target_id)
-
-        # Deduplicate report rows
-        dedup: Dict[str, Dict[str, str]] = {}
-        for row in mappings_applied:
-            key = f"{row['context_type']}:{row['context_id']}:{self._norm_lookup(row['name'])}:{row['id']}"
-            dedup[key] = row
-        rows = sorted(
-            dedup.values(),
-            key=lambda r: (
-                r.get("context_type", ""),
-                r.get("context_id", ""),
-                self._norm_lookup(r.get("name", "")),
-                r.get("id", ""),
-            ),
+        return self._context_reference_resolver.sync_element_ref_cache(
+            capture_file,
+            as_json=as_json,
+            dry_run=dry_run,
+            quiet=quiet,
         )
-
-        if as_json:
-            logger.log(json.dumps(rows, indent=2, ensure_ascii=False))
-        elif not quiet:
-            logger.info(
-                f"{'[DRY RUN] ' if dry_run else ''}Imported {len(rows)} element alias mappings from {cap_path}"
-            )
-        return True
 
     def _nl_get(self, key: str, default: Any = None) -> Any:
         return self.nl_config.get(key, default)
