@@ -145,13 +145,12 @@ Stage 4.3 results:
 - removed 910 lines of direct discovery/reference logic from `bubble_cli.py`
   and retained 52 lines of resolver construction and compatibility facades
   (net reduction: 858 lines in the legacy class);
-- added the 1,172-line resolver boundary with 578 executable statements and 55
+- added the 1,182-line resolver boundary with 586 executable statements and 56
   focused behavior/facade tests;
-- `context_reference_resolver.py`: 96.3% focused combined branch coverage;
-- full suite: 1,239 Python and 11 Node tests passed;
-- global combined coverage: 38.8893%;
-- global ratchet: 38.7%, retaining 0.1893 percentage point of headroom; raising
-  it to 38.8% would leave only 0.0893 point and violate the 0.1-point policy;
+- `context_reference_resolver.py`: 96.4% focused combined branch coverage;
+- full suite: 1,240 Python and 11 Node tests passed;
+- global combined coverage: 38.9001%;
+- global ratchet: 38.8%, retaining 0.1001 percentage point of headroom;
 - catalog remained at 327 MCP tools, with zero uncovered tools and no changes
   to schemas, aliases, annotations, dispatch routes, previews, or result
   shapes;
@@ -173,6 +172,9 @@ two further Important gaps. Production-shaped regressions now prove the real
 index `id`/`alias_id` row contract, highest-score logical deduplication, and
 durable row-local capture handling that skips both deep recursion failures and
 noncanonical interior path segments while preserving valid siblings.
+The closing review also restored generic property observations such as
+`%p3.pg.%el.hero.%p.%3` as valid cache evidence while continuing to reject a
+later/interleaved `%el` restart, with a real-`BubbleCLI` persistence regression.
 
 **Next boundary — Family 2 visual mutations.** Extract visual element
 create/update/delete orchestration behind a typed boundary that consumes the

@@ -203,17 +203,27 @@ class ContextReferenceResolver:
         cls,
         path_parts: list[str],
     ) -> tuple[str, str, list[str]] | None:
-        element_path = (
-            path_parts[:-1]
-            if path_parts and path_parts[-1] in {"%nm", "%dn"}
-            else path_parts
-        )
-        if len(element_path) < 4:
+        if len(path_parts) < 4:
             return None
-        context_type = cls._context_type_from_prefix(element_path[0])
-        context_id = str(element_path[1] or "").strip()
-        if not context_type or not context_id or not cls._is_element_path(element_path[2:]):
+        context_type = cls._context_type_from_prefix(path_parts[0])
+        context_id = str(path_parts[1] or "").strip()
+        if not context_type or not context_id:
             return None
+
+        cursor = 2
+        while (
+            cursor + 1 < len(path_parts)
+            and path_parts[cursor] == "%el"
+            and str(path_parts[cursor + 1] or "").strip()
+        ):
+            cursor += 2
+        if cursor == 2:
+            return None
+
+        trailing_path = path_parts[cursor:]
+        if "%el" in trailing_path:
+            return None
+        element_path = path_parts[:cursor]
         return context_type, context_id, element_path
 
     def sync_element_ref_cache(

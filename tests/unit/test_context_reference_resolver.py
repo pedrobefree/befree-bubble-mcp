@@ -380,6 +380,81 @@ def test_sync_element_ref_cache_isolates_deep_and_hybrid_rows_and_persists_valid
     assert reloaded._lookup_cached_element_ref_alias("pg", "page", "Bogus") is None
 
 
+def test_sync_element_ref_cache_accepts_property_observation_without_interleaved_elements(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert (
+        ContextReferenceResolver._canonical_capture_element_path(
+            ["%p3", "pg", "%el", "hero", "%p", "%3", "%el", "bogus", "%p", "%3"]
+        )
+        is None
+    )
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "pages": {
+                    "pg": {
+                        "id": "pg",
+                        "name": "Home",
+                        "elements": {
+                            "hero": {
+                                "id": "hero-id",
+                                "name": "Hero",
+                                "properties": {"text": "Welcome"},
+                            },
+                            "bogus": {
+                                "id": "bogus-id",
+                                "name": "Bogus",
+                            },
+                        },
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    cache_path = tmp_path / ".bubble_cli_cache.json"
+    monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", str(cache_path))
+    cli = BubbleCLI(app_json_path=str(app_path), profile_name="resolver-property-observation")
+    capture_path = tmp_path / "page_payloads.json"
+    capture_path.write_text(
+        json.dumps(
+            [
+                {
+                    "path": ["%p3", "pg", "%el", "hero", "%p", "%3"],
+                    "body": "Welcome",
+                },
+                {
+                    "path": [
+                        "%p3",
+                        "pg",
+                        "%el",
+                        "hero",
+                        "%p",
+                        "%3",
+                        "%el",
+                        "bogus",
+                        "%p",
+                        "%3",
+                    ],
+                    "body": "Invalid interleaved element",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    assert cli.sync_element_ref_cache(str(capture_path), quiet=True) is True
+    reloaded = BubbleCLI(
+        app_json_path=str(app_path),
+        profile_name="resolver-property-observation",
+    )
+    assert reloaded._lookup_cached_element_ref_alias("pg", "page", "Hero") == "hero"
+    assert reloaded._lookup_cached_element_ref_alias("pg", "page", "Bogus") is None
+
+
 def test_bubble_cli_facades_delegate_cached_stub_materialization(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     app_path = tmp_path / "app.json"
     app_path.write_text("{}", encoding="utf-8")
