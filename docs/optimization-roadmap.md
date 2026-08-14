@@ -176,11 +176,40 @@ The closing review also restored generic property observations such as
 `%p3.pg.%el.hero.%p.%3` as valid cache evidence while continuing to reject a
 later/interleaved `%el` restart, with a real-`BubbleCLI` persistence regression.
 
-**Next boundary — Family 2 visual mutations.** Extract visual element
-create/update/delete orchestration behind a typed boundary that consumes the
-Stage 4.3 resolver for target selection while preserving every existing
-preview default, confirmation gate, payload shape, dispatch route, and CLI/MCP
-result contract.
+#### Family 2: visual mutations
+
+Family 2 is delivered as a composed boundary through deletion, creation, and
+update stages. The services consume the Stage 4.3 resolver-compatible host for
+target selection while preserving every preview default, confirmation gate,
+payload shape, dispatch route, and CLI/MCP result contract.
+
+**Stage 4.4a — visual deletions: completed on 2026-08-14.** The typed target
+and deletion services now own existing-element hydration, canonical-path
+selection, type validation, `RemoveElement` construction, parent `issues_sub`
+maintenance, dispatch, and post-success alias cleanup. All 26 concrete visual
+`delete_*` methods remain explicit `BubbleCLI` compatibility facades; deletion
+of pages, reusables, styles, colors, fonts, data, workflows, and API objects is
+unchanged and remains outside this boundary.
+
+Stage 4.4a results:
+
+- removed 2,750 lines of duplicated visual deletion bodies from `bubble_cli.py`
+  and retained 388 lines of explicit signatures/facades (net reduction: 2,362
+  physical lines);
+- added a 509-line composed package and 39 literal behavior/facade tests;
+- `deletions.py`: 97.0% focused combined branch coverage;
+- `targets.py` plus `deletions.py`: 96.7% focused combined branch coverage;
+- full suite: 1,279 Python and 11 Node tests passed;
+- catalog remained at 327 MCP tools and CLI parity remained 207 commands with
+  zero missing mappings;
+- Ruff, MyPy, preview-write, family-preview, and `git diff --check` passed;
+- no tool names, schemas, aliases, annotations, previews, confirmations,
+  dispatch routes, payload ordering, or result shapes changed.
+
+**Next Family 2 block — Stage 4.4b visual creations.** Extract common
+context/parent preparation plus preview/dispatch, discovery injection, and
+created-alias finalization while retaining element-specific builders and
+property semantics.
 
 ### Stage 5: Supporting debt
 
