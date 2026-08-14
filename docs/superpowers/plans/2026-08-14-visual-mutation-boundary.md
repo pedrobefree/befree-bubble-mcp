@@ -369,11 +369,11 @@ Measure the same literal fixtures before/after service delegation with `timeit`;
 
 Record physical/executable lines moved, facade lines retained, test totals, focused/global coverage, benchmark, catalog parity, and Stage 4 Family 3 as the next boundary.
 
-- [ ] **Step 4: Run one independent final review across the complete stack and fix every Critical/Important finding with RED/GREEN regression tests**
+- [x] **Step 4: Run one independent final review across the complete stack and fix every Critical/Important finding with RED/GREEN regression tests**
 
 Review base `origin/main` through the Stage 4.4c head. Re-run affected focused and full gates after fixes.
 
-- [ ] **Step 5: Commit, push, and open draft PR C against Stage 4.4b**
+- [x] **Step 5: Commit, push, and open draft PR C against Stage 4.4b**
 
 ```bash
 git add docs/optimization-roadmap.md docs/superpowers/plans/2026-08-14-visual-mutation-boundary.md pyproject.toml
@@ -382,7 +382,7 @@ git push -u origin codex/visual-mutations-4-4c-update
 gh pr create --draft --base codex/visual-mutations-4-4b-create --head codex/visual-mutations-4-4c-update
 ```
 
-- [ ] **Step 6: Update all PR bodies and mark the stack ready**
+- [x] **Step 6: Update all PR bodies and mark the stack ready**
 
 Verify branch heads, mergeability, PR bases, and exact validation evidence. Mark A, B, and C ready only after the final review is clean. Document merge order A → B → C and the known GitHub zero-step infrastructure status separately from code results.
 
