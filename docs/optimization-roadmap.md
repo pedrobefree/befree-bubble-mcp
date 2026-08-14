@@ -162,13 +162,13 @@ Stage 4.3 results:
   deltas are visible at this microsecond scale, but the absolute facade cost is
   below 1.1 microseconds per operation and is not a material regression.
 
-Implementer self-review and independent-review fix round 1/5 hardened malformed
-source rows and direct index-backed ID/key ranking. Non-mapping
-discovery/raw/module rows are skipped without discarding valid siblings, and
-an `_index.id_to_path` alias receives its canonical ID/key score before any
-lower-priority embedded name/text match. Literal tests also cover raw and
-readable text-property shapes plus malformed payloads. Independent re-review is
-pending.
+Implementer self-review and completed independent review hardened malformed
+source rows and resolved all three Important findings: hybrid index aliases now
+receive their canonical ID/key score before any lower-priority embedded
+name/text match; literal tests cover raw, readable, missing, malformed, and
+non-mapping text-property payloads; and the review record now distinguishes the
+implementer pass from independent review. The independent re-review marked all
+three findings addressed with no new Critical/Important breakage.
 
 **Next boundary — Family 2 visual mutations.** Extract visual element
 create/update/delete orchestration behind a typed boundary that consumes the
