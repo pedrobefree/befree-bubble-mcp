@@ -88,6 +88,35 @@ class VisualMutationHost(Protocol):
         *,
         target_style_id: str | None = None,
     ) -> list[str]: ...
+    def _looks_like_style_id(
+        self,
+        value: Any,
+        element_type: str | None = None,
+    ) -> bool: ...
+    def _resolve_style_reference(
+        self,
+        style_value: str | None,
+        *,
+        element_type: str | None = None,
+        strict: bool = False,
+    ) -> str | None: ...
+    def _infer_element_type_from_style_id(self, style_id: str | None) -> str | None: ...
+    def _queue_clear_style_marker_props(
+        self,
+        payload: PayloadBuilder,
+        element_path: list[str],
+        *,
+        prop_updates: dict[str, Any] | None = None,
+        extra_keys: list[str] | None = None,
+    ) -> None: ...
+    def _queue_style_assignment_changes(
+        self,
+        payload: PayloadBuilder,
+        element_path: list[str],
+        style_id: str | None,
+        style_props: dict[str, Any] | None = None,
+        include_set_data: bool = True,
+    ) -> None: ...
     def _dispatch_payload(self, payload: PayloadBuilder) -> None: ...
     def _remove_cached_element_aliases(
         self,

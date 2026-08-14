@@ -6,6 +6,7 @@ from .creations import VisualCreationService
 from .deletions import VisualDeletionService
 from .protocols import VisualMutationHost
 from .targets import VisualMutationTargets
+from .updates import VisualUpdateService
 
 
 class VisualMutationService:
@@ -15,3 +16,4 @@ class VisualMutationService:
         self.targets = VisualMutationTargets(host)
         self.deletions = VisualDeletionService(host, self.targets)
         self.creations = VisualCreationService(host)
+        self.updates = VisualUpdateService(host, self.targets)

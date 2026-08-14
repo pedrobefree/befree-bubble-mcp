@@ -62,6 +62,18 @@ class VisualMutationTargets:
             logger.error(f"Element '{element_name}' not found")
             return None
 
+        target = self.from_result(context_id, context_type, result)
+        if target is None:
+            logger.error(f"Could not resolve element id for '{element_name}'.")
+        return target
+
+    def from_result(
+        self,
+        context_id: str,
+        context_type: str,
+        result: dict[str, Any],
+    ) -> VisualElementTarget | None:
+        """Hydrate a discovery result and bind it to its canonical write path."""
         result = self._hydrate_result(context_id, context_type, result)
         element = result.get("element") if isinstance(result.get("element"), dict) else {}
         element_id = str(result.get("id") or element.get("id") or result.get("key") or "").strip()
@@ -69,7 +81,6 @@ class VisualMutationTargets:
         if not element_id:
             element_id = self._last_element_token(path)
         if not element_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
             return None
         element_type = str(element.get("%x") or element.get("type") or "").strip().lower()
         return VisualElementTarget(
