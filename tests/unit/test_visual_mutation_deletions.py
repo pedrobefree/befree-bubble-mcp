@@ -429,6 +429,34 @@ def test_delete_falls_back_to_discovery_path_when_index_path_is_missing() -> Non
     assert remove["path"] == ["%p3", "pg", "%el", "hero"]
 
 
+def test_delete_recovers_embedded_id_and_candidate_path_from_sparse_cache_result() -> None:
+    host = _Host(include_index_path=False)
+    host.discovery.result = {"id": "hero-id", "element": {"id": "hero-id"}}
+    host.discovery.list_results = [
+        {
+            "id": "wrapper-id",
+            "path": ["%el", "recovered-slot"],
+            "element": {
+                "id": "hero-id",
+                "%x": "Text",
+                "%p": {"%3": "Welcome"},
+            },
+        }
+    ]
+    service = VisualMutationService(host)
+
+    assert service.deletions.delete(
+        "Home",
+        "Hero",
+        allowed_types=frozenset({"text"}),
+        expected_label="text",
+        success_label="text",
+    )
+
+    remove = _changes_without_random_ids(host.sent_payloads[0])[1]
+    assert remove["path"] == ["%p3", "pg", "%el", "recovered-slot"]
+
+
 def test_targets_resolve_button_reference_cache_and_missing_context_paths() -> None:
     result = _Host().discovery.result
     assert isinstance(result, dict)

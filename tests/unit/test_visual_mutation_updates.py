@@ -20,6 +20,7 @@ class _UpdateDiscovery:
             "path": ["%el", "element-key"],
             "element": {"id": "element-id", "%x": "Text", "%p": {"%3": "Before"}},
         }
+        self.list_results: list[dict[str, Any]] = []
 
     def find_element_by_name(
         self,
@@ -42,10 +43,9 @@ class _UpdateDiscovery:
         del context_type
         return ["%p3", context_id, *path]
 
-    @staticmethod
-    def list_elements(context_id: str, *, context_type: str) -> list[dict[str, Any]]:
+    def list_elements(self, context_id: str, *, context_type: str) -> list[dict[str, Any]]:
         del context_id, context_type
-        return []
+        return self.list_results
 
 
 class _UpdateHost:
@@ -290,6 +290,35 @@ def test_apply_reuses_resolved_target_and_supports_direct_root_updates() -> None
     assert _rows(host.sent[0]) == [
         ("SetData", ["%p3", "pg", "%el", "element-key", "%s1"], None),
         ("SetData", ["%p3", "pg", "%el", "element-key", "%p", "use_gap"], True),
+    ]
+
+
+def test_apply_recovers_embedded_id_and_candidate_path_from_sparse_cache_result() -> None:
+    host = _UpdateHost()
+    host.discovery.data = {"_index": {"id_to_path": {}}}
+    host.discovery.named = {"id": "element-id", "element": {"id": "element-id"}}
+    host.discovery.list_results = [
+        {
+            "id": "wrapper-id",
+            "path": ["%el", "recovered-slot"],
+            "element": {
+                "id": "element-id",
+                "%x": "Text",
+                "%p": {"%3": "Before"},
+            },
+        }
+    ]
+    from bubble_mcp.aria_runtime.visual_mutations.service import VisualMutationService
+
+    service = VisualMutationService(host).updates
+    assert service.apply("Home", "Hero", prop_updates={"%3": "After"})
+
+    assert _rows(host.sent[0]) == [
+        (
+            "SetData",
+            ["%p3", "pg", "%el", "recovered-slot", "%p", "%3"],
+            "After",
+        )
     ]
 
 

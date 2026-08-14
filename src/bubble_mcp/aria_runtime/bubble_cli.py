@@ -22907,7 +22907,6 @@ class BubbleCLI:
             name_value=instance_name,
         )
         element_slot_key = self._resolved_created_slot_key(create_path, full_body)
-
         return bool(
             self._visual_mutations.creations.finish(
                 pb,
@@ -39155,7 +39154,8 @@ class BubbleCLI:
                 except Exception:
                     icon_size_value = None
             logger.info(
-                f"ℹ️ ICON POST-CREATE UPDATE PLAN: id={new_key}, width={width}, height={height}, icon_size={icon_size_value}"
+                f"ℹ️ ICON POST-CREATE UPDATE PLAN: id={new_key}, width={width}, "
+                f"height={height}, icon_size={icon_size_value}"
             )
             update_ok = self.update_icon_element(
                 context_name,
@@ -39165,11 +39165,19 @@ class BubbleCLI:
                 icon_color=color,
                 width=width,
                 height=height,
-                min_width=min_width if min_width is not None else (f"{int(width)}px" if fixed_width and width is not None else None),
-                max_width=max_width if max_width is not None else (f"{int(width)}px" if fixed_width and width is not None else None),
+                min_width=min_width if min_width is not None else (
+                    f"{int(width)}px" if fixed_width and width is not None else None
+                ),
+                max_width=max_width if max_width is not None else (
+                    f"{int(width)}px" if fixed_width and width is not None else None
+                ),
                 fixed_width=fixed_width,
-                min_height=min_height if min_height is not None else (f"{int(height)}px" if fixed_height and height is not None else None),
-                max_height=max_height if max_height is not None else (f"{int(height)}px" if fixed_height and height is not None else None),
+                min_height=min_height if min_height is not None else (
+                    f"{int(height)}px" if fixed_height and height is not None else None
+                ),
+                max_height=max_height if max_height is not None else (
+                    f"{int(height)}px" if fixed_height and height is not None else None
+                ),
                 fixed_height=fixed_height,
                 horiz_alignment=_icon_props_snapshot.get("horiz_alignment"),
                 vert_alignment=_icon_props_snapshot.get("vert_alignment"),

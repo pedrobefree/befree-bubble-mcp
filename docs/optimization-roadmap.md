@@ -245,17 +245,17 @@ style lookup/assignment helpers remain on the host.
 
 Stage 4.4c and final Family 2 results:
 
-- replaced another 295 lines of update orchestration in `bubble_cli.py` with
-  90 lines of compatibility facades and special-resolution behavior;
-- across Family 2, removed 3,891 legacy lines and retained/added 748 facade and
-  element-specific lines in `bubble_cli.py` (net reduction: 3,143 lines);
-- the composed package is 1,017 physical lines and is covered by 64 focused
+- replaced another 348 lines of update/creation orchestration in `bubble_cli.py`
+  with 142 lines of compatibility facades and special-resolution behavior;
+- across Family 2, removed 3,944 legacy lines and retained/added 800 facade and
+  element-specific lines in `bubble_cli.py` (net reduction: 3,144 lines);
+- the composed package is 1,022 physical lines and is covered by 69 focused
   behavior/facade tests;
 - `updates.py` plus `targets.py`: 96.5% focused branch coverage;
-- the complete visual-mutation package: 97.3% combined branch coverage;
-- full suite: 1,304 Python and 11 Node tests passed;
-- global combined branch coverage: 40.4674%; the repository ratchet is 40.3%,
-  retaining 0.167 percentage point of measured headroom;
+- the complete visual-mutation package: 97.2% combined branch coverage;
+- full suite: 1,309 Python and 11 Node tests passed;
+- global combined branch coverage: 40.6111%; the repository ratchet is 40.5%,
+  retaining 0.111 percentage point of measured headroom;
 - catalog remained at 327 MCP tools and 207 CLI operation commands with zero
   missing mappings;
 - runtime smokes passed coverage 2/2, agent routing 9/9, visual repair 1/1,
@@ -275,6 +275,13 @@ The small create/update deltas are immaterial relative to editor/network I/O;
 deletion improved. No MCP names, schemas, aliases, annotations, confirmation
 gates, preview defaults, payload ordering, dispatch routes, or result shapes
 changed.
+
+The final independent review found and closed two Important gaps before
+publication: sparse cache hydration now prefers the embedded element ID and
+recovers the candidate path so updates/deletions cannot fall back to the
+context root; reusable-instance and icon finalization now also delegate to the
+creation service, with icon post-create sizing retained after successful
+execution only.
 
 **Next Stage 4 boundary — Family 3 style/color/token lifecycle.** Extract style
 resolution, override pruning/clearing, assignment payloads, and color/font token

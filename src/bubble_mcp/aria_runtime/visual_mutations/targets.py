@@ -216,7 +216,7 @@ class VisualMutationTargets:
             candidate_element = candidate.get("element")
             if not isinstance(candidate_element, dict):
                 continue
-            candidate_id = str(candidate.get("id") or candidate_element.get("id") or "").strip()
+            candidate_id = str(candidate_element.get("id") or candidate.get("id") or "").strip()
             candidate_path = candidate.get("path")
             if target_id and candidate_id == target_id or (
                 isinstance(target_path, list)
@@ -226,6 +226,11 @@ class VisualMutationTargets:
                 merged = dict(result)
                 merged["element"] = candidate_element
                 merged["id"] = result.get("id") or candidate_id
+                if (
+                    not isinstance(merged.get("path"), list)
+                    or not merged.get("path")
+                ) and isinstance(candidate_path, list) and candidate_path:
+                    merged["path"] = list(candidate_path)
                 return merged
         return result
 
