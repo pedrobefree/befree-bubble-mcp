@@ -77,6 +77,7 @@ from cli_cache import (
 )
 from context_alias_registry import ContextAliasRegistry
 from context_reference_resolver import ContextReferenceResolver
+from visual_mutations import VisualMutationService
 
 PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
     # Application rights
@@ -459,6 +460,7 @@ class BubbleCLI:
             transaction=self._transact_cli_cache,
         )
         self._context_reference_resolver = ContextReferenceResolver(self)
+        self._visual_mutations = VisualMutationService(self)
 
         self.color_mapper = ColorMapper(self.discovery.data)
         # Seed with cached colors
@@ -12213,104 +12215,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('text',)),
+            expected_label='text',
+            success_label='group',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "text":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'text'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_element_delete_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            # Fallback: infer parent by payload path and context root id.
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted group: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_group(
         self,
@@ -12319,104 +12232,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('custom_type', 'group')),
+            expected_label='group or custom_type',
+            success_label='group',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "group" and element_type != "custom_type":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'group' or 'custom_type'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            # Fallback: infer parent by payload path and context root id.
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted group: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_floating_group(
         self,
@@ -12425,104 +12249,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        """Delete a floating group element by name/id."""
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('floatinggroup',)),
+            expected_label='floatinggroup',
+            success_label='floating group',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "floatinggroup":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'floatinggroup'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted floating group: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_group_focus(
         self,
@@ -12531,104 +12266,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        """Delete a group focus element by name/id."""
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('groupfocus',)),
+            expected_label='groupfocus',
+            success_label='group focus',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type not in {"groupfocus", "unknown"}:
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'groupfocus'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted group focus: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_reusable(
         self,
@@ -12744,105 +12390,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        """Delete a repeating group element."""
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('repeatinggroup',)),
+            expected_label='repeatinggroup',
+            success_label='repeating group',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "repeatinggroup":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'repeatinggroup'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            # Fallback: infer parent by payload path and context root id.
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted repeating group: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_table(
         self,
@@ -12851,140 +12407,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        """Delete a table element (including nested table children)."""
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('table',)),
+            expected_label='table',
+            success_label='table',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "table":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'table'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        target_node = self._get_value_at_path(path_array)
-        if not isinstance(target_node, dict):
-            target_node = element_obj if isinstance(element_obj, dict) else {}
-
-        delete_entries: List[Tuple[str, List[str], Optional[str], bool]] = []
-
-        def _collect_delete_entries(node: Dict[str, Any], node_path: List[str], parent_id: Optional[str]) -> None:
-            children = node.get("%el") if isinstance(node.get("%el"), dict) else {}
-            current_key = str(node_path[-1] if node_path else "").strip()
-            node_id = str(node.get("id") or current_key).strip()
-            if not node_id:
-                return
-
-            for child_key, child_node in children.items():
-                if child_key == "length" or not isinstance(child_node, dict):
-                    continue
-                child_path = list(node_path) + ["%el", str(child_key)]
-                _collect_delete_entries(child_node, child_path, node_id)
-
-            delete_entries.append((node_id, list(node_path), parent_id, node_id == target_id))
-
-        _collect_delete_entries(target_node, path_array, None)
-
-        if not delete_entries:
-            delete_entries = [(target_id, list(path_array), None, True)]
-
-        pb = PayloadBuilder(appname=self.appname)
-        for node_id, node_path, parent_id, is_root in delete_entries:
-            pb.add_update_index(["_index", "id_to_path", node_id], None)
-            if is_root:
-                intent_details = {
-                    "user_action": "Keyboard Press Delete",
-                    "selected_element": target_id,
-                }
-            else:
-                intent_details = {
-                    "user_action": "Deleted by parent element",
-                    "parent_user_action": "Deleted by parent element",
-                }
-                if parent_id:
-                    intent_details["parent_id"] = parent_id
-            pb.changes.append(
-                {
-                    "intent": {
-                        "name": "RemoveElement",
-                        "id": random.randint(1, 999999),
-                        "intent_details": intent_details,
-                        "source_appname": "",
-                    },
-                    "path_array": node_path,
-                    "body": None,
-                    "version_control_api_version": 4,
-                    "changelog_data": [],
-                    "session_id": pb.session_id,
-                }
-            )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted table: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
 
     def delete_button(
@@ -12994,126 +12425,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        logger.info(f"Searching for context: {context_name}")
-        context_id, context_type = self._find_context(context_name)
-        if not context_id:
-            logger.error(f"'{context_name}' not found")
-            return False
-
-        label_candidates: List[str] = []
-        raw_name = str(element_name or "").strip()
-        if raw_name:
-            label_candidates.append(raw_name)
-        if raw_name.lower().startswith("button "):
-            stripped = raw_name[7:].strip()
-            if stripped and stripped not in label_candidates:
-                label_candidates.insert(0, stripped)
-
-        result: Optional[Dict[str, Any]] = None
-        for label_candidate in label_candidates:
-            result = self._find_button_by_label(context_id, context_type, label_candidate)
-            if result:
-                logger.info(f"Resolved '{element_name}' by button label.")
-                break
-
-        if not result:
-            resolved = self._resolve_element_for_updates(
-                context_name=context_name,
-                element_name=element_name,
-                prefer_last=prefer_last,
-            )
-            if not resolved:
-                return False
-            _, _, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type not in {"button", "unknown"}:
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'button'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_element_delete_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('button',)),
+            expected_label='button',
+            success_label='button',
+            dry_run=dry_run,
+            prefer_last=prefer_last,
         )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted button: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_input(
         self,
@@ -13122,104 +12442,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('input',)),
+            expected_label='input',
+            success_label='input',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type not in {"input", "multilineinput"}:
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'input'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            # Fallback: infer parent by payload path and context root id.
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted input: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_checkbox(
         self,
@@ -13228,103 +12459,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('checkbox',)),
+            expected_label='checkbox',
+            success_label='checkbox',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "checkbox":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'checkbox'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted checkbox: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_multiline_input(
         self,
@@ -13333,103 +12476,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('multilineinput',)),
+            expected_label='multilineinput',
+            success_label='multiline input',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "multilineinput":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'multilineinput'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted multiline input: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_dropdown(
         self,
@@ -13438,103 +12493,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('dropdown',)),
+            expected_label='dropdown',
+            success_label='dropdown',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "dropdown":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'dropdown'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted dropdown: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_datepicker(
         self,
@@ -13543,103 +12510,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('dateinput',)),
+            expected_label='dateinput',
+            success_label='datepicker',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "dateinput":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'dateinput'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted datepicker: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_searchbox(
         self,
@@ -13648,105 +12527,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('autocompletedropdown', 'searchbox')),
+            expected_label='autocompletedropdown/searchbox',
+            success_label='searchbox',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type not in {"autocompletedropdown", "searchbox"}:
-            logger.error(
-                f"Element '{element_name}' is type '{element_type}', expected 'autocompletedropdown/searchbox'."
-            )
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted searchbox: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_icon(
         self,
@@ -13755,103 +12544,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('icon',)),
+            expected_label='icon',
+            success_label='icon',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "icon":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'icon'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted icon: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_image(
         self,
@@ -13860,103 +12561,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('image',)),
+            expected_label='image',
+            success_label='image',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "image":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'image'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted image: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_link(
         self,
@@ -13965,106 +12578,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('link',)),
+            expected_label='link',
+            success_label='link',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "link":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'link'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        # Keep index issues payload aligned with captured editor behavior.
-        pb.add_update_index(["_index", "issues_list", target_id], "[]")
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted link: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_shape(
         self,
@@ -14073,103 +12595,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('shape',)),
+            expected_label='shape',
+            success_label='shape',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "shape":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'shape'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted shape: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_alert(
         self,
@@ -14178,103 +12612,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('alert',)),
+            expected_label='alert',
+            success_label='alert',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "alert":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'alert'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted alert: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_video(
         self,
@@ -14283,103 +12629,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('video',)),
+            expected_label='video',
+            success_label='video',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "video":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'video'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted video: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_html(
         self,
@@ -14388,103 +12646,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('html',)),
+            expected_label='html',
+            success_label='html',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "html":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'html'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted html: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_map(
         self,
@@ -14493,103 +12663,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('map',)),
+            expected_label='map',
+            success_label='map',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip()
-        if element_type and not self._element_type_matches(element_type, "map"):
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'map'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted map: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def update_name(self, context_name: str, element_name: str, new_name: str, dry_run: bool = False) -> bool:
         """
@@ -18545,103 +16627,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('radiobuttons',)),
+            expected_label='radiobuttons',
+            success_label='radio',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type not in {"radiobuttons", "radiobutton"}:
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'radiobuttons'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted radio: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def update_slider(
         self,
@@ -18749,103 +16743,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('sliderinput',)),
+            expected_label='sliderinput',
+            success_label='slider',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "sliderinput":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'sliderinput'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted slider: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def update_file_uploader(
         self,
@@ -19804,105 +17710,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('fileinput',)),
+            expected_label='fileinput',
+            success_label='file uploader',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "fileinput":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'fileinput'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-        pb.add_update_index(["_index", "issues_list", target_id], None)
-        pb.add_update_index(["_index", "issues_list", target_id], "[]")
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted file uploader: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def delete_picture_uploader(
         self,
@@ -19911,105 +17727,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(('pictureinput',)),
+            expected_label='pictureinput',
+            success_label='picture uploader',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "pictureinput":
-            logger.error(f"Element '{element_name}' is type '{element_type}', expected 'pictureinput'.")
-            return False
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-        pb.add_update_index(["_index", "issues_list", target_id], None)
-        pb.add_update_index(["_index", "issues_list", target_id], "[]")
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted picture uploader: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def update_shape(
         self,
@@ -33027,103 +30753,15 @@ class BubbleCLI:
         dry_run: bool = False,
         prefer_last: bool = False,
     ) -> bool:
-        """Delete a popup element by name or id."""
-        resolved = self._resolve_element_for_updates(
-            context_name=context_name,
-            element_name=element_name,
+        return self._visual_mutations.deletions.delete(
+            context_name,
+            element_name,
+            allowed_types=frozenset(),
+            expected_label='popup',
+            success_label='popup',
+            dry_run=dry_run,
             prefer_last=prefer_last,
         )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip().lower()
-        if element_type and element_type != "popup":
-            logger.warning(f"Element '{element_name}' is type '{element_type}', expected 'popup'. Proceeding anyway.")
-
-        target_id = str(result.get("id") or element_obj.get("id") or "").strip()
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            target_id,
-        )
-        if not target_id:
-            _, token = self._find_last_element_token(path_array)
-            target_id = str(token or "").strip()
-        if not target_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_update_index(["_index", "id_to_path", target_id], None)
-        pb.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": path_array,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.session_id,
-            }
-        )
-
-        parent_updates = self._find_issues_sub_parents_for_child(target_id)
-        if not parent_updates:
-            fallback_parent = None
-            fallback_children: List[str] = []
-            if len(path_array) >= 2:
-                parent_path = path_array[:-2]
-                parent_node = self._get_value_at_path(parent_path)
-                fallback_parent = str(parent_node.get("id") or "").strip() if isinstance(parent_node, dict) else None
-                if fallback_parent:
-                    fallback_children = self._child_ids_from_node(parent_node)
-            if not fallback_parent:
-                fallback_parent = (
-                    self._resolve_context_object_id_from_index(context_id, context_type)
-                    or self._lookup_cached_context_object_id(context_type, context_id)
-                )
-                if fallback_parent:
-                    try:
-                        root_node = self.discovery._get_context_root(context_id, context_type)
-                    except Exception:
-                        root_node = None
-                    fallback_children = self._child_ids_from_node(root_node)
-                    if not fallback_children:
-                        fallback_children = self._root_child_ids_from_index(context_id, context_type)
-            if fallback_parent:
-                parent_updates = [(fallback_parent, fallback_children)]
-        for parent_id, children in parent_updates:
-            updated = [cid for cid in children if str(cid) != target_id]
-            pb.add_update_index(["_index", "issues_sub", str(parent_id)], json.dumps(updated))
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_cached_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                element_id=target_id,
-                element_path=result.get("path") if isinstance(result.get("path"), list) else None,
-            )
-            logger.success(f"Successfully deleted popup: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
 
     def _write_create_from_html_debug_event(self, event: str, payload: Optional[Dict[str, Any]] = None) -> None:
         try:
