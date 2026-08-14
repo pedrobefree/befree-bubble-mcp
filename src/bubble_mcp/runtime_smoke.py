@@ -297,7 +297,7 @@ def _family_preview_cases(
         ("create_workflow", {"context": context, "element_name": "Page", "event_type": "PageLoaded"}, "workflow:event"),
         (
             "add_action",
-            {"context": context, "element_name": "Page", "event": "PageLoaded", "action_type": "show_message", "message": "Family preview"},
+            {"context": context, "element_name": "Page", "event": "PageLoaded", "action_type": "show_alert", "message": "Family preview"},
             "workflow:action",
         ),
     ]
