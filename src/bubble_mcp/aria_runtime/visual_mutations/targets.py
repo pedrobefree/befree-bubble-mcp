@@ -62,6 +62,18 @@ class VisualMutationTargets:
             logger.error(f"Element '{element_name}' not found")
             return None
 
+        target = self.from_result(context_id, context_type, result)
+        if target is None:
+            logger.error(f"Could not resolve element id for '{element_name}'.")
+        return target
+
+    def from_result(
+        self,
+        context_id: str,
+        context_type: str,
+        result: dict[str, Any],
+    ) -> VisualElementTarget | None:
+        """Hydrate a discovery result and bind it to its canonical write path."""
         result = self._hydrate_result(context_id, context_type, result)
         element = result.get("element") if isinstance(result.get("element"), dict) else {}
         element_id = str(result.get("id") or element.get("id") or result.get("key") or "").strip()
@@ -69,7 +81,6 @@ class VisualMutationTargets:
         if not element_id:
             element_id = self._last_element_token(path)
         if not element_id:
-            logger.error(f"Could not resolve element id for '{element_name}'.")
             return None
         element_type = str(element.get("%x") or element.get("type") or "").strip().lower()
         return VisualElementTarget(
@@ -205,7 +216,7 @@ class VisualMutationTargets:
             candidate_element = candidate.get("element")
             if not isinstance(candidate_element, dict):
                 continue
-            candidate_id = str(candidate.get("id") or candidate_element.get("id") or "").strip()
+            candidate_id = str(candidate_element.get("id") or candidate.get("id") or "").strip()
             candidate_path = candidate.get("path")
             if target_id and candidate_id == target_id or (
                 isinstance(target_path, list)
@@ -215,6 +226,11 @@ class VisualMutationTargets:
                 merged = dict(result)
                 merged["element"] = candidate_element
                 merged["id"] = result.get("id") or candidate_id
+                if (
+                    not isinstance(merged.get("path"), list)
+                    or not merged.get("path")
+                ) and isinstance(candidate_path, list) and candidate_path:
+                    merged["path"] = list(candidate_path)
                 return merged
         return result
 

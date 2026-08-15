@@ -174,6 +174,8 @@ def test_family_preview_covers_representative_tool_families_without_execute() ->
     }.issubset(tools)
     assert all(case.arguments.get("execute") is not True for case in cases if case.suite == "family-preview")
     assert all(case.arguments.get("app_id") == "courselaunch" for case in cases if case.tool.startswith("create_"))
+    action_case = next(case for case in cases if case.tool == "add_action")
+    assert action_case.arguments["action_type"] == "show_alert"
 
 
 def test_family_preview_runs_call_sequence() -> None:

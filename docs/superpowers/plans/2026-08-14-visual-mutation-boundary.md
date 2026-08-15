@@ -295,7 +295,7 @@ gh pr create --draft --base codex/visual-mutations-4-4a-delete --head codex/visu
 - Produces: `VisualUpdateService.apply(...)` and shared `VisualMutationTargets.resolve_existing(...)` behavior for all update facades.
 - Consumes: literal property maps produced by existing public update methods and host-supplied Family 3 style callbacks.
 
-- [ ] **Step 1: Branch from Stage 4.4b and write failing update lifecycle tests**
+- [x] **Step 1: Branch from Stage 4.4b and write failing update lifecycle tests**
 
 ```bash
 git checkout -b codex/visual-mutations-4-4c-update
@@ -303,13 +303,13 @@ git checkout -b codex/visual-mutations-4-4c-update
 
 Add literal cases for exact-name, button-label, reference, alias-cache, path hydration, secondary hydration, canonical index path, plain SetData, style lookup, override clearing, AssignStyle ordering, no-op, preview, dispatch failure, and resolved-target reuse.
 
-- [ ] **Step 2: Run tests and verify RED**
+- [x] **Step 2: Run tests and verify RED**
 
 Run: `./.venv/bin/python -m pytest tests/unit/test_visual_mutation_updates.py -q`
 
 Expected: import failure because `updates.py` does not exist.
 
-- [ ] **Step 3: Implement update execution without absorbing Family 3**
+- [x] **Step 3: Implement update execution without absorbing Family 3**
 
 ```python
 def apply(
@@ -332,15 +332,15 @@ def apply(
 
 Style resolution, style-key discovery, and AssignStyle change construction remain host callbacks with literal ordering tests.
 
-- [ ] **Step 4: Delegate `_resolve_element_for_updates`, `_apply_element_updates`, `update_text`, and `update_layout_property`**
+- [x] **Step 4: Delegate `_resolve_element_for_updates`, `_apply_element_updates`, `update_text`, and `update_layout_property`**
 
 Keep all public update signatures and element-specific property collection unchanged. The two special methods must use the same target/path/preview/dispatch boundary instead of maintaining parallel orchestration.
 
-- [ ] **Step 5: Run update/control/container/media/style compatibility tests and focused coverage**
+- [x] **Step 5: Run update/control/container/media/style compatibility tests and focused coverage**
 
 Require all existing update suites to pass and `updates.py` plus `targets.py` to reach at least 95% combined branch coverage.
 
-- [ ] **Step 6: Commit the update extraction**
+- [x] **Step 6: Commit the update extraction**
 
 ```bash
 git add src/bubble_mcp/aria_runtime/visual_mutations src/bubble_mcp/aria_runtime/bubble_cli.py tests/unit/test_visual_mutation_updates.py
@@ -357,23 +357,23 @@ git commit -m "refactor: extract visual update lifecycle"
 **Interfaces:**
 - Produces: final measured Family 2 stack, pushed PR C, and three review-ready PRs.
 
-- [ ] **Step 1: Run full validation from the Stage 4.4c head**
+- [x] **Step 1: Run full validation from the Stage 4.4c head**
 
 Run all Python and Node tests, focused combined branch coverage for the entire package, sharded global coverage, Ruff, MyPy, sensitive-path audit, package/setup smokes, catalog quality, CLI/catalog parity, runtime coverage/agent-routing/visual-repair/preview-write/family-preview smokes, and `git diff --check`.
 
-- [ ] **Step 2: Benchmark representative create/update/delete preview payloads**
+- [x] **Step 2: Benchmark representative create/update/delete preview payloads**
 
 Measure the same literal fixtures before/after service delegation with `timeit`; record medians and absolute per-operation overhead. Do not add timing assertions to pytest.
 
-- [ ] **Step 3: Update roadmap, ratchet, and plan evidence**
+- [x] **Step 3: Update roadmap, ratchet, and plan evidence**
 
 Record physical/executable lines moved, facade lines retained, test totals, focused/global coverage, benchmark, catalog parity, and Stage 4 Family 3 as the next boundary.
 
-- [ ] **Step 4: Run one independent final review across the complete stack and fix every Critical/Important finding with RED/GREEN regression tests**
+- [x] **Step 4: Run one independent final review across the complete stack and fix every Critical/Important finding with RED/GREEN regression tests**
 
 Review base `origin/main` through the Stage 4.4c head. Re-run affected focused and full gates after fixes.
 
-- [ ] **Step 5: Commit, push, and open draft PR C against Stage 4.4b**
+- [x] **Step 5: Commit, push, and open draft PR C against Stage 4.4b**
 
 ```bash
 git add docs/optimization-roadmap.md docs/superpowers/plans/2026-08-14-visual-mutation-boundary.md pyproject.toml
@@ -382,7 +382,7 @@ git push -u origin codex/visual-mutations-4-4c-update
 gh pr create --draft --base codex/visual-mutations-4-4b-create --head codex/visual-mutations-4-4c-update
 ```
 
-- [ ] **Step 6: Update all PR bodies and mark the stack ready**
+- [x] **Step 6: Update all PR bodies and mark the stack ready**
 
 Verify branch heads, mergeability, PR bases, and exact validation evidence. Mark A, B, and C ready only after the final review is clean. Document merge order A → B → C and the known GitHub zero-step infrastructure status separately from code results.
 

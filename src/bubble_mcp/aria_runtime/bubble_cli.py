@@ -11935,70 +11935,48 @@ class BubbleCLI:
         return None
 
     def update_text(self, context_name: str, search_text: str, new_text: str, dry_run: bool = False) -> bool:
-        """
-        Update text content of an element found by its current text.
-
-        Args:
-            context_name: Name of the reusable or page
-            search_text: Text to search for (partial match)
-            new_text: New text to set
-            dry_run: If True, show payload but don't send
-        """
+        """Update text content of an element found by name or visible text."""
         logger.info(f"Searching for context: {context_name}")
         context_id, context_type = self._find_context(context_name)
-
-        if not context_id:
+        if not context_id or not context_type:
             logger.error(f"'{context_name}' not found (tried reusable and page)")
             return False
-
         if not search_text or not str(search_text).strip():
             logger.error("Missing search text for update-text.")
             return False
 
         logger.success(f"Found {context_type}: {context_name} -> {context_id}")
-
         logger.info(f"Searching for element/text: '{search_text}'")
-        # Prefer exact element-name match first (most deterministic for MCP/CLI usage),
-        # then fallback to visible text search.
-        result = self.discovery.find_element_by_exact_name(context_id, search_text, context_type=context_type)
+        result = self.discovery.find_element_by_exact_name(
+            context_id,
+            search_text,
+            context_type=context_type,
+        )
         if not result:
-            result = self.discovery.find_element_by_text(context_id, search_text, context_type=context_type)
-
-        if not result:
+            result = self.discovery.find_element_by_text(
+                context_id,
+                search_text,
+                context_type=context_type,
+            )
+        if not isinstance(result, dict):
             logger.error(f"Element with text '{search_text}' not found")
             return False
         logger.success(f"Found element at path: {result['path']}")
 
-        # Existing element writes must use the canonical path from _index.id_to_path.
-        path_array = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            str(result.get("id") or ((result.get("element") or {}).get("id") if isinstance(result.get("element"), dict) else "") or "").strip(),
-        )
-
-        # Create payload:
-        # - Keep plain string writes as default (same behavior used by create-text follow-up SetData).
-        # - Only send expression objects when dynamic tokens are explicitly detected.
+        target = self._visual_mutations.targets.from_result(context_id, context_type, result)
+        if target is None:
+            logger.error(f"Could not resolve element id for '{search_text}'.")
+            return False
         dynamic_expr = self._build_dynamic_text_expr_from_string(new_text)
         text_value = dynamic_expr if dynamic_expr else new_text
-
-        pb = PayloadBuilder(appname=self.appname)
-        pb.add_set_data(path_array + ["%p", "%3"], text_value)
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        # Send to webhook
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully updated text to: '{new_text}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.updates.apply(
+            context_name,
+            search_text,
+            prop_updates={"%3": text_value},
+            resolved_target=target,
+            dry_run=dry_run,
+            success_message=f"Successfully updated text to: '{new_text}'",
+        )
 
     @staticmethod
     def _parse_issues_sub_children(raw_value: Any) -> List[str]:
@@ -13459,131 +13437,12 @@ class BubbleCLI:
         *,
         prefer_last: bool = False,
     ) -> Optional[Tuple[str, str, Dict[str, Any]]]:
-        """Resolve context + element robustly for update operations."""
-        logger.info(f"Searching for context: {context_name}")
-        context_id, context_type = self._find_context(context_name)
-        if not context_id:
-            logger.error(f"'{context_name}' not found")
-            return None
-
-        logger.info(f"Searching for element: '{element_name}'")
-        result = self.discovery.find_element_by_name(
-            context_id,
+        """Compatibility facade for the typed visual target resolver."""
+        return self._visual_mutations.targets.resolve_existing_tuple(
+            context_name,
             element_name,
-            context_type=context_type,
             prefer_last=prefer_last,
         )
-        if not result:
-            label_candidates: List[str] = []
-            raw_name = str(element_name or "").strip()
-            if raw_name:
-                label_candidates.append(raw_name)
-            if raw_name.lower().startswith("button "):
-                stripped = raw_name[7:].strip()
-                if stripped and stripped not in label_candidates:
-                    label_candidates.insert(0, stripped)
-            for label_candidate in label_candidates:
-                result = self._find_button_by_label(context_id, context_type, label_candidate)
-                if result:
-                    logger.info(f"Resolved '{element_name}' by button label.")
-                    break
-        if not result:
-            result = self._find_element_by_ref(
-                context_id,
-                context_type,
-                element_name,
-                ref_kind="auto",
-                match_index=1,
-            )
-            if result:
-                logger.info(f"Resolved '{element_name}' by reference lookup.")
-        if not result:
-            result = self._resolve_cached_element_alias(context_id, context_type, element_name)
-            if result:
-                logger.info(f"Resolved '{element_name}' via local alias cache.")
-        if not result:
-            logger.error(f"Element '{element_name}' not found")
-            return None
-
-        # Alias/cache lookups may return only id/path metadata. Hydrate the
-        # full element object from discovery so update flows can access raw %p.
-        if isinstance(result, dict):
-            hydrated_element = result.get("element")
-            needs_hydration = (
-                not isinstance(hydrated_element, dict)
-                or not hydrated_element
-                or (
-                    not isinstance(hydrated_element.get("%p"), dict)
-                    and not isinstance(hydrated_element.get("properties"), dict)
-                )
-            )
-            candidate_path = result.get("path")
-            if needs_hydration and isinstance(candidate_path, list) and candidate_path:
-                resolved_path = self.discovery.build_path_array(
-                    context_id,
-                    candidate_path,
-                    context_type=context_type,
-                )
-                resolved_node = self._get_value_at_path(resolved_path)
-                if isinstance(resolved_node, dict):
-                    hydrated_result = dict(result)
-                    hydrated_result["element"] = resolved_node
-                    if not hydrated_result.get("id"):
-                        resolved_id = str(resolved_node.get("id") or "").strip()
-                        if resolved_id:
-                            hydrated_result["id"] = resolved_id
-                    result = hydrated_result
-
-            # Secondary hydration fallback: resolve from normalized element list.
-            hydrated_element = result.get("element") if isinstance(result, dict) else None
-            still_missing_props = (
-                not isinstance(hydrated_element, dict)
-                or (
-                    not isinstance(hydrated_element.get("%p"), dict)
-                    and not isinstance(hydrated_element.get("properties"), dict)
-                )
-            )
-            if still_missing_props:
-                target_id = str(result.get("id") or result.get("key") or "").strip()
-                target_path = result.get("path")
-                try:
-                    candidate_elements = self.discovery.list_elements(context_id, context_type=context_type) or []
-                except Exception:
-                    candidate_elements = []
-                matched_item: Optional[Dict[str, Any]] = None
-                if isinstance(candidate_elements, list):
-                    if target_id:
-                        for item in candidate_elements:
-                            if not isinstance(item, dict):
-                                continue
-                            item_element = item.get("element")
-                            item_id = ""
-                            if isinstance(item_element, dict):
-                                item_id = str(item_element.get("id") or "").strip()
-                            if not item_id:
-                                item_id = str(item.get("id") or "").strip()
-                            if item_id and item_id == target_id:
-                                matched_item = item
-                                break
-                    if matched_item is None and isinstance(target_path, list):
-                        for item in candidate_elements:
-                            if isinstance(item, dict) and item.get("path") == target_path:
-                                matched_item = item
-                                break
-                if isinstance(matched_item, dict):
-                    hydrated_result = dict(result)
-                    item_element = matched_item.get("element")
-                    if isinstance(item_element, dict):
-                        hydrated_result["element"] = item_element
-                        if not hydrated_result.get("id"):
-                            resolved_id = str(item_element.get("id") or "").strip()
-                            if resolved_id:
-                                hydrated_result["id"] = resolved_id
-                    if not hydrated_result.get("path") and isinstance(matched_item.get("path"), list):
-                        hydrated_result["path"] = matched_item.get("path")
-                    result = hydrated_result
-
-        return context_id, context_type, result
 
     @staticmethod
     def _normalize_element_type_token(value: Any) -> str:
@@ -14040,99 +13899,31 @@ class BubbleCLI:
         prefer_last: bool = False,
         success_label: str = "element",
     ) -> bool:
-        resolved = resolved_target
-        if resolved is None:
-            resolved = self._resolve_element_for_updates(
-                context_name=context_name,
-                element_name=element_name,
-                prefer_last=prefer_last,
+        """Compatibility facade for the typed visual update service."""
+        typed_target = None
+        if resolved_target is not None:
+            context_id, context_type, result = resolved_target
+            typed_target = self._visual_mutations.targets.from_result(
+                context_id,
+                context_type,
+                result,
             )
-        if not resolved:
-            return False
-        context_id, context_type, result = resolved
-        path = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            str(result.get("id") or ((result.get("element") or {}).get("id") if isinstance(result.get("element"), dict) else "") or "").strip(),
-        )
-        pb = PayloadBuilder(appname=self.appname)
-
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip() or None
-
-        resolved_style: Optional[str] = None
-
-        if style is not None:
-            raw_style = str(style).strip()
-            if self._looks_like_style_id(raw_style, element_type=element_type):
-                resolved_style = raw_style
-            else:
-                resolved_style = self._resolve_style_reference(
-                    raw_style,
-                    element_type=element_type,
-                    strict=False,
-                )
-            if resolved_style is None:
+            if typed_target is None:
                 return False
-
-            if not element_type:
-                inferred_type = self._infer_element_type_from_style_id(resolved_style)
-                if inferred_type:
-                    element_type = inferred_type
-
-            effective_clear_keys = clear_style_override_keys
-            if effective_clear_keys is None and style_assign_props is None:
-                effective_clear_keys = self._style_override_keys_for_element_type(
-                    element_type,
-                    target_style_id=resolved_style,
-                )
-            if effective_clear_keys:
-                for key in effective_clear_keys:
-                    key_str = str(key)
-                    if key_str in prop_updates:
-                        continue
-                    pb.add_set_data(path + ["%p", key_str], None)
-            self._queue_clear_style_marker_props(
-                pb,
-                path,
-                prop_updates=prop_updates,
-            )
-
-            # For some element types (notably Alert), editor-consistent AssignStyle
-            # payloads are required to clear stale override flags reliably.
-            if force_style_assign or style_assign_props is not None:
-                self._queue_style_assignment_changes(
-                    pb,
-                    path,
-                    resolved_style,
-                    style_props=style_assign_props,
-                    include_set_data=style_assign_with_set_data,
-                )
-            else:
-                pb.add_set_data(path + ["%s1"], resolved_style)
-
-        for key, value in prop_updates.items():
-            if value is None:
-                continue
-            pb.add_set_data(path + ["%p", key], value)
-
-        if not pb.changes:
-            logger.warning("No update fields were provided.")
-            return True
-
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully updated {success_label}: '{element_name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.updates.apply(
+            context_name,
+            element_name,
+            prop_updates=prop_updates,
+            style=style,
+            clear_style_override_keys=clear_style_override_keys,
+            style_assign_props=style_assign_props,
+            force_style_assign=force_style_assign,
+            style_assign_with_set_data=style_assign_with_set_data,
+            resolved_target=typed_target,
+            dry_run=dry_run,
+            prefer_last=prefer_last,
+            success_label=success_label,
+        )
 
     def _apply_surface_visual_updates(
         self,
@@ -20582,7 +20373,7 @@ class BubbleCLI:
         """Update a layout/property key under element %p."""
         logger.info(f"Searching for context: {context_name}")
         context_id, context_type = self._find_context(context_name)
-        if not context_id:
+        if not context_id or not context_type:
             logger.error(f"'{context_name}' not found")
             return False
 
@@ -20593,28 +20384,34 @@ class BubbleCLI:
 
         logger.info(f"Searching for element: '{element_name}'")
         result = self.discovery.find_element_by_name(
-            context_id, element_name, context_type=context_type, prefer_last=prefer_last
+            context_id,
+            element_name,
+            context_type=context_type,
+            prefer_last=prefer_last,
         )
         if not result and element_name.lower().startswith("text "):
             alt = element_name[5:].strip()
             if alt:
-                result = self.discovery.find_element_by_text(context_id, alt, context_type=context_type)
-        if not result:
+                result = self.discovery.find_element_by_text(
+                    context_id,
+                    alt,
+                    context_type=context_type,
+                )
+        if not isinstance(result, dict):
             logger.error(f"Element '{element_name}' not found")
             return False
 
-        element_obj = result.get("element", {}) if isinstance(result, dict) else {}
-        element_type = str((element_obj or {}).get("type") or (element_obj or {}).get("%x") or "").strip().lower()
+        element_obj = result.get("element", {}) if isinstance(result.get("element"), dict) else {}
+        element_type = str(element_obj.get("type") or element_obj.get("%x") or "").strip().lower()
         if prop_key in {"float_v_relative", "float_h_relative", "float_zindex", "parallax"} and element_type != "floatinggroup":
             logger.error(f"Property '{prop_key}' is exclusive to FloatingGroup elements.")
             return False
 
         if prop_key == "style":
-            element_obj = result.get("element", {}) if isinstance(result.get("element"), dict) else {}
-            element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip() or None
+            raw_element_type = str(element_obj.get("%x") or element_obj.get("type") or "").strip() or None
             resolved_style = self._resolve_style_reference(
                 str(value).strip(),
-                element_type=element_type,
+                element_type=raw_element_type,
                 strict=False,
             )
             if resolved_style:
@@ -20625,45 +20422,43 @@ class BubbleCLI:
         else:
             try:
                 coerced_value = self._coerce_layout_value(prop_key, value)
-            except ValueError as e:
-                logger.error(f"{e}")
+            except ValueError as exc:
+                logger.error(f"{exc}")
                 return False
 
-        path = self._resolve_canonical_existing_element_path(
-            context_id,
-            context_type,
-            result,
-            str(result.get("id") or ((result.get("element") or {}).get("id") if isinstance(result.get("element"), dict) else "") or "").strip(),
-        )
-        pb = PayloadBuilder(appname=self.appname)
+        target = self._visual_mutations.targets.from_result(context_id, context_type, result)
+        if target is None:
+            logger.error(f"Could not resolve element id for '{element_name}'.")
+            return False
+        direct_updates: List[Tuple[List[str], Any]] = []
         if prop_key == "container_alignment":
             horiz, vert = self._resolve_alignment_arg(str(value))
             if horiz is None and vert is None:
                 logger.error(f"Invalid container alignment: '{value}'")
                 return False
             if horiz is not None:
-                pb.add_set_data(path + ["%p", "container_horiz_alignment"], horiz)
+                direct_updates.append((["%p", "container_horiz_alignment"], horiz))
             if vert is not None:
-                pb.add_set_data(path + ["%p", "container_vert_alignment"], vert)
+                direct_updates.append((["%p", "container_vert_alignment"], vert))
         elif prop_key == "style":
-            pb.add_set_data(path + ["%s1"], coerced_value)
+            direct_updates.append((["%s1"], coerced_value))
         else:
             if prop_key in {"row_gap", "column_gap"}:
-                pb.add_set_data(path + ["%p", "use_gap"], True)
-            pb.add_set_data(path + ["%p", prop_key], coerced_value)
+                direct_updates.append((["%p", "use_gap"], True))
+            direct_updates.append((["%p", prop_key], coerced_value))
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully updated '{element_name}' property '{prop_key}' to '{coerced_value}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.updates.apply(
+            context_name,
+            element_name,
+            prop_updates={},
+            direct_updates=direct_updates,
+            resolved_target=target,
+            dry_run=dry_run,
+            success_message=(
+                f"Successfully updated '{element_name}' property "
+                f"'{prop_key}' to '{coerced_value}'"
+            ),
+        )
 
     def update_group(
         self,
@@ -23112,7 +22907,6 @@ class BubbleCLI:
             name_value=instance_name,
         )
         element_slot_key = self._resolved_created_slot_key(create_path, full_body)
-
         return bool(
             self._visual_mutations.creations.finish(
                 pb,
@@ -39360,7 +39154,8 @@ class BubbleCLI:
                 except Exception:
                     icon_size_value = None
             logger.info(
-                f"ℹ️ ICON POST-CREATE UPDATE PLAN: id={new_key}, width={width}, height={height}, icon_size={icon_size_value}"
+                f"ℹ️ ICON POST-CREATE UPDATE PLAN: id={new_key}, width={width}, "
+                f"height={height}, icon_size={icon_size_value}"
             )
             update_ok = self.update_icon_element(
                 context_name,
@@ -39370,11 +39165,19 @@ class BubbleCLI:
                 icon_color=color,
                 width=width,
                 height=height,
-                min_width=min_width if min_width is not None else (f"{int(width)}px" if fixed_width and width is not None else None),
-                max_width=max_width if max_width is not None else (f"{int(width)}px" if fixed_width and width is not None else None),
+                min_width=min_width if min_width is not None else (
+                    f"{int(width)}px" if fixed_width and width is not None else None
+                ),
+                max_width=max_width if max_width is not None else (
+                    f"{int(width)}px" if fixed_width and width is not None else None
+                ),
                 fixed_width=fixed_width,
-                min_height=min_height if min_height is not None else (f"{int(height)}px" if fixed_height and height is not None else None),
-                max_height=max_height if max_height is not None else (f"{int(height)}px" if fixed_height and height is not None else None),
+                min_height=min_height if min_height is not None else (
+                    f"{int(height)}px" if fixed_height and height is not None else None
+                ),
+                max_height=max_height if max_height is not None else (
+                    f"{int(height)}px" if fixed_height and height is not None else None
+                ),
                 fixed_height=fixed_height,
                 horiz_alignment=_icon_props_snapshot.get("horiz_alignment"),
                 vert_alignment=_icon_props_snapshot.get("vert_alignment"),
