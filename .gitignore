@@ -18,6 +18,7 @@ tmp/
 logs/
 captures/
 .local/
+.worktrees/
 profiles.d/
 settings.json
 .mcp.json
