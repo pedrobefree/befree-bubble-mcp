@@ -31,6 +31,7 @@ class ImportHost:
     fail_phase: str | None = None
     fail_cache: bool = False
     events: list[tuple[Any, ...]] = field(default_factory=list)
+    cache_save_count: int = 0
 
     def style_reference_snapshots(self) -> tuple[dict[str, Any], dict[str, Any]]:
         return self.discovery, self.cache
@@ -60,12 +61,32 @@ class ImportHost:
         if self.fail_cache:
             raise RuntimeError("literal cache failure")
         self.cache.setdefault(kind, {})[token_id] = dict(data)
+        self.cache_save_count += 1
 
     def remove_style_token_cache(self, kind: str, token_id: str) -> None:
         self.cache.setdefault(kind, {}).pop(token_id, None)
 
     def clear_style_token_cache(self, kind: str) -> None:
         self.cache[kind] = {}
+
+    def apply_style_token_cache_batch(
+        self,
+        kind: str,
+        *,
+        upserts: dict[str, dict[str, Any]],
+        removals: tuple[str, ...] = (),
+        clear: bool = False,
+    ) -> None:
+        self.events.append(("cache-batch", kind, tuple(sorted(upserts)), removals, clear))
+        if self.fail_cache:
+            raise RuntimeError("literal cache failure")
+        bucket = {} if clear else self.cache.setdefault(kind, {})
+        if clear:
+            self.cache[kind] = bucket
+        for token_id in removals:
+            bucket.pop(token_id, None)
+        bucket.update({token_id: dict(entry) for token_id, entry in upserts.items()})
+        self.cache_save_count += 1
 
     def create_style(
         self,
@@ -378,6 +399,31 @@ def test_dry_run_returns_complete_payloads_without_dispatch_cache_or_style_side_
     assert style_payload["properties"]["font_face"].startswith("var(--font_b")
 
 
+def test_multitoken_figma_import_persists_cache_once_per_successful_token_phase(
+    tmp_path: Path,
+) -> None:
+    tokens_path = _tokens(tmp_path)
+    document = json.loads(tokens_path.read_text(encoding="utf-8"))
+    document["color"]["accent"]["600"] = {"type": "color", "value": "#654321"}
+    document["typography"]["display"]["serif"] = {
+        "type": "typography",
+        "value": {
+            "fontFamily": "Lora",
+            "fontSize": 32,
+            "fontWeight": 500,
+            "color": "#654321",
+        },
+    }
+    tokens_path.write_text(json.dumps(document), encoding="utf-8")
+    host = _host()
+
+    result = _service(host).sync(tokens_path, config_path=_config(tmp_path))
+
+    assert result.ok is True
+    assert result.applied_counts == {"fonts": 2, "colors": 6, "styles": 4}
+    assert host.cache_save_count == 2
+
+
 def test_apply_groups_token_maps_once_then_applies_styles_and_is_idempotent(tmp_path: Path) -> None:
     host = _host()
     service = _service(host)
@@ -546,6 +592,56 @@ def test_custom_color_updates_and_duplicate_targets_are_planned_once(tmp_path: P
     assert plan.color_map["cExisting"]["rgba"] == "rgba(1, 2, 3, 1)"
 
 
+def test_updated_custom_color_drops_old_rgba_from_typography_resolution(tmp_path: Path) -> None:
+    host = _host()
+    host.discovery["settings"]["client_safe"]["color_tokens_user"]["%d1"]["cExisting"].update(
+        {"%nm": "Existing Accent", "rgba": "rgba(255, 0, 0, 1)"}
+    )
+    token_path = tmp_path / "projected-colors.json"
+    token_path.write_text(
+        json.dumps(
+            {
+                "color": {
+                    "existing": {"accent": {"type": "color", "value": "#0000FF"}}
+                },
+                "typography": {
+                    "body": {
+                        "regular": {
+                            "type": "typography",
+                            "value": {
+                                "fontFamily": "Inter",
+                                "fontSize": 16,
+                                "fontWeight": 400,
+                                "color": "#FF0000",
+                            },
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "projected-colors-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "naming": {"separator": " ", "case": "title"},
+                "filters": {
+                    "include_color_paths": ["color.*"],
+                    "include_typography_paths": ["typography.*"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    plan = _service(host).plan(token_path, config_path=str(config_path))
+
+    assert plan.color_map is not None
+    assert plan.color_map["cExisting"]["rgba"] == "rgba(0, 0, 255, 1)"
+    assert plan.styles[0].properties["font_color"] == "rgba(255, 0, 0, 1)"
+
+
 def test_plan_helpers_cover_empty_optional_and_collision_boundaries(tmp_path: Path) -> None:
     service = _service(_host())
     transformer = TokenTransformer(str(_config(tmp_path)))
@@ -640,6 +736,36 @@ def test_stable_token_id_fails_explicitly_when_suffix_namespace_is_exhausted(
 
     with pytest.raises(RuntimeError, match="deterministic token ID namespace exhausted"):
         _service(_host())._stable_token_id("font", "Collision", used_ids)
+
+
+def test_stable_token_id_probes_beyond_repeated_hash_prefixes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RepeatedDigest:
+        @staticmethod
+        def hexdigest() -> str:
+            return "00ff" + ("0" * 60)
+
+    calls = 0
+
+    def repeated_sha256(_seed: bytes) -> RepeatedDigest:
+        nonlocal calls
+        calls += 1
+        return RepeatedDigest()
+
+    monkeypatch.setattr(
+        "bubble_mcp.aria_runtime.style_lifecycle.figma_import.hashlib.sha256",
+        repeated_sha256,
+    )
+
+    token_id = _service(_host())._stable_token_id(
+        "font",
+        "Collision",
+        {"b00ff", "b0100"},
+    )
+
+    assert token_id == "b0101"
+    assert calls == 1
 
 
 def test_list_options_uses_the_same_bounded_document_and_transformer(tmp_path: Path) -> None:

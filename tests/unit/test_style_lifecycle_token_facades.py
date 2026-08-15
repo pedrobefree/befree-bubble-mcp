@@ -246,6 +246,76 @@ def test_successive_token_writes_read_the_real_host_updated_discovery(
     assert second_font_map["fBody"]["font_family"] == "Noto Sans"
 
 
+def test_reorder_500_colors_persists_real_cli_cache_once(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    colors = {
+        f"c{index:03d}": {
+            "%nm": f"Color {499 - index:03d}",
+            "rgba": f"rgba({index % 256}, 0, 0, 1)",
+            "order": index,
+        }
+        for index in range(500)
+    }
+    cli.discovery.data["settings"]["client_safe"]["color_tokens_user"] = {
+        "default": copy.deepcopy(colors)
+    }
+    cli._cli_cache["colors"] = copy.deepcopy(colors)
+    save_count = 0
+
+    def save_cache() -> None:
+        nonlocal save_count
+        save_count += 1
+
+    monkeypatch.setattr(cli, "_save_cli_cache", save_cache)
+    monkeypatch.setattr(
+        bubble_cli_module.PayloadBuilder,
+        "send_to_webhook",
+        lambda self, url: None,
+    )
+
+    assert cli.reorder_colors("sort-az") is True
+    assert save_count == 1
+    assert sorted(entry["order"] for entry in cli._cli_cache["colors"].values()) == list(
+        range(500)
+    )
+
+
+def test_bulk_color_delete_persists_real_cli_cache_once(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    colors = {
+        f"c{index:02d}": {
+            "%nm": f"Delete {index:02d}",
+            "rgba": f"rgba({index}, 0, 0, 1)",
+            "order": index,
+        }
+        for index in range(12)
+    }
+    cli.discovery.data["settings"]["client_safe"]["color_tokens_user"] = {
+        "default": copy.deepcopy(colors)
+    }
+    cli._cli_cache["colors"] = copy.deepcopy(colors)
+    save_count = 0
+
+    def save_cache() -> None:
+        nonlocal save_count
+        save_count += 1
+
+    monkeypatch.setattr(cli, "_save_cli_cache", save_cache)
+    monkeypatch.setattr(
+        bubble_cli_module.PayloadBuilder,
+        "send_to_webhook",
+        lambda self, url: None,
+    )
+
+    assert cli.delete_colors(names=[f"Delete {index:02d}" for index in range(12)]) is True
+    assert save_count == 1
+    assert cli._cli_cache["colors"] == {}
+
+
 def test_named_shared_color_resolution_uses_recreated_discovery_id(
     cli: BubbleCLI,
     monkeypatch: pytest.MonkeyPatch,

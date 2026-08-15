@@ -219,8 +219,11 @@ class ColorTokenService:
         payload = self._custom_payload(all_colors)
 
         def remove_targets() -> None:
-            for token_id in target_ids:
-                self._host.remove_style_token_cache("colors", token_id)
+            self._host.apply_style_token_cache_batch(
+                "colors",
+                upserts={},
+                removals=tuple(target_ids),
+            )
 
         return self._dispatch(payload, dry_run=dry_run, after=remove_targets)
 
@@ -271,8 +274,10 @@ class ColorTokenService:
         payload = self._custom_payload(complete)
 
         def cache_orders() -> None:
-            for token_id, entry in reordered.items():
-                self._host.put_style_token_cache("colors", token_id, entry)
+            self._host.apply_style_token_cache_batch(
+                "colors",
+                upserts=reordered,
+            )
 
         return self._dispatch(payload, dry_run=dry_run, after=cache_orders)
 

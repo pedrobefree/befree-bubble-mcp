@@ -44,10 +44,15 @@ def test_benchmark_suite_reports_repeatable_style_lifecycle_metrics() -> None:
         "definition_operations",
     }
     assert all(row["elapsed_seconds"] > 0 for row in report["benchmarks"].values())
+    assert all("cache_save_count" in row for row in report["benchmarks"].values())
     assert report["benchmarks"]["assignment_payload_construction"]["build_count"] == 1
     assert report["benchmarks"]["assignment_payload_construction"]["write_count"] == 0
+    assert report["benchmarks"]["assignment_payload_construction"]["cache_save_count"] == 0
     assert report["benchmarks"]["color_font_crud"]["write_count"] == 6
+    assert report["benchmarks"]["color_font_crud"]["cache_save_count"] == 6
     assert report["benchmarks"]["token_import_1_2_1"]["write_count"] > 0
+    assert report["benchmarks"]["token_import_1_2_1"]["cache_save_count"] == 4
+    assert report["benchmarks"]["definition_operations"]["cache_save_count"] == 4
     assert json.loads(json.dumps(report)) == report
 
 
@@ -59,6 +64,7 @@ def test_benchmark_comparison_reports_absolute_and_percentage_deltas() -> None:
                 "json_bytes": 10,
                 "build_count": 1,
                 "write_count": 0,
+                "cache_save_count": 0,
             }
         }
     }
@@ -69,6 +75,7 @@ def test_benchmark_comparison_reports_absolute_and_percentage_deltas() -> None:
                 "json_bytes": 12,
                 "build_count": 1,
                 "write_count": 0,
+                "cache_save_count": 0,
             }
         }
     }
@@ -86,6 +93,8 @@ def test_benchmark_comparison_reports_absolute_and_percentage_deltas() -> None:
         "after_build_count": 1,
         "before_write_count": 0,
         "after_write_count": 0,
+        "before_cache_save_count": 0,
+        "after_cache_save_count": 0,
     }
 
 

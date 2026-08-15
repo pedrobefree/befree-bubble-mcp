@@ -309,11 +309,13 @@ class FigmaTokenImportService:
                 applied[phase] = len(cache_updates)
             else:
                 applied[phase] = len(plan.default_color_updates) + len(cache_updates)
-            for token_id, entry in cache_updates:
-                try:
-                    self._host.put_style_token_cache(cache_kind, token_id, entry)
-                except Exception as exc:
-                    warnings.append(f"{phase} cache: {exc}")
+            try:
+                self._host.apply_style_token_cache_batch(
+                    cache_kind,
+                    upserts=dict(cache_updates),
+                )
+            except Exception as exc:
+                warnings.append(f"{phase} cache: {exc}")
 
         for index, operation in enumerate(plan.styles):
             try:
@@ -511,7 +513,17 @@ class FigmaTokenImportService:
                         active_custom[token_id] = entry
                         cache_updates[token_id] = entry
                         updated += 1
-                variables[transformer.normalize_rgba(rgba)] = self._color_reference(token_id)
+        projected_defaults = dict(snapshot.defaults)
+        for update in default_updates:
+            projected_defaults[update.token_id] = update.rgba
+        variables = self._existing_color_variables(
+            ColorSnapshot(
+                defaults=projected_defaults,
+                custom=active_custom,
+                wire_custom=final_map,
+            ),
+            transformer,
+        )
         ordered_cache_updates = tuple(sorted(cache_updates.items()))
         return (
             tuple(default_updates),
@@ -673,9 +685,11 @@ class FigmaTokenImportService:
 
     @staticmethod
     def _stable_token_id(kind: str, name: str, used_ids: set[str]) -> str:
-        for attempt in range(16**4):
-            seed = f"figma:{kind}:{name.casefold()}:{attempt}".encode()
-            candidate = "b" + hashlib.sha256(seed).hexdigest()[:4]
+        namespace_size = 16**4
+        seed = f"figma:{kind}:{name.casefold()}:0".encode()
+        start = int(hashlib.sha256(seed).hexdigest()[:4], 16)
+        for offset in range(namespace_size):
+            candidate = f"b{(start + offset) % namespace_size:04x}"
             if candidate not in used_ids:
                 return candidate
         raise RuntimeError("deterministic token ID namespace exhausted")

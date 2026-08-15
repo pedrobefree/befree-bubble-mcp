@@ -45,6 +45,24 @@ class ColorHost:
         self.events.append(("clear", kind))
         self.cache[kind] = {}
 
+    def apply_style_token_cache_batch(
+        self,
+        kind: str,
+        *,
+        upserts: dict[str, dict[str, Any]],
+        removals: tuple[str, ...] = (),
+        clear: bool = False,
+    ) -> None:
+        self.events.append(("batch", kind, dict(upserts), removals, clear))
+        if self.fail_cache:
+            raise RuntimeError("literal color cache failure")
+        bucket = {} if clear else self.cache.setdefault(kind, {})
+        if clear:
+            self.cache[kind] = bucket
+        for token_id in removals:
+            bucket.pop(token_id, None)
+        bucket.update({token_id: dict(entry) for token_id, entry in upserts.items()})
+
 
 def _discovery() -> dict[str, Any]:
     return {
@@ -344,7 +362,8 @@ def test_bulk_delete_deduplicates_targets_and_removes_cache_after_one_grouped_di
     assert body["%d1"]["cAccent"]["%del"] is True
     assert body["%d1"]["cCache"]["%del"] is True
     assert body["%d1"]["cOpaque"]["opaque_payload"] == {"keep": "exactly"}
-    assert [event[0] for event in host.events] == ["dispatch", "remove", "remove"]
+    assert [event[0] for event in host.events] == ["dispatch", "batch"]
+    assert host.events[1][3] == ("cAccent", "cCache")
 
 
 @pytest.mark.parametrize(
@@ -382,10 +401,10 @@ def test_reorder_preserves_tombstones(
         "plugin_owned": True,
         "opaque_payload": {"keep": "exactly"},
     }
-    assert [event[0] for event in host.events] == ["dispatch", "put", "put", "put"]
+    assert [event[0] for event in host.events] == ["dispatch", "batch"]
     assert {
-        (event[2], event[3]["order"])
-        for event in host.events[1:]
+        (token_id, entry["order"])
+        for token_id, entry in host.events[1][2].items()
     } == set(orders.items())
 
 

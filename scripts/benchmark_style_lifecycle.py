@@ -56,6 +56,7 @@ class Sample:
     json_bytes: int = 0
     build_count: int = 0
     write_count: int = 0
+    cache_save_count: int = 0
 
 
 @dataclass
@@ -63,6 +64,7 @@ class PayloadMetrics:
     json_bytes: int = 0
     build_count: int = 0
     write_count: int = 0
+    cache_save_count: int = 0
 
     def capture(self, payload: Any) -> None:
         """Capture one would-be remote write without sending it."""
@@ -107,6 +109,16 @@ def _new_cli(root: Path, snapshot: dict[str, Any]) -> Any:
     snapshot_path.write_text(json.dumps(snapshot, sort_keys=True), encoding="utf-8")
     os.environ["BUBBLE_CLI_CACHE_PATH"] = str(root / "cli-cache.json")
     return BubbleCLI(app_json_path=str(snapshot_path), appname="style-lifecycle-benchmark")
+
+
+def _capture_cache_saves(cli: Any, metrics: PayloadMetrics) -> None:
+    original_save = cli._save_cli_cache
+
+    def counted_save() -> None:
+        metrics.cache_save_count += 1
+        original_save()
+
+    cli._save_cli_cache = counted_save
 
 
 def _style_snapshot(count: int) -> dict[str, Any]:
@@ -160,6 +172,7 @@ def _time_samples(samples: int, sample_fn: Callable[[], Sample]) -> dict[str, An
         "json_bytes": int(median(row.json_bytes for row in rows)),
         "build_count": int(median(row.build_count for row in rows)),
         "write_count": int(median(row.write_count for row in rows)),
+        "cache_save_count": int(median(row.cache_save_count for row in rows)),
     }
 
 
@@ -196,7 +209,13 @@ def _assignment_sample(operations: int) -> Sample:
         elapsed = perf_counter() - started
         metrics = PayloadMetrics()
         metrics.capture_build(payload)
-    return Sample(elapsed, metrics.json_bytes, metrics.build_count, metrics.write_count)
+    return Sample(
+        elapsed,
+        metrics.json_bytes,
+        metrics.build_count,
+        metrics.write_count,
+        metrics.cache_save_count,
+    )
 
 
 def _color_font_crud_sample() -> Sample:
@@ -204,6 +223,7 @@ def _color_font_crud_sample() -> Sample:
         cli = _new_cli(Path(temp_name), _token_snapshot())
         metrics = PayloadMetrics()
         cli._dispatch_payload = metrics.capture
+        _capture_cache_saves(cli, metrics)
         random.seed(45)
         started = perf_counter()
         results = (
@@ -217,7 +237,13 @@ def _color_font_crud_sample() -> Sample:
         elapsed = perf_counter() - started
         if not all(results):
             raise RuntimeError(f"color/font CRUD benchmark failed: {results}")
-    return Sample(elapsed, metrics.json_bytes, metrics.build_count, metrics.write_count)
+    return Sample(
+        elapsed,
+        metrics.json_bytes,
+        metrics.build_count,
+        metrics.write_count,
+        metrics.cache_save_count,
+    )
 
 
 def _write_import_fixture(root: Path, fonts: int, colors: int, styles: int) -> tuple[Path, Path]:
@@ -268,6 +294,7 @@ def _token_import_sample(fonts: int, colors: int, styles: int) -> Sample:
         tokens_path, config_path = _write_import_fixture(root, fonts, colors, styles)
         metrics = PayloadMetrics()
         cli._dispatch_payload = metrics.capture
+        _capture_cache_saves(cli, metrics)
         random.seed(45)
         started = perf_counter()
         ok = cli.sync_figma_tokens(
@@ -278,7 +305,13 @@ def _token_import_sample(fonts: int, colors: int, styles: int) -> Sample:
         elapsed = perf_counter() - started
         if not ok:
             raise RuntimeError("token import benchmark failed")
-    return Sample(elapsed, metrics.json_bytes, metrics.build_count, metrics.write_count)
+    return Sample(
+        elapsed,
+        metrics.json_bytes,
+        metrics.build_count,
+        metrics.write_count,
+        metrics.cache_save_count,
+    )
 
 
 def _definition_sample() -> Sample:
@@ -295,6 +328,7 @@ def _definition_sample() -> Sample:
         cli = _new_cli(Path(temp_name), snapshot)
         metrics = PayloadMetrics()
         cli._dispatch_payload = metrics.capture
+        _capture_cache_saves(cli, metrics)
         random.seed(45)
         started = perf_counter()
         results = (
@@ -317,7 +351,13 @@ def _definition_sample() -> Sample:
         elapsed = perf_counter() - started
         if not all(results):
             raise RuntimeError(f"definition benchmark failed: {results}")
-    return Sample(elapsed, metrics.json_bytes, metrics.build_count, metrics.write_count)
+    return Sample(
+        elapsed,
+        metrics.json_bytes,
+        metrics.build_count,
+        metrics.write_count,
+        metrics.cache_save_count,
+    )
 
 
 def _run_benchmarks(config: BenchmarkConfig) -> dict[str, Any]:
@@ -353,7 +393,7 @@ def _run_benchmarks(config: BenchmarkConfig) -> dict[str, Any]:
     )
     benchmarks["definition_operations"] = _time_samples(config.samples, _definition_sample)
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "samples": config.samples,
         "workload": {
             "style_counts": list(config.style_counts),
@@ -398,8 +438,10 @@ def compare_reports(before: dict[str, Any], after: dict[str, Any]) -> dict[str, 
             "after_build_count": int(after_row["build_count"]),
             "before_write_count": int(before_row["write_count"]),
             "after_write_count": int(after_row["write_count"]),
+            "before_cache_save_count": int(before_row["cache_save_count"]),
+            "after_cache_save_count": int(after_row["cache_save_count"]),
         }
-    return {"schema_version": 1, "benchmarks": comparison}
+    return {"schema_version": 2, "benchmarks": comparison}
 
 
 def _load_json(path: str) -> dict[str, Any]:

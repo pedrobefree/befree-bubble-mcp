@@ -509,7 +509,11 @@ class StyleDefinitionService:
             logger.info("\n DRY RUN - Set Default Style Payload:")
             logger.log(payload.to_json())
             return True
-        return self._dispatch(payload, "Failed to set default style")
+        return self._dispatch(
+            payload,
+            "Failed to set default style",
+            invalidate_references=True,
+        )
 
     def create_style(
         self,
@@ -729,7 +733,11 @@ class StyleDefinitionService:
             logger.info(f"\n DRY RUN - Rename Payload ({style_id}):")
             logger.log(json.dumps(payload.changes, indent=2))
             return True
-        return self._dispatch(payload, "Failed to rename")
+        return self._dispatch(
+            payload,
+            "Failed to rename",
+            invalidate_references=True,
+        )
 
     def create_button_style(self, name: str, theme_json: str, dry_run: bool = False) -> bool:
         try:
@@ -1430,13 +1438,21 @@ class StyleDefinitionService:
         normalized = " ".join(str(value or "").casefold().replace("-", " ").replace("_", " ").split())
         return normalized in {"button", "text", "group", "input", "image", "content", "wrapper"}
 
-    def _dispatch(self, payload: PayloadBuilder, error_prefix: str) -> bool:
+    def _dispatch(
+        self,
+        payload: PayloadBuilder,
+        error_prefix: str,
+        *,
+        invalidate_references: bool = False,
+    ) -> bool:
         try:
             self._host.dispatch_style_definition_payload(payload)
-            return True
         except Exception as exc:
             logger.error(f"{error_prefix}: {exc}")
             return False
+        if invalidate_references:
+            self._references.invalidate()
+        return True
 
     def _put_cache(self, name: str, data: dict[str, Any]) -> bool:
         try:

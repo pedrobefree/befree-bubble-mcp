@@ -241,6 +241,69 @@ def test_figma_import_uses_definition_service_as_compatibility_sink(cli: BubbleC
     assert cli._style_lifecycle.figma_import._styles is cli._style_lifecycle.definitions
 
 
+def test_successful_rename_rebuilds_long_lived_real_cli_reference_index(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli.discovery.data["styles"]["Text_opaque_"] = {
+        "%d": "Article Copy",
+        "%x": "Text",
+        "%p": {},
+        "%s": {},
+    }
+    assert cli.find_style_id("Article Copy", "Text") == "Text_opaque_"
+
+    def dispatch(_payload: Any) -> None:
+        cli.discovery.data["styles"]["Text_opaque_"].update(
+            {"%d": "Renamed Body", "name": "Renamed Body", "display": "Renamed Body"}
+        )
+
+    monkeypatch.setattr(cli, "dispatch_style_definition_payload", dispatch)
+
+    assert cli.rename_style("Text_opaque_", "Renamed Body") is True
+    assert cli.find_style_id("Article Copy", "Text") is None
+    assert cli.find_style_id("Renamed Body", "Text") == "Text_opaque_"
+
+
+def test_successful_set_default_protects_new_default_during_sequential_clear(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli.discovery.data["styles"].update(
+        {
+            "Text_system_": {"%d": "System Body", "%x": "Text", "%p": {}, "%s": {}},
+            "Text_caption_": {"%d": "Caption", "%x": "Text", "%p": {}, "%s": {}},
+        }
+    )
+    cli.discovery.data["settings"] = {
+        "client_safe": {"default_styles": {"Text": "Text_system_"}}
+    }
+    assert cli.find_style_id("default", "Text") == "Text_system_"
+    dispatched: list[Any] = []
+
+    def dispatch(payload: Any) -> None:
+        dispatched.append(payload)
+        for change in payload.changes:
+            intent = change.get("intent") if isinstance(change, dict) else None
+            if isinstance(intent, dict) and intent.get("name") == "ChangeAppSetting":
+                cli.discovery.data["settings"]["client_safe"]["default_styles"].update(
+                    change["body"]
+                )
+
+    monkeypatch.setattr(cli, "dispatch_style_definition_payload", dispatch)
+
+    assert cli.set_default_style("Text", "Text_body_") is True
+    assert cli.clear_custom_styles() is True
+
+    deleted_ids = [
+        change["path_array"][1]
+        for change in dispatched[1].changes
+        if change.get("intent", {}).get("name") == "DeleteStyle"
+    ]
+    assert deleted_ids == ["Text_system_", "Text_caption_"]
+    assert "Text_body_" not in deleted_ids
+
+
 def test_html_style_execution_remains_failed_when_definition_sink_returns_false(
     cli: BubbleCLI,
 ) -> None:
