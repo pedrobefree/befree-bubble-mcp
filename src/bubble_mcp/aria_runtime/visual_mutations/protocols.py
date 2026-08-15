@@ -23,6 +23,16 @@ class VisualElementTarget:
     path: list[str]
 
 
+@dataclass(frozen=True)
+class VisualCreationTarget:
+    """Resolved context and parent for a new visual element."""
+
+    context_id: str
+    context_type: str
+    parent_result: dict[str, Any]
+    parent_path: list[str]
+
+
 class VisualMutationHost(Protocol):
     """Narrow BubbleCLI callbacks required by the mutation boundary."""
 
@@ -51,7 +61,12 @@ class VisualMutationHost(Protocol):
         context_type: str,
         element_ref: str,
     ) -> dict[str, Any] | None: ...
-    def _lookup_cached_context_object_id(self, context_type: str, context_id: str) -> str: ...
+    def _auto_sync_element_ref_aliases(self) -> bool: ...
+    def _lookup_cached_context_object_id(
+        self,
+        context_type: str,
+        context_id: str,
+    ) -> str: ...
     def _get_value_at_path(self, path: list[str]) -> Any: ...
     def _normalize_payload_path(self, path: Any) -> list[str]: ...
     def _normalize_capture_path(self, path: Any) -> list[str]: ...
@@ -63,6 +78,16 @@ class VisualMutationHost(Protocol):
         context_id: str,
         context_type: str,
     ) -> list[str]: ...
+    def _find_last_element_token(
+        self,
+        path: list[str],
+    ) -> tuple[int | None, str | None]: ...
+    def _style_override_keys_for_element_type(
+        self,
+        element_type: str | None,
+        *,
+        target_style_id: str | None = None,
+    ) -> list[str]: ...
     def _dispatch_payload(self, payload: PayloadBuilder) -> None: ...
     def _remove_cached_element_aliases(
         self,
@@ -71,4 +96,25 @@ class VisualMutationHost(Protocol):
         context_type: str,
         element_id: str | None = None,
         element_path: list[str] | None = None,
+    ) -> None: ...
+    def _cache_created_element_aliases(
+        self,
+        *,
+        context_id: str,
+        context_type: str,
+        aliases: list[str],
+        element_id: str,
+        element_key: str | None = None,
+        parent_path: list[str] | None = None,
+        element_type: str | None = None,
+    ) -> None: ...
+    def _cache_element_ref_alias(
+        self,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        element_id: str,
+        element_key: str | None = None,
+        element_path: list[str] | None = None,
+        element_type: str | None = None,
     ) -> None: ...

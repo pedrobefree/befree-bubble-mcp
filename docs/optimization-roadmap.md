@@ -211,10 +211,34 @@ The post-review repair restored table descendant cleanup, the captured
 fallback for parent `issues_sub` updates. Six literal regressions cover these
 compatibility paths, including malformed nested table snapshots.
 
-**Next Family 2 block — Stage 4.4b visual creations.** Extract common
-context/parent preparation plus preview/dispatch, discovery injection, and
-created-alias finalization while retaining element-specific builders and
-property semantics.
+**Stage 4.4b — visual creations: completed on 2026-08-14.** The creation
+service now owns context/parent preparation, parent fallback resolution,
+canonical create/index sequencing, parent-child index maintenance, preview and
+dispatch finalization, discovery injection, and created-alias caching. The
+element-specific builders and public `BubbleCLI` signatures remain in place.
+
+Stage 4.4b results:
+
+- replaced 904 lines of repeated creation orchestration in `bubble_cli.py`
+  with 328 lines of explicit facades and builder-specific behavior;
+- added a 301-line creation service and 24 literal behavior/facade tests;
+- `creations.py`: 97.6% focused branch coverage;
+- full suite: 1,309 Python and 11 Node tests passed;
+- catalog remained at 327 MCP tools and CLI parity remained 207 commands with
+  zero missing mappings;
+- Ruff, MyPy, catalog quality, preview-write, and `git diff --check` passed;
+- the refreshed local Bubble test profile passed all 16 preview-write cases;
+- no tool names, schemas, aliases, annotations, preview defaults, dispatch
+  routes, payload ordering, or result shapes changed.
+
+The post-review repair routed reusable-instance and icon finalization through
+the shared creation service, preserved normalized icon slot targeting, and
+gated icon sizing updates to successful non-preview creation. Five literal
+regressions cover these facade contracts.
+
+**Next Family 2 block — Stage 4.4c visual updates.** Extract common existing
+target resolution plus property/style update sequencing and finalization while
+retaining public update signatures and Family 3 style ownership on the host.
 
 ### Stage 5: Supporting debt
 

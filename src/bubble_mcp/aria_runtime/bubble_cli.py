@@ -11689,58 +11689,9 @@ class BubbleCLI:
         context_name: str,
         parent_name: str
     ) -> Optional[Dict[str, Any]]:
-        """Resolve parent element with cache-aware fallbacks."""
-        parent_ref = str(parent_name or "").strip()
-        if not parent_ref:
-            logger.error("Parent element is required.")
-            return None
-
-        logger.info(f" [DEBUG] _resolve_parent_element: ref='{parent_ref}', context='{context_id}'")
-
-        if parent_ref == context_name or parent_ref.lower() == "root":
-            # logger.success(f"Found {context_type}: {context_name} -> {context_id} (Targeting Root)")
-            return {"path": [], "id": context_id}
-
-        # 1. Check if the parent_ref is an exact Bubble element ID
-        # (Bubble IDs are typically 5-20 characters long)
-        if len(parent_ref) >= 5 and " " not in parent_ref:
-            found_by_id = self.discovery.find_element_by_id(context_id, parent_ref, context_type=context_type)
-            if found_by_id:
-                logger.info(f" [DEBUG] Found parent by ID: {parent_ref}")
-                return found_by_id
-
-        found = self.discovery.find_element_by_name(context_id, parent_ref, context_type=context_type)
-        if found:
-            logger.info(f" [DEBUG] Found parent by name: {parent_ref}")
-            return found
-
-        logger.info(f" [DEBUG] Falling back to _find_element_by_ref for '{parent_ref}'")
-        found = self._find_element_by_ref(
-            context_id,
-            context_type,
-            parent_ref,
-            ref_kind="auto",
-            match_index=1,
+        return self._visual_mutations.creations.resolve_parent(
+            context_id, context_type, context_name, parent_name
         )
-        if found:
-             return found
-
-        cached_payload = self._resolve_cached_element_alias(context_id, context_type, parent_ref)
-        if cached_payload:
-            logger.info(f"Resolved parent '{parent_ref}' via local alias cache.")
-            return cached_payload
-
-        if self._auto_sync_element_ref_aliases():
-            cached_payload = self._resolve_cached_element_alias(context_id, context_type, parent_ref)
-            if cached_payload:
-                logger.info(f"Resolved parent '{parent_ref}' after auto-syncing alias cache.")
-                return cached_payload
-
-        logger.error(f" [DEBUG] Parent '{parent_ref}' NOT FOUND in context {context_id}")
-        return None
-
-        logger.error(f"Parent element '{parent_ref}' not found")
-        return None
 
     def find_style_id_by_name(self, style_name: str, element_type: Optional[str] = None) -> Optional[str]:
         """
@@ -23162,42 +23113,25 @@ class BubbleCLI:
         )
         element_slot_key = self._resolved_created_slot_key(create_path, full_body)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            try:
-                self.discovery.inject_element(
-                    context_id, context_type, parent_result["id"], full_body, element_key=element_slot_key
-                )
-            except Exception as e:
-                logger.warning(f"Injection warning (dry-run): {e}")
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created reusable instance: '{instance_name}' in '{parent_name}'")
-            try:
-                self.discovery.inject_element(
-                    context_id, context_type, parent_result["id"], full_body, element_key=element_slot_key
-                )
-            except Exception as e:
-                logger.warning(f"Injection warning: {e}")
-            created_path = list(parent_result.get("path") or []) + ["%el", element_slot_key]
-            for alias in {instance_name, str(full_body.get("%dn") or "").strip()}:
-                if not self._norm_lookup(alias):
-                    continue
-                self._cache_element_ref_alias(
-                    context_id,
-                    context_type,
-                    alias,
-                    str(full_body.get("id") or ""),
-                    element_key=element_slot_key,
-                    element_path=created_path,
-                )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return bool(
+            self._visual_mutations.creations.finish(
+                pb,
+                context_id=context_id,
+                context_type=context_type,
+                parent_result=parent_result,
+                body=full_body,
+                element_key=element_slot_key,
+                aliases=[instance_name, str(full_body.get("%dn") or "").strip()],
+                result_value=True,
+                success_message=(
+                    f"Successfully created reusable instance: '{instance_name}' "
+                    f"in '{parent_name}'"
+                ),
+                dry_run=dry_run,
+                tolerate_injection_error=True,
+                cache_supplied_aliases_only=True,
+            )
+        )
 
     def update_repeating_group(
         self,
@@ -25263,45 +25197,9 @@ class BubbleCLI:
         context_type: str,
         parent_result: Dict[str, Any]
     ) -> List[str]:
-        """
-        Best-effort read of current child element IDs for a parent element/root.
-        Used to keep _index.issues_sub in sync when creating elements via CLI.
-        """
-        parent_node: Optional[Dict[str, Any]] = None
-        parent_id = parent_result.get("id") if isinstance(parent_result, dict) else None
-        if isinstance(parent_result, dict):
-            candidate = parent_result.get("element")
-            if isinstance(candidate, dict):
-                parent_node = candidate
-
-        if parent_node is None:
-            # Root-level insertion: fetch context root from discovery cache.
-            # If we only know a non-root parent ID (without element payload),
-            # assume no known children yet in this request.
-            if isinstance(parent_id, str) and parent_id and parent_id != context_id:
-                return []
-            try:
-                parent_node = self.discovery._get_context_root(context_id, context_type)
-            except Exception:
-                parent_node = None
-
-        if not isinstance(parent_node, dict):
-            return []
-
-        children = parent_node.get("elements")
-        if not isinstance(children, dict):
-            children = parent_node.get("%el")
-        if not isinstance(children, dict):
-            return []
-
-        child_ids: List[str] = []
-        for key, value in children.items():
-            if key == "length" or not isinstance(value, dict):
-                continue
-            child_id = value.get("id")
-            if isinstance(child_id, str) and child_id:
-                child_ids.append(child_id)
-        return child_ids
+        return self._visual_mutations.creations.existing_child_ids(
+            context_id, context_type, parent_result
+        )
 
     def _queue_create_element_with_index_updates(
         self,
@@ -25316,156 +25214,18 @@ class BubbleCLI:
         text_content: Any = None,
         pending_child_ids_by_parent: Optional[Dict[str, List[str]]] = None,
     ) -> None:
-        """
-        Emit Bubble-like create sequence:
-        1) _index.id_to_path
-        2) CreateElement
-        3) _index.issues_list[new_id] = []
-        4) _index.issues_sub[parent_id] = [existing_child_ids + new_id]
-        5) optional %nm/%3 writes
-        """
-        object_id = create_body.get("id")
-        if not isinstance(object_id, str) or not object_id:
-            raise ValueError("Create element body must include a valid 'id'.")
-
-        # Bubble frequently treats explicit nulls in CreateElement as overrides.
-        # Strip null-valued properties centrally for all create tools.
-        if isinstance(create_body, dict):
-            props = create_body.get("%p")
-            if isinstance(props, dict):
-                create_body["%p"] = {k: v for k, v in props.items() if v is not None}
-                props = create_body.get("%p")
-
-                # Global style rule for create tools:
-                # when style is set, remove style-driven props from %p so the
-                # element starts from the chosen style (no baked-in overrides).
-                #
-                # CRITICAL: some keys must NEVER be stripped even if they appear
-                # in a style's %p — these are instance-specific content, not style:
-                #   %3  = text content (TextExpression)
-                #   %nm = element name label
-                #   %bl = boolean/checkbox value
-                CONTENT_SAFE_KEYS = {"%3", "%nm", "%bl"}
-                INSTANCE_SAFE_KEYS_BY_TYPE: Dict[str, set[str]] = {
-                    "dateinput": {
-                        "%c1",
-                        "initial_content",
-                        "input_type",
-                        "binding_content_format",
-                        "content_format",
-                        "date_format",
-                        "custom_format",
-                        "start_monday",
-                        "show_month_year_picker",
-                        "time_format",
-                        "time_interval",
-                        "min_date",
-                        "max_date",
-                        "min_hour",
-                        "max_hour",
-                        "%1m",
-                        "disabled",
-                        "auto_binding",
-                        "bind_field",
-                    },
-                }
-                style_ref = (
-                    create_body.get("%s1")
-                    or create_body.get("style")
-                    or props.get("%s1")
-                    or props.get("style")
-                )
-                element_type = create_body.get("%x") or create_body.get("type")
-                if style_ref and element_type and isinstance(props, dict):
-                    keep_safe_keys = set(CONTENT_SAFE_KEYS)
-                    keep_safe_keys.update(
-                        INSTANCE_SAFE_KEYS_BY_TYPE.get(
-                            str(element_type or "").strip().lower(),
-                            set(),
-                        )
-                    )
-                    style_override_keys = self._style_override_keys_for_element_type(
-                        str(element_type),
-                        target_style_id=str(style_ref),
-                    )
-                    for key in style_override_keys:
-                        key_str = str(key)
-                        if key_str in keep_safe_keys:
-                            continue  # Never strip instance content keys
-                        if key_str in props:
-                            props.pop(key_str, None)
-
-        # Child CreateElement payloads must use the structural write token for the
-        # path segment after %el, which can differ from the persisted object id.
-        # Many legacy helpers still passed object_id as the slot key; normalize
-        # that here so every create_* call inherits the same contract.
-        normalized_create_path = self._normalize_payload_path(create_path)
-        normalized_create_path = self._canonicalize_context_prefix_on_path(
-            normalized_create_path,
+        self._visual_mutations.creations.queue_create(
+            pb,
             context_id,
             context_type,
+            parent_result,
+            create_path,
+            create_body,
+            full_path_str,
+            name_value=name_value,
+            text_content=text_content,
+            pending_child_ids_by_parent=pending_child_ids_by_parent,
         )
-        _, slot_key = self._find_last_element_token(normalized_create_path)
-        if not isinstance(slot_key, str) or not slot_key or slot_key == object_id:
-            slot_key = BubbleIDGenerator().element_id()
-            element_index = None
-            for idx in range(len(normalized_create_path) - 2, -1, -1):
-                if normalized_create_path[idx] == "%el":
-                    element_index = idx
-                    break
-            if element_index is None or element_index + 1 >= len(normalized_create_path):
-                raise ValueError("Create element path must include a valid slot key after %el.")
-            normalized_create_path[element_index + 1] = slot_key
-
-        if isinstance(create_path, list):
-            create_path[:] = normalized_create_path
-
-        # Ensure outbound payload uses raw Bubble path tokens (%el/%wf/...)
-        # even if discovery returned normalized/module-style keys (elements/workflows/...).
-        normalized_full_path_str = ".".join(normalized_create_path)
-
-        # Bubble editor emits id_to_path before CreateElement.
-        pb.add_update_index(["_index", "id_to_path", object_id], normalized_full_path_str)
-        pb.add_create_element(normalized_create_path, create_body)
-
-        # Register empty issues list for the new node.
-        pb.add_update_index(["_index", "issues_list", object_id], "[]")
-
-        # Keep parent's issues_sub list consistent with current known children.
-        parent_id = parent_result.get("id") if isinstance(parent_result, dict) else None
-        if isinstance(parent_id, str) and parent_id:
-            if (
-                isinstance(pending_child_ids_by_parent, dict)
-                and parent_id in pending_child_ids_by_parent
-                and isinstance(pending_child_ids_by_parent.get(parent_id), list)
-            ):
-                child_ids = list(pending_child_ids_by_parent.get(parent_id) or [])
-            else:
-                child_ids = self._existing_child_ids_for_parent(context_id, context_type, parent_result)
-            if object_id not in child_ids:
-                child_ids.append(object_id)
-            if isinstance(pending_child_ids_by_parent, dict):
-                pending_child_ids_by_parent[parent_id] = list(child_ids)
-            pb.add_update_index(["_index", "issues_sub", parent_id], json.dumps(child_ids))
-
-        if text_content is not None:
-            pb.add_set_data(normalized_create_path + ["%p", "%3"], text_content)
-
-        # Bubble ignores nonant_alignment when set in the CreateElement body.
-        # It must be emitted as a separate SetData on %p.nonant_alignment.
-        props = create_body.get("%p") or {}
-        nonant_val = props.get("nonant_alignment")
-        align_to_parent_pos_val = props.get("align_to_parent_pos") or nonant_val
-        if nonant_val:
-            pb.add_set_data(normalized_create_path + ["%p", "nonant_alignment"], nonant_val)
-        if align_to_parent_pos_val:
-            pb.add_set_data(normalized_create_path + ["%p", "align_to_parent_pos"], align_to_parent_pos_val)
-
-        # Similarly, margin values for align_to_parent children must be set separately.
-        for margin_key in ("margin_top", "margin_right", "margin_bottom", "margin_left"):
-            margin_val = props.get(margin_key)
-            if margin_val is not None and margin_val != 0:
-                pb.add_set_data(normalized_create_path + ["%p", margin_key], margin_val)
 
     def _queue_style_assignment_changes(
         self,
@@ -27668,33 +27428,18 @@ class BubbleCLI:
             if b_val is not None:
                 pb.add_set_data(normalized_cp + ["%p", b_key], b_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result.get('id'), create_body, element_key=element_slot_key)
-            return element_object_id
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created text: '{content[:20]}...'")
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result.get('id'), create_body, element_key=element_slot_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(element_name or "").strip(),
-                    str(create_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(create_body.get("id") or ""),
-                element_key=element_slot_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return element_object_id
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=create_body,
+            element_key=element_slot_key,
+            aliases=[element_name, create_body.get("%dn")],
+            result_value=element_object_id,
+            success_message=f"Successfully created text: '{content[:20]}...'",
+            dry_run=dry_run,
+        )
 
     def create_button(
         self, context_name: str, parent_name: str, name: str, label: str = "Button",
@@ -27918,36 +27663,19 @@ class BubbleCLI:
             )
         _replay_button_props()
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache for subsequent batch operations
-            full_body["id"] = element_object_id
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=element_slot_key)
-            return element_object_id
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created button: '{name}'")
-            # Inject into discovery cache for subsequent batch operations
-            full_body["id"] = element_object_id
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=element_slot_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(label or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=element_slot_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return element_object_id
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        full_body["id"] = element_object_id
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=element_slot_key,
+            aliases=[name, full_body.get("%dn"), label],
+            result_value=element_object_id,
+            success_message=f"Successfully created button: '{name}'",
+            dry_run=dry_run,
+        )
 
     def create_page(
         self,
@@ -30095,33 +29823,20 @@ class BubbleCLI:
             if b_val is not None:
                 pb.add_set_data(normalized_cp + ["%p", b_key], b_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            full_body["id"] = popup_key
-            self.discovery.inject_element(context_id, context_type, None, full_body, element_key=popup_key)
-            return popup_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created popup: '{name}'")
-            self.discovery.inject_element(context_id, context_type, None, full_body, element_key=popup_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=popup_key,
-                parent_path=[],
-            )
-            return popup_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        full_body["id"] = popup_key
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result={"id": context_id, "path": []},
+            body=full_body,
+            element_key=popup_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=popup_key,
+            success_message=f"Successfully created popup: '{name}'",
+            dry_run=dry_run,
+            use_parent_result_id=False,
+        )
 
     def update_popup(
         self,
@@ -34933,49 +34648,19 @@ class BubbleCLI:
             if b_val is not None:
                 pb.add_set_data(_normalized_create_path + ["%p", b_key], b_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            try:
-                self.discovery.inject_element(
-                    context_id, context_type, parent_result["id"], full_body, element_key=element_slot_key
-                )
-            except Exception as e:
-                logger.warning(f"Injection warning (dry-run): {e}")
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created group: '{name}' in '{parent_name}'")
-            try:
-                self.discovery.inject_element(
-                    context_id, context_type, parent_result["id"], full_body, element_key=element_slot_key
-                )
-            except Exception as e:
-                logger.warning(f"Injection warning: {e}")
-            created_aliases = [
-                str(name or "").strip(),
-                str(full_body.get("%dn") or "").strip(),
-            ]
-            created_path = list(parent_result.get("path") or []) + ["%el", element_slot_key]
-            seen_aliases: set[str] = set()
-            for alias in created_aliases:
-                norm = self._norm_lookup(alias)
-                if not norm or norm in seen_aliases:
-                    continue
-                seen_aliases.add(norm)
-                self._cache_element_ref_alias(
-                    context_id,
-                    context_type,
-                    alias,
-                    str(full_body.get("id") or ""),
-                    element_key=element_slot_key,
-                    element_path=created_path,
-                )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=element_slot_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created group: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+            tolerate_injection_error=True,
+        )
 
     def create_floating_group(
         self,
@@ -35453,43 +35138,18 @@ class BubbleCLI:
             if key in fg_props and fg_props.get(key) is not None:
                 pb.add_set_data(_normalized_create_path + ["%p", key], fg_props.get(key))
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(
-                context_id,
-                context_type,
-                parent_result["id"],
-                full_body,
-                element_key=element_slot_key,
-            )
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created floating group: '{name}' in '{parent_name}'")
-            self.discovery.inject_element(
-                context_id,
-                context_type,
-                parent_result["id"],
-                full_body,
-                element_key=element_slot_key,
-            )
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=element_slot_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=element_slot_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created floating group: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+        )
 
     def create_table(
         self,
@@ -36204,43 +35864,18 @@ class BubbleCLI:
             for _padding_key, _padding_value in explicit_table_padding.items():
                 pb.add_set_data(normalized_create_path + ["%p", _padding_key], _padding_value)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(
-                context_id,
-                context_type,
-                parent_result["id"],
-                full_body,
-                element_key=element_slot_key,
-            )
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created table: '{name}' in '{parent_name}'")
-            self.discovery.inject_element(
-                context_id,
-                context_type,
-                parent_result["id"],
-                full_body,
-                element_key=element_slot_key,
-            )
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=element_slot_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=element_slot_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created table: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+        )
 
     def create_group_focus(
         self,
@@ -36701,43 +36336,18 @@ class BubbleCLI:
                 if key in gf_props and gf_props.get(key) is not None:
                     pb.add_set_data(_normalized_create_path + ["%p", key], gf_props.get(key))
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(
-                context_id,
-                context_type,
-                parent_result["id"],
-                full_body,
-                element_key=element_slot_key,
-            )
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created group focus: '{name}' in '{parent_name}'")
-            self.discovery.inject_element(
-                context_id,
-                context_type,
-                parent_result["id"],
-                full_body,
-                element_key=element_slot_key,
-            )
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=element_slot_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=element_slot_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created group focus: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+        )
 
     def create_repeating_group(self, context_name: str, parent_name: str, name: str, data_type: Optional[str] = None,
                                layout: str = "column", rows: int = 0,
@@ -37082,33 +36692,18 @@ class BubbleCLI:
             if b_val is not None:
                 pb.add_set_data(normalized_cp + ["%p", b_key], b_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=element_slot_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created RG: '{name}' in '{parent_name}'")
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=element_slot_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=element_slot_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=element_slot_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created RG: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+        )
 
     def create_input(self, context_name: str, parent_name: str, name: str,
                      placeholder: str = "", initial_content: Any = "", content_format: str = "text",
@@ -37341,36 +36936,19 @@ class BubbleCLI:
             if _prop_val is not None:
                 pb.add_set_data(_normalized_create_path + ["%p", _prop_key], _prop_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            full_body["id"] = new_key
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created Input: '{name}' in '{parent_name}'")
-            # Inject into discovery cache
-            full_body["id"] = new_key
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(placeholder or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        full_body["id"] = new_key
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn"), placeholder],
+            result_value=new_key,
+            success_message=f"Successfully created Input: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+        )
 
     def create_multiline_input(
         self,
@@ -37628,32 +37206,18 @@ class BubbleCLI:
             if _prop_val is not None:
                 pb.add_set_data(_normalized_create_path + ["%p", _prop_key], _prop_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created MultiLineInput: '{name}' in '{parent_name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(placeholder or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn"), placeholder],
+            result_value=new_key,
+            success_message=f"Successfully created MultiLineInput: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+        )
 
     def create_checkbox(
         self,
@@ -37924,32 +37488,18 @@ class BubbleCLI:
                 if _prop_val is not None:
                     pb.add_set_data(_normalized_create_path + ["%p", _prop_key], _prop_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created checkbox: '{label}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(label or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn"), label],
+            result_value=new_key,
+            success_message=f"Successfully created checkbox: '{label}'",
+            dry_run=dry_run,
+        )
 
     def create_datepicker(
         self, context_name: str, parent_name: str, name: str,
@@ -38155,22 +37705,19 @@ class BubbleCLI:
             name_value=full_body.get("%dn"),
         )
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created datepicker: '{name}'")
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[],
+            result_value=new_key,
+            success_message=f"Successfully created datepicker: '{name}'",
+            dry_run=dry_run,
+            cache_aliases=False,
+        )
 
     def create_radio(
         self, context_name: str, parent_name: str, name: str, label: str = "Radio", group_name: str = None, choices_str: str = None,
@@ -38425,24 +37972,20 @@ class BubbleCLI:
                 if _prop_val is not None:
                     pb.add_set_data(_normalized_create_path + ["%p", _prop_key], _prop_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            full_body["id"] = new_key
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created radio: '{label}'")
-            # Inject into discovery cache
-            full_body["id"] = new_key
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        full_body["id"] = new_key
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[],
+            result_value=new_key,
+            success_message=f"Successfully created radio: '{label}'",
+            dry_run=dry_run,
+            cache_aliases=False,
+        )
 
     def create_slider(
         self, context_name: str, parent_name: str, name: str,
@@ -38684,31 +38227,18 @@ class BubbleCLI:
         # Style id is already embedded in CreateElement (%s1) when provided.
         # Avoid additional AssignStyle mutations here to keep payload native/minimal.
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created slider: '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created slider: '{name}'",
+            dry_run=dry_run,
+        )
 
     def create_file_uploader(
         self, context_name: str, parent_name: str, name: str, label: str = "Upload",
@@ -38871,22 +38401,19 @@ class BubbleCLI:
             name_value=full_body.get("%dn"),
         )
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created file uploader: '{name}'")
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[],
+            result_value=new_key,
+            success_message=f"Successfully created file uploader: '{name}'",
+            dry_run=dry_run,
+            cache_aliases=False,
+        )
 
     def create_picture_uploader(
         self, context_name: str, parent_name: str, name: str, label: str = "Upload picture",
@@ -39042,31 +38569,18 @@ class BubbleCLI:
             name_value=full_body.get("%dn"),
         )
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created picture uploader: '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created picture uploader: '{name}'",
+            dry_run=dry_run,
+        )
 
     def create_shape(
         self,
@@ -39280,36 +38794,19 @@ class BubbleCLI:
             name_value=full_body.get("%dn"),
         )
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            full_body["id"] = new_key
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created shape: '{name}'")
-            # Inject into discovery cache
-            full_body["id"] = new_key
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(full_body.get("%nm") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        full_body["id"] = new_key
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn"), full_body.get("%nm")],
+            result_value=new_key,
+            success_message=f"Successfully created shape: '{name}'",
+            dry_run=dry_run,
+        )
     def create_video(
         self,
         context_name: str,
@@ -39443,33 +38940,18 @@ class BubbleCLI:
             name_value=full_body.get("%dn"),
         )
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created video: '{name}'")
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created video: '{name}'",
+            dry_run=dry_run,
+        )
 
     def create_image(
         self, context_name: str, parent_name: str, name: str, source: str,
@@ -39677,22 +39159,19 @@ class BubbleCLI:
             if layout_key in _img_props_snapshot and _img_props_snapshot.get(layout_key) is not None:
                 pb.add_set_data(normalized_cp + ["%p", layout_key], _img_props_snapshot.get(layout_key))
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created image: '{name}'")
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[],
+            result_value=new_key,
+            success_message=f"Successfully created image: '{name}'",
+            dry_run=dry_run,
+            cache_aliases=False,
+        )
 
     def create_icon(
         self, context_name: str, parent_name: str, name: str, icon_name: str,
@@ -39783,6 +39262,7 @@ class BubbleCLI:
             full_path_str=full_path_str,
             name_value=full_body.get("%dn"),
         )
+        element_slot_key = self._resolved_created_slot_key(create_path, full_body)
         if style:
             # Include layout properties in style overrides so they aren't wiped by AssignStyle %p
             style_props = {
@@ -39845,22 +39325,30 @@ class BubbleCLI:
         if dry_run:
             logger.info(f"Creating icon: {name} ({icon_name})")
             logger.info(f"ICON PAYLOAD: {json.dumps(full_body, indent=2)}")
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # print(f" DRY RUN - Icon payload prepared for '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
+
+        finish_result = self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=element_slot_key,
+            aliases=[],
+            result_value=new_key,
+            success_message=f"Successfully created icon: '{name}'",
+            dry_run=dry_run,
+            cache_aliases=False,
+        )
+        if not finish_result or dry_run:
+            return finish_result
 
         try:
-            self._dispatch_payload(pb)
-            logger.info(f"✅ Successfully created icon: '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
             resolved_target = (
                 context_id,
                 context_type,
                 {
                     "id": new_key,
-                    "path": parent_result["path"] + ["%el", new_key],
+                    "path": parent_result["path"] + ["%el", element_slot_key],
                     "element": full_body,
                     "type": "element",
                 },
@@ -39902,8 +39390,8 @@ class BubbleCLI:
             else:
                 logger.warning(f"⚠️ Post-create icon sizing update failed for '{new_key}'")
             return new_key
-        except Exception as e:
-            logger.error(f"❌ Failed to send: {e}")
+        except Exception as exc:
+            logger.error(f"❌ Failed to send: {exc}")
             return False
 
     def create_dropdown(
@@ -40227,34 +39715,19 @@ class BubbleCLI:
                 if _prop_val is not None:
                     pb.add_set_data(_normalized_create_path + ["%p", _prop_key], _prop_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created Dropdown: '{name}' in '{parent_name}'")
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(placeholder or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            print(f"❌ Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn"), placeholder],
+            result_value=new_key,
+            success_message=f"Successfully created Dropdown: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+            error_via_print=True,
+        )
 
     def create_searchbox(
         self,
@@ -40557,32 +40030,19 @@ class BubbleCLI:
                 if _prop_val is not None:
                     pb.add_set_data(_normalized_create_path + ["%p", _prop_key], _prop_val)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created SearchBox: '{name}' in '{parent_name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(placeholder or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            print(f"❌ Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn"), placeholder],
+            result_value=new_key,
+            success_message=f"Successfully created SearchBox: '{name}' in '{parent_name}'",
+            dry_run=dry_run,
+            error_via_print=True,
+        )
 
     def create_html(
         self, context_name: str, parent_name: str, name: str, content: str,
@@ -40679,22 +40139,19 @@ class BubbleCLI:
                 style_props=self._build_alert_explicit_style_props(kwargs),
             )
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created HTML: '{name}'")
-            # Inject into discovery cache
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[],
+            result_value=new_key,
+            success_message=f"Successfully created HTML: '{name}'",
+            dry_run=dry_run,
+            cache_aliases=False,
+        )
 
     def create_link(
         self,
@@ -40939,32 +40396,18 @@ class BubbleCLI:
                 style_props=self._build_alert_explicit_style_props(kwargs),
             )
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(context_id, context_type, parent_result["id"], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created link: '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result["id"], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(label or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn"), label],
+            result_value=new_key,
+            success_message=f"Successfully created link: '{name}'",
+            dry_run=dry_run,
+        )
 
     def create_alert(
         self,
@@ -41150,32 +40593,18 @@ class BubbleCLI:
             if kwargs.get("vert_alignment") is not None and props.get("vert_alignment") is not None:
                 pb.add_set_data(normalized_cp + ["%p", "vert_alignment"], props.get("vert_alignment"))
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(context_id, context_type, parent_result["id"], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created alert: '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result["id"], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                    str(content or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn"), content],
+            result_value=new_key,
+            success_message=f"Successfully created alert: '{name}'",
+            dry_run=dry_run,
+        )
 
     def create_map(
         self,
@@ -41593,31 +41022,18 @@ class BubbleCLI:
                 }
             )
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            self.discovery.inject_element(context_id, context_type, parent_result["id"], full_body, element_key=new_key)
-            return new_key
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created map: '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result["id"], full_body, element_key=new_key)
-            self._cache_created_element_aliases(
-                context_id=context_id,
-                context_type=context_type,
-                aliases=[
-                    str(name or "").strip(),
-                    str(full_body.get("%dn") or "").strip(),
-                ],
-                element_id=str(full_body.get("id") or ""),
-                element_key=new_key,
-                parent_path=list(parent_result.get("path") or []),
-            )
-            return new_key
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=new_key,
+            aliases=[name, full_body.get("%dn")],
+            result_value=new_key,
+            success_message=f"Successfully created map: '{name}'",
+            dry_run=dry_run,
+        )
 
     def build_source_query_json(
         self,
