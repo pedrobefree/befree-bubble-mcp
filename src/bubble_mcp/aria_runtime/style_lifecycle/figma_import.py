@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+from stat import S_ISREG
 from typing import Any, Callable, Mapping, cast
 
 try:
@@ -139,15 +140,18 @@ class FigmaTokenImportService:
     def load_document(self, tokens_path: str | Path) -> dict[str, Any]:
         path = Path(tokens_path).expanduser()
         try:
-            size = path.stat().st_size
+            file_stat = path.stat()
         except OSError as exc:
             raise ValueError(f"Unable to read Figma token JSON: {exc}") from exc
-        if size > self._max_json_bytes:
+        if not S_ISREG(file_stat.st_mode):
+            raise ValueError("Figma token JSON must be a regular file.")
+        if file_stat.st_size > self._max_json_bytes:
             raise ValueError(
                 f"Figma token JSON exceeds maximum size of {self._max_json_bytes} bytes."
             )
         try:
-            raw_bytes = path.read_bytes()
+            with path.open("rb") as stream:
+                raw_bytes = stream.read(self._max_json_bytes + 1)
             if len(raw_bytes) > self._max_json_bytes:
                 raise ValueError(
                     f"Figma token JSON exceeds maximum size of {self._max_json_bytes} bytes."
@@ -297,7 +301,10 @@ class FigmaTokenImportService:
                     errors=(f"{phase}: {exc}",),
                     warnings=tuple(warnings),
                 )
-            applied[phase] = len(cache_updates) if phase == "fonts" else len(builder.changes)
+            if phase == "fonts":
+                applied[phase] = len(cache_updates)
+            else:
+                applied[phase] = len(plan.default_color_updates) + len(cache_updates)
             for token_id, entry in cache_updates:
                 try:
                     self._host.put_style_token_cache(cache_kind, token_id, entry)

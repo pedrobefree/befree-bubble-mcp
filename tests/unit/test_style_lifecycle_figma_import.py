@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from io import BytesIO
 import json
 from pathlib import Path
 from typing import Any
@@ -258,16 +259,37 @@ def test_bounded_loader_rejects_missing_growing_and_node_heavy_documents(
 
     growing = tmp_path / "growing.json"
     growing.write_text("{}", encoding="utf-8")
-    original_read_bytes = Path.read_bytes
-    monkeypatch.setattr(Path, "read_bytes", lambda self: b"{" + b" " * 40 + b"}")
+    read_sizes: list[int] = []
+
+    class GrowingStream(BytesIO):
+        def read(self, size: int = -1) -> bytes:
+            read_sizes.append(size)
+            if size != 33:
+                raise AssertionError("Figma token reads must be capped at max_json_bytes + 1")
+            return super().read(size)
+
+    monkeypatch.setattr(
+        Path,
+        "open",
+        lambda _self, *args, **kwargs: GrowingStream(b"{" + b" " * 40 + b"}"),
+    )
     with pytest.raises(ValueError, match="maximum size"):
         service.load_document(growing)
-    monkeypatch.setattr(Path, "read_bytes", original_read_bytes)
+    assert read_sizes == [33]
+    monkeypatch.undo()
 
     node_heavy = tmp_path / "nodes.json"
     node_heavy.write_text(json.dumps({"a": [1, 2, 3]}), encoding="utf-8")
     with pytest.raises(ValueError, match="maximum node count"):
         service.load_document(node_heavy)
+
+
+def test_bounded_loader_rejects_non_regular_inputs(tmp_path: Path) -> None:
+    token_directory = tmp_path / "tokens-directory"
+    token_directory.mkdir()
+
+    with pytest.raises(ValueError, match="regular file"):
+        _service(_host()).load_document(token_directory)
 
 
 def test_bounded_loader_extracts_valid_bridge_content(tmp_path: Path) -> None:
@@ -404,6 +426,57 @@ def test_partial_failure_reports_applied_counts_and_stops_later_phases(tmp_path:
     assert result.applied_counts == {"fonts": 1, "colors": 0, "styles": 0}
     assert result.errors == ("colors: literal colors failure",)
     assert not any(event[0] == "style" for event in host.events)
+
+
+def test_later_style_failure_reports_each_applied_custom_color_mutation(tmp_path: Path) -> None:
+    token_path = tmp_path / "multiple-custom-colors.json"
+    token_path.write_text(
+        json.dumps(
+            {
+                "color": {
+                    "brand": {
+                        "100": {"type": "color", "value": "#111111"},
+                        "200": {"type": "color", "value": "#222222"},
+                        "300": {"type": "color", "value": "#333333"},
+                    }
+                },
+                "typography": {
+                    "body": {
+                        "type": "typography",
+                        "value": {"fontFamily": "Inter", "fontSize": 16},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    config_path = tmp_path / "multiple-custom-colors-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "filters": {
+                    "include_color_paths": ["color.*"],
+                    "include_typography_paths": ["typography.*"],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    host = _host()
+    host.fail_phase = "styles"
+
+    result = _service(host).sync(
+        token_path,
+        config_path=str(config_path),
+        types="color,style",
+    )
+
+    assert result.ok is False
+    assert result.counts.created == 3
+    assert result.applied_counts == {"fonts": 0, "colors": 3, "styles": 0}
+    color_dispatches = [event for event in host.events if event[0:2] == ("dispatch", "colors")]
+    assert len(color_dispatches) == 1
+    assert result.errors == ("styles[0] Body: style definition returned false",)
 
 
 def test_planning_cache_and_style_failures_are_structured(tmp_path: Path) -> None:

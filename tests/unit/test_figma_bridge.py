@@ -440,6 +440,84 @@ def test_figma_bridge_captures_structured_token_dry_run_plan_and_context(tmp_pat
     }
 
 
+def test_figma_bridge_execute_uses_requested_version_in_structured_token_plan(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    _configure_smoke_profile(tmp_path, monkeypatch)
+
+    class FakePayloadBuilder:
+        def send_to_webhook(self, _url):
+            return {"ok": True}
+
+    class FakeBubbleSdk:
+        PayloadBuilder = FakePayloadBuilder
+
+    class FakeBubbleCliModule:
+        inquirer = None
+
+        class BubbleCLI:
+            def __init__(self, app_version="test", **_kwargs):
+                self.app_version = app_version
+                self._last_figma_token_sync_result = None
+
+            def sync_figma_tokens(self, *_args, **_kwargs):
+                self._last_figma_token_sync_result = {
+                    "ok": True,
+                    "dry_run": False,
+                    "counts": {"fonts": 0, "created": 1, "updated": 0, "skipped": 0, "styles": 0},
+                    "applied_counts": {"fonts": 0, "colors": 1, "styles": 0},
+                    "payloads": [
+                        {
+                            "phase": "colors",
+                            "payload": {
+                                "v": 1,
+                                "appname": "synthetic-app",
+                                "app_version": self.app_version,
+                                "changes": [],
+                            },
+                        }
+                    ],
+                    "errors": [],
+                    "warnings": [],
+                }
+                return True
+
+    monkeypatch.setattr(
+        "bubble_mcp.figma_bridge._load_aria_runtime_modules",
+        lambda: (FakeBubbleCliModule, FakeBubbleSdk),
+    )
+    monkeypatch.setattr(
+        "bubble_mcp.figma_bridge.detect_project_context",
+        lambda **_kwargs: SimpleNamespace(
+            context_path=tmp_path / "config" / "contexts" / "smoke" / "synthetic-app-context.json"
+        ),
+    )
+    payload_path = tmp_path / "tokens-execute.json"
+    payload_path.write_text(
+        json.dumps(
+            {
+                "action": "sync_tokens",
+                "meta": {
+                    "profile": "smoke",
+                    "app_version": "version-stage",
+                    "dry_run": False,
+                    "sync_type": "tokens",
+                },
+                "content": {"color": {}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = sync_bridge_payload_file(payload_path)
+
+    assert result["ok"] is True
+    assert result["executed"] is True
+    assert result["token_sync"]["payloads"][0]["payload"]["app_version"] == "version-stage"
+    assert result["token_plan"][0]["payload"]["app_version"] == "version-stage"
+
+
 def test_figma_bridge_prunes_stale_style_cli_cache(tmp_path) -> None:
     bubble_file = tmp_path / "app.bubble"
     bubble_file.write_text(

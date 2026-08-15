@@ -180,3 +180,81 @@ tests/unit/test_style_lifecycle_figma_import.py:353: assertion literal only
 - The directory-form mypy command does not inspect `aria_runtime` under the current repository exclusion; the explicit eight-file equivalent is green.
 - Full Figma bridge extraction remains intentionally out of scope for 4.5d; this phase adds only the structured capture required by the existing bridge.
 - GitHub push and pull-request CI runs `31897805977` and `31897825272` are infrastructure-blocked: each `test` job completed after roughly three seconds with an empty `steps` array. No CI test step ran; the local 1,478-test suite is green.
+
+## Fix round 1 — Important findings
+
+Four review findings were verified against repository behavior and addressed with failing regressions before production changes:
+
+1. The second size check used `Path.read_bytes()` after `stat`, so a file that grew could cause an unbounded read. The loader now rejects non-regular inputs and reads exactly `max_json_bytes + 1` bytes before rejecting surplus input.
+2. The Figma bridge omitted the resolved `app_version` when constructing `BubbleCLI`, so execute-mode structured plans could retain the constructor default `test`. The resolved bridge version is now passed at construction.
+3. Direct MCP previews returned before any payload-builder capture, leaving the existing `compiled=false`, `write_count=0`, and empty `results`. The dispatcher now adds `figma_import.result` and `figma_import.plan` without changing those existing fields. The safe `figma_import` container name ensures the real MCP response is not replaced by generic secret-key redaction for keys containing `token`.
+4. Applied color progress counted payload changes, where one grouped custom-color map represents multiple logical mutations. It now counts default-color updates plus custom cache updates, so a later style failure reports every successful color mutation.
+
+### RED
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest -q tests/unit/test_style_lifecycle_figma_import.py::test_bounded_loader_rejects_missing_growing_and_node_heavy_documents tests/unit/test_style_lifecycle_figma_import.py::test_bounded_loader_rejects_non_regular_inputs tests/unit/test_style_lifecycle_figma_import.py::test_later_style_failure_reports_each_applied_custom_color_mutation tests/unit/test_figma_bridge.py::test_figma_bridge_execute_uses_requested_version_in_structured_token_plan tests/unit/test_mcp_server.py::test_sync_figma_tokens_tools_call_preview_exposes_structured_plan_additively
+5 failed in 0.62s
+```
+
+The failures were literal: the stream observed `read(-1)` instead of capped `read(33)`; a directory reached the JSON error path; three applied custom colors were reported as one; the execute bridge plan contained `test` instead of `version-stage`; and the real `tools/call` preview had no additive structured import result.
+
+### GREEN
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest -q tests/unit/test_style_lifecycle_figma_import.py::test_bounded_loader_rejects_missing_growing_and_node_heavy_documents tests/unit/test_style_lifecycle_figma_import.py::test_bounded_loader_rejects_non_regular_inputs tests/unit/test_style_lifecycle_figma_import.py::test_later_style_failure_reports_each_applied_custom_color_mutation tests/unit/test_figma_bridge.py::test_figma_bridge_execute_uses_requested_version_in_structured_token_plan tests/unit/test_mcp_server.py::test_sync_figma_tokens_tools_call_preview_exposes_structured_plan_additively
+5 passed in 0.44s
+```
+
+### Fix-round verification
+
+Exact Stage 4.5d gate:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_audit.py -q --tb=short
+190 passed in 7.68s
+```
+
+Coverage:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m coverage erase
+rtk env PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py -q
+185 passed in 15.81s
+
+rtk env PYTHONPATH=src ./.venv/bin/python -m coverage report --include='src/bubble_mcp/aria_runtime/style_lifecycle/figma_import.py' --fail-under=95
+figma_import.py: 408 statements, 2 missed, 140 branches, 5 partial, 98.7%
+```
+
+Focused Ruff:
+
+```text
+rtk ./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle/figma_import.py src/bubble_mcp/figma_bridge.py src/bubble_mcp/aria_dispatch.py tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py
+All checks passed!
+```
+
+Explicit mypy:
+
+```text
+rtk ./.venv/bin/mypy src/bubble_mcp/aria_dispatch.py src/bubble_mcp/aria_runtime/style_lifecycle/__init__.py src/bubble_mcp/aria_runtime/style_lifecycle/protocols.py src/bubble_mcp/aria_runtime/style_lifecycle/service.py src/bubble_mcp/aria_runtime/style_lifecycle/figma_import.py src/bubble_mcp/aria_runtime/style_lifecycle/colors.py src/bubble_mcp/aria_runtime/style_lifecycle/fonts.py src/bubble_mcp/aria_runtime/style_lifecycle/assignments.py src/bubble_mcp/aria_runtime/style_lifecycle/references.py
+Success: no issues found in 9 source files
+```
+
+Catalog and tool contracts:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python scripts/audit_cli_catalog.py
+cli_command_count: 207; alias_count: 1; missing_count: 0; ok: true
+
+MCP tool-count probe: 327
+```
+
+Full suite and diff hygiene:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest -q --tb=short --disable-warnings
+1482 passed in 19.82s
+
+rtk git diff --check
+(no output; exit 0)
+```

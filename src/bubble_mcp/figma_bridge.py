@@ -396,6 +396,7 @@ def _sync_component_with_aria_runtime(
                 appname=app_id,
                 webhook_url="local://bubble-mcp",
                 profile_name=profile,
+                app_version=app_version,
             )
             bridge_file = str(_current_bridge_payload_path(payload))
             if is_token_sync:
