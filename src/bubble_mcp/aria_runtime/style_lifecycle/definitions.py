@@ -548,7 +548,7 @@ class StyleDefinitionService:
             ):
                 normalized["shadow_style"] = "none"
         default_style = bool(normalized.pop("default_style", False))
-        if not self._remove_stale_cache_aliases(name, element_type):
+        if not dry_run and not self._remove_stale_cache_aliases(name, element_type):
             return False
         expected_id = self._references.canonical_style_id(name, element_type)
         if not expected_id:
@@ -663,7 +663,7 @@ class StyleDefinitionService:
             return False
         normalized = self._resolve_color_kwargs(self.normalize_kwargs(raw_properties))
         default_style = bool(normalized.pop("default_style", False))
-        if not self._remove_stale_cache_aliases(name, element_type):
+        if not dry_run and not self._remove_stale_cache_aliases(name, element_type):
             return False
         style_id = str(style_id_override or "").strip() or self._find_update_style_id(name, element_type)
         if not style_id:
@@ -1114,7 +1114,7 @@ class StyleDefinitionService:
         element_type: str,
         expected_id: str,
     ) -> dict[str, Any] | None:
-        candidates = self._style_candidates()
+        candidates = self._style_candidates(current_only=True)
         legacy: dict[str, Any] | None = None
         for candidate in candidates:
             if str(candidate.get("name") or "").casefold() != str(name).casefold():
@@ -1179,7 +1179,7 @@ class StyleDefinitionService:
         return None
 
     def _find_update_style_id(self, name: str, element_type: str) -> str:
-        candidates = self._style_candidates()
+        candidates = self._style_candidates(current_only=True)
         legacy = ""
         for candidate in candidates:
             if str(candidate.get("name") or "").casefold() != str(name).casefold():
@@ -1198,7 +1198,7 @@ class StyleDefinitionService:
                 return name
         return ""
 
-    def _style_candidates(self) -> list[dict[str, Any]]:
+    def _style_candidates(self, *, current_only: bool = False) -> list[dict[str, Any]]:
         discovery, cache = self._host.style_reference_snapshots()
         raw_styles = discovery.get("styles") if isinstance(discovery, dict) else None
         raw_styles = raw_styles if isinstance(raw_styles, dict) else {}
@@ -1253,8 +1253,11 @@ class StyleDefinitionService:
             for name, raw in cached_styles.items():
                 if not isinstance(raw, dict):
                     continue
+                cached_id = str(raw.get("id") or "")
+                if current_only and cached_id not in raw_styles:
+                    continue
                 merge_candidate(
-                    str(raw.get("id") or ""),
+                    cached_id,
                     str(name),
                     raw.get("type") or raw.get("%x") or "",
                     is_default=bool(raw.get("is_default")),

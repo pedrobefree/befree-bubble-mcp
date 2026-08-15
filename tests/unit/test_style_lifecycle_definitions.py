@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import re
 from typing import Any
 
@@ -945,6 +946,52 @@ def test_update_rejects_and_removes_stale_cache_only_style() -> None:
     assert host.dispatches == []
     assert host.cache == {"styles": {}}
     assert [event[0] for event in host.events] == ["cache-remove", "cache-save"]
+
+
+def test_create_dry_run_ignores_stale_alias_without_persisting_cache_cleanup() -> None:
+    host = _Host()
+    host.cache["styles"]["Body"] = {
+        "id": "Text_body_",
+        "type": "Text",
+        "%p": {"%fs": 12},
+    }
+    cache_before = json.dumps(host.cache, separators=(",", ":")).encode()
+
+    assert _service(host).create_style(
+        "Body",
+        "Text",
+        dry_run=True,
+        allow_property_match=False,
+        font_size=18,
+    ) is True
+
+    assert json.dumps(host.cache, separators=(",", ":")).encode() == cache_before
+    assert host.dispatches == []
+    assert host.events == [
+        ("hydrate", "Text_body_", {}),
+        ("hydrate", "Text_body_", {"%fs": 18}),
+    ]
+
+
+def test_update_dry_run_ignores_stale_alias_without_persisting_cache_cleanup() -> None:
+    host = _Host()
+    host.cache["styles"]["Body"] = {
+        "id": "Text_body_",
+        "type": "Text",
+        "%p": {"%fs": 12},
+    }
+    cache_before = json.dumps(host.cache, separators=(",", ":")).encode()
+
+    assert _service(host).update_style_definition(
+        "Body",
+        "Text",
+        dry_run=True,
+        font_size=18,
+    ) is False
+
+    assert json.dumps(host.cache, separators=(",", ":")).encode() == cache_before
+    assert host.dispatches == []
+    assert host.events == []
 
 
 @pytest.mark.parametrize("operation", ["create", "update"])
