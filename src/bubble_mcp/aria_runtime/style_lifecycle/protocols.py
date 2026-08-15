@@ -21,3 +21,7 @@ class StyleReferenceHost(Protocol):
     def compact_style_reference(self, value: Any) -> str: ...
 
     def plain_style_reference_text(self, value: Any) -> str: ...
+
+
+class StyleAssignmentHost(StyleReferenceHost, Protocol):
+    """Read-only snapshots required by assignment and override policy."""

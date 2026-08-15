@@ -12727,6 +12727,9 @@ class BubbleCLI:
 
         # Resolve Style ID
         final_style = self.find_style_id_by_name(new_style)
+        if final_style is None:
+            logger.error(f"Style '{new_style}' could not be resolved; no update was emitted.")
+            return False
 
         # Build Payload
         pb = PayloadBuilder(appname=self.appname)
@@ -13486,104 +13489,10 @@ class BubbleCLI:
         target_style_id: Optional[str] = None,
     ) -> List[str]:
         """Collect style-driven property keys for a given element type."""
-        normalized_type = self._normalize_element_type_token(element_type)
-        if not normalized_type:
-            return []
-
-        keys: List[str] = []
-        seen: set = set()
-
-        def _add_key(key: Any) -> None:
-            key_str = str(key or "").strip()
-            if not key_str or key_str in {"%s1", "style"}:
-                return
-            if key_str in seen:
-                return
-            seen.add(key_str)
-            keys.append(key_str)
-
-        # Baseline visual/style keys used across style-capable elements.
-        for key in self._alert_style_override_keys():
-            _add_key(key)
-
-        def _collect_from_style_obj(style_obj: Dict[str, Any]) -> None:
-            if not isinstance(style_obj, dict):
-                return
-            style_type = str(style_obj.get("%x") or style_obj.get("type") or "").strip()
-            if self._normalize_element_type_token(style_type) != normalized_type:
-                return
-            style_props = style_obj.get("%p")
-            if isinstance(style_props, dict):
-                for style_key in style_props.keys():
-                    _add_key(style_key)
-
-        styles_data = self.discovery.data.get("styles", {}) if isinstance(self.discovery.data, dict) else {}
-        if isinstance(styles_data, dict):
-            for style_obj in styles_data.values():
-                _collect_from_style_obj(style_obj)
-
-        cached_styles = self._cli_cache.get("styles", {}) if isinstance(self._cli_cache, dict) else {}
-        if isinstance(cached_styles, dict):
-            for style_obj in cached_styles.values():
-                _collect_from_style_obj(style_obj)
-
-        if target_style_id:
-            target_style_props = self._get_base_style_props(str(target_style_id))
-            if isinstance(target_style_props, dict):
-                for style_key in target_style_props.keys():
-                    _add_key(style_key)
-
-        if normalized_type == "repeatinggroup":
-            for key in ("%ss", "%sw", "%sc", "separator_style", "separator_width", "separator_color"):
-                _add_key(key)
-
-        # Clear both compressed and expanded aliases to prevent stale overrides.
-        alias_map: Dict[str, List[str]] = {
-            "%bas": ["background_style", "bg_style"],
-            "%bgc": ["background_color", "bg_color", "bgcolor"],
-            "%bgi": ["background_image", "bg_image"],
-            "%bgf": ["background_gradient_color1", "gradient_color1"],
-            "%bgt": ["background_gradient_color2", "gradient_color2"],
-            "%bgd": ["background_gradient_style", "gradient_style"],
-            "%bgp": ["background_repeat"],
-            "%cb": ["center_background"],
-            "%rbv": ["repeat_background_vertical"],
-            "%rbh": ["repeat_background_horizontal"],
-            "%bc": ["border_color"],
-            "%bw": ["border_width"],
-            "%bos": ["border_style"],
-            "%br": ["border_roundness", "border_radius"],
-            "%bs": ["shadow_style"],
-            "%bh": ["shadow_h"],
-            "%bv": ["shadow_v"],
-            "%bsb": ["shadow_blur"],
-            "%bsp": ["shadow_spread"],
-            "%bsc": ["shadow_color"],
-            "%fa": ["font_alignment"],
-            "%fs": ["font_size"],
-            "%fc": ["font_color"],
-            "%lh": ["line_height"],
-            "%ls": ["letter_spacing"],
-            "%ws": ["word_spacing"],
-            "%ss": ["separator_style"],
-            "%sw": ["separator_width"],
-            "%sc": ["separator_color"],
-            "padding_top": ["pt"],
-            "padding_bottom": ["pb"],
-            "padding_left": ["pl"],
-            "padding_right": ["pr"],
-            "greyout_color": ["grayout_color"],
-            "greyout_blur": ["grayout_blur"],
-        }
-        for canonical_key, aliases in alias_map.items():
-            canonical_present = canonical_key in seen
-            alias_present = any(alias in seen for alias in aliases)
-            if canonical_present or alias_present:
-                _add_key(canonical_key)
-                for alias_key in aliases:
-                    _add_key(alias_key)
-
-        return keys
+        return self._style_lifecycle.assignments.overrides.override_keys(
+            element_type,
+            target_style_id=target_style_id,
+        )
 
     def _infer_element_type_from_style_id(self, style_id: Optional[str]) -> Optional[str]:
         """Best-effort style-to-element-type resolution through the lifecycle boundary."""
@@ -13631,20 +13540,12 @@ class BubbleCLI:
 
         return None
 
-    @staticmethod
-    def _style_marker_prop_keys() -> List[str]:
+    def _style_marker_prop_keys(self) -> List[str]:
         """
         `%p` keys that can keep Bubble's "style overridden" state sticky
         even after visual keys are reset.
         """
-        return [
-            "%s1",
-            "style",
-            "style_id",
-            "style_name",
-            "style_ref",
-            "style_reference",
-        ]
+        return self._style_lifecycle.assignments.overrides.marker_keys()
 
     def _queue_clear_style_marker_props(
         self,
@@ -13655,19 +13556,12 @@ class BubbleCLI:
         extra_keys: Optional[List[str]] = None,
     ) -> None:
         """Clear style marker aliases stored under `%p` before assigning a new style."""
-        if not isinstance(pb, PayloadBuilder):
-            return
-        blocked = {str(k) for k in (prop_updates or {}).keys()}
-        keys: List[str] = list(self._style_marker_prop_keys())
-        if isinstance(extra_keys, list):
-            keys.extend(str(k) for k in extra_keys if str(k).strip())
-        seen: set[str] = set()
-        for key in keys:
-            key_str = str(key or "").strip()
-            if not key_str or key_str in seen or key_str in blocked:
-                continue
-            seen.add(key_str)
-            pb.add_set_data(element_path + ["%p", key_str], None)
+        self._style_lifecycle.assignments.clear_markers(
+            pb,
+            element_path,
+            prop_updates=prop_updates,
+            extra_keys=extra_keys,
+        )
 
     def _prune_style_redundant_prop_updates(
         self,
@@ -13680,93 +13574,11 @@ class BubbleCLI:
         Remove style-driven prop updates that are equivalent to the target style.
         This avoids sticky "(overridden)" tags when callers pass style-default values.
         """
-        if not isinstance(prop_updates, dict):
-            return
-        resolved_style = str(style_id or "").strip()
-        if not resolved_style:
-            return
-
-        style_props = self._get_base_style_props(resolved_style)
-        style_props = style_props if isinstance(style_props, dict) else {}
-        style_override_keys = set(
-            self._style_override_keys_for_element_type(element_type, target_style_id=resolved_style)
+        self._style_lifecycle.assignments.overrides.prune(
+            prop_updates,
+            element_type=element_type,
+            style_id=style_id,
         )
-        if not style_override_keys:
-            return
-
-        # Bubble defaults these style-driven booleans to false when absent in style %p.
-        default_false_style_keys = {
-            "crop_responsive",
-            "background_size_cover",
-            "center_background",
-            "repeat_background_vertical",
-            "repeat_background_horizontal",
-            "%cb",
-            "%rbv",
-            "%rbh",
-        }
-
-        # Canonical/alias equivalence for value comparison.
-        alias_groups: Dict[str, Tuple[str, ...]] = {
-            "%cb": ("%cb", "center_background"),
-            "%rbv": ("%rbv", "repeat_background_vertical"),
-            "%rbh": ("%rbh", "repeat_background_horizontal"),
-            "center_background": ("%cb", "center_background"),
-            "repeat_background_vertical": ("%rbv", "repeat_background_vertical"),
-            "repeat_background_horizontal": ("%rbh", "repeat_background_horizontal"),
-            "%bas": ("%bas", "background_style", "bg_style"),
-            "%bgc": ("%bgc", "background_color", "bg_color"),
-            "%bgi": ("%bgi", "background_image", "bg_image"),
-            "%bos": ("%bos", "border_style"),
-            "%bw": ("%bw", "border_width"),
-            "%bc": ("%bc", "border_color"),
-            "%br": ("%br", "border_roundness", "border_radius"),
-            "%bs": ("%bs", "shadow_style"),
-            "%bh": ("%bh", "shadow_h"),
-            "%bv": ("%bv", "shadow_v"),
-            "%bsb": ("%bsb", "shadow_blur"),
-            "%bsp": ("%bsp", "shadow_spread"),
-            "%bsc": ("%bsc", "shadow_color"),
-            "%fa": ("%fa", "font_alignment"),
-            "%fs": ("%fs", "font_size"),
-            "%fc": ("%fc", "font_color"),
-            "%lh": ("%lh", "line_height"),
-            "%ls": ("%ls", "letter_spacing"),
-            "%ws": ("%ws", "word_spacing"),
-            "padding_top": ("padding_top", "pt"),
-            "padding_bottom": ("padding_bottom", "pb"),
-            "padding_left": ("padding_left", "pl"),
-            "padding_right": ("padding_right", "pr"),
-        }
-
-        removed: List[str] = []
-        for key in list(prop_updates.keys()):
-            key_str = str(key or "").strip()
-            if not key_str or key_str not in style_override_keys:
-                continue
-            value = prop_updates.get(key)
-
-            aliases = alias_groups.get(key_str, (key_str,))
-            style_match_found = False
-            for alias in aliases:
-                if alias in style_props and style_props.get(alias) == value:
-                    style_match_found = True
-                    break
-            if style_match_found:
-                prop_updates.pop(key, None)
-                removed.append(key_str)
-                continue
-
-            if key_str in default_false_style_keys and value is False:
-                if not any(alias in style_props for alias in aliases):
-                    prop_updates.pop(key, None)
-                    removed.append(key_str)
-
-        if removed:
-            logger.info(
-                "Pruned redundant style overrides (matching target style/defaults): "
-                + ", ".join(sorted(set(removed)))
-            )
 
     def _apply_element_updates(
         self,
@@ -21102,49 +20914,10 @@ class BubbleCLI:
                 style_element_type,
                 target_style_id=style_value,
             )
-            group_protected_non_style_keys: set[str] = set()
-            if style_element_type in {"Group", "FloatingGroup", "GroupFocus"}:
-                # Do not clear instance/behavior/data/layout keys while applying style.
-                # Everything else from style-derived override keys is fair game.
-                group_protected_non_style_keys = {
-                    # Data binding / identity
-                    "%gt",
-                    "%ds",
-                    "unique_id",
-                    # Visibility / behavior
-                    "%iv",
-                    "collapse_when_hidden",
-                    "button_disabled",
-                    # Layout mode and floating placement
-                    "container_layout",
-                    "%3f",
-                    "floating_reference_horizontal_resp",
-                    "%b4",
-                    "float_zindex",
-                    "parallax",
-                    # Dimensions (explicit element sizing should not be reset by style hydration)
-                    "%w",
-                    "%h",
-                    "min_width_css",
-                    "max_width_css",
-                    "min_height_css",
-                    "max_height_css",
-                    "single_width",
-                    "single_height",
-                    "fit_width",
-                    "fit_height",
-                    # Positioning (instance-level, not style)
-                    "%t",
-                    "%l",
-                    "margin_top",
-                    "margin_right",
-                    "margin_bottom",
-                    "margin_left",
-                    # GroupFocus anchor / offsets are instance-level.
-                    "reference",
-                    "offset_top",
-                    "offset_left",
-                }
+            group_protected_non_style_keys = (
+                self._style_lifecycle.assignments.overrides.protected_keys(style_element_type)
+            )
+            if group_protected_non_style_keys:
                 effective_clear_keys = [
                     k for k in effective_clear_keys
                     if str(k) not in group_protected_non_style_keys
@@ -23188,29 +22961,11 @@ class BubbleCLI:
                 # Remove style-driven keys from the current element snapshot so
                 # AssignStyle(%p) does not preserve stale visual overrides.
                 if current_props:
-                    structural_keys = {
-                        "%ds",
-                        "%v",
-                        "%gt",
-                        "container_layout",
-                        "%rs",
-                        "%c5",
-                        "%w",
-                        "%h",
-                        "min_width_css",
-                        "max_width_css",
-                        "min_height_css",
-                        "max_height_css",
-                        "fixed_rows",
-                        "fixed_columns",
-                        "show_all_items",
-                        "scroll_direction",
-                        "row_gap",
-                        "row_cell_gap",
-                        "column_cell_gap",
-                        "cell_min_width_css",
-                        "cell_min_height_css",
-                    }
+                    structural_keys = (
+                        self._style_lifecycle.assignments.overrides.protected_keys(
+                            "RepeatingGroup"
+                        )
+                    )
                     has_structural_context = any(
                         str(existing_key) in structural_keys for existing_key in current_props.keys()
                     )
@@ -23311,6 +23066,9 @@ class BubbleCLI:
 
         from_style_id = self.find_style_id_by_name(from_style)
         to_style_id = self.find_style_id_by_name(to_style)
+        if to_style_id is None:
+            logger.error(f"Style '{to_style}' could not be resolved; no update was emitted.")
+            return False
 
         elements = self.discovery.list_elements(context_id, context_type=context_type)
         if not elements:
@@ -24915,45 +24673,13 @@ class BubbleCLI:
         include_set_data: bool = True,
     ) -> None:
         """Queue robust style assignment intents for created elements."""
-        if not isinstance(pb, PayloadBuilder):
-            return
-        resolved_style = str(style_id or "").strip()
-        if not resolved_style:
-            return
-
-        # Optional wire-level assignment.
-        if include_set_data:
-            pb.add_set_data(element_path + ["%s1"], resolved_style)
-
-        # Keep AssignStyle for parity with editor-originated payloads.
-        intent_id = random.randint(1, 999999)
-        normalized_props: Optional[Dict[str, Any]] = None
-        if isinstance(style_props, dict):
-            normalized_props = {k: v for k, v in style_props.items() if v is not None}
-
-        pb.changes.append(
-            {
-                "intent": {"name": "AssignStyle", "id": intent_id, "source_appname": ""},
-                "path_array": element_path + ["%s1"],
-                "body": resolved_style,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.id_gen.session_id(),
-            }
+        self._style_lifecycle.assignments.assign(
+            pb,
+            element_path,
+            style_id,
+            style_props=style_props,
+            include_set_data=include_set_data,
         )
-
-        # Bubble often expects a follow-up AssignStyle at %p carrying current overrides.
-        if normalized_props is not None:
-            pb.changes.append(
-                {
-                    "intent": {"name": "AssignStyle", "id": intent_id, "source_appname": ""},
-                    "path_array": element_path + ["%p"],
-                    "body": normalized_props,
-                    "version_control_api_version": 4,
-                    "changelog_data": [],
-                    "session_id": pb.id_gen.session_id(),
-                }
-            )
 
     def _resolved_created_slot_key(
         self,
@@ -24993,20 +24719,10 @@ class BubbleCLI:
         include_set_data: bool = True,
     ) -> None:
         """Clear a style reference so the element ends truly custom in Bubble."""
-        if not isinstance(pb, PayloadBuilder):
-            return
-        if include_set_data:
-            pb.add_set_data(element_path + ["%s1"], None)
-        intent_id = random.randint(1, 999999)
-        pb.changes.append(
-            {
-                "intent": {"name": "AssignStyle", "id": intent_id, "source_appname": ""},
-                "path_array": element_path + ["%s1"],
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": pb.id_gen.session_id(),
-            }
+        self._style_lifecycle.assignments.clear(
+            pb,
+            element_path,
+            include_set_data=include_set_data,
         )
 
     def _build_alert_explicit_style_props(self, raw_kwargs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -25107,42 +24823,9 @@ class BubbleCLI:
 
         return overrides if overrides else None
 
-    @staticmethod
-    def _alert_style_override_keys() -> List[str]:
+    def _alert_style_override_keys(self) -> List[str]:
         """Alert properties that commonly flag style as overridden when retained on the element."""
-        return [
-            # Typography + text shadow
-            "opacity", "font_family", "font_weight", "%fs", "font_size", "%fa", "font_alignment",
-            "%b", "bold", "%i", "italic", "%u", "underline",
-            "%fc", "font_color", "%ws", "%lh", "%ls",
-            "%vc", "%tes", "%tsh", "%tsv", "%tsb", "%tsc",
-            # Background / gradients
-            "%bas", "%bgc", "%bgi", "background_color_if_empty_image", "%bgf", "%bgt", "background_gradient_mid",
-            "%bgd", "background_gradient_style", "%b4", "%bga",
-            "%bgp", "background_repeat",
-            "%cb", "%rbv", "%rbh",
-            "center_background", "repeat_background_vertical", "repeat_background_horizontal",
-            "crop_responsive", "background_size_cover",
-            "background_radial_gradient_shape", "background_radial_gradient_size",
-            "background_radial_gradient_xpos", "background_radial_gradient_ypos",
-            # Border (shared + independent)
-            "four_border_style", "%bos", "%bw", "%bc", "%br", "border_roundness",
-            "border_roundness_top", "border_roundness_right", "border_roundness_bottom", "border_roundness_left",
-            "border_style_top", "border_style_bottom", "border_style_left", "border_style_right",
-            "border_width_top", "border_width_bottom", "border_width_left", "border_width_right",
-            "border_color_top", "border_color_bottom", "border_color_left", "border_color_right",
-            # Shadow
-            "%bs", "%bh", "%bv", "%bsb", "%bsp", "%bsc", "boxshadow_enable",
-            # Style-driven padding
-            "padding_top", "padding_bottom", "padding_left", "padding_right",
-            # Group/Popup spacing style key
-            "button_gap",
-            # Other style-driven visual fields used by some element types.
-            "icon_size", "tag_type",
-            # Popup-specific style fields
-            "greyout_color", "grayout_color", "greyout_blur", "grayout_blur",
-            "prevent_user_from_closing_through_esc",
-        ]
+        return self._style_lifecycle.assignments.overrides.base_override_keys()
 
     def set_default_style(self, element_type: str, style_id: str, dry_run: bool = False) -> bool:
         """Sets a style as the default for its element type."""
@@ -30086,9 +29769,15 @@ class BubbleCLI:
 
                 popup_has_style_overrides = False
                 carry_props: Dict[str, Any] = {}
+                protected_non_style_keys = (
+                    self._style_lifecycle.assignments.overrides.protected_keys("Popup")
+                )
                 for existing_key, existing_value in current_popup_props.items():
                     key_str = str(existing_key or "").strip()
                     if not key_str:
+                        continue
+                    if key_str in protected_non_style_keys:
+                        carry_props[key_str] = existing_value
                         continue
                     looks_style_key = (
                         key_str in style_override_key_set
@@ -33409,218 +33098,12 @@ class BubbleCLI:
         Removes properties from a dictionary if they exactly match the default values in the assigned style.
         This prevents unnecessary 'style overrides' in Bubble.
         """
-        if not style_id or not isinstance(self.discovery.data, dict):
-            return
-
-        style_obj = self.discovery.data.get("styles", {}).get(style_id)
-        if not style_obj or not isinstance(style_obj, dict):
-            return
-
-        style_p = style_obj.get("%p", {})
-        if not isinstance(style_p, dict):
-            return
-
-        # Mapping between SDK property names (keys often used in ElementBuilder/kwargs)
-        # and Bubble's internal compressed keys used in styles.
-        _KEY_MAP = {
-            # Background
-            "bg_color": "%bgc",
-            "background_color": "%bgc",
-            "background_style": "%bas",
-            "bg_style": "%bas",
-
-            # Border
-            "border_radius": "%br",
-            "border_roundness": "%br",
-            "border_width": "%bw",
-            "border_color": "%bc",
-            "border_style": "%bos",
-
-            # Independent Borders
-            "border_style_top": "border_style_top",
-            "border_style_bottom": "border_style_bottom",
-            "border_style_left": "border_style_left",
-            "border_style_right": "border_style_right",
-            "border_width_top": "border_width_top",
-            "border_width_bottom": "border_width_bottom",
-            "border_width_left": "border_width_left",
-            "border_width_right": "border_width_right",
-            "border_color_top": "border_color_top",
-            "border_color_bottom": "border_color_bottom",
-            "border_color_left": "border_color_left",
-            "border_color_right": "border_color_right",
-            "border_roundness_top_left": "border_roundness_top",
-            "border_roundness_top_right": "border_roundness_right",
-            "border_roundness_bottom_right": "border_roundness_bottom",
-            "border_roundness_bottom_left": "border_roundness_left",
-            "four_border_style": "four_border_style",
-
-            # Padding & Gap
-            "padding_top": "padding_top",
-            "padding_bottom": "padding_bottom",
-            "padding_left": "padding_left",
-            "padding_right": "padding_right",
-            "row_gap": "row_gap",
-            "column_gap": "column_gap",
-            "gap": "button_gap",
-
-            # Shadow
-            "shadow_style": "%bs",
-            "shadow_h": "%bh",
-            "shadow_v": "%bv",
-            "shadow_blur": "%bsb",
-            "shadow_spread": "%bsp",
-            "shadow_color": "%bsc",
-
-            # Typography
-            "font_size": "%fs",
-            "line_height": "%lh",
-            "font_color": "%fc",
-            "text_color": "%fc",
-            "font_family": "font_family",
-            "font_weight": "font_weight",
-
-            # Dimensions & Layout
-            "min_width": "min_width_css",
-            "min_width_css": "min_width_css",
-            "max_width": "max_width_css",
-            "max_width_css": "max_width_css",
-            "min_height": "min_height_css",
-            "min_height_css": "min_height_css",
-            "max_height": "max_height_css",
-            "max_height_css": "max_height_css",
-            "fit_width": "fit_width",
-            "fit_height": "fit_height",
-            "single_width": "single_width",
-            "single_height": "single_height",
-            "container_layout": "container_layout",
-            "use_gap": "use_gap",
-            "row_gap": "row_gap",
-            "column_gap": "column_gap",
-            "order": "order",
-            "nonant_alignment": "nonant_alignment",
-            "vertical_alignment": "vert_alignment",
-            "horizontal_alignment": "horiz_alignment",
-            "container_horiz_alignment": "container_horiz_alignment",
-            "container_vert_alignment": "container_vert_alignment",
-            "fit_width": "fit_width",
-            "fit_height": "fit_height",
-            "single_width": "single_width",
-            "single_height": "single_height",
-
-            # Layout
-            "container_layout": "container_layout",
-            "use_gap": "use_gap",
-            "row_gap": "row_gap",
-            "column_gap": "column_gap",
-            "nonant_alignment": "nonant_alignment",
-            "order": "order",
-            "four_border_style": "four_border_style",
-        }
-
-        # Extended map for recursive cleanup (e.g. border corners)
-        _EXT_CLEANUP = {
-            "%br": [
-                "border_roundness", "border_roundness_top_left", "border_roundness_top_right",
-                "border_roundness_bottom_right", "border_roundness_left"
-            ],
-            "%bw": [
-                "border_width", "border_width_top", "border_width_bottom",
-                "border_width_left", "border_width_right"
-            ],
-            "%bc": [
-                "border_color", "border_color_top", "border_color_bottom",
-                "border_color_left", "border_color_right"
-            ],
-            "%bos": [
-                "border_style", "border_style_top", "border_style_bottom",
-                "border_style_left", "border_style_right"
-            ],
-            "font_weight": ["bold"], # If weight matches, we can prune bold toggle if 700+
-        }
-
-
-        # We keep track of keys removed to log them later if needed
-        removed_keys = []
-
-        # Iterating over a copy to allow removal
-        for key in list(properties.keys()):
-            # Special case for layout redundancy
-            if key == "max_width_css" and properties.get("fit_width") is True:
-                del properties[key]
-                removed_keys.append(f"{key} (redundant with fit_width)")
-                continue
-            if key == "max_height_css" and properties.get("fit_height") is True:
-                del properties[key]
-                removed_keys.append(f"{key} (redundant with fit_height)")
-                continue
-
-            # Special case for independent borders:
-            # If element has four_border_style=True but style has False (shared),
-            # we should NOT prune individual border properties against the shared style keys,
-            # because absence of these keys in the element would default them to 0.
-            if properties.get("four_border_style") is True and not style_p.get("four_border_style"):
-                if key.startswith("border_style_") or key.startswith("border_width_") or \
-                   key.startswith("border_color_") or key.startswith("border_roundness_"):
-                    continue
-
-            style_key = _KEY_MAP.get(key)
-            if not style_key:
-                continue
-
-            # Special case for text color: authorization rule
-            if style_key == "%fc":
-                # We only authorized color overrides if COLOR is the ONLY thing changing.
-                # But here we are pruning. If they match, we ALWAYS prune.
-                pass
-
-            style_val = style_p.get(style_key)
-            if style_val is None:
-                continue
-
-            p_val = properties[key]
-            # Normalize values for comparison (e.g. 14px vs 14)
-            p_val_norm = _normalize_val(p_val)
-            s_val_norm = _normalize_val(style_val)
-
-
-            if p_val_norm == s_val_norm:
-                # One last check for background parity:
-                # If we are pruning bg_color because it matches the style,
-                # but the element explicitly has background_style="bgcolor" and style is "none",
-                # we MUST keep the color to ensure the style transition works.
-                # Actually, if we keep background_style="bgcolor", Bubble should pick up the color from the style.
-                # So pruning is safe IF the style already has that color.
-                del properties[key]
-                removed_keys.append(f"{key}")
-                # logger.info(f"      [Pruned] {key}")
-
-                # Cleanup linked/expanded properties
-                ext_keys = _EXT_CLEANUP.get(style_key, [])
-                for ext_k in ext_keys:
-                    if ext_k in properties:
-                        del properties[ext_k]
-                        removed_keys.append(f"{ext_k} (linked to {key})")
-
-        # Post-pruning check: Explicitly remove max size overrides if fitting is enabled.
-        # Bubble treats these as redundant when fitting is AUTO.
-        if properties.get("fit_width") is True and "max_width_css" in properties:
-            del properties["max_width_css"]
-            removed_keys.append("max_width_css")
-
-        if properties.get("fit_height") is True and "max_height_css" in properties:
-            del properties["max_height_css"]
-            removed_keys.append("max_height_css")
-
-        # Post-pruning check: If we have bg_color override but NO background_style override,
-        # but the style is "none" (meaning it has no color background), we MUST add background_style="bgcolor".
-        # This ensures the override is actually visible in Bubble.
-        if "bg_color" in properties and "background_style" not in properties and \
-           "bg_style" not in properties and style_p.get("%bas") == "none":
-            properties["background_style"] = "bgcolor"
-
-        if removed_keys:
-            logger.info(f"Pruned redundant formatting from {element_type} (matching '{style_id}'): {', '.join(removed_keys)}")
+        self._style_lifecycle.assignments.overrides.prune(
+            properties,
+            element_type=element_type,
+            style_id=style_id,
+            sdk_properties=True,
+        )
 
     def create_group(
         self, context_name: str, parent_name: str, name: str,
