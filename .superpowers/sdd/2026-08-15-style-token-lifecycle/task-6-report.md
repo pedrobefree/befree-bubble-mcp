@@ -310,3 +310,98 @@ Fix-round implementation commit:
 - The exact Ruff command remains red on 474 inherited `bubble_cli.py` findings; this round intentionally does not address the deferred static-gate minor. Focused changed-code Ruff is green.
 - The exact directory-form mypy command remains excluded by repository configuration and returns no input files; explicit changed-module mypy is green.
 - No additional code concern was found during the fix-round self-review.
+
+## Fix round 2 — dry-run stale-cache persistence
+
+The remaining review finding was reproduced in both definition entry points. `create_style(...)` and `update_style_definition(...)` invoked `_remove_stale_cache_aliases(...)` before their dry-run branches. Because that helper deletes aliases, saves the cache, and invalidates the resolver, a preview persisted cache cleanup even though it emitted no Bubble dispatch.
+
+The fix keeps stale cleanup and its fail-closed behavior unchanged for live mutations. Dry runs skip the persistence helper and resolve create/update targets through a current-discovery-only candidate view. A cache-only ID is therefore ignored for preview planning without removing or saving its alias. Create still performs its explicit two-step hydration for the planned style and properties; update still rejects the absent current style.
+
+### RED
+
+The two literal regressions serialize the complete cache before and after each preview, require byte-equivalent output, and reject every cache remove/save or dispatch event:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest -q tests/unit/test_style_lifecycle_definitions.py::test_create_dry_run_ignores_stale_alias_without_persisting_cache_cleanup tests/unit/test_style_lifecycle_definitions.py::test_update_dry_run_ignores_stale_alias_without_persisting_cache_cleanup
+2 failed in 0.26s
+```
+
+Both failures showed the stale cache changing from the production-shaped alias entry to `{"styles": {}}`. The create preview also emitted cache remove/save before hydration; the update preview emitted cache remove/save before returning `False`.
+
+### GREEN
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest -q tests/unit/test_style_lifecycle_definitions.py::test_create_dry_run_ignores_stale_alias_without_persisting_cache_cleanup tests/unit/test_style_lifecycle_definitions.py::test_update_dry_run_ignores_stale_alias_without_persisting_cache_cleanup
+2 passed in 0.19s
+```
+
+Live stale cleanup and cleanup-failure preservation:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest -q tests/unit/test_style_lifecycle_definitions.py::test_create_removes_stale_cache_only_style_before_creating_canonical_style tests/unit/test_style_lifecycle_definitions.py::test_update_rejects_and_removes_stale_cache_only_style tests/unit/test_style_lifecycle_definitions.py::test_definition_mutations_fail_closed_when_stale_cache_cleanup_fails
+4 passed in 0.13s
+```
+
+Focused definitions/facades:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest -q tests/unit/test_style_lifecycle_definitions.py tests/unit/test_style_lifecycle_definition_facades.py
+78 passed in 0.23s
+```
+
+### Fix-round 2 verification
+
+Coverage:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m coverage erase
+rtk env PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest tests/unit/test_style_lifecycle_definitions.py tests/unit/test_style_lifecycle_definition_facades.py tests/unit/test_style_import_html.py tests/unit/test_figma_bridge.py -q
+90 passed in 0.63s
+
+rtk env PYTHONPATH=src ./.venv/bin/python -m coverage report --include='src/bubble_mcp/aria_runtime/style_lifecycle/definitions.py' --fail-under=95
+definitions.py: 858 statements, 24 missed, 462 branches, 32 partial, 95.2%
+```
+
+Exact Stage 4.5e gate:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest tests/unit/test_style_lifecycle_definitions.py tests/unit/test_style_lifecycle_definition_facades.py tests/unit/test_style_import_html.py tests/unit/test_style_import_mapper.py tests/unit/test_style_import_planner.py tests/unit/test_style_import_render.py tests/unit/test_style_import_runtime.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_audit.py -q
+267 passed in 7.97s
+```
+
+Full suite:
+
+```text
+rtk env PYTHONPATH=src ./.venv/bin/python -m pytest -q
+1561 passed in 19.60s
+```
+
+Static and repository checks:
+
+```text
+rtk ./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle tests/unit/test_style_lifecycle_definitions.py tests/unit/test_style_lifecycle_definition_facades.py
+All checks passed!
+
+rtk ./.venv/bin/mypy src/bubble_mcp/aria_runtime/style_lifecycle/definitions.py
+Success: no issues found in 1 source file
+
+rtk env PYTHONPATH=src ./.venv/bin/python scripts/audit_cli_catalog.py
+cli_command_count: 207; direct_match_count: 205; alias_count: 1; missing_count: 0; ok: true
+
+rtk git diff --check
+(no output; exit 0)
+```
+
+The exact Ruff gate remains unchanged at 474 inherited `bubble_cli.py` findings. The exact directory mypy gate remains excluded by repository configuration and reports no input files.
+
+### Fix-round 2 self-review
+
+- Dry-run cache bytes remain unchanged and no save callback or dispatch occurs.
+- Create planning ignores the stale alias and retains explicit empty-style then property hydration order.
+- Update planning ignores the stale alias and returns `False` without side effects.
+- Live create/update still remove and save stale aliases; removal/save exceptions remain fail-closed.
+- Bulk, clear, HTML, Figma, transition, and public facade code is untouched.
+
+Fix-round 2 implementation commit:
+
+- `d2ee093a04db2b6b4d15c3b20ac08ba507517997` — `fix: keep stale style cleanup out of dry runs`
