@@ -166,3 +166,4 @@ Baseline before implementation was `1482 passed in 19.76s`.
 - The exact Ruff command remains red on 485 inherited `bubble_cli.py` findings; the extracted package and new tests are clean.
 - The directory-form mypy command does not inspect `aria_runtime` under the current repository exclusion; the explicit nine-file equivalent is green.
 - Legacy implementations remain under `_legacy_*` names inside `BubbleCLI` for compatibility/reference during the staged decomposition. Public execution goes exclusively through `StyleDefinitionService`; physical removal of those dead bodies is outside this stage's requested orchestration-only boundary.
+- GitHub push run `31900394019` and pull-request run `31900396582` are infrastructure-blocked: each `test` job completed in roughly two seconds with an empty `steps` array, so no CI test step ran. The local 1,550-test suite is green.
