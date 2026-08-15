@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 import re
 from typing import Any, Mapping
@@ -20,6 +21,7 @@ class ColorSnapshot:
 
     defaults: dict[str, Any]
     custom: dict[str, dict[str, Any]]
+    wire_custom: dict[str, Any]
 
 
 class ColorTokenService:
@@ -46,7 +48,9 @@ class ColorTokenService:
         discovery, cache = self._host.style_reference_snapshots()
         client_safe = self._client_safe(discovery)
         defaults = self._normalize_defaults(client_safe.get("color_tokens"))
-        custom = self._normalize_custom_map(client_safe.get("color_tokens_user"))
+        wire_custom = self._custom_wire_map(client_safe.get("color_tokens_user"))
+        custom = self._normalize_custom_map(wire_custom)
+        wire_custom.update(copy.deepcopy(custom))
         cache_colors = cache.get("colors") if isinstance(cache, dict) else None
         if isinstance(cache_colors, Mapping):
             for token_id, raw_entry in cache_colors.items():
@@ -56,7 +60,8 @@ class ColorTokenService:
                 entry = self._normalize_custom_entry(raw_entry)
                 if self._valid_custom_entry(entry):
                     custom[color_id] = entry
-        return ColorSnapshot(defaults=defaults, custom=custom)
+                    wire_custom[color_id] = copy.deepcopy(entry)
+        return ColorSnapshot(defaults=defaults, custom=custom, wire_custom=wire_custom)
 
     def active_custom(self) -> dict[str, dict[str, Any]]:
         return self._active_custom(self.snapshot())
@@ -101,7 +106,7 @@ class ColorTokenService:
             )
             return self._dispatch(payload, dry_run=dry_run, token_id=token_id)
 
-        all_colors = dict(snapshot.custom)
+        all_colors = dict(snapshot.wire_custom)
         updated = dict(current)
         updated["rgba"] = rgba
         all_colors[token_id] = updated
@@ -135,7 +140,7 @@ class ColorTokenService:
             order=self._next_order(snapshot.custom),
             description=description,
         )
-        all_colors = dict(snapshot.custom)
+        all_colors = dict(snapshot.wire_custom)
         all_colors[token_id] = entry
         payload = self._payload()
         payload.add_change_app_setting(
@@ -157,7 +162,7 @@ class ColorTokenService:
         token_type, token_id, current = found
         if token_type == "default":
             return self._failure("Cannot delete default colors")
-        all_colors = dict(snapshot.custom)
+        all_colors = dict(snapshot.wire_custom)
         deleted = dict(current)
         deleted["%del"] = True
         all_colors[token_id] = deleted
@@ -203,7 +208,7 @@ class ColorTokenService:
         if not target_ids:
             return self._failure("No matching colors found to delete")
 
-        all_colors = dict(snapshot.custom)
+        all_colors = dict(snapshot.wire_custom)
         for token_id in target_ids:
             deleted = dict(all_colors[token_id])
             deleted["%del"] = True
@@ -258,12 +263,8 @@ class ColorTokenService:
         else:
             return self._failure(f"Unknown mode: {mode}")
 
-        complete = dict(reordered)
-        complete.update(
-            (token_id, entry)
-            for token_id, entry in snapshot.custom.items()
-            if bool(entry.get("%del"))
-        )
+        complete = dict(snapshot.wire_custom)
+        complete.update(reordered)
         payload = self._custom_payload(complete)
 
         def cache_orders() -> None:
@@ -345,6 +346,20 @@ class ColorTokenService:
             if color_id and cls._valid_custom_entry(entry):
                 result[color_id] = entry
         return result
+
+    @staticmethod
+    def _custom_wire_map(raw: Any) -> dict[str, Any]:
+        if not isinstance(raw, Mapping):
+            return {}
+        wrapped = raw.get("default")
+        if not isinstance(wrapped, Mapping):
+            wrapped = raw.get("%d1")
+        source = wrapped if isinstance(wrapped, Mapping) else raw
+        return {
+            str(token_id or "").strip(): copy.deepcopy(raw_entry)
+            for token_id, raw_entry in source.items()
+            if str(token_id or "").strip()
+        }
 
     @staticmethod
     def _normalize_custom_entry(raw: Any) -> dict[str, Any]:

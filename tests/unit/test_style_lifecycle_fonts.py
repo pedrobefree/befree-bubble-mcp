@@ -73,6 +73,10 @@ def _host(*, fail_dispatch: bool = False) -> FontHost:
                                 "order": 8,
                                 "%del": True,
                             },
+                            "fOpaque": {
+                                "plugin_owned": True,
+                                "opaque_payload": {"keep": "exactly"},
+                            },
                         }
                     },
                 }
@@ -112,6 +116,11 @@ def test_snapshot_normalizes_app_and_custom_wrappers_with_discovery_precedence()
     }
     assert snapshot.custom["fCache"]["font_family"] == "IBM Plex Sans"
     assert "invalid" not in snapshot.custom
+    assert "fOpaque" not in snapshot.custom
+    assert snapshot.wire_custom["fOpaque"] == {
+        "plugin_owned": True,
+        "opaque_payload": {"keep": "exactly"},
+    }
     assert host.snapshot_calls == 1
 
 
@@ -169,6 +178,10 @@ def test_custom_update_preserves_group_and_updates_cache_after_dispatch() -> Non
     }
     assert body["%d1"]["fBody"]["metadata"] == {"keep": True}
     assert body["%d1"]["fGone"]["%del"] is True
+    assert body["%d1"]["fOpaque"] == {
+        "plugin_owned": True,
+        "opaque_payload": {"keep": "exactly"},
+    }
     assert [event[0] for event in host.events] == ["dispatch", "put"]
     assert host.events[1][1:3] == ("fonts", "fDisplay")
 
@@ -189,6 +202,7 @@ def test_create_returns_real_id_and_uses_font_builder_wire_entry(monkeypatch: py
         order=9,
         description="Code",
     )
+    assert body["%d1"]["fOpaque"]["opaque_payload"] == {"keep": "exactly"}
     assert [event[0] for event in host.events] == ["dispatch", "put"]
 
 
@@ -220,6 +234,7 @@ def test_delete_protects_app_font_and_soft_deletes_custom_with_cache_coherence()
     assert deleted.payload is not None
     _, body = _setting_change(deleted.payload)
     assert body["%d1"]["fCache"]["%del"] is True
+    assert body["%d1"]["fOpaque"]["plugin_owned"] is True
     assert [event[0] for event in host.events] == ["dispatch", "remove"]
     assert "fCache" not in host.cache["fonts"]
 

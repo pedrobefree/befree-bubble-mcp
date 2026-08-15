@@ -214,3 +214,33 @@ def test_font_dry_run_and_failed_dispatch_do_not_mutate_cache(
     monkeypatch.setattr(bubble_cli_module.PayloadBuilder, "send_to_webhook", fail_send)
     assert cli.update_font("Body", "Noto Sans") is False
     assert cli._cli_cache == before
+
+
+def test_successive_token_writes_read_the_real_host_updated_discovery(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sent: list[dict[str, Any]] = []
+    color_ids = iter(["cSecond", "cThird"])
+    font_ids = iter(["fSecond"])
+    monkeypatch.setattr(ColorBuilder, "generate_color_id", lambda self: next(color_ids))
+    monkeypatch.setattr(FontBuilder, "generate_font_id", lambda self: next(font_ids))
+    monkeypatch.setattr(
+        bubble_cli_module.PayloadBuilder,
+        "send_to_webhook",
+        lambda self, url: sent.append(self.build()),
+    )
+
+    assert cli.update_color("Brand", "rgba(90, 91, 92, 1)") is True
+    assert cli.create_color("Second", "rgba(20, 21, 22, 1)") is True
+    assert cli.delete_color("Brand") is True
+    assert cli.create_color("Third", "rgba(30, 31, 32, 1)") is True
+    assert cli.update_font("Body", "Noto Sans") is True
+    assert cli.create_font("Second font", "Literata") is True
+
+    second_color_map = sent[1]["changes"][0]["body"]["%d1"]
+    third_color_map = sent[3]["changes"][0]["body"]["%d1"]
+    second_font_map = sent[5]["changes"][0]["body"]["%d1"]
+    assert second_color_map["cBrand"]["rgba"] == "rgba(90, 91, 92, 1)"
+    assert third_color_map["cBrand"]["%del"] is True
+    assert second_font_map["fBody"]["font_family"] == "Noto Sans"

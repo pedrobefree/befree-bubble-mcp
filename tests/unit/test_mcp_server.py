@@ -2702,7 +2702,6 @@ def test_destructive_color_font_tools_require_confirmation_only_when_executing(
     assert calls[0][0] == tool_name
     for key, value in {"profile": "smoke", **arguments, "execute": False}.items():
         assert calls[0][1][key] == value
-
     calls.clear()
     blocked = handle_request(
         {
@@ -2748,6 +2747,65 @@ def test_destructive_color_font_tools_require_confirmation_only_when_executing(
         "confirm": True,
     }.items():
         assert calls[0][1][key] == value
+
+
+def test_destructive_token_write_payload_with_conflicting_flags_stays_preview(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    writes: list[bool] = []
+    overlays: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(tools_module, "load_session", lambda profile: SimpleNamespace(app_id="app"))
+
+    def fake_write(
+        self: Any,
+        payload: dict[str, Any],
+        session: Any,
+        *,
+        dry_run: bool = False,
+        calculate_derived: bool = False,
+    ) -> dict[str, Any]:
+        del self, session, calculate_derived
+        writes.append(dry_run)
+        return {"ok": True, "dry_run": dry_run, "request": {"payload": payload}}
+
+    monkeypatch.setattr(tools_module.BubbleEditorClient, "write", fake_write)
+    monkeypatch.setattr(
+        tools_module,
+        "record_mutation_overlay",
+        lambda **kwargs: overlays.append(kwargs),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1207,
+            "method": "tools/call",
+            "params": {
+                "name": "delete_color",
+                "arguments": {
+                    "profile": "smoke",
+                    "name": "Brand",
+                    "execute": True,
+                    "dry_run": True,
+                    "write_payload": {
+                        "appname": "app",
+                        "changes": [
+                            {
+                                "intent": {"name": "ChangeAppSetting"},
+                                "path_array": ["settings", "client_safe", "color_tokens_user"],
+                                "body": {"%d1": {}},
+                            }
+                        ],
+                    },
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    assert writes == [True]
+    assert overlays == []
 
 
 def test_batch_dispatch_accepts_inline_commands(monkeypatch) -> None:  # type: ignore[no-untyped-def]

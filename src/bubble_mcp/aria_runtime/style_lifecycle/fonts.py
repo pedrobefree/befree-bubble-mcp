@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Any, Mapping
 
@@ -19,6 +20,7 @@ class FontSnapshot:
 
     app_font: str
     custom: dict[str, dict[str, Any]]
+    wire_custom: dict[str, Any]
 
 
 class FontTokenService:
@@ -33,7 +35,9 @@ class FontTokenService:
         discovery, cache = self._host.style_reference_snapshots()
         client_safe = self._client_safe(discovery)
         app_font = self._normalize_app_font(client_safe.get("font_tokens"))
-        custom = self._normalize_custom_map(client_safe.get("font_tokens_user"))
+        wire_custom = self._custom_wire_map(client_safe.get("font_tokens_user"))
+        custom = self._normalize_custom_map(wire_custom)
+        wire_custom.update(copy.deepcopy(custom))
         cache_fonts = cache.get("fonts") if isinstance(cache, dict) else None
         if isinstance(cache_fonts, Mapping):
             for token_id, raw_entry in cache_fonts.items():
@@ -43,7 +47,8 @@ class FontTokenService:
                 entry = self._normalize_custom_entry(raw_entry)
                 if self._valid_custom_entry(entry):
                     custom[font_id] = entry
-        return FontSnapshot(app_font=app_font, custom=custom)
+                    wire_custom[font_id] = copy.deepcopy(entry)
+        return FontSnapshot(app_font=app_font, custom=custom, wire_custom=wire_custom)
 
     def find(self, name: str) -> tuple[str, str, dict[str, Any]] | None:
         return self._find(self.snapshot(), name)
@@ -71,7 +76,7 @@ class FontTokenService:
             )
             return self._dispatch(payload, dry_run=dry_run, token_id=token_id)
 
-        all_fonts = dict(snapshot.custom)
+        all_fonts = dict(snapshot.wire_custom)
         updated = dict(current)
         updated["font_family"] = font_family
         all_fonts[token_id] = updated
@@ -105,7 +110,7 @@ class FontTokenService:
             order=self._next_order(snapshot.custom),
             description=description,
         )
-        all_fonts = dict(snapshot.custom)
+        all_fonts = dict(snapshot.wire_custom)
         all_fonts[token_id] = entry
         payload = self._custom_payload(all_fonts)
         return self._dispatch(
@@ -123,7 +128,7 @@ class FontTokenService:
         token_type, token_id, current = found
         if token_type == "app":
             return self._failure("Cannot delete the App Font")
-        all_fonts = dict(snapshot.custom)
+        all_fonts = dict(snapshot.wire_custom)
         deleted = dict(current)
         deleted["%del"] = True
         all_fonts[token_id] = deleted
@@ -201,6 +206,20 @@ class FontTokenService:
             if font_id and cls._valid_custom_entry(entry):
                 result[font_id] = entry
         return result
+
+    @staticmethod
+    def _custom_wire_map(raw: Any) -> dict[str, Any]:
+        if not isinstance(raw, Mapping):
+            return {}
+        wrapped = raw.get("default")
+        if not isinstance(wrapped, Mapping):
+            wrapped = raw.get("%d1")
+        source = wrapped if isinstance(wrapped, Mapping) else raw
+        return {
+            str(token_id or "").strip(): copy.deepcopy(raw_entry)
+            for token_id, raw_entry in source.items()
+            if str(token_id or "").strip()
+        }
 
     @staticmethod
     def _normalize_custom_entry(raw: Any) -> dict[str, Any]:

@@ -77,6 +77,10 @@ def _discovery() -> dict[str, Any]:
                             "%del": True,
                             "tombstone": "keep-me",
                         },
+                        "cOpaque": {
+                            "plugin_owned": True,
+                            "opaque_payload": {"keep": "exactly"},
+                        },
                     }
                 },
             }
@@ -134,6 +138,11 @@ def test_snapshot_normalizes_wrappers_and_uses_discovery_before_valid_cache_only
     }
     assert snapshot.custom["cCache"]["%nm"] == "Cache only"
     assert "invalid" not in snapshot.custom
+    assert "cOpaque" not in snapshot.custom
+    assert snapshot.wire_custom["cOpaque"] == {
+        "plugin_owned": True,
+        "opaque_payload": {"keep": "exactly"},
+    }
     assert host.snapshot_calls == 1
 
 
@@ -199,6 +208,10 @@ def test_custom_update_sends_one_preserved_group_and_updates_cache_after_dispatc
     assert body["%d1"]["cLive"]["plugin_data"] == {"keep": True}
     assert body["%d1"]["cGone"]["%del"] is True
     assert body["%d1"]["cCache"]["%nm"] == "Cache only"
+    assert body["%d1"]["cOpaque"] == {
+        "plugin_owned": True,
+        "opaque_payload": {"keep": "exactly"},
+    }
     assert [event[0] for event in host.events] == ["dispatch", "put"]
     assert host.events[1][1:3] == ("colors", "cAccent")
     assert host.snapshot_calls == 1
@@ -225,6 +238,7 @@ def test_create_returns_real_id_and_preserves_complete_map(monkeypatch: pytest.M
         description="Created",
     )
     assert body["%d1"]["cGone"]["tombstone"] == "keep-me"
+    assert body["%d1"]["cOpaque"]["opaque_payload"] == {"keep": "exactly"}
     assert [event[0] for event in host.events] == ["dispatch", "put"]
 
 
@@ -252,6 +266,7 @@ def test_soft_and_hard_delete_preserve_wire_contract_and_mutate_cache_only_after
     assert deleted.payload is not None
     _, delete_body = _setting_change(deleted.payload)
     assert delete_body["%d1"]["cCache"]["%del"] is True
+    assert delete_body["%d1"]["cOpaque"]["plugin_owned"] is True
     assert [event[0] for event in host.events] == ["dispatch", "remove"]
     assert "cCache" not in host.cache["colors"]
 
@@ -293,6 +308,7 @@ def test_bulk_delete_deduplicates_targets_and_removes_cache_after_one_grouped_di
     _, body = _setting_change(result.payload)
     assert body["%d1"]["cAccent"]["%del"] is True
     assert body["%d1"]["cCache"]["%del"] is True
+    assert body["%d1"]["cOpaque"]["opaque_payload"] == {"keep": "exactly"}
     assert [event[0] for event in host.events] == ["dispatch", "remove", "remove"]
 
 
@@ -326,6 +342,10 @@ def test_reorder_preserves_tombstones(
         "rgba": "rgba(70, 80, 90, 1)",
         "order": 7,
         "tombstone": "keep-me",
+    }
+    assert body["%d1"]["cOpaque"] == {
+        "plugin_owned": True,
+        "opaque_payload": {"keep": "exactly"},
     }
     assert [event[0] for event in host.events] == ["dispatch", "put", "put", "put"]
     assert {

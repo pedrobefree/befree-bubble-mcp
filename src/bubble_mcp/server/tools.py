@@ -1996,7 +1996,7 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
     write_payload = args.get("write_payload") or args.get("payload")
     profile = str(args.get("profile") or "").strip()
-    execute = bool(args.get("execute"))
+    execute = executing
 
     if isinstance(write_payload, dict):
         if name == "delete_data_type_permanently" or permanent_data_type_delete_targets(write_payload):
