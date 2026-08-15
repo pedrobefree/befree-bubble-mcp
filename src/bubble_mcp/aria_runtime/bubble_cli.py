@@ -78,6 +78,10 @@ from cli_cache import (
 from context_alias_registry import ContextAliasRegistry
 from context_reference_resolver import ContextReferenceResolver
 from visual_mutations import VisualMutationService
+try:
+    from .style_lifecycle import StyleLifecycleService, StyleReferenceResolver
+except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
+    from style_lifecycle import StyleLifecycleService, StyleReferenceResolver
 
 PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
     # Application rights
@@ -461,6 +465,7 @@ class BubbleCLI:
         )
         self._context_reference_resolver = ContextReferenceResolver(self)
         self._visual_mutations = VisualMutationService(self)
+        self._style_lifecycle = StyleLifecycleService(self)
 
         self.color_mapper = ColorMapper(self.discovery.data)
         # Seed with cached colors
@@ -1013,124 +1018,75 @@ class BubbleCLI:
         raw = str(value or "").strip()
         return bool(re.fullmatch(r"[A-Za-z][A-Za-z0-9]{4,}", raw))
 
+    def style_reference_snapshots(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Return the current discovery and CLI-cache snapshots by identity."""
+        discovery_data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        cache_data = self._cli_cache if isinstance(self._cli_cache, dict) else {}
+        return discovery_data, cache_data
+
+    def list_style_references(self) -> List[Dict[str, Any]]:
+        """Return discovery's normalized style rows for reference indexing."""
+        return list(self.discovery.list_styles() or [])
+
+    def list_style_reference_elements(self) -> List[Dict[str, Any]]:
+        """Return literal element snapshots used by catalog and semantic labels."""
+        elements: List[Dict[str, Any]] = []
+        seen: set[Tuple[str, ...]] = set()
+        for context in self._iter_contexts(scope="all"):
+            context_id = str(context.get("id") or "").strip()
+            context_type = str(context.get("type") or "").strip()
+            if not context_id or context_type not in {"page", "reusable"}:
+                continue
+            for source_rows in (
+                self.discovery.list_elements(context_id, context_type=context_type),
+                self._list_raw_context_elements(context_id, context_type),
+                self._list_module_context_elements(context_id, context_type),
+                self._list_index_context_elements(context_id, context_type),
+            ):
+                if not isinstance(source_rows, list):
+                    continue
+                for row in source_rows:
+                    if not isinstance(row, dict):
+                        continue
+                    path = tuple(str(part) for part in row.get("path", []))
+                    element = row.get("element") if isinstance(row.get("element"), dict) else {}
+                    identity = (
+                        context_type,
+                        context_id,
+                        str(element.get("id") or row.get("id") or ""),
+                        *path,
+                    )
+                    if identity in seen:
+                        continue
+                    seen.add(identity)
+                    elements.append(row)
+        return elements
+
+    def normalize_style_reference(self, value: Any) -> str:
+        return self._norm_lookup(value)
+
+    def compact_style_reference(self, value: Any) -> str:
+        return self._norm_compact(value)
+
+    def plain_style_reference_text(self, value: Any) -> str:
+        return self._extract_plain_text_value(value)
+
     def _normalize_style_element_type(self, element_type: Optional[str]) -> str:
         """Normalize style element type casing/aliases (e.g. button -> Button)."""
-        raw = str(element_type or "").strip()
-        if not raw:
-            return raw
-        key = "".join(ch for ch in raw.lower() if ch.isalnum())
-        aliases = {
-            "button": "Button",
-            "text": "Text",
-            "group": "Group",
-            "popup": "Popup",
-            "input": "Input",
-            "multilineinput": "MultiLineInput",
-            "dropdown": "Dropdown",
-            "checkbox": "Checkbox",
-            "radio": "RadioButtons",
-            "radiobutton": "RadioButtons",
-            "radiobuttons": "RadioButtons",
-            "dateinput": "DateInput",
-            "datepicker": "DateInput",
-            "searchbox": "SearchBox",
-            "autocompletedropdown": "AutocompleteDropdown",
-            "fileinput": "FileInput",
-            "pictureinput": "PictureInput",
-            "pictureuploader": "PictureInput",
-            "slider": "SliderInput",
-            "sliderinput": "SliderInput",
-            "alert": "Alert",
-            "image": "Image",
-            "icon": "Icon",
-            "shape": "Shape",
-            "video": "Video",
-            "repeatinggroup": "RepeatingGroup",
-            "floatinggroup": "FloatingGroup",
-            "groupfocus": "GroupFocus",
-            "page": "Page",
-            "map": "GoogleMap",
-            "googlemap": "GoogleMap",
-            "html": "HTML",
-            "link": "Link",
-        }
-        return aliases.get(key, raw)
+        return self._style_lifecycle.references.normalize_element_type(element_type)
 
     def _default_style_settings_key(self, element_type: Optional[str]) -> str:
         """
         Map style element aliases to the canonical key used by
         settings.client_safe.default_styles.
         """
-        normalized = self._normalize_style_element_type(element_type)
-        key_map = {
-            # Bubble stores SearchBox defaults under AutocompleteDropdown.
-            "SearchBox": "AutocompleteDropdown",
-            # Bubble default style settings use pluralized key.
-            "RadioButton": "RadioButtons",
-        }
-        return key_map.get(normalized, normalized)
+        return self._style_lifecycle.references.default_style_settings_key(element_type)
 
     def _configured_default_style_id_for_element_type(self, element_type: Optional[str]) -> Optional[str]:
-        normalized = self._normalize_style_element_type(element_type)
-        if not normalized:
-            return None
-
-        settings_key = self._default_style_settings_key(normalized)
-        candidate_keys = [settings_key, normalized]
-        seen: set[str] = set()
-
-        settings = self.discovery.data.get("settings", {}) if isinstance(self.discovery.data, dict) else {}
-        if not isinstance(settings, dict):
-            settings = {}
-        client_safe = settings.get("client_safe", {}) if isinstance(settings.get("client_safe"), dict) else {}
-        default_styles = client_safe.get("default_styles", {}) if isinstance(client_safe.get("default_styles"), dict) else {}
-
-        for candidate_key in candidate_keys:
-            raw_style_id = str(default_styles.get(candidate_key) or "").strip()
-            if not raw_style_id or raw_style_id in seen:
-                continue
-            seen.add(raw_style_id)
-            return raw_style_id
-
-        return None
+        return self._style_lifecycle.references.configured_default_style_id(element_type)
 
     def _first_available_style_id_for_element_type(self, element_type: Optional[str]) -> Optional[str]:
-        normalized = self._normalize_style_element_type(element_type)
-        if not normalized:
-            return None
-
-        configured_default = self._configured_default_style_id_for_element_type(normalized)
-        if configured_default:
-            return configured_default
-
-        candidate_types = [normalized]
-        settings_key = self._default_style_settings_key(normalized)
-        if settings_key and settings_key not in candidate_types:
-            candidate_types.append(settings_key)
-
-        styles = list(self.discovery.list_styles() or [])
-        for preferred_default in (True, False):
-            for candidate_type in candidate_types:
-                for style in styles:
-                    style_id = str(style.get("id") or "").strip()
-                    style_type = str(style.get("type") or "").strip()
-                    if not style_id or style_type != candidate_type:
-                        continue
-                    if bool(style.get("is_default")) != preferred_default:
-                        continue
-                    return style_id
-
-        # Final loose fallback: infer by style-id prefix when discovery type aliases are inconsistent.
-        lowered_candidates = [candidate.lower() for candidate in candidate_types if candidate]
-        for style in styles:
-            style_id = str(style.get("id") or "").strip()
-            if not style_id:
-                continue
-            style_prefix = style_id.split("_")[0].lower()
-            if style_prefix in lowered_candidates:
-                return style_id
-
-        return None
+        return self._style_lifecycle.references.first_available_style_id(element_type)
 
     def clear_cache(self) -> bool:
         """Manually clear the persistent CLI cache file."""
@@ -10605,45 +10561,17 @@ class BubbleCLI:
         return True
 
     def find_style_id(self, style_name: str, element_type: Optional[str] = None) -> Optional[str]:
-        """Find style ID by name, checking CLI cache first."""
-        if not str(style_name or "").strip():
-            return None
-
-        # 1. Check local CLI cache (for recently created styles)
-        if "styles" in self._cli_cache:
-            if style_name in self._cli_cache["styles"]:
-                return self._cli_cache["styles"][style_name]["id"]
-
-        # 2. Check sync metadata
-        return self.find_style_id_by_name(style_name, element_type=element_type)
+        """Find a style ID by normalized name or explicit ID."""
+        return self._style_lifecycle.references.find_style_id(style_name, element_type)
 
     @staticmethod
     def _canonical_style_id_from_name(style_name: str, element_type: str) -> Optional[str]:
         """Best-effort canonical style-id inference (Type_snake_case_name_)."""
-        raw_name = str(style_name or "").strip()
-        raw_type = str(element_type or "").strip()
-        if not raw_name or not raw_type:
-            return None
-        # If caller already passed an explicit style id for this type, preserve it.
-        lower_type = raw_type.lower()
-        lower_name = raw_name.lower()
-        if lower_name.startswith(f"{lower_type}_") and "_" in raw_name:
-            return raw_name
-        normalized_name = raw_name.lower().replace(" ", "_")
-        normalized_name = "".join(c for c in normalized_name if c.isalnum() or c == "_")
-        if not normalized_name:
-            return None
-        return f"{raw_type}_{normalized_name}_"
+        return StyleReferenceResolver.canonical_style_id(style_name, element_type)
 
     @staticmethod
     def _looks_like_style_id(value: Any, element_type: Optional[str] = None) -> bool:
-        raw = str(value or "").strip()
-        if not raw or "_" not in raw:
-            return False
-        if element_type:
-            prefix = str(element_type).strip().lower() + "_"
-            return raw.lower().startswith(prefix) and len(raw) > len(prefix)
-        return bool(re.match(r"^[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+_?$", raw))
+        return StyleReferenceResolver.looks_like_style_id(value, element_type)
 
     @staticmethod
     def _is_generic_style_context_name(value: Any) -> bool:
@@ -10665,98 +10593,29 @@ class BubbleCLI:
         return False
 
     def _known_style_ids(self, element_type: Optional[str] = None) -> set:
-        ids: set = set()
-        target_type = str(element_type or "").strip().lower()
-
-        styles = list(self.discovery.list_styles() or [])
-        for style_obj in styles:
-            if not isinstance(style_obj, dict):
-                continue
-            sid = str(style_obj.get("id") or "").strip()
-            stype = str(style_obj.get("type") or "").strip().lower()
-            if not sid:
-                continue
-            if target_type and stype and stype != target_type:
-                continue
-            if target_type and not stype and not sid.lower().startswith(f"{target_type}_"):
-                continue
-            ids.add(sid)
-
-        cache_styles = self._cli_cache.get("styles", {}) if isinstance(self._cli_cache, dict) else {}
-        if isinstance(cache_styles, dict):
-            for _, cache_obj in cache_styles.items():
-                if not isinstance(cache_obj, dict):
-                    continue
-                sid = str(cache_obj.get("id") or "").strip()
-                stype = str(cache_obj.get("type") or "").strip().lower()
-                if not sid:
-                    continue
-                if target_type and stype and stype != target_type:
-                    continue
-                if target_type and not stype and not sid.lower().startswith(f"{target_type}_"):
-                    continue
-                ids.add(sid)
-
-        return ids
+        return self._style_lifecycle.references.known_style_ids(element_type)
 
     def _known_non_default_style_ids(self, element_type: Optional[str] = None) -> set:
-        ids: set = set()
-        target_type = str(element_type or "").strip().lower()
-
-        for style_obj in list(self.discovery.list_styles() or []):
-            if not isinstance(style_obj, dict):
-                continue
-            sid = str(style_obj.get("id") or "").strip()
-            stype = str(style_obj.get("type") or "").strip().lower()
-            if not sid:
-                continue
-            if target_type and stype and stype != target_type:
-                continue
-            if target_type and not stype and not sid.lower().startswith(f"{target_type}_"):
-                continue
-            if bool(style_obj.get("is_default")):
-                continue
-            ids.add(sid)
-
-        cache_styles = self._cli_cache.get("styles", {}) if isinstance(self._cli_cache, dict) else {}
-        if isinstance(cache_styles, dict):
-            for _, cache_obj in cache_styles.items():
-                if not isinstance(cache_obj, dict):
-                    continue
-                sid = str(cache_obj.get("id") or "").strip()
-                stype = str(cache_obj.get("type") or "").strip().lower()
-                if not sid:
-                    continue
-                if target_type and stype and stype != target_type:
-                    continue
-                if target_type and not stype and not sid.lower().startswith(f"{target_type}_"):
-                    continue
-                ids.add(sid)
-
-        return ids
+        return self._style_lifecycle.references.known_non_default_style_ids(element_type)
 
     def _current_snapshot_style_ids(self, element_type: Optional[str] = None) -> set:
-        ids: set = set()
-        target_type = str(element_type or "").strip().lower()
-        styles_map = self.discovery.data.get("styles", {}) if isinstance(self.discovery.data, dict) else {}
-        if not isinstance(styles_map, dict):
-            styles_map = {}
-
-        for sid, style_obj in styles_map.items():
-            sid = str(sid or "").strip()
-            if not sid:
-                continue
-            style_obj = style_obj if isinstance(style_obj, dict) else {}
-            stype = str(style_obj.get("type") or style_obj.get("%x") or "").strip().lower()
-            if target_type and stype and stype != target_type:
-                continue
-            if target_type and not stype and not sid.lower().startswith(f"{target_type}_"):
-                continue
-            ids.add(sid)
-
-        return ids
+        return self._style_lifecycle.references.current_snapshot_style_ids(element_type)
 
     def _resolve_style_reference(
+        self,
+        style_value: Optional[str],
+        *,
+        element_type: Optional[str] = None,
+        strict: bool = False,
+    ) -> Optional[str]:
+        """Resolve a style name or explicit ID through the lifecycle boundary."""
+        return self._style_lifecycle.references.resolve(
+            style_value,
+            element_type=element_type,
+            strict=strict,
+        )
+
+    def _legacy_resolve_style_reference(
         self,
         style_value: Optional[str],
         *,
@@ -11694,6 +11553,10 @@ class BubbleCLI:
         )
 
     def find_style_id_by_name(self, style_name: str, element_type: Optional[str] = None) -> Optional[str]:
+        """Find a style ID through the lifecycle boundary."""
+        return self._style_lifecycle.references.find_style_id(style_name, element_type)
+
+    def _legacy_find_style_id_by_name(self, style_name: str, element_type: Optional[str] = None) -> Optional[str]:
         """
         Find a Style ID by its name.
         1. Exact/Partial match via discovery.list_styles
@@ -13705,7 +13568,11 @@ class BubbleCLI:
         return keys
 
     def _infer_element_type_from_style_id(self, style_id: Optional[str]) -> Optional[str]:
-        """Best-effort style->element-type resolution from discovery/cache."""
+        """Best-effort style-to-element-type resolution through the lifecycle boundary."""
+        return self._style_lifecycle.references.infer_element_type(style_id)
+
+    def _legacy_infer_element_type_from_style_id(self, style_id: Optional[str]) -> Optional[str]:
+        """Legacy style->element-type resolution retained during staged extraction."""
         sid = str(style_id or "").strip()
         if not sid:
             return None
@@ -42455,7 +42322,11 @@ class BubbleCLI:
         return props
 
     def _get_base_style_props(self, style_id: str) -> Dict[str, Any]:
-        """Fetch base properties for an existing style from discovery data or local cache."""
+        """Fetch base style properties through the lifecycle boundary."""
+        return self._style_lifecycle.references.base_properties(style_id)
+
+    def _legacy_get_base_style_props(self, style_id: str) -> Dict[str, Any]:
+        """Legacy base-property lookup retained during staged extraction."""
         # 1. Check discovery data
         data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
         styles = data.get("styles", {})
