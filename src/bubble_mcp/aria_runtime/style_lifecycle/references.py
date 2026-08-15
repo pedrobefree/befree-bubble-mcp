@@ -16,6 +16,7 @@ class _StyleEntry:
     element_type: str
     is_default: bool
     properties: dict[str, Any]
+    properties_present: bool
     source: str
     aliases: tuple[str, ...] = ()
 
@@ -238,7 +239,7 @@ class StyleReferenceResolver:
 
         known_ids = self.known_style_ids(normalized_type or None)
         if self.looks_like_style_id(raw, normalized_type or None):
-            if raw in known_ids or not strict:
+            if not known_ids or raw in known_ids:
                 return raw
             return None
 
@@ -299,7 +300,7 @@ class StyleReferenceResolver:
                 continue
             style = raw_style if isinstance(raw_style, dict) else {}
             candidate_type = str(style.get("type") or style.get("%x") or "").strip()
-            entry = _StyleEntry(sid, sid, candidate_type, False, {}, "discovery")
+            entry = _StyleEntry(sid, sid, candidate_type, False, {}, False, "discovery")
             if self._type_matches(entry, normalized_type):
                 result.add(sid)
         return result
@@ -331,7 +332,14 @@ class StyleReferenceResolver:
         data_styles = data.get("styles") if isinstance(data, dict) else None
         cache_styles = cache.get("styles") if isinstance(cache, dict) else None
         settings = data.get("settings") if isinstance(data, dict) else None
-        identity = (id(data), id(cache), id(data_styles), id(cache_styles), id(settings))
+        identity = (
+            id(data),
+            id(cache),
+            id(data_styles),
+            id(cache_styles),
+            id(settings),
+            self._host.style_reference_revision(),
+        )
         if identity == self._snapshot_identity:
             return
         self._build_index(data, cache)
@@ -356,6 +364,7 @@ class StyleReferenceResolver:
             element_type = str(payload.get("type") or payload.get("%x") or "").strip()
             raw_properties = payload.get("%p")
             properties: dict[str, Any] = raw_properties if isinstance(raw_properties, dict) else {}
+            properties_present = isinstance(raw_properties, dict)
             existing = entries.get(sid)
             if existing is None:
                 entries[sid] = _StyleEntry(
@@ -364,6 +373,7 @@ class StyleReferenceResolver:
                     element_type,
                     bool(is_default or payload.get("is_default")),
                     dict(properties),
+                    properties_present,
                     "discovery",
                 )
                 order.append(sid)
@@ -373,7 +383,8 @@ class StyleReferenceResolver:
                 name=name if name != sid or existing.name == sid else existing.name,
                 element_type=element_type or existing.element_type,
                 is_default=existing.is_default or bool(is_default or payload.get("is_default")),
-                properties=dict(properties) if properties else existing.properties,
+                properties=dict(properties) if properties_present else existing.properties,
+                properties_present=existing.properties_present or properties_present,
             )
 
         settings = data.get("settings", {}) if isinstance(data, dict) else {}
@@ -415,8 +426,28 @@ class StyleReferenceResolver:
                 existing = entries.get(sid)
                 alias = str(cached_name or "").strip()
                 if existing:
-                    if alias and alias not in existing.aliases and alias != existing.name:
-                        entries[sid] = replace(existing, aliases=(*existing.aliases, alias))
+                    cache_type = str(raw_style.get("type") or raw_style.get("%x") or "").strip()
+                    raw_cache_properties = raw_style.get("%p")
+                    cache_properties = (
+                        raw_cache_properties if isinstance(raw_cache_properties, dict) else {}
+                    )
+                    aliases = existing.aliases
+                    if alias and alias not in aliases and alias != existing.name:
+                        aliases = (*aliases, alias)
+                    missing_type = not existing.element_type or existing.element_type.lower() == "unknown"
+                    entries[sid] = replace(
+                        existing,
+                        element_type=cache_type if missing_type and cache_type else existing.element_type,
+                        properties=(
+                            dict(cache_properties)
+                            if not existing.properties_present and isinstance(raw_cache_properties, dict)
+                            else existing.properties
+                        ),
+                        properties_present=(
+                            existing.properties_present or isinstance(raw_cache_properties, dict)
+                        ),
+                        aliases=aliases,
+                    )
                     continue
                 element_type = str(raw_style.get("type") or raw_style.get("%x") or "").strip()
                 raw_properties = raw_style.get("%p")
@@ -427,6 +458,7 @@ class StyleReferenceResolver:
                     element_type,
                     False,
                     dict(properties),
+                    isinstance(raw_properties, dict),
                     "cache",
                 )
                 order.append(sid)

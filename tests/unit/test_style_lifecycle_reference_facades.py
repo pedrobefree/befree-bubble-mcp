@@ -120,3 +120,18 @@ def test_bubble_cli_compatibility_methods_delegate_to_the_composed_resolver(cli:
     assert cli._configured_default_style_id_for_element_type("Input") == "configured:Input"
     assert cli._first_available_style_id_for_element_type("SliderInput") == "first:SliderInput"
     assert cli._get_base_style_props("Button_primary_") == {"delegated": "Button_primary_"}
+
+
+def test_real_bubble_cli_add_to_cache_invalidates_style_reference_index(cli: BubbleCLI) -> None:
+    assert cli.find_style_id("In-place card", element_type="Group") is None
+    revision_before = cli.style_reference_revision()
+
+    cli._add_to_cache(
+        "styles",
+        "In-place card",
+        {"id": "Group_in_place_", "type": "Group", "%p": {"%bgc": "#f8f9fc"}},
+    )
+
+    assert cli.style_reference_revision() == revision_before + 1
+    assert cli.find_style_id("In-place card", element_type="Group") == "Group_in_place_"
+    assert cli._get_base_style_props("Group_in_place_") == {"%bgc": "#f8f9fc"}

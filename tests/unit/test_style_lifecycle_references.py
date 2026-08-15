@@ -15,9 +15,13 @@ class ReferenceHost:
     cache: dict[str, Any] = field(default_factory=lambda: {"styles": {}})
     readable_styles: list[dict[str, Any]] = field(default_factory=list)
     elements: list[dict[str, Any]] = field(default_factory=list)
+    revision: int = 0
 
     def style_reference_snapshots(self) -> tuple[dict[str, Any], dict[str, Any]]:
         return self.discovery, self.cache
+
+    def style_reference_revision(self) -> int:
+        return self.revision
 
     def list_style_references(self) -> list[dict[str, Any]]:
         return list(self.readable_styles)
@@ -185,18 +189,31 @@ def test_known_explicit_ids_resolve_in_both_modes(strict: bool) -> None:
     assert resolver.resolve("Button_known_", element_type="Button", strict=strict) == "Button_known_"
 
 
-def test_unknown_explicit_ids_pass_through_only_in_permissive_mode() -> None:
+@pytest.mark.parametrize(
+    ("known_ids_populated", "strict", "expected"),
+    [
+        (False, False, "Button_unknown_"),
+        (False, True, "Button_unknown_"),
+        (True, False, None),
+        (True, True, None),
+    ],
+)
+def test_unknown_explicit_id_preserves_legacy_empty_populated_strict_permissive_matrix(
+    known_ids_populated: bool,
+    strict: bool,
+    expected: str | None,
+) -> None:
+    discovery = {"styles": {"Button_known_": {"%x": "Button"}}} if known_ids_populated else {}
+    readable_styles = (
+        [{"id": "Button_known_", "name": "Known", "type": "Button", "is_default": False}]
+        if known_ids_populated
+        else []
+    )
     resolver = StyleReferenceResolver(
-        ReferenceHost(
-            discovery={"styles": {"Button_known_": {"%x": "Button"}}},
-            readable_styles=[
-                {"id": "Button_known_", "name": "Known", "type": "Button", "is_default": False},
-            ],
-        )
+        ReferenceHost(discovery=discovery, readable_styles=readable_styles)
     )
 
-    assert resolver.resolve("Button_unknown_", element_type="Button", strict=False) == "Button_unknown_"
-    assert resolver.resolve("Button_unknown_", element_type="Button", strict=True) is None
+    assert resolver.resolve("Button_unknown_", element_type="Button", strict=strict) == expected
 
 
 def test_semantic_button_labels_resolve_to_a_defined_gallery_style() -> None:
@@ -261,6 +278,71 @@ def test_replacing_discovery_or_cache_snapshots_invalidates_the_normalized_index
 
     host.cache = {"styles": {"Cache body": {"id": "Text_cache_", "type": "Text"}}}
     assert resolver.find_style_id("Cache body", element_type="Text") == "Text_cache_"
+
+
+def test_revision_invalidates_index_after_in_place_cache_mutation() -> None:
+    host = ReferenceHost(discovery={"styles": {}}, cache={"styles": {}})
+    resolver = StyleReferenceResolver(host)
+    assert resolver.find_style_id("Cached card", element_type="Group") is None
+
+    host.cache["styles"]["Cached card"] = {
+        "id": "Group_cached_",
+        "type": "Group",
+        "%p": {"%bgc": "#ffffff"},
+    }
+    host.revision += 1
+
+    assert resolver.find_style_id("Cached card", element_type="Group") == "Group_cached_"
+    assert resolver.base_properties("Group_cached_") == {"%bgc": "#ffffff"}
+
+
+def test_matching_cache_fills_missing_discovery_type_and_properties_without_overwriting_present_values() -> None:
+    host = ReferenceHost(
+        discovery={
+            "styles": {
+                "Button_missing_fields_": {"%d": "Missing fields"},
+                "Button_discovery_wins_": {
+                    "%d": "Discovery wins",
+                    "%x": "Button",
+                    "%p": {"%bgc": "discovery"},
+                },
+            }
+        },
+        cache={
+            "styles": {
+                "Cached missing fields": {
+                    "id": "Button_missing_fields_",
+                    "type": "Button",
+                    "%p": {"%bgc": "cache", "%br": 6},
+                },
+                "Cached discovery wins": {
+                    "id": "Button_discovery_wins_",
+                    "type": "Text",
+                    "%p": {"%bgc": "cache"},
+                },
+            }
+        },
+        readable_styles=[
+            {
+                "id": "Button_missing_fields_",
+                "name": "Missing fields",
+                "type": "Unknown",
+                "is_default": False,
+            },
+            {
+                "id": "Button_discovery_wins_",
+                "name": "Discovery wins",
+                "type": "Button",
+                "is_default": False,
+            },
+        ],
+    )
+    resolver = StyleReferenceResolver(host)
+
+    assert resolver.infer_element_type("Button_missing_fields_") == "Button"
+    assert resolver.base_properties("Button_missing_fields_") == {"%bgc": "cache", "%br": 6}
+    assert resolver.infer_element_type("Button_discovery_wins_") == "Button"
+    assert resolver.base_properties("Button_discovery_wins_") == {"%bgc": "discovery"}
 
 
 def test_empty_malformed_and_unknown_snapshots_fail_closed_without_mutating_inputs() -> None:

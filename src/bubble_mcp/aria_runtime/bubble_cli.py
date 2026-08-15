@@ -446,6 +446,7 @@ class BubbleCLI:
         self._migrate_legacy_tmp_cache()
         self._cli_cache = self._load_cli_cache()
         self._cli_cache_base = copy.deepcopy(self._cli_cache)
+        self._style_reference_revision = 0
 
         self.profile_name = profile_name
         self.app_version = str(app_version or "test")
@@ -542,6 +543,9 @@ class BubbleCLI:
         """Save CLI cache to local JSON file."""
         baseline = self._cli_cache_base
         pending = self._cli_cache
+        baseline_styles = baseline.get("styles") if isinstance(baseline, dict) else None
+        pending_styles = pending.get("styles") if isinstance(pending, dict) else None
+        styles_changed = not cache_payloads_equal(baseline_styles, pending_styles)
 
         def apply(latest: Dict[str, Any]) -> bool:
             reconciled = apply_cache_delta(baseline, pending, latest)
@@ -554,6 +558,8 @@ class BubbleCLI:
         updated, _changed = self._cache_store.transaction(baseline, apply)
         self._cli_cache = updated
         self._cli_cache_base = copy.deepcopy(updated)
+        if styles_changed:
+            self._invalidate_style_reference_index()
 
     def _reload_cli_cache_from_disk(self) -> None:
         """Reload the current cache file so schema alias writes do not clobber newer subprocess updates."""
@@ -1023,6 +1029,18 @@ class BubbleCLI:
         discovery_data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
         cache_data = self._cli_cache if isinstance(self._cli_cache, dict) else {}
         return discovery_data, cache_data
+
+    def style_reference_revision(self) -> int:
+        """Return the explicit revision for in-place style snapshot mutations."""
+        return self._style_reference_revision
+
+    def _invalidate_style_reference_index(self) -> None:
+        """Advance style snapshot revision and invalidate a built resolver index."""
+        self._style_reference_revision = getattr(self, "_style_reference_revision", 0) + 1
+        lifecycle = getattr(self, "_style_lifecycle", None)
+        references = getattr(lifecycle, "references", None)
+        if references is not None:
+            references.invalidate()
 
     def list_style_references(self) -> List[Dict[str, Any]]:
         """Return discovery's normalized style rows for reference indexing."""
@@ -25823,6 +25841,7 @@ class BubbleCLI:
                 if "styles" not in self.discovery.data: self.discovery.data["styles"] = {}
                 if style_id not in self.discovery.data["styles"]:
                     self.discovery.data["styles"][style_id] = {"id": style_id, "type": element_type, "%p": {}}
+                    self._invalidate_style_reference_index()
 
                 return self._apply_style_state_definitions(name, state_defs, dry_run=dry_run)
 
@@ -25919,6 +25938,7 @@ class BubbleCLI:
             "%x": element_type,
             "%p": {},
         }
+        self._invalidate_style_reference_index()
 
         # 3. Update Properties (SetStyleData)
         if kwargs:
@@ -26194,6 +26214,7 @@ class BubbleCLI:
                       self.discovery.data["styles"][style_id]["%p"][path[3]] = change.get("body")
             if should_clear_font_family:
                  self.discovery.data["styles"][style_id]["%p"].pop("font_family", None)
+            self._invalidate_style_reference_index()
             if not self._apply_style_state_definitions(name, state_defs, dry_run=dry_run):
                 return False
             return True
