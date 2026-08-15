@@ -98,6 +98,7 @@ class _Host:
         self.button_result: dict[str, Any] | None = None
         self.ref_result: dict[str, Any] | None = None
         self.cache_result: dict[str, Any] | None = None
+        self.cached_context_object_id = ""
         self.path_values: dict[tuple[str, ...], Any] = {}
 
     def _find_context(self, name: str) -> tuple[str | None, str | None]:
@@ -126,6 +127,10 @@ class _Host:
     ) -> dict[str, Any] | None:
         del context_id, context_type, element_ref
         return self.cache_result
+
+    def _lookup_cached_context_object_id(self, context_type: str, context_id: str) -> str:
+        del context_type, context_id
+        return self.cached_context_object_id
 
     def _get_value_at_path(self, path: list[str]) -> Any:
         path_key = tuple(path)
@@ -228,6 +233,124 @@ def test_delete_nested_element_uses_canonical_path_and_updates_all_parents() -> 
             "element_id": "hero-id",
             "element_path": ["%el", "hero"],
         }
+    ]
+
+
+def test_delete_table_removes_nested_descendants_before_the_root() -> None:
+    host = _Host(element_type="Table")
+    assert isinstance(host.discovery.result, dict)
+    table = host.discovery.result["element"]
+    table["%el"] = {
+        "row": {
+            "id": "row-id",
+            "%x": "Group",
+            "%p": {},
+            "%el": {
+                "cell": {
+                    "id": "cell-id",
+                    "%x": "Text",
+                    "%p": {"%3": "Cell"},
+                }
+            },
+        }
+    }
+    host.path_values[("%p3", "pg", "%el", "hero")] = table
+    host._visual_mutations = VisualMutationService(host)
+
+    assert BubbleCLI.delete_table(host, "Home", "Hero")
+
+    changes = host.sent_payloads[0].changes
+    assert [
+        {
+            "intent": change["intent"]["name"],
+            "details": change["intent"].get("intent_details"),
+            "path": change["path_array"],
+            "body": change["body"],
+        }
+        for change in changes
+    ] == [
+        {
+            "intent": "Update index",
+            "details": None,
+            "path": ["_index", "id_to_path", "cell-id"],
+            "body": None,
+        },
+        {
+            "intent": "RemoveElement",
+            "details": {
+                "user_action": "Deleted by parent element",
+                "parent_user_action": "Deleted by parent element",
+                "parent_id": "row-id",
+            },
+            "path": ["%p3", "pg", "%el", "hero", "%el", "row", "%el", "cell"],
+            "body": None,
+        },
+        {
+            "intent": "Update index",
+            "details": None,
+            "path": ["_index", "id_to_path", "row-id"],
+            "body": None,
+        },
+        {
+            "intent": "RemoveElement",
+            "details": {
+                "user_action": "Deleted by parent element",
+                "parent_user_action": "Deleted by parent element",
+                "parent_id": "hero-id",
+            },
+            "path": ["%p3", "pg", "%el", "hero", "%el", "row"],
+            "body": None,
+        },
+        {
+            "intent": "Update index",
+            "details": None,
+            "path": ["_index", "id_to_path", "hero-id"],
+            "body": None,
+        },
+        {
+            "intent": "RemoveElement",
+            "details": {
+                "user_action": "Keyboard Press Delete",
+                "selected_element": "hero-id",
+            },
+            "path": ["%p3", "pg", "%el", "hero"],
+            "body": None,
+        },
+        {
+            "intent": "Update index",
+            "details": None,
+            "path": ["_index", "issues_sub", "root-id"],
+            "body": json.dumps(["sibling-id"]),
+        },
+        {
+            "intent": "Update index",
+            "details": None,
+            "path": ["_index", "issues_sub", "other-parent"],
+            "body": json.dumps([]),
+        },
+    ]
+
+
+def test_delete_table_uses_element_snapshot_and_skips_malformed_children() -> None:
+    host = _Host(element_type="Table")
+    assert isinstance(host.discovery.result, dict)
+    table = host.discovery.result["element"]
+    table["%el"] = {
+        "length": 3,
+        "invalid": None,
+        "": {},
+        "anonymous": {"%x": "Text", "%p": {"%3": "Cell"}},
+    }
+    host.path_values[("%p3", "pg", "%el", "hero")] = None
+    host._visual_mutations = VisualMutationService(host)
+
+    assert BubbleCLI.delete_table(host, "Home", "Hero")
+
+    assert [change["path_array"] for change in host.sent_payloads[0].changes[:4]] == [
+        ["_index", "id_to_path", "anonymous"],
+        ["%p3", "pg", "%el", "hero", "%el", "anonymous"],
+        ["_index", "id_to_path", "hero-id"],
+        ["%p3", "pg", "%el", "hero"],
     ]
 
 
@@ -438,6 +561,36 @@ def test_delete_parent_fallback_uses_root_node_and_index_variants() -> None:
     }
 
 
+def test_delete_parent_fallback_uses_cached_context_id_when_root_is_unreadable() -> None:
+    host = _Host()
+    host.discovery.data["_index"] = {
+        "id_to_path": {"hero-id": "%p3.pg.%el.hero"},
+        "issues_sub": {},
+    }
+    host.discovery.data["pages"]["pg"].pop("id")
+    host.path_values[("%p3", "pg")] = host.discovery.data["pages"]["pg"]
+    host.cached_context_object_id = "cached-page-object"
+
+    def unreadable_root(context_id: str, context_type: str) -> None:
+        del context_id, context_type
+        raise RuntimeError("root unavailable")
+
+    host.discovery._get_context_root = unreadable_root  # type: ignore[method-assign]
+
+    assert VisualMutationService(host).deletions.delete(
+        "Home",
+        "Hero",
+        allowed_types=frozenset({"text"}),
+        expected_label="text",
+        success_label="text",
+    )
+    assert _changes_without_random_ids(host.sent_payloads[0])[-1] == {
+        "intent": "Update index",
+        "path": ["_index", "issues_sub", "cached-page-object"],
+        "body": json.dumps([]),
+    }
+
+
 def test_delete_helpers_isolate_malformed_index_payloads() -> None:
     host = _Host()
     service = VisualMutationService(host).deletions
@@ -473,47 +626,55 @@ def test_delete_returns_false_when_target_resolution_fails() -> None:
 
 
 DELETE_FACADE_CONTRACTS = [
-    ("delete_text", frozenset({"text"}), "text", "group"),
-    ("delete_group", frozenset({"group", "custom_type"}), "group or custom_type", "group"),
-    ("delete_floating_group", frozenset({"floatinggroup"}), "floatinggroup", "floating group"),
-    ("delete_group_focus", frozenset({"groupfocus"}), "groupfocus", "group focus"),
-    ("delete_repeating_group", frozenset({"repeatinggroup"}), "repeatinggroup", "repeating group"),
-    ("delete_table", frozenset({"table"}), "table", "table"),
-    ("delete_button", frozenset({"button"}), "button", "button"),
-    ("delete_input", frozenset({"input"}), "input", "input"),
-    ("delete_checkbox", frozenset({"checkbox"}), "checkbox", "checkbox"),
-    ("delete_multiline_input", frozenset({"multilineinput"}), "multilineinput", "multiline input"),
-    ("delete_dropdown", frozenset({"dropdown"}), "dropdown", "dropdown"),
-    ("delete_datepicker", frozenset({"dateinput"}), "dateinput", "datepicker"),
+    ("delete_text", frozenset({"text"}), "text", "group", {}),
+    ("delete_group", frozenset({"group", "custom_type"}), "group or custom_type", "group", {}),
+    ("delete_floating_group", frozenset({"floatinggroup"}), "floatinggroup", "floating group", {}),
+    ("delete_group_focus", frozenset({"groupfocus"}), "groupfocus", "group focus", {}),
+    ("delete_repeating_group", frozenset({"repeatinggroup"}), "repeatinggroup", "repeating group", {}),
+    ("delete_table", frozenset({"table"}), "table", "table", {"cascade_descendants": True}),
+    ("delete_button", frozenset({"button"}), "button", "button", {}),
+    ("delete_input", frozenset({"input"}), "input", "input", {}),
+    ("delete_checkbox", frozenset({"checkbox"}), "checkbox", "checkbox", {}),
+    ("delete_multiline_input", frozenset({"multilineinput"}), "multilineinput", "multiline input", {}),
+    ("delete_dropdown", frozenset({"dropdown"}), "dropdown", "dropdown", {}),
+    ("delete_datepicker", frozenset({"dateinput"}), "dateinput", "datepicker", {}),
     (
         "delete_searchbox",
         frozenset({"autocompletedropdown", "searchbox"}),
         "autocompletedropdown/searchbox",
         "searchbox",
+        {},
     ),
-    ("delete_icon", frozenset({"icon"}), "icon", "icon"),
-    ("delete_image", frozenset({"image"}), "image", "image"),
-    ("delete_link", frozenset({"link"}), "link", "link"),
-    ("delete_shape", frozenset({"shape"}), "shape", "shape"),
-    ("delete_alert", frozenset({"alert"}), "alert", "alert"),
-    ("delete_video", frozenset({"video"}), "video", "video"),
-    ("delete_html", frozenset({"html"}), "html", "html"),
-    ("delete_map", frozenset({"map"}), "map", "map"),
-    ("delete_radio", frozenset({"radiobuttons"}), "radiobuttons", "radio"),
-    ("delete_slider", frozenset({"sliderinput"}), "sliderinput", "slider"),
-    ("delete_file_uploader", frozenset({"fileinput"}), "fileinput", "file uploader"),
+    ("delete_icon", frozenset({"icon"}), "icon", "icon", {}),
+    ("delete_image", frozenset({"image"}), "image", "image", {}),
+    ("delete_link", frozenset({"link"}), "link", "link", {"issues_list_bodies": ("[]",)}),
+    ("delete_shape", frozenset({"shape"}), "shape", "shape", {}),
+    ("delete_alert", frozenset({"alert"}), "alert", "alert", {}),
+    ("delete_video", frozenset({"video"}), "video", "video", {}),
+    ("delete_html", frozenset({"html"}), "html", "html", {}),
+    ("delete_map", frozenset({"map"}), "map", "map", {}),
+    ("delete_radio", frozenset({"radiobuttons"}), "radiobuttons", "radio", {}),
+    ("delete_slider", frozenset({"sliderinput"}), "sliderinput", "slider", {}),
+    (
+        "delete_file_uploader",
+        frozenset({"fileinput"}),
+        "fileinput",
+        "file uploader",
+        {"issues_list_bodies": (None, "[]")},
+    ),
     (
         "delete_picture_uploader",
         frozenset({"pictureinput"}),
         "pictureinput",
         "picture uploader",
+        {"issues_list_bodies": (None, "[]")},
     ),
-    ("delete_popup", frozenset(), "popup", "popup"),
+    ("delete_popup", frozenset(), "popup", "popup", {}),
 ]
 
 
 @pytest.mark.parametrize(
-    ("method_name", "allowed_types", "expected_label", "success_label"),
+    ("method_name", "allowed_types", "expected_label", "success_label", "delete_options"),
     DELETE_FACADE_CONTRACTS,
 )
 def test_bubble_cli_visual_delete_facades_delegate_literal_contract(
@@ -521,6 +682,7 @@ def test_bubble_cli_visual_delete_facades_delegate_literal_contract(
     allowed_types: frozenset[str],
     expected_label: str,
     success_label: str,
+    delete_options: dict[str, Any],
 ) -> None:
     calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
@@ -548,6 +710,33 @@ def test_bubble_cli_visual_delete_facades_delegate_literal_contract(
                 "success_label": success_label,
                 "dry_run": True,
                 "prefer_last": True,
+                **delete_options,
             },
         )
     ]
+
+
+@pytest.mark.parametrize(
+    ("method_name", "element_type", "expected_bodies"),
+    [
+        ("delete_link", "Link", ["[]"]),
+        ("delete_file_uploader", "FileInput", [None, "[]"]),
+        ("delete_picture_uploader", "PictureInput", [None, "[]"]),
+    ],
+)
+def test_visual_delete_facades_preserve_issues_list_updates(
+    method_name: str,
+    element_type: str,
+    expected_bodies: list[Any],
+) -> None:
+    host = _Host(element_type=element_type)
+    host._visual_mutations = VisualMutationService(host)
+
+    assert getattr(BubbleCLI, method_name)(host, "Home", "Hero")
+
+    issue_updates = [
+        change
+        for change in host.sent_payloads[0].changes
+        if change["path_array"] == ["_index", "issues_list", "hero-id"]
+    ]
+    assert [change["body"] for change in issue_updates] == expected_bodies

@@ -32,6 +32,8 @@ class VisualDeletionService:
         success_label: str,
         dry_run: bool = False,
         prefer_last: bool = False,
+        issues_list_bodies: tuple[str | None, ...] = (),
+        cascade_descendants: bool = False,
     ) -> bool:
         target = self._targets.resolve_existing(
             context_name,
@@ -50,7 +52,11 @@ class VisualDeletionService:
             )
             return False
 
-        payload = self._build_remove_payload(target)
+        payload = self._build_remove_payload(
+            target,
+            issues_list_bodies=issues_list_bodies,
+            cascade_descendants=cascade_descendants,
+        )
         if dry_run:
             logger.info("\n DRY RUN - Payload preview:")
             logger.log(payload.to_json())
@@ -71,27 +77,53 @@ class VisualDeletionService:
             logger.error(f"Failed to send: {exc}")
             return False
 
-    def _build_remove_payload(self, target: VisualElementTarget) -> PayloadBuilder:
+    def _build_remove_payload(
+        self,
+        target: VisualElementTarget,
+        *,
+        issues_list_bodies: tuple[str | None, ...] = (),
+        cascade_descendants: bool = False,
+    ) -> PayloadBuilder:
         payload = PayloadBuilder(appname=self._host.appname)
-        payload.add_update_index(["_index", "id_to_path", target.element_id], None)
-        payload.changes.append(
-            {
-                "intent": {
-                    "name": "RemoveElement",
-                    "id": random.randint(1, 999999),
-                    "intent_details": {
-                        "user_action": "Keyboard Press Delete",
-                        "selected_element": target.element_id,
-                    },
-                    "source_appname": "",
-                },
-                "path_array": target.path,
-                "body": None,
-                "version_control_api_version": 4,
-                "changelog_data": [],
-                "session_id": payload.session_id,
-            }
+        delete_entries = (
+            self._collect_descendant_removals(target)
+            if cascade_descendants
+            else [(target.element_id, target.path, None, True)]
         )
+        for element_id, path, parent_id, is_root in delete_entries:
+            payload.add_update_index(["_index", "id_to_path", element_id], None)
+            if is_root:
+                intent_details = {
+                    "user_action": "Keyboard Press Delete",
+                    "selected_element": target.element_id,
+                }
+            else:
+                intent_details = {
+                    "user_action": "Deleted by parent element",
+                    "parent_user_action": "Deleted by parent element",
+                }
+                if parent_id:
+                    intent_details["parent_id"] = parent_id
+            payload.changes.append(
+                {
+                    "intent": {
+                        "name": "RemoveElement",
+                        "id": random.randint(1, 999999),
+                        "intent_details": intent_details,
+                        "source_appname": "",
+                    },
+                    "path_array": path,
+                    "body": None,
+                    "version_control_api_version": 4,
+                    "changelog_data": [],
+                    "session_id": payload.session_id,
+                }
+            )
+        for body in issues_list_bodies:
+            payload.add_update_index(
+                ["_index", "issues_list", target.element_id],
+                body,
+            )
         parent_updates = self._find_parent_updates(target)
         for parent_id, children in parent_updates:
             remaining = [child_id for child_id in children if child_id != target.element_id]
@@ -100,6 +132,32 @@ class VisualDeletionService:
                 json.dumps(remaining),
             )
         return payload
+
+    def _collect_descendant_removals(
+        self,
+        target: VisualElementTarget,
+    ) -> list[tuple[str, list[str], str | None, bool]]:
+        target_node = self._host._get_value_at_path(target.path)
+        if not isinstance(target_node, dict):
+            element = target.result.get("element")
+            target_node = element if isinstance(element, dict) else {}
+
+        entries: list[tuple[str, list[str], str | None, bool]] = []
+
+        def collect(node: dict[str, Any], path: list[str], parent_id: str | None) -> None:
+            children = node.get("%el") if isinstance(node.get("%el"), dict) else {}
+            current_key = str(path[-1] if path else "").strip()
+            element_id = str(node.get("id") or current_key).strip()
+            if not element_id:
+                return
+            for child_key, child in children.items():
+                if child_key == "length" or not isinstance(child, dict):
+                    continue
+                collect(child, [*path, "%el", str(child_key)], element_id)
+            entries.append((element_id, list(path), parent_id, element_id == target.element_id))
+
+        collect(target_node, target.path, None)
+        return entries or [(target.element_id, target.path, None, True)]
 
     def _find_parent_updates(self, target: VisualElementTarget) -> list[tuple[str, list[str]]]:
         data = self._host.discovery.data if isinstance(self._host.discovery.data, dict) else {}
@@ -121,11 +179,27 @@ class VisualDeletionService:
                 parent_id = str(parent_node.get("id") or "").strip()
                 children = self._child_ids(parent_node)
         if not parent_id:
-            parent_id = self._context_object_id(target.context_id, target.context_type)
-            root = self._host.discovery._get_context_root(target.context_id, target.context_type)
-            children = self._child_ids(root)
-            if not children:
-                children = self._root_children_from_index(target.context_id, target.context_type)
+            parent_id = self._context_object_id(
+                target.context_id,
+                target.context_type,
+            ) or self._host._lookup_cached_context_object_id(
+                target.context_type,
+                target.context_id,
+            )
+            if parent_id:
+                try:
+                    root = self._host.discovery._get_context_root(
+                        target.context_id,
+                        target.context_type,
+                    )
+                except Exception:
+                    root = None
+                children = self._child_ids(root)
+                if not children:
+                    children = self._root_children_from_index(
+                        target.context_id,
+                        target.context_type,
+                    )
         return [(parent_id, children)] if parent_id else []
 
     @staticmethod
