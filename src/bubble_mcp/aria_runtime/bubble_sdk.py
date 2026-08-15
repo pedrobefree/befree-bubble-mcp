@@ -5327,6 +5327,25 @@ class StyleBuilder:
 
         return changes
 
+    def build_state_transition_intents(
+        self,
+        style_id: str,
+        properties: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Build ordered automatic state transitions through SDK-owned wire mappings."""
+        transitions: Dict[str, Dict[str, Any]] = {}
+        for property_name in properties:
+            bubble_key = (
+                property_name
+                if property_name.startswith("%")
+                else self.TRANSITION_PROP_MAPPING.get(property_name)
+            )
+            if bubble_key in self.AUTO_TRANSITION_KEYS and bubble_key not in transitions:
+                transitions[bubble_key] = {"duration": 200, "fn": "ease"}
+        if not transitions:
+            return []
+        return self.update_style(style_id=style_id, transitions=transitions)
+
     def apply_theme(
         self,
         style_id: str,
@@ -5379,18 +5398,20 @@ class StyleBuilder:
 
         # 3. Automatic Transitions Rule
         # If any state change affects transitionable properties, add them to the base style
-        needed_transitions = {}
+        state_transition_properties = {}
         for state_key, state_props in theme.items():
             if state_key == "base":
                 continue
             for prop in state_props.keys():
-                bkey = prop if prop.startswith("%") else self.TRANSITION_PROP_MAPPING.get(prop)
-                if bkey in self.AUTO_TRANSITION_KEYS:
-                    needed_transitions[bkey] = {"duration": 200, "fn": "ease"}
+                state_transition_properties.setdefault(prop, None)
 
-        if needed_transitions:
-            logger.info(f"Auto-injecting {len(needed_transitions)} transitions for style {style_id}")
-            all_changes.extend(self.update_style(style_id=style_id, transitions=needed_transitions))
+        transition_intents = self.build_state_transition_intents(
+            style_id,
+            state_transition_properties,
+        )
+        if transition_intents:
+            logger.info(f"Auto-injecting {len(transition_intents)} transitions for style {style_id}")
+            all_changes.extend(transition_intents)
 
         return all_changes
 

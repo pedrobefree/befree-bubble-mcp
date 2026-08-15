@@ -287,6 +287,11 @@ class StyleReferenceResolver:
             if not entry.is_default and self._type_matches(entry, normalized_type)
         }
 
+    def default_style_ids(self) -> set[str]:
+        """Return every default ID from settings and resolved discovery entries."""
+        self._ensure_index()
+        return {entry.style_id for entry in self._entries if entry.is_default}
+
     def current_snapshot_style_ids(self, element_type: str | None = None) -> set[str]:
         data, _ = self._host.style_reference_snapshots()
         styles = data.get("styles", {}) if isinstance(data, dict) else {}

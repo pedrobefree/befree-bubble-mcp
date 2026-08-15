@@ -376,35 +376,15 @@ class StyleDefinitionService:
             "icon_size": "icon_size",
         }
 
-    @classmethod
+    @staticmethod
     def build_transition_intents(
-        cls,
         style_id: str,
         properties: dict[str, Any],
         *,
         comparison_map: dict[str, str] | None = None,
     ) -> list[dict[str, Any]]:
-        if not properties:
-            return []
-        wire_map = comparison_map or cls.state_property_wire_map()
-        transitionable = {"%bas", "%fc", "%ic", "%bc", "%br", "%bs", "opacity"}
-        background_keys = {"%bgc", "%bgf", "%bgt", "background_gradient_mid"}
-        seen: set[str] = set()
-        intents: list[dict[str, Any]] = []
-        for property_name in properties:
-            wire_key = wire_map.get(property_name, property_name)
-            transition_key = "%bas" if wire_key in background_keys else wire_key
-            if transition_key not in transitionable or transition_key in seen:
-                continue
-            seen.add(transition_key)
-            intents.append(
-                {
-                    "intent": "AddTransition",
-                    "path": ["styles", style_id, "transitions", transition_key],
-                    "body": {"duration": 200, "fn": "ease"},
-                }
-            )
-        return intents
+        del comparison_map
+        return StyleBuilder().build_state_transition_intents(style_id, properties)
 
     @staticmethod
     def normalize_trigger_alias(token: str) -> str | None:
@@ -568,6 +548,8 @@ class StyleDefinitionService:
             ):
                 normalized["shadow_style"] = "none"
         default_style = bool(normalized.pop("default_style", False))
+        if not self._remove_stale_cache_aliases(name, element_type):
+            return False
         expected_id = self._references.canonical_style_id(name, element_type)
         if not expected_id:
             logger.error(f"Could not generate style ID for '{name}'.")
@@ -681,6 +663,8 @@ class StyleDefinitionService:
             return False
         normalized = self._resolve_color_kwargs(self.normalize_kwargs(raw_properties))
         default_style = bool(normalized.pop("default_style", False))
+        if not self._remove_stale_cache_aliases(name, element_type):
+            return False
         style_id = str(style_id_override or "").strip() or self._find_update_style_id(name, element_type)
         if not style_id:
             logger.error(f"Style '{name}' not found.")
@@ -1073,9 +1057,14 @@ class StyleDefinitionService:
         targets: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
         for candidate in candidates:
-            candidate_name = str(candidate.get("name") or "")
-            selected = candidate_name.lower().strip() in requested or bool(
-                regex and regex.search(candidate_name)
+            candidate_names = [
+                str(candidate.get("name") or ""),
+                *(str(alias) for alias in candidate.get("aliases", ())),
+            ]
+            selected = any(
+                candidate_name.lower().strip() in requested
+                or bool(regex and regex.search(candidate_name))
+                for candidate_name in candidate_names
             )
             style_id = str(candidate.get("id") or "")
             if (
@@ -1213,39 +1202,97 @@ class StyleDefinitionService:
         discovery, cache = self._host.style_reference_snapshots()
         raw_styles = discovery.get("styles") if isinstance(discovery, dict) else None
         raw_styles = raw_styles if isinstance(raw_styles, dict) else {}
-        candidates: list[dict[str, Any]] = []
-        seen_names: set[str] = set()
+        default_ids = self._references.default_style_ids()
+        candidates_by_id: dict[str, dict[str, Any]] = {}
+
+        def merge_candidate(
+            style_id: str,
+            name: str,
+            element_type: Any,
+            *,
+            is_default: bool,
+            properties: Any,
+            states: Any,
+        ) -> None:
+            if not style_id:
+                return
+            existing = candidates_by_id.get(style_id)
+            if existing is not None:
+                aliases = list(existing.get("aliases", ()))
+                if name and name != existing["name"] and name not in aliases:
+                    aliases.append(name)
+                existing["aliases"] = tuple(aliases)
+                existing["is_default"] = bool(
+                    existing.get("is_default") or is_default or style_id in default_ids
+                )
+                return
+            candidates_by_id[style_id] = {
+                "id": style_id,
+                "name": name,
+                "aliases": (),
+                "type": element_type,
+                "is_default": bool(is_default or style_id in default_ids),
+                "%p": copy.deepcopy(properties if isinstance(properties, dict) else {}),
+                "%s": copy.deepcopy(states if isinstance(states, dict) else {}),
+            }
+
         for style_id, raw in raw_styles.items():
             if not isinstance(raw, dict):
                 continue
             name = str(raw.get("name") or raw.get("display") or raw.get("%d") or style_id)
-            candidates.append(
-                {
-                    "id": str(style_id),
-                    "name": name,
-                    "type": raw.get("type") or raw.get("%x") or str(style_id).split("_", 1)[0],
-                    "is_default": bool(raw.get("is_default")),
-                    "%p": copy.deepcopy(raw.get("%p") or {}),
-                    "%s": copy.deepcopy(raw.get("%s") or {}),
-                }
+            merge_candidate(
+                str(style_id),
+                name,
+                raw.get("type") or raw.get("%x") or str(style_id).split("_", 1)[0],
+                is_default=bool(raw.get("is_default")),
+                properties=raw.get("%p"),
+                states=raw.get("%s"),
             )
-            seen_names.add(name)
         cached_styles = cache.get("styles") if isinstance(cache, dict) else None
         if isinstance(cached_styles, dict):
             for name, raw in cached_styles.items():
-                if name in seen_names or not isinstance(raw, dict):
+                if not isinstance(raw, dict):
                     continue
-                candidates.append(
-                    {
-                        "id": str(raw.get("id") or ""),
-                        "name": str(name),
-                        "type": raw.get("type") or "",
-                        "is_default": False,
-                        "%p": copy.deepcopy(raw.get("%p") or {}),
-                        "%s": copy.deepcopy(raw.get("%s") or {}),
-                    }
+                merge_candidate(
+                    str(raw.get("id") or ""),
+                    str(name),
+                    raw.get("type") or raw.get("%x") or "",
+                    is_default=bool(raw.get("is_default")),
+                    properties=raw.get("%p"),
+                    states=raw.get("%s"),
                 )
-        return candidates
+        return list(candidates_by_id.values())
+
+    def _remove_stale_cache_aliases(self, name: str, element_type: str) -> bool:
+        discovery, cache = self._host.style_reference_snapshots()
+        raw_styles = discovery.get("styles") if isinstance(discovery, dict) else None
+        current_ids = {str(style_id) for style_id in raw_styles} if isinstance(raw_styles, dict) else set()
+        cached_styles = cache.get("styles") if isinstance(cache, dict) else None
+        if not isinstance(cached_styles, dict):
+            return True
+        stale_aliases: list[str] = []
+        for alias, raw in cached_styles.items():
+            if str(alias).casefold() != str(name).casefold() or not isinstance(raw, dict):
+                continue
+            cached_type = self._references.normalize_element_type(
+                str(raw.get("type") or raw.get("%x") or "")
+            )
+            if cached_type and cached_type != element_type:
+                continue
+            style_id = str(raw.get("id") or "").strip()
+            if style_id and style_id not in current_ids:
+                stale_aliases.append(str(alias))
+        if not stale_aliases:
+            return True
+        try:
+            for alias in stale_aliases:
+                self._host.remove_style_definition_cache(alias)
+            self._host.save_style_definition_cache()
+        except Exception as exc:
+            logger.error(f"Failed to remove stale style cache for '{name}': {exc}")
+            return False
+        self._references.invalidate()
+        return True
 
     def _style_snapshot(self, style_id: str) -> dict[str, Any]:
         discovery, cache = self._host.style_reference_snapshots()

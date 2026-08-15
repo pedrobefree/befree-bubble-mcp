@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
+from bubble_mcp.style_import.runtime import create_styles_from_html_runtime
 
 
 @pytest.fixture
@@ -240,9 +241,96 @@ def test_figma_import_uses_definition_service_as_compatibility_sink(cli: BubbleC
     assert cli._style_lifecycle.figma_import._styles is cli._style_lifecycle.definitions
 
 
-def test_definition_failure_remains_false_for_html_and_figma_callers(cli: BubbleCLI) -> None:
+def test_html_style_execution_remains_failed_when_definition_sink_returns_false(
+    cli: BubbleCLI,
+) -> None:
     sentinel = _SentinelDefinitions()
     sentinel.create_style = lambda *args, **kwargs: False  # type: ignore[method-assign]
     cli._style_lifecycle.definitions = sentinel  # type: ignore[assignment]
 
-    assert cli.create_style("Broken", "Text", font_size=16) is False
+    def execute(tool: str, arguments: dict[str, Any]) -> dict[str, Any]:
+        assert tool == "create_style"
+        forwarded = dict(arguments)
+        forwarded.pop("profile")
+        forwarded.pop("execute")
+        name = str(forwarded.pop("name"))
+        element_type = str(forwarded.pop("element_type"))
+        return {"ok": cli.create_style(name, element_type, **forwarded)}
+
+    result = create_styles_from_html_runtime(
+        profile="smoke",
+        style_name="Broken HTML Button",
+        element_type="Button",
+        html='<button class="broken" style="color: #111111">Broken</button>',
+        selector=".broken",
+        execute=True,
+        include_states=False,
+        executor=execute,
+        verifier=lambda candidate: {"ok": True, "style_name": candidate["name"]},
+    )
+
+    assert result["ok"] is False
+    assert result["executed"] is False
+    assert result["execution_results"] == [
+        {"tool": "create_style", "ok": False, "result": {"ok": False}}
+    ]
+
+
+def test_figma_sync_remains_failed_when_definition_sink_returns_false(
+    cli: BubbleCLI,
+    tmp_path: Path,
+) -> None:
+    tokens = tmp_path / "tokens.json"
+    tokens.write_text(
+        json.dumps(
+            {
+                "typography": {
+                    "body": {
+                        "regular": {
+                            "type": "typography",
+                            "value": {
+                                "fontFamily": "Inter",
+                                "fontSize": 16,
+                                "fontWeight": 400,
+                                "color": "#111111",
+                            },
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "naming": {"separator": " ", "case": "title"},
+                "filters": {
+                    "include_color_paths": [],
+                    "exclude_color_paths": [],
+                    "include_typography_paths": ["typography.*"],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    sentinel = _SentinelDefinitions()
+    sentinel.create_style = lambda *args, **kwargs: False  # type: ignore[method-assign]
+    cli._style_lifecycle.definitions = sentinel  # type: ignore[assignment]
+    cli._style_lifecycle.figma_import._styles = sentinel
+
+    assert cli.sync_figma_tokens(
+        str(tokens),
+        config_path=str(config),
+        types="style",
+    ) is False
+    assert cli._last_figma_token_sync_result["ok"] is False
+    assert cli._last_figma_token_sync_result["applied_counts"] == {
+        "fonts": 0,
+        "colors": 0,
+        "styles": 0,
+    }
+    assert cli._last_figma_token_sync_result["errors"] == [
+        "styles[0] Body Regular: style definition returned false"
+    ]

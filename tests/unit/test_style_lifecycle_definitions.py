@@ -486,6 +486,60 @@ def test_delete_bulk_and_clear_remove_cache_only_after_successful_dispatch() -> 
     assert "Body" in failed.cache["styles"]
 
 
+def test_bulk_delete_never_emits_settings_backed_default_or_its_cached_alias() -> None:
+    host = _Host(
+        {
+            "Text_default_": _style("System Body", "Text"),
+            "Text_custom_": _style("Custom Body", "Text"),
+        }
+    )
+    host.discovery["settings"] = {
+        "client_safe": {"default_styles": {"Text": "Text_default_"}}
+    }
+    host.cache["styles"] = {
+        "Default alias": {"id": "Text_default_", "type": "Text"},
+        "Custom alias": {"id": "Text_custom_", "type": "Text"},
+    }
+
+    assert _service(host).delete_styles(
+        names=["System Body", "Default alias", "Custom alias"]
+    ) is True
+
+    deleted_ids = [
+        row[1][1]
+        for row in host.dispatches[0]
+        if row[0] == "DeleteStyle"
+    ]
+    assert deleted_ids == ["Text_custom_"]
+    assert "Default alias" in host.cache["styles"]
+
+
+def test_clear_never_emits_settings_backed_default_or_its_cached_alias() -> None:
+    host = _Host(
+        {
+            "Text_default_": _style("System Body", "Text"),
+            "Text_custom_": _style("Custom Body", "Text"),
+        }
+    )
+    host.discovery["settings"] = {
+        "client_safe": {"default_styles": {"Text": "Text_default_"}}
+    }
+    host.cache["styles"] = {
+        "Default alias": {"id": "Text_default_", "type": "Text"},
+        "Custom alias": {"id": "Text_custom_", "type": "Text"},
+    }
+
+    assert _service(host).clear_custom_styles() is True
+
+    deleted_ids = [
+        row[1][1]
+        for row in host.dispatches[0]
+        if row[0] == "DeleteStyle"
+    ]
+    assert deleted_ids == ["Text_custom_"]
+    assert "Default alias" in host.cache["styles"]
+
+
 def test_create_button_style_keeps_sdk_theme_builder_and_host_dry_run_semantics() -> None:
     host = _Host()
 
@@ -863,6 +917,55 @@ def test_existing_create_dry_run_and_update_failure_do_not_report_success() -> N
     assert failing.cache == {"styles": {}}
 
 
+def test_create_removes_stale_cache_only_style_before_creating_canonical_style() -> None:
+    host = _Host()
+    host.cache["styles"]["Body"] = {"id": "Text_body_", "type": "Text"}
+
+    assert _service(host).create_style(
+        "Body",
+        "Text",
+        allow_property_match=False,
+    ) is True
+
+    assert [event[0] for event in host.events[:3]] == [
+        "cache-remove",
+        "cache-save",
+        "dispatch",
+    ]
+    assert any(row[0] == "CreateStyle" for row in host.dispatches[0])
+    assert host.cache["styles"]["Body"]["id"] == "Text_body_"
+
+
+def test_update_rejects_and_removes_stale_cache_only_style() -> None:
+    host = _Host()
+    host.cache["styles"]["Body"] = {"id": "Text_body_", "type": "Text"}
+
+    assert _service(host).update_style_definition("Body", "Text", font_size=18) is False
+
+    assert host.dispatches == []
+    assert host.cache == {"styles": {}}
+    assert [event[0] for event in host.events] == ["cache-remove", "cache-save"]
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_definition_mutations_fail_closed_when_stale_cache_cleanup_fails(
+    operation: str,
+) -> None:
+    host = _Host()
+    host.cache["styles"]["Body"] = {"id": "Text_body_", "type": "Text"}
+    host.fail_cache = "remove"
+    service = _service(host)
+
+    if operation == "create":
+        result = service.create_style("Body", "Text", allow_property_match=False)
+    else:
+        result = service.update_style_definition("Body", "Text", font_size=18)
+
+    assert result is False
+    assert host.dispatches == []
+    assert host.cache["styles"]["Body"]["id"] == "Text_body_"
+
+
 def test_create_file_style_without_typography_and_live_font_clear_preserve_properties() -> None:
     host = _Host()
     assert _service(host).create_style(
@@ -919,6 +1022,31 @@ def test_condition_lookup_uses_cached_states_and_recursive_compound_conditions()
         [("hover", "and_"), ("focus", None)],
     ) == "compound"
     assert service.find_style_condition_id("Button_primary_", [("hover", None)]) is None
+
+
+def test_state_transitions_follow_builder_mapping_and_preserve_literal_order() -> None:
+    host = _Host({"Button_primary_": _style("Primary", "Button")})
+
+    assert _service(host).add_style_condition(
+        "Primary",
+        "hover",
+        index="state0",
+        **{"%bgc": "red", "font_color": "white", "border_color": "black"},
+    ) is True
+
+    assert host.dispatches[0] == [
+        (
+            "AddTransition",
+            ["styles", "Button_primary_", "transitions", "%fc"],
+            {"duration": 200, "fn": "ease"},
+        ),
+        (
+            "AddTransition",
+            ["styles", "Button_primary_", "transitions", "%bc"],
+            {"duration": 200, "fn": "ease"},
+        ),
+    ]
+    assert host.dispatches[1][0][0] == "NewStyleState"
 
 
 def test_reorder_reports_missing_or_unknown_states_and_prunes_unrequested_states() -> None:
