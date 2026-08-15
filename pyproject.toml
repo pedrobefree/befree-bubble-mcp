@@ -66,7 +66,17 @@ skip_covered = true
 line-length = 100
 target-version = "py311"
 extend-exclude = [
-  "src/bubble_mcp/aria_runtime/*.py",
+  "src/bubble_mcp/aria_runtime/__init__.py",
+  "src/bubble_mcp/aria_runtime/bubble_cli.py",
+  "src/bubble_mcp/aria_runtime/bubble_sdk.py",
+  "src/bubble_mcp/aria_runtime/cli_cache.py",
+  "src/bubble_mcp/aria_runtime/color_mapper.py",
+  "src/bubble_mcp/aria_runtime/config.py",
+  "src/bubble_mcp/aria_runtime/context_alias_registry.py",
+  "src/bubble_mcp/aria_runtime/context_reference_resolver.py",
+  "src/bubble_mcp/aria_runtime/element_capabilities.py",
+  "src/bubble_mcp/aria_runtime/metadata_scanner.py",
+  "src/bubble_mcp/aria_runtime/source_query_builder.py",
   "src/bubble_mcp/aria_runtime/agents",
   "src/bubble_mcp/aria_runtime/figma_bridge",
   "src/bubble_mcp/aria_runtime/html_to_bubble",

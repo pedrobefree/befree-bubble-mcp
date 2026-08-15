@@ -5,7 +5,12 @@ import os
 import random
 
 from bubble_mcp.aria_runtime import bubble_cli as bubble_cli_module
-from scripts.benchmark_style_lifecycle import BenchmarkConfig, compare_reports, run_benchmarks
+from scripts.benchmark_style_lifecycle import (
+    BenchmarkConfig,
+    _assignment_sample,
+    compare_reports,
+    run_benchmarks,
+)
 
 
 def test_benchmark_suite_reports_repeatable_style_lifecycle_metrics() -> None:
@@ -82,6 +87,14 @@ def test_benchmark_comparison_reports_absolute_and_percentage_deltas() -> None:
         "before_write_count": 0,
         "after_write_count": 0,
     }
+
+
+def test_assignment_benchmark_payload_metrics_are_repeatable() -> None:
+    random.seed(1)
+
+    byte_counts = [_assignment_sample(200).json_bytes for _ in range(5)]
+
+    assert len(set(byte_counts)) == 1
 
 
 def test_benchmark_suite_restores_runtime_state(monkeypatch) -> None:

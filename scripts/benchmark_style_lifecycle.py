@@ -184,6 +184,7 @@ def _assignment_sample(operations: int) -> Sample:
     with tempfile.TemporaryDirectory(prefix="style-assignment-") as temp_name:
         cli = _new_cli(Path(temp_name), {})
         payload = PayloadBuilder(appname="style-lifecycle-benchmark")
+        random.seed(45)
         started = perf_counter()
         for index in range(operations):
             cli._queue_style_assignment_changes(
