@@ -8,14 +8,18 @@ import hashlib
 import json
 from pathlib import Path
 from stat import S_ISREG
-from typing import Any, Callable, Mapping, cast
+from typing import TYPE_CHECKING, Any, Callable, Mapping, cast
 
-try:
+if TYPE_CHECKING:
     from ..bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, FontBuilder
     from ..figma_bridge.transform_tokens import TokenTransformer
-except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, FontBuilder
-    from figma_bridge.transform_tokens import TokenTransformer
+else:
+    try:
+        from ..bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, FontBuilder
+        from ..figma_bridge.transform_tokens import TokenTransformer
+    except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
+        from bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, FontBuilder
+        from figma_bridge.transform_tokens import TokenTransformer
 
 from .colors import ColorSnapshot, ColorTokenService
 from .fonts import FontSnapshot, FontTokenService
@@ -471,7 +475,7 @@ class FigmaTokenImportService:
         for token in selected:
             parts = [str(part) for part in token.get("parts") or []]
             raw_name = transformer.format_name(parts, token_type="color")
-            rgba = transformer.hex_to_rgba(token.get("value"))
+            rgba = transformer.hex_to_rgba(cast(str, token.get("value")))
             clean_path = ".".join(parts[1:])
             explicit_defaults = clean_path in mappings
             targets = mappings.get(clean_path, [raw_name])
@@ -493,7 +497,9 @@ class FigmaTokenImportService:
                 else:
                     token_type, token_id, current = found
                     current_rgba = current.get("rgba") if isinstance(current, Mapping) else current
-                    if transformer.normalize_rgba(current_rgba) == transformer.normalize_rgba(rgba):
+                    if transformer.normalize_rgba(cast(str, current_rgba)) == transformer.normalize_rgba(
+                        rgba
+                    ):
                         skipped += 1
                     elif token_type == "default":
                         default_updates.append(DefaultColorUpdate(token_id=token_id, rgba=rgba))
@@ -667,13 +673,12 @@ class FigmaTokenImportService:
 
     @staticmethod
     def _stable_token_id(kind: str, name: str, used_ids: set[str]) -> str:
-        attempt = 0
-        while True:
+        for attempt in range(16**4):
             seed = f"figma:{kind}:{name.casefold()}:{attempt}".encode()
             candidate = "b" + hashlib.sha256(seed).hexdigest()[:4]
             if candidate not in used_ids:
                 return candidate
-            attempt += 1
+        raise RuntimeError("deterministic token ID namespace exhausted")
 
     @staticmethod
     def _next_order(entries: Mapping[str, Mapping[str, Any]]) -> int:

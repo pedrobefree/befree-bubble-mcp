@@ -616,6 +616,32 @@ def test_plan_helpers_cover_empty_optional_and_collision_boundaries(tmp_path: Pa
     assert service._line_height("invalid", 16) is None
 
 
+def test_stable_token_id_fails_explicitly_when_suffix_namespace_is_exhausted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class DeterministicDigest:
+        def __init__(self, attempt: int) -> None:
+            self._attempt = attempt
+
+        def hexdigest(self) -> str:
+            return f"{self._attempt:04x}" + ("0" * 60)
+
+    def bounded_sha256(seed: bytes) -> DeterministicDigest:
+        attempt = int(seed.rsplit(b":", 1)[1])
+        if attempt >= 16**4:
+            raise AssertionError("searched past the finite four-hex suffix namespace")
+        return DeterministicDigest(attempt)
+
+    monkeypatch.setattr(
+        "bubble_mcp.aria_runtime.style_lifecycle.figma_import.hashlib.sha256",
+        bounded_sha256,
+    )
+    used_ids = {f"b{suffix:04x}" for suffix in range(16**4)}
+
+    with pytest.raises(RuntimeError, match="deterministic token ID namespace exhausted"):
+        _service(_host())._stable_token_id("font", "Collision", used_ids)
+
+
 def test_list_options_uses_the_same_bounded_document_and_transformer(tmp_path: Path) -> None:
     result = _service(_host()).list_options(_tokens(tmp_path), config_path=_config(tmp_path))
 

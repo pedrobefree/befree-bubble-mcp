@@ -5,12 +5,15 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 import re
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping, cast
 
-try:
+if TYPE_CHECKING:
     from ..bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
-except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
+else:
+    try:
+        from ..bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
+    except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
+        from bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
 
 from .protocols import StyleTokenHost, TokenMutationResult, dispatch_token_mutation
 
@@ -274,7 +277,7 @@ class ColorTokenService:
         return self._dispatch(payload, dry_run=dry_run, after=cache_orders)
 
     def _payload(self) -> PayloadBuilder:
-        return self._host.new_style_token_payload()
+        return cast(PayloadBuilder, self._host.new_style_token_payload())
 
     def _custom_payload(self, colors: dict[str, dict[str, Any]]) -> PayloadBuilder:
         payload = self._payload()

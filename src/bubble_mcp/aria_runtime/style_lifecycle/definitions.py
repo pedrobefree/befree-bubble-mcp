@@ -8,12 +8,15 @@ import random
 import re
 import string
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
+if TYPE_CHECKING:
     from ..bubble_sdk import PayloadBuilder, StyleBuilder, logger
-except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import PayloadBuilder, StyleBuilder, logger
+else:
+    try:
+        from ..bubble_sdk import PayloadBuilder, StyleBuilder, logger
+    except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
+        from bubble_sdk import PayloadBuilder, StyleBuilder, logger
 
 from .protocols import StyleDefinitionHost
 from .references import StyleReferenceResolver
@@ -964,7 +967,7 @@ class StyleDefinitionService:
             condition = state.get("%c") if isinstance(state, dict) else None
             node = condition.get("%n") if isinstance(condition, dict) else None
             name = node.get("%nm") if isinstance(node, dict) else None
-            trigger = wire_to_trigger.get(name)
+            trigger = wire_to_trigger.get(str(name)) if name is not None else None
             if trigger and isinstance(state, dict):
                 identified[trigger] = state
         if not identified:

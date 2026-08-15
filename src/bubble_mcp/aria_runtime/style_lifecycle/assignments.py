@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import random
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
+if TYPE_CHECKING:
     from ..bubble_sdk import PayloadBuilder, logger
-except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import PayloadBuilder, logger
+else:
+    try:
+        from ..bubble_sdk import PayloadBuilder, logger
+    except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
+        from bubble_sdk import PayloadBuilder, logger
 
 from .protocols import StyleAssignmentHost
 from .references import StyleReferenceResolver
