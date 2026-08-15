@@ -283,10 +283,91 @@ context root; reusable-instance and icon finalization now also delegate to the
 creation service, with icon post-create sizing retained after successful
 execution only.
 
-**Next Stage 4 boundary — Family 3 style/color/token lifecycle.** Extract style
-resolution, override pruning/clearing, assignment payloads, and color/font token
-operations behind a typed host boundary while preserving the Family 2 service
-callbacks and public tool contracts.
+#### Family 3: style, color, font, and token lifecycle
+
+Family 3 was delivered as the six-part Stage 4.5 stack on 2026-08-15. Public
+CLI/MCP names, schemas, aliases, signatures, preview/confirmation behavior,
+dispatch order, and result shapes remain unchanged throughout the stack.
+
+1. **Stage 4.5a — style references (PR #26):** `StyleReferenceResolver` owns
+   normalized snapshots, settings-backed defaults, ID/name/type matching,
+   deterministic ambiguity handling, cache aliases, and raw/cache merge rules.
+2. **Stage 4.5b — assignments and override policy (PR #27):**
+   `StyleAssignmentService` owns style application, style removal, override
+   pruning/clearing, property matching, and shared dry-run/dispatch behavior.
+3. **Stage 4.5c — colors and fonts (PR #28):** `ColorTokenService` and
+   `FontTokenService` own CRUD, canonical IDs, reference lookup, cache
+   reconciliation, and preview/dispatch behavior for design tokens.
+4. **Stage 4.5d — deterministic Figma import (PR #29):**
+   `FigmaTokenImportService` owns normalized token ingestion, deterministic IDs,
+   references, deduplication, result accounting, and definition-sink routing.
+5. **Stage 4.5e — definitions and states (PR #30):**
+   `StyleDefinitionService` owns definition CRUD, defaults, themes, states,
+   transitions, order, and fail-closed cache/dispatch orchestration.
+6. **Stage 4.5f — final evidence:** the finite 16^4 deterministic-ID suffix
+   namespace now terminates explicitly on exhaustion; the lifecycle package is
+   covered by real Ruff and MyPy gates; benchmarks, full validation, coverage,
+   and independent review are captured in a reproducible review record.
+
+Final Stage 4.5 results:
+
+- full local suites: 1,567 Python and 11 Node tests passed;
+- global combined line/branch coverage: 43.7289%; the ratchet is 43.6%, leaving
+  0.1289 percentage point of measured headroom;
+- the complete `style_lifecycle` package: 96.6% combined branch coverage, with
+  each behavior-bearing lifecycle module above 95%;
+- catalog parity: 327 MCP tools and 207 CLI operation commands, with zero
+  missing mappings;
+- profile-independent smokes passed coverage 2/2, agent routing 9/9, and visual
+  repair 1/1;
+- an authorized local `smoke` profile compiled every safe read and preview:
+  safe-read functionality 10/10, preview mutations 5/5, and family previews
+  21/21, all with `executed=false`. The suite totals were 10/11, 15/16, and
+  31/32 only because each includes the same `bubble_profile_status` preflight;
+  its locally cached context was loadable and write-ready but stale;
+- full Ruff (`src tests scripts`), MyPy (`src`, 141 files), package/setup,
+  sensitive-path, catalog, and diff-hygiene gates passed.
+
+Seven-run medians below compare the isolated Stage base `50c81f3` with the
+completed stack. Payload build/write counts are local dispatch captures; no
+remote Bubble write was executed. Resolution has no payload metrics.
+
+| Workload | Before | After | Delta | JSON bytes | Builds / writes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 500 styles, cold index | 0.450 ms | 2.549 ms | +2.099 ms (+466.459%) | n/a | n/a |
+| 500 styles, 200 warm lookups | 88.234 ms | 1.281 ms | -86.953 ms (-98.548%) | n/a | n/a |
+| 5,000 styles, cold index | 4.457 ms | 34.625 ms | +30.168 ms (+676.802%) | n/a | n/a |
+| 5,000 styles, 200 warm lookups | 893.181 ms | 1.341 ms | -891.841 ms (-99.850%) | n/a | n/a |
+| 200 assignment payloads | 0.678 ms | 0.787 ms | +0.110 ms (+16.155%) | 140,294 → 140,294 | 1/0 → 1/0 |
+| color/font CRUD | 1.237 ms | 2.407 ms | +1.169 ms (+94.471%) | 2,939 → 2,899 | 6/6 → 6/6 |
+| 25/250/100 token import | 2,812.255 ms | 2,537.125 ms | -275.130 ms (-9.783%) | 3,605,189 → 293,916 | 475/475 → 202/202 |
+| definition operations | 2.080 ms | 1.826 ms | -0.254 ms (-12.190%) | 2,623 → 2,623 | 5/5 → 5/5 |
+
+The cold cost builds the reusable index once. Combining cold construction with
+the warm workload improves end-to-end resolution by about 96% at both sizes.
+The other percentage increases are 0.110–1.169 ms absolute local orchestration
+costs and are immaterial relative to editor/network I/O. Token import improves
+9.8% while reducing serialized payload bytes by 91.8% and captured build/write
+count by 57.5%.
+
+Every staged PR received independent review against its base. All
+Critical/Important findings were closed with literal regressions before the
+next phase, including default-style protection, stale-cache rejection,
+builder-owned transitions, real HTML/Figma failure propagation, deterministic
+ID collision handling, and static-gate enforcement. The consolidated evidence
+and closing review are recorded in
+`docs/superpowers/reviews/2026-08-15-style-token-lifecycle-review.md`.
+
+GitHub CI for PRs #25–#30 remains infrastructure-blocked. The current check
+jobs complete in two to four seconds with `steps: []`, so no workflow test step
+runs; representative live runs `31898623436` and `31902065247` show the same
+billing/infrastructure signature. The complete local validation matrix above is
+the executable code evidence.
+
+**Next Stage 4 boundary — Family 4 data/schema/settings lifecycle.** Extract
+data types, fields, privacy, option sets/values, project settings, and redirects
+behind typed services while retaining the public `BubbleCLI` facades and the
+same catalog, preview, confirmation, payload, and dispatch contracts.
 
 ### Stage 5: Supporting debt
 
