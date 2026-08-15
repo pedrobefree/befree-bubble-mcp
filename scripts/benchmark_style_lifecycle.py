@@ -82,6 +82,7 @@ class PayloadMetrics:
 def _silence_runtime_logs() -> Iterator[None]:
     logger_state = dict(bubble_cli_module.logger.__dict__)
     cache_path = os.environ.get("BUBBLE_CLI_CACHE_PATH")
+    random_state = random.getstate()
 
     def quiet(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
@@ -98,6 +99,7 @@ def _silence_runtime_logs() -> Iterator[None]:
             os.environ.pop("BUBBLE_CLI_CACHE_PATH", None)
         else:
             os.environ["BUBBLE_CLI_CACHE_PATH"] = cache_path
+        random.setstate(random_state)
 
 
 def _new_cli(root: Path, snapshot: dict[str, Any]) -> Any:

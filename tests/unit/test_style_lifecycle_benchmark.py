@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 
 from bubble_mcp.aria_runtime import bubble_cli as bubble_cli_module
 from scripts.benchmark_style_lifecycle import BenchmarkConfig, compare_reports, run_benchmarks
@@ -86,6 +87,8 @@ def test_benchmark_comparison_reports_absolute_and_percentage_deltas() -> None:
 def test_benchmark_suite_restores_runtime_state(monkeypatch) -> None:
     before = dict(bubble_cli_module.logger.__dict__)
     monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", "literal-existing-cache-path")
+    random.seed(8675309)
+    random_state = random.getstate()
 
     run_benchmarks(
         BenchmarkConfig(
@@ -101,3 +104,4 @@ def test_benchmark_suite_restores_runtime_state(monkeypatch) -> None:
 
     assert bubble_cli_module.logger.__dict__ == before
     assert os.environ["BUBBLE_CLI_CACHE_PATH"] == "literal-existing-cache-path"
+    assert random.getstate() == random_state
