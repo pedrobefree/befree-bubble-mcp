@@ -12,7 +12,7 @@ try:
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
     from bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
 
-from .protocols import StyleTokenHost, TokenMutationResult
+from .protocols import StyleTokenHost, TokenMutationResult, dispatch_token_mutation
 
 
 @dataclass(frozen=True)
@@ -55,7 +55,7 @@ class ColorTokenService:
         if isinstance(cache_colors, Mapping):
             for token_id, raw_entry in cache_colors.items():
                 color_id = str(token_id or "").strip()
-                if not color_id or color_id in custom:
+                if not color_id or color_id in wire_custom:
                     continue
                 entry = self._normalize_custom_entry(raw_entry)
                 if self._valid_custom_entry(entry):
@@ -292,15 +292,13 @@ class ColorTokenService:
         token_id: str | None = None,
         after: Any | None = None,
     ) -> TokenMutationResult:
-        if dry_run:
-            return TokenMutationResult(ok=True, payload=payload, token_id=token_id)
-        try:
-            self._host.dispatch_style_token_payload(payload)
-        except Exception as exc:
-            return self._failure(str(exc), payload=payload, token_id=token_id)
-        if after is not None:
-            after()
-        return TokenMutationResult(ok=True, payload=payload, token_id=token_id)
+        return dispatch_token_mutation(
+            self._host,
+            payload,
+            dry_run=dry_run,
+            token_id=token_id,
+            after=after,
+        )
 
     @staticmethod
     def _failure(

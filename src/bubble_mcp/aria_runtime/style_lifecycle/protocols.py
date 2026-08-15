@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -36,6 +37,34 @@ class TokenMutationResult:
     payload: Any | None = None
     token_id: str | None = None
     error: str | None = None
+
+
+def dispatch_token_mutation(
+    host: StyleTokenHost,
+    payload: Any,
+    *,
+    dry_run: bool,
+    token_id: str | None = None,
+    after: Callable[[], None] | None = None,
+) -> TokenMutationResult:
+    """Dispatch once and report post-write cache failures without losing remote success."""
+    if dry_run:
+        return TokenMutationResult(ok=True, payload=payload, token_id=token_id)
+    try:
+        host.dispatch_style_token_payload(payload)
+    except Exception as exc:
+        return TokenMutationResult(ok=False, payload=payload, token_id=token_id, error=str(exc))
+    if after is not None:
+        try:
+            after()
+        except Exception as exc:
+            return TokenMutationResult(
+                ok=True,
+                payload=payload,
+                token_id=token_id,
+                error=f"Post-write token cache update failed: {exc}",
+            )
+    return TokenMutationResult(ok=True, payload=payload, token_id=token_id)
 
 
 class StyleTokenHost(Protocol):

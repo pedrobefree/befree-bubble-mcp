@@ -24056,18 +24056,26 @@ class BubbleCLI:
         if "var(" in str(base_color_name).lower():
              return str(base_color_name)
 
-        # 1. Direct name lookup through ColorMapper friendly names.
+        # 1. Named token resolution must use the live lifecycle snapshot before
+        # the long-lived ColorMapper, whose aliases can outlive delete/recreate.
+        is_literal = str(base_color_name).startswith("#") or "rgb" in str(base_color_name).lower()
+        if not is_literal:
+            resolved_name = self._style_lifecycle.colors.resolve(str(base_color_name))
+            if resolved_name != str(base_color_name):
+                return resolved_name
+
+        # 2. Direct name lookup through ColorMapper friendly names.
         if self.color_mapper:
             by_friendly_name = self.color_mapper.find_variable_by_name(str(base_color_name))
             if by_friendly_name:
                 return by_friendly_name
 
-        # 2. Resolve raw color literals to known variables when possible.
-        if str(base_color_name).startswith("#") or "rgb" in str(base_color_name).lower():
+        # 3. Resolve raw color literals to known variables when possible.
+        if is_literal:
             # Use the more robust _resolve_color_value which handles creation and logging
             return self._resolve_color_value(str(base_color_name), create_missing=create_missing, dry_run=dry_run)
 
-        # 3. Match by default/custom names (friendly names and %nm labels).
+        # 4. Match by default/custom names (friendly names and %nm labels).
         found = self._find_color_by_name(str(base_color_name))
         if not found:
              return str(base_color_name)

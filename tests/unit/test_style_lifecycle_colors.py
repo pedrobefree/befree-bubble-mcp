@@ -15,6 +15,7 @@ class ColorHost:
     cache: dict[str, Any] = field(default_factory=lambda: {"colors": {}})
     appname: str = "color-lifecycle-test"
     fail_dispatch: bool = False
+    fail_cache: bool = False
     snapshot_calls: int = 0
     events: list[tuple[Any, ...]] = field(default_factory=list)
 
@@ -32,6 +33,8 @@ class ColorHost:
 
     def put_style_token_cache(self, kind: str, token_id: str, data: dict[str, Any]) -> None:
         self.events.append(("put", kind, token_id, dict(data)))
+        if self.fail_cache:
+            raise RuntimeError("literal color cache failure")
         self.cache.setdefault(kind, {})[token_id] = dict(data)
 
     def remove_style_token_cache(self, kind: str, token_id: str) -> None:
@@ -88,7 +91,7 @@ def _discovery() -> dict[str, Any]:
     }
 
 
-def _host(*, fail_dispatch: bool = False) -> ColorHost:
+def _host(*, fail_dispatch: bool = False, fail_cache: bool = False) -> ColorHost:
     return ColorHost(
         discovery=_discovery(),
         cache={
@@ -107,6 +110,7 @@ def _host(*, fail_dispatch: bool = False) -> ColorHost:
             }
         },
         fail_dispatch=fail_dispatch,
+        fail_cache=fail_cache,
     )
 
 
@@ -144,6 +148,23 @@ def test_snapshot_normalizes_wrappers_and_uses_discovery_before_valid_cache_only
         "opaque_payload": {"keep": "exactly"},
     }
     assert host.snapshot_calls == 1
+
+
+def test_opaque_discovery_id_blocks_same_id_valid_cache_supplement() -> None:
+    host = _host()
+    host.cache["colors"]["cOpaque"] = {
+        "%nm": "Stale cache shadow",
+        "rgba": "rgba(200, 201, 202, 1)",
+        "order": 99,
+    }
+
+    snapshot = ColorTokenService(host).snapshot()
+
+    assert "cOpaque" not in snapshot.custom
+    assert snapshot.wire_custom["cOpaque"] == {
+        "plugin_owned": True,
+        "opaque_payload": {"keep": "exactly"},
+    }
 
 
 def test_lookup_and_resolution_ignore_deleted_entries_and_emit_canonical_custom_variables() -> None:
@@ -239,6 +260,20 @@ def test_create_returns_real_id_and_preserves_complete_map(monkeypatch: pytest.M
     )
     assert body["%d1"]["cGone"]["tombstone"] == "keep-me"
     assert body["%d1"]["cOpaque"]["opaque_payload"] == {"keep": "exactly"}
+    assert [event[0] for event in host.events] == ["dispatch", "put"]
+
+
+def test_successful_color_write_preserves_result_when_cache_update_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _host(fail_cache=True)
+    monkeypatch.setattr(ColorBuilder, "generate_color_id", lambda self: "cRemote")
+
+    result = ColorTokenService(host).create("Remote", "rgba(11, 12, 13, 1)")
+
+    assert result.ok is True
+    assert result.token_id == "cRemote"
+    assert result.error == "Post-write token cache update failed: literal color cache failure"
     assert [event[0] for event in host.events] == ["dispatch", "put"]
 
 

@@ -244,3 +244,57 @@ def test_successive_token_writes_read_the_real_host_updated_discovery(
     assert second_color_map["cBrand"]["rgba"] == "rgba(90, 91, 92, 1)"
     assert third_color_map["cBrand"]["%del"] is True
     assert second_font_map["fBody"]["font_family"] == "Noto Sans"
+
+
+def test_named_shared_color_resolution_uses_recreated_discovery_id(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ColorBuilder, "generate_color_id", lambda self: "cReborn")
+    monkeypatch.setattr(
+        bubble_cli_module.PayloadBuilder,
+        "send_to_webhook",
+        lambda self, url: None,
+    )
+
+    assert cli.delete_color("Brand") is True
+    assert cli.create_color("Brand", "rgba(44, 45, 46, 1)") is True
+    assert cli.color_mapper.find_variable_by_name("Brand") == "var(--color_cBrand_default)"
+    assert cli._resolve_color_arg("Brand") == "var(--color_cReborn_default)"
+    assert cli._coerce_layout_value("%bc", "Brand") == "var(--color_cReborn_default)"
+    assert cli._resolve_color_arg("Primary") == "var(--color_primary_default)"
+    assert cli._resolve_color_arg("#123456") == "#123456"
+
+
+@pytest.mark.parametrize(
+    ("kind", "builder", "method_name", "arguments", "token_id"),
+    [
+        ("color", ColorBuilder, "create_color", ("Remote", "rgba(1, 2, 3, 1)"), "cRemote"),
+        ("font", FontBuilder, "create_font", ("Remote", "Atkinson Hyperlegible"), "fRemote"),
+    ],
+)
+def test_public_token_facades_stay_true_after_post_write_cache_failure(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    builder: type[Any],
+    method_name: str,
+    arguments: tuple[str, str],
+    token_id: str,
+) -> None:
+    generator_name = "generate_color_id" if kind == "color" else "generate_font_id"
+    monkeypatch.setattr(builder, generator_name, lambda self: token_id)
+    monkeypatch.setattr(
+        bubble_cli_module.PayloadBuilder,
+        "send_to_webhook",
+        lambda self, url: None,
+    )
+    monkeypatch.setattr(
+        cli,
+        "put_style_token_cache",
+        lambda cache_kind, cache_token_id, data: (_ for _ in ()).throw(
+            RuntimeError(f"literal {kind} cache failure")
+        ),
+    )
+
+    assert getattr(cli, method_name)(*arguments) is True

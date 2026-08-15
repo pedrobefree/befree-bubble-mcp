@@ -15,6 +15,7 @@ class FontHost:
     cache: dict[str, Any] = field(default_factory=lambda: {"fonts": {}})
     appname: str = "font-lifecycle-test"
     fail_dispatch: bool = False
+    fail_cache: bool = False
     snapshot_calls: int = 0
     events: list[tuple[Any, ...]] = field(default_factory=list)
 
@@ -32,6 +33,8 @@ class FontHost:
 
     def put_style_token_cache(self, kind: str, token_id: str, data: dict[str, Any]) -> None:
         self.events.append(("put", kind, token_id, dict(data)))
+        if self.fail_cache:
+            raise RuntimeError("literal font cache failure")
         self.cache.setdefault(kind, {})[token_id] = dict(data)
 
     def remove_style_token_cache(self, kind: str, token_id: str) -> None:
@@ -43,7 +46,7 @@ class FontHost:
         self.cache[kind] = {}
 
 
-def _host(*, fail_dispatch: bool = False) -> FontHost:
+def _host(*, fail_dispatch: bool = False, fail_cache: bool = False) -> FontHost:
     return FontHost(
         discovery={
             "settings": {
@@ -90,6 +93,7 @@ def _host(*, fail_dispatch: bool = False) -> FontHost:
             }
         },
         fail_dispatch=fail_dispatch,
+        fail_cache=fail_cache,
     )
 
 
@@ -122,6 +126,23 @@ def test_snapshot_normalizes_app_and_custom_wrappers_with_discovery_precedence()
         "opaque_payload": {"keep": "exactly"},
     }
     assert host.snapshot_calls == 1
+
+
+def test_opaque_discovery_font_id_blocks_same_id_valid_cache_supplement() -> None:
+    host = _host()
+    host.cache["fonts"]["fOpaque"] = {
+        "%nm": "Stale cache shadow",
+        "font_family": "Comic Sans MS",
+        "order": 99,
+    }
+
+    snapshot = FontTokenService(host).snapshot()
+
+    assert "fOpaque" not in snapshot.custom
+    assert snapshot.wire_custom["fOpaque"] == {
+        "plugin_owned": True,
+        "opaque_payload": {"keep": "exactly"},
+    }
 
 
 @pytest.mark.parametrize("name", ["App Font", "APP_FONT", "default font", "DEFAULT"])
@@ -203,6 +224,20 @@ def test_create_returns_real_id_and_uses_font_builder_wire_entry(monkeypatch: py
         description="Code",
     )
     assert body["%d1"]["fOpaque"]["opaque_payload"] == {"keep": "exactly"}
+    assert [event[0] for event in host.events] == ["dispatch", "put"]
+
+
+def test_successful_font_write_preserves_result_when_cache_update_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    host = _host(fail_cache=True)
+    monkeypatch.setattr(FontBuilder, "generate_font_id", lambda self: "fRemote")
+
+    result = FontTokenService(host).create("Remote", "Atkinson Hyperlegible")
+
+    assert result.ok is True
+    assert result.token_id == "fRemote"
+    assert result.error == "Post-write token cache update failed: literal font cache failure"
     assert [event[0] for event in host.events] == ["dispatch", "put"]
 
 
