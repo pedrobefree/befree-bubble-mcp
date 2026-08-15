@@ -221,15 +221,20 @@ Stage 4.4b results:
 
 - replaced 904 lines of repeated creation orchestration in `bubble_cli.py`
   with 328 lines of explicit facades and builder-specific behavior;
-- added a 301-line creation service and 19 literal behavior/facade tests;
+- added a 301-line creation service and 24 literal behavior/facade tests;
 - `creations.py`: 97.6% focused branch coverage;
-- full suite: 1,298 Python and 11 Node tests passed;
+- full suite: 1,309 Python and 11 Node tests passed;
 - catalog remained at 327 MCP tools and CLI parity remained 207 commands with
   zero missing mappings;
 - Ruff, MyPy, catalog quality, preview-write, and `git diff --check` passed;
 - the refreshed local Bubble test profile passed all 16 preview-write cases;
 - no tool names, schemas, aliases, annotations, preview defaults, dispatch
   routes, payload ordering, or result shapes changed.
+
+The post-review repair routed reusable-instance and icon finalization through
+the shared creation service, preserved normalized icon slot targeting, and
+gated icon sizing updates to successful non-preview creation. Five literal
+regressions cover these facade contracts.
 
 **Next Family 2 block — Stage 4.4c visual updates.** Extract common existing
 target resolution plus property/style update sequencing and finalization while

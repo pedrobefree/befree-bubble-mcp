@@ -240,6 +240,7 @@ class VisualCreationService:
         dry_run: bool,
         parent_id: str | None = None,
         cache_aliases: bool = True,
+        cache_supplied_aliases_only: bool = False,
         tolerate_injection_error: bool = False,
         error_via_print: bool = False,
         use_parent_result_id: bool = True,
@@ -283,14 +284,27 @@ class VisualCreationService:
             inject(False)
             element_id = str(body.get("id") or "").strip()
             if cache_aliases and normalized_aliases and element_id:
-                self._host._cache_created_element_aliases(
-                    context_id=context_id,
-                    context_type=context_type,
-                    aliases=normalized_aliases,
-                    element_id=element_id,
-                    element_key=element_key,
-                    parent_path=list(parent_result.get("path") or []),
-                )
+                parent_path = list(parent_result.get("path") or [])
+                if cache_supplied_aliases_only:
+                    element_path = [*parent_path, "%el", element_key]
+                    for alias in normalized_aliases:
+                        self._host._cache_element_ref_alias(
+                            context_id,
+                            context_type,
+                            alias,
+                            element_id,
+                            element_key=element_key,
+                            element_path=element_path,
+                        )
+                else:
+                    self._host._cache_created_element_aliases(
+                        context_id=context_id,
+                        context_type=context_type,
+                        aliases=normalized_aliases,
+                        element_id=element_id,
+                        element_key=element_key,
+                        parent_path=parent_path,
+                    )
             return result_value
         except Exception as exc:
             message = f"Failed to send: {exc}"

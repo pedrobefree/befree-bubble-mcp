@@ -83,6 +83,7 @@ class _CreationHost:
         self.sent: list[PayloadBuilder] = []
         self.dispatch_error = False
         self.cached_aliases: list[dict[str, Any]] = []
+        self.cached_single_aliases: list[dict[str, Any]] = []
 
     def _find_context(self, name: str) -> tuple[str | None, str | None]:
         return ("pg", "page") if name == "Home" else (None, None)
@@ -142,6 +143,29 @@ class _CreationHost:
 
     def _cache_created_element_aliases(self, **kwargs: Any) -> None:
         self.cached_aliases.append(kwargs)
+
+    def _cache_element_ref_alias(
+        self,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        element_id: str,
+        *,
+        element_key: str | None = None,
+        element_path: list[str] | None = None,
+        element_type: str | None = None,
+    ) -> None:
+        self.cached_single_aliases.append(
+            {
+                "context_id": context_id,
+                "context_type": context_type,
+                "alias_name": alias_name,
+                "element_id": element_id,
+                "element_key": element_key,
+                "element_path": element_path,
+                "element_type": element_type,
+            }
+        )
 
 
 def _change_rows(payload: PayloadBuilder) -> list[tuple[str, list[str], Any]]:
@@ -416,6 +440,38 @@ def test_finish_dispatches_before_injection_and_alias_cache() -> None:
     ]
 
 
+def test_finish_can_cache_only_explicit_aliases() -> None:
+    host = _CreationHost()
+    service = VisualMutationService(host).creations
+    body = {"id": "object-id", "%dn": "Hero"}
+
+    assert service.finish(
+        PayloadBuilder(appname=host.appname),
+        context_id="pg",
+        context_type="page",
+        parent_result={"id": "parent-id", "path": ["%el", "parent"]},
+        body=body,
+        element_key="hero-slot",
+        aliases=["Hero", "Hero"],
+        result_value="object-id",
+        success_message="created hero",
+        dry_run=False,
+        cache_supplied_aliases_only=True,
+    ) == "object-id"
+    assert host.cached_aliases == []
+    assert host.cached_single_aliases == [
+        {
+            "context_id": "pg",
+            "context_type": "page",
+            "alias_name": "Hero",
+            "element_id": "object-id",
+            "element_key": "hero-slot",
+            "element_path": ["%el", "parent", "%el", "hero-slot"],
+            "element_type": None,
+        }
+    ]
+
+
 def test_finish_failure_has_no_injection_or_alias_side_effect() -> None:
     host = _CreationHost()
     host.dispatch_error = True
@@ -536,3 +592,107 @@ def test_bubble_cli_creation_helpers_are_compatibility_facades() -> None:
         "existing_child_ids",
         "queue_create",
     ]
+
+
+def test_reusable_instance_finalization_delegates_to_creation_service() -> None:
+    finish_calls: list[dict[str, Any]] = []
+
+    class _FinishSpy:
+        def finish(self, payload: PayloadBuilder, **kwargs: Any) -> bool:
+            finish_calls.append({"payload": payload, **kwargs})
+            return True
+
+    cli = object.__new__(BubbleCLI)
+    cli.appname = "facade-test"
+    cli.discovery = SimpleNamespace(
+        build_path_array=lambda context_id, path, context_type: ["%p3", context_id, *path],
+        find_reusable=lambda name: "reusable-id" if name == "Card" else None,
+        inject_element=lambda *args, **kwargs: None,
+    )
+    cli._visual_mutations = SimpleNamespace(creations=_FinishSpy())
+    cli._find_context = lambda name: ("pg", "page")
+    cli._resolve_parent_element = lambda *args, **kwargs: {
+        "id": "parent-id",
+        "path": ["%el", "parent"],
+    }
+    cli._apply_dimension_updates = lambda *args, **kwargs: None
+    cli._apply_global_element_updates = lambda *args, **kwargs: None
+    cli._queue_create_element_with_index_updates = lambda *args, **kwargs: None
+    cli._resolved_created_slot_key = lambda *args, **kwargs: "instance-slot"
+
+    assert cli.create_reusable_instance("Home", "Parent", "Card", dry_run=True)
+
+    assert len(finish_calls) == 1
+    call = finish_calls[0]
+    assert call["element_key"] == "instance-slot"
+    assert call["aliases"] == ["Card", "Card"]
+    assert call["result_value"] is True
+    assert call["tolerate_injection_error"] is True
+    assert call["cache_supplied_aliases_only"] is True
+
+
+@pytest.mark.parametrize(
+    ("dry_run", "finish_succeeds"),
+    [(True, True), (False, True), (False, False)],
+)
+def test_icon_finalization_uses_resolved_slot_and_gates_post_update(
+    dry_run: bool,
+    finish_succeeds: bool,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    finish_calls: list[dict[str, Any]] = []
+    update_calls: list[dict[str, Any]] = []
+
+    class _FinishSpy:
+        def finish(self, payload: PayloadBuilder, **kwargs: Any) -> str | bool:
+            finish_calls.append({"payload": payload, **kwargs})
+            return str(kwargs["result_value"]) if finish_succeeds else False
+
+    cli = object.__new__(BubbleCLI)
+    cli.appname = "facade-test"
+    cli.discovery = SimpleNamespace(
+        build_path_array=lambda context_id, path, context_type: ["%p3", context_id, *path],
+        inject_element=lambda *args, **kwargs: None,
+    )
+    cli._visual_mutations = SimpleNamespace(creations=_FinishSpy())
+    cli._find_context = lambda name: ("pg", "page")
+    cli._resolve_parent_element = lambda *args, **kwargs: {
+        "id": "parent-id",
+        "path": ["%el", "parent"],
+    }
+    cli._supported_properties_for_tool = lambda name: {"fit_width", "fit_height"}
+    cli._trim_kwargs_to_capabilities = lambda name, kwargs: kwargs
+    cli._normalize_icon_value_for_write = lambda value: value
+    cli._apply_common_surface_kwargs = lambda *args, **kwargs: True
+    cli._queue_create_element_with_index_updates = lambda *args, **kwargs: None
+    cli._normalize_payload_path = lambda path: list(path)
+    cli._resolved_created_slot_key = lambda *args, **kwargs: "icon-slot"
+    cli.update_icon_element = lambda *args, **kwargs: update_calls.append(kwargs) or True
+    cli._dispatch_payload = lambda payload: None
+
+    result = cli.create_icon(
+        "Home",
+        "Parent",
+        "Status icon",
+        "check",
+        dry_run=dry_run,
+    )
+
+    assert isinstance(result, str) is finish_succeeds
+    assert len(finish_calls) == 1
+    call = finish_calls[0]
+    assert call["element_key"] == "icon-slot"
+    assert call["aliases"] == []
+    assert call["cache_aliases"] is False
+    assert call["dry_run"] is dry_run
+    assert len(update_calls) == (1 if finish_succeeds and not dry_run else 0)
+    if update_calls:
+        assert update_calls[0]["resolved_target"][2]["path"] == [
+            "%el",
+            "parent",
+            "%el",
+            "icon-slot",
+        ]
+    captured = capsys.readouterr().out
+    assert ("Creating icon: Status icon (check)" in captured) is dry_run
+    assert ("ICON PAYLOAD:" in captured) is dry_run

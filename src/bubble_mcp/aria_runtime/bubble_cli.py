@@ -23113,42 +23113,25 @@ class BubbleCLI:
         )
         element_slot_key = self._resolved_created_slot_key(create_path, full_body)
 
-        if dry_run:
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            try:
-                self.discovery.inject_element(
-                    context_id, context_type, parent_result["id"], full_body, element_key=element_slot_key
-                )
-            except Exception as e:
-                logger.warning(f"Injection warning (dry-run): {e}")
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Successfully created reusable instance: '{instance_name}' in '{parent_name}'")
-            try:
-                self.discovery.inject_element(
-                    context_id, context_type, parent_result["id"], full_body, element_key=element_slot_key
-                )
-            except Exception as e:
-                logger.warning(f"Injection warning: {e}")
-            created_path = list(parent_result.get("path") or []) + ["%el", element_slot_key]
-            for alias in {instance_name, str(full_body.get("%dn") or "").strip()}:
-                if not self._norm_lookup(alias):
-                    continue
-                self._cache_element_ref_alias(
-                    context_id,
-                    context_type,
-                    alias,
-                    str(full_body.get("id") or ""),
-                    element_key=element_slot_key,
-                    element_path=created_path,
-                )
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        return bool(
+            self._visual_mutations.creations.finish(
+                pb,
+                context_id=context_id,
+                context_type=context_type,
+                parent_result=parent_result,
+                body=full_body,
+                element_key=element_slot_key,
+                aliases=[instance_name, str(full_body.get("%dn") or "").strip()],
+                result_value=True,
+                success_message=(
+                    f"Successfully created reusable instance: '{instance_name}' "
+                    f"in '{parent_name}'"
+                ),
+                dry_run=dry_run,
+                tolerate_injection_error=True,
+                cache_supplied_aliases_only=True,
+            )
+        )
 
     def update_repeating_group(
         self,
@@ -39279,6 +39262,7 @@ class BubbleCLI:
             full_path_str=full_path_str,
             name_value=full_body.get("%dn"),
         )
+        element_slot_key = self._resolved_created_slot_key(create_path, full_body)
         if style:
             # Include layout properties in style overrides so they aren't wiped by AssignStyle %p
             style_props = {
@@ -39341,22 +39325,30 @@ class BubbleCLI:
         if dry_run:
             logger.info(f"Creating icon: {name} ({icon_name})")
             logger.info(f"ICON PAYLOAD: {json.dumps(full_body, indent=2)}")
-            logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            # print(f" DRY RUN - Icon payload prepared for '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
-            return new_key
+
+        finish_result = self._visual_mutations.creations.finish(
+            pb,
+            context_id=context_id,
+            context_type=context_type,
+            parent_result=parent_result,
+            body=full_body,
+            element_key=element_slot_key,
+            aliases=[],
+            result_value=new_key,
+            success_message=f"Successfully created icon: '{name}'",
+            dry_run=dry_run,
+            cache_aliases=False,
+        )
+        if not finish_result or dry_run:
+            return finish_result
 
         try:
-            self._dispatch_payload(pb)
-            logger.info(f"✅ Successfully created icon: '{name}'")
-            self.discovery.inject_element(context_id, context_type, parent_result['id'], full_body, element_key=new_key)
             resolved_target = (
                 context_id,
                 context_type,
                 {
                     "id": new_key,
-                    "path": parent_result["path"] + ["%el", new_key],
+                    "path": parent_result["path"] + ["%el", element_slot_key],
                     "element": full_body,
                     "type": "element",
                 },
@@ -39398,8 +39390,8 @@ class BubbleCLI:
             else:
                 logger.warning(f"⚠️ Post-create icon sizing update failed for '{new_key}'")
             return new_key
-        except Exception as e:
-            logger.error(f"❌ Failed to send: {e}")
+        except Exception as exc:
+            logger.error(f"❌ Failed to send: {exc}")
             return False
 
     def create_dropdown(

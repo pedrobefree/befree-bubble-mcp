@@ -108,3 +108,13 @@ class VisualMutationHost(Protocol):
         parent_path: list[str] | None = None,
         element_type: str | None = None,
     ) -> None: ...
+    def _cache_element_ref_alias(
+        self,
+        context_id: str,
+        context_type: str,
+        alias_name: str,
+        element_id: str,
+        element_key: str | None = None,
+        element_path: list[str] | None = None,
+        element_type: str | None = None,
+    ) -> None: ...
