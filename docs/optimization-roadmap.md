@@ -194,17 +194,22 @@ unchanged and remains outside this boundary.
 Stage 4.4a results:
 
 - removed 2,750 lines of duplicated visual deletion bodies from `bubble_cli.py`
-  and retained 388 lines of explicit signatures/facades (net reduction: 2,362
+  and retained 392 lines of explicit signatures/facades (net reduction: 2,358
   physical lines);
-- added a 509-line composed package and 39 literal behavior/facade tests;
-- `deletions.py`: 97.0% focused combined branch coverage;
+- added a 584-line composed package and 45 literal behavior/facade tests;
+- `deletions.py`: 96.7% focused combined branch coverage;
 - `targets.py` plus `deletions.py`: 96.7% focused combined branch coverage;
-- full suite: 1,279 Python and 11 Node tests passed;
+- full suite: 1,285 Python and 11 Node tests passed;
 - catalog remained at 327 MCP tools and CLI parity remained 207 commands with
   zero missing mappings;
 - Ruff, MyPy, preview-write, family-preview, and `git diff --check` passed;
 - no tool names, schemas, aliases, annotations, previews, confirmations,
   dispatch routes, payload ordering, or result shapes changed.
+
+The post-review repair restored table descendant cleanup, the captured
+`issues_list` sequences for links and uploaders, and cached context-object
+fallback for parent `issues_sub` updates. Six literal regressions cover these
+compatibility paths, including malformed nested table snapshots.
 
 **Next Family 2 block — Stage 4.4b visual creations.** Extract common
 context/parent preparation plus preview/dispatch, discovery injection, and

@@ -12415,6 +12415,7 @@ class BubbleCLI:
             success_label='table',
             dry_run=dry_run,
             prefer_last=prefer_last,
+            cascade_descendants=True,
         )
 
 
@@ -12586,6 +12587,7 @@ class BubbleCLI:
             success_label='link',
             dry_run=dry_run,
             prefer_last=prefer_last,
+            issues_list_bodies=('[]',),
         )
 
     def delete_shape(
@@ -17718,6 +17720,7 @@ class BubbleCLI:
             success_label='file uploader',
             dry_run=dry_run,
             prefer_last=prefer_last,
+            issues_list_bodies=(None, '[]'),
         )
 
     def delete_picture_uploader(
@@ -17735,6 +17738,7 @@ class BubbleCLI:
             success_label='picture uploader',
             dry_run=dry_run,
             prefer_last=prefer_last,
+            issues_list_bodies=(None, '[]'),
         )
 
     def update_shape(
