@@ -109,6 +109,9 @@ Construct `StyleLifecycleService(self)` beside the existing resolver/mutation se
 ./.venv/bin/python -m pytest tests/unit/test_style_lifecycle_references.py tests/unit/test_style_lifecycle_reference_facades.py tests/unit/test_create_defaults_golden.py tests/unit/test_visual_mutation_updates.py -q
 ./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle src/bubble_mcp/aria_runtime/bubble_cli.py tests/unit/test_style_lifecycle_references.py tests/unit/test_style_lifecycle_reference_facades.py
 ./.venv/bin/mypy src/bubble_mcp/aria_runtime/style_lifecycle
+PYTHONPATH=src ./.venv/bin/python -m coverage erase
+PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest tests/unit/test_style_lifecycle_references.py tests/unit/test_style_lifecycle_reference_facades.py tests/unit/test_create_defaults_golden.py tests/unit/test_visual_mutation_updates.py -q
+PYTHONPATH=src ./.venv/bin/python -m coverage report --include='src/bubble_mcp/aria_runtime/style_lifecycle/references.py' --fail-under=95
 git diff --check
 ```
 
@@ -156,7 +159,16 @@ Expose optional boolean `by_contains` on `update_style_all` and add a schema-to-
 
 - [ ] **Step 5: Verify 4.5b**
 
-Run focused assignment/facade tests, the complete `tests/unit/test_visual_mutation_*.py` family, catalog quality, CLI parity, Ruff, MyPy, branch coverage, and `git diff --check`.
+```bash
+PYTHONPATH=src ./.venv/bin/python -m pytest tests/unit/test_style_lifecycle_assignments.py tests/unit/test_style_lifecycle_assignment_facades.py tests/unit/test_visual_mutation_creations.py tests/unit/test_visual_mutation_updates.py tests/unit/test_visual_mutation_deletions.py tests/unit/test_mcp_server.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_audit.py -q
+PYTHONPATH=src ./.venv/bin/python scripts/audit_cli_catalog.py
+./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle src/bubble_mcp/aria_runtime/bubble_cli.py src/bubble_mcp/server/agent_catalog.py tests/unit/test_style_lifecycle_assignments.py tests/unit/test_style_lifecycle_assignment_facades.py tests/unit/test_mcp_server.py
+./.venv/bin/mypy src/bubble_mcp/aria_runtime/style_lifecycle
+PYTHONPATH=src ./.venv/bin/python -m coverage erase
+PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest tests/unit/test_style_lifecycle_assignments.py tests/unit/test_style_lifecycle_assignment_facades.py tests/unit/test_visual_mutation_creations.py tests/unit/test_visual_mutation_updates.py tests/unit/test_visual_mutation_deletions.py -q
+PYTHONPATH=src ./.venv/bin/python -m coverage report --include='src/bubble_mcp/aria_runtime/style_lifecycle/assignments.py' --fail-under=95
+git diff --check
+```
 
 - [ ] **Step 6: Commit and publish the 4.5b PR**
 
@@ -203,7 +215,19 @@ Add literal schema-to-dispatch-to-signature tests for create/update/delete/list 
 
 - [ ] **Step 6: Verify and publish 4.5c**
 
-Run focused token/facade/catalog tests, token transformer/color mapper/compiler tests, catalog audits, Ruff, MyPy, branch coverage, and `git diff --check`. Create `codex/style-token-lifecycle-4-5c-design-tokens`, commit `refactor: extract design token lifecycle`, push, and open a draft PR based on 4.5b.
+```bash
+PYTHONPATH=src ./.venv/bin/python -m pytest tests/unit/test_style_lifecycle_colors.py tests/unit/test_style_lifecycle_fonts.py tests/unit/test_style_lifecycle_token_facades.py tests/unit/test_runtime_token_transformer.py tests/unit/test_mcp_server.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_audit.py -q
+PYTHONPATH=src ./.venv/bin/python scripts/audit_cli_catalog.py
+./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle src/bubble_mcp/aria_runtime/bubble_cli.py src/bubble_mcp/server/agent_catalog.py src/bubble_mcp/server/tools.py tests/unit/test_style_lifecycle_colors.py tests/unit/test_style_lifecycle_fonts.py tests/unit/test_style_lifecycle_token_facades.py tests/unit/test_mcp_server.py
+./.venv/bin/mypy src/bubble_mcp/aria_runtime/style_lifecycle
+PYTHONPATH=src ./.venv/bin/python -m coverage erase
+PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest tests/unit/test_style_lifecycle_colors.py tests/unit/test_style_lifecycle_fonts.py tests/unit/test_style_lifecycle_token_facades.py tests/unit/test_runtime_token_transformer.py -q
+PYTHONPATH=src ./.venv/bin/python -m coverage report --include='src/bubble_mcp/aria_runtime/style_lifecycle/colors.py' --fail-under=95
+PYTHONPATH=src ./.venv/bin/python -m coverage report --include='src/bubble_mcp/aria_runtime/style_lifecycle/fonts.py' --fail-under=95
+git diff --check
+```
+
+Create `codex/style-token-lifecycle-4-5c-design-tokens`, commit `refactor: extract design token lifecycle`, push, and open a draft PR based on 4.5b.
 
 ### Task 5: Phase 4.5d — extract deterministic Figma token import
 
@@ -236,13 +260,28 @@ Remove CWD `sys.path` mutation. Validate size/depth/shape before transformation.
 
 Apply at most one custom-font and one custom-color map, then style operations. Ensure bridge write capture records dry-run plans, `app_version`, session context, and structured counts.
 
-- [ ] **Step 4: Correct MCP import schemas and add canonical read capability**
+- [ ] **Step 4: Correct MCP import schemas without adding a tool**
 
-Expose the full sync signature. Add read-only `list_figma_token_options`; keep `sync_figma_tokens(list_options=true)` functional as an alias path and test result parity.
+Expose the full `sync_figma_tokens` signature while retaining the 327-tool
+contract. Keep option discovery solely on the existing
+`sync_figma_tokens(list_options=true)` path, and add literal
+schema-to-dispatch-to-runtime-signature tests for both import and option
+discovery in `tests/unit/test_mcp_server.py`.
 
 - [ ] **Step 5: Verify and publish 4.5d**
 
-Run Figma import/transformer/bridge/MCP tests, catalog audits, Ruff, MyPy, branch coverage, and `git diff --check`. Create `codex/style-token-lifecycle-4-5d-figma-import`, commit `refactor: extract Figma token import`, push, and open a draft PR based on 4.5c.
+```bash
+PYTHONPATH=src ./.venv/bin/python -m pytest tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_audit.py -q
+PYTHONPATH=src ./.venv/bin/python scripts/audit_cli_catalog.py
+./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle src/bubble_mcp/aria_runtime/bubble_cli.py src/bubble_mcp/aria_runtime/figma_bridge.py src/bubble_mcp/server/agent_catalog.py src/bubble_mcp/server/tools.py tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py
+./.venv/bin/mypy src/bubble_mcp/aria_runtime/style_lifecycle
+PYTHONPATH=src ./.venv/bin/python -m coverage erase
+PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py -q
+PYTHONPATH=src ./.venv/bin/python -m coverage report --include='src/bubble_mcp/aria_runtime/style_lifecycle/figma_import.py' --fail-under=95
+git diff --check
+```
+
+Create `codex/style-token-lifecycle-4-5d-figma-import`, commit `refactor: extract Figma token import`, push, and open a draft PR based on 4.5c.
 
 ### Task 6: Phase 4.5e — extract style definitions and states
 
@@ -272,7 +311,18 @@ Prove all existing public methods delegate, HTML style import and Figma `StyleDe
 
 - [ ] **Step 4: Verify and publish 4.5e**
 
-Run definition/facade tests, SDK style builder, HTML style import, Figma bridge, catalog/CLI audits, Ruff, MyPy, branch coverage, and `git diff --check`. Create `codex/style-token-lifecycle-4-5e-definitions`, commit `refactor: extract style definition lifecycle`, push, and open a draft PR based on 4.5d.
+```bash
+PYTHONPATH=src ./.venv/bin/python -m pytest tests/unit/test_style_lifecycle_definitions.py tests/unit/test_style_lifecycle_definition_facades.py tests/unit/test_style_import_html.py tests/unit/test_style_import_mapper.py tests/unit/test_style_import_planner.py tests/unit/test_style_import_render.py tests/unit/test_style_import_runtime.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_audit.py -q
+PYTHONPATH=src ./.venv/bin/python scripts/audit_cli_catalog.py
+./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle src/bubble_mcp/aria_runtime/bubble_cli.py tests/unit/test_style_lifecycle_definitions.py tests/unit/test_style_lifecycle_definition_facades.py tests/unit/test_style_import_html.py tests/unit/test_figma_bridge.py
+./.venv/bin/mypy src/bubble_mcp/aria_runtime/style_lifecycle
+PYTHONPATH=src ./.venv/bin/python -m coverage erase
+PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest tests/unit/test_style_lifecycle_definitions.py tests/unit/test_style_lifecycle_definition_facades.py tests/unit/test_style_import_html.py tests/unit/test_figma_bridge.py -q
+PYTHONPATH=src ./.venv/bin/python -m coverage report --include='src/bubble_mcp/aria_runtime/style_lifecycle/definitions.py' --fail-under=95
+git diff --check
+```
+
+Create `codex/style-token-lifecycle-4-5e-definitions`, commit `refactor: extract style definition lifecycle`, push, and open a draft PR based on 4.5d.
 
 ### Task 7: Phase 4.5f — final evidence and independent review
 
@@ -288,7 +338,27 @@ Run definition/facade tests, SDK style builder, HTML style import, Figma bridge,
 
 - [ ] **Step 1: Run the final validation matrix**
 
-Run the complete Python/Node suites, branch coverage, package/setup smokes, sensitive-path audit, catalog quality, CLI parity, and all runtime smokes named in the spec.
+```bash
+PYTHONPATH=src ./.venv/bin/python -m pytest -q
+npm test
+PYTHONPATH=src ./.venv/bin/python -m coverage erase
+PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest -q
+PYTHONPATH=src ./.venv/bin/python -m coverage report
+PYTHONPATH=src ./.venv/bin/python -m pytest tests/unit/test_package_smoke.py tests/unit/test_setup_smoke.py tests/unit/test_sensitive_audit.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_audit.py -q
+PYTHONPATH=src ./.venv/bin/python scripts/audit_sensitive_paths.py .
+PYTHONPATH=src ./.venv/bin/python scripts/audit_cli_catalog.py
+PYTHONPATH=src ./.venv/bin/python -m bubble_mcp.cli.main smoke runtime --suite coverage
+PYTHONPATH=src ./.venv/bin/python -m bubble_mcp.cli.main smoke runtime --suite agent-routing
+PYTHONPATH=src ./.venv/bin/python -m bubble_mcp.cli.main smoke runtime --suite visual-repair
+./.venv/bin/ruff check src tests scripts
+./.venv/bin/mypy src
+git diff --check
+```
+
+With a configured local Bubble profile, additionally run the profile-dependent
+safe-read, preview-write, and family-preview suites using that profile and
+context; these commands are intentionally excluded from the no-profile matrix
+above because they require authenticated project state.
 
 - [ ] **Step 2: Record before/after benchmarks**
 

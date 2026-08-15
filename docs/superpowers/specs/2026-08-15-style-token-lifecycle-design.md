@@ -158,11 +158,13 @@ ordered. Dry-run returns the complete planned payloads with no side effects.
 The import never treats a boolean facade result as a color ID, preventing
 `var(--color_True_default)` references.
 
-`sync_figma_tokens` keeps its public name and legacy `list_options` mode. A new
-read-only `list_figma_token_options` capability is canonical for discovery;
-`list_options=true` remains a compatibility alias path. The mutation schema
-exposes `tokens_path`, `config_path`, `types`, `color_bases`, `all_tokens`, and
-`filter`. Import resolution never mutates `sys.path` from the process CWD.
+`sync_figma_tokens` keeps its public name and its existing `list_options` mode
+for token discovery. Do not add a separate discovery capability: retaining the
+mode preserves the 327-tool contract. The mutation schema exposes
+`tokens_path`, `config_path`, `types`, `color_bases`, `all_tokens`, and
+`filter`, and schema-to-dispatch-to-runtime-signature tests cover both import
+and `list_options=true`. Import resolution never mutates `sys.path` from the
+process CWD.
 
 ## Phase 4.5e — style definitions and states
 
@@ -230,4 +232,3 @@ The final stack requires:
 - no material regression above 5%, interpreted together with absolute cost;
 - independent review of every PR and literal RED/GREEN regressions for all
   Critical or Important findings.
-
