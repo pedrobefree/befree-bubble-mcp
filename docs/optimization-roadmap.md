@@ -305,15 +305,19 @@ dispatch order, and result shapes remain unchanged throughout the stack.
    `StyleDefinitionService` owns definition CRUD, defaults, themes, states,
    transitions, order, and fail-closed cache/dispatch orchestration.
 6. **Stage 4.5f — final evidence:** the finite 16^4 deterministic-ID suffix
-   namespace now terminates explicitly on exhaustion; the lifecycle package is
-   covered by real Ruff and MyPy gates; benchmarks, full validation, coverage,
-   and independent review are captured in a reproducible review record.
+   namespace now uses exhaustive deterministic probing and terminates explicitly
+   on exhaustion; successful definition mutations invalidate stale references;
+   Figma RGBA aliases use the projected color state; bulk token phases persist
+   cache once; conditional MCP schemas match runtime operands; filter metadata
+   is precise; and real Ruff/MyPy gates plus reproducible evidence close the
+   stage.
 
 Final Stage 4.5 results:
 
-- full local suites: 1,567 Python and 11 Node tests passed;
-- global combined line/branch coverage: 43.7289%; the ratchet is 43.6%, leaving
-  0.1289 percentage point of measured headroom;
+- full local suites: 1,576 Python and 11 Node tests passed;
+- global combined line/branch coverage: 43.7576%; the ratchet remains 43.6%,
+  leaving 0.1576 percentage point of measured headroom (43.7% would retain less
+  than the prescribed 0.1 point);
 - the complete `style_lifecycle` package: 96.6% combined branch coverage, with
   each behavior-bearing lifecycle module above 95%;
 - catalog parity: 327 MCP tools and 207 CLI operation commands, with zero
@@ -329,30 +333,32 @@ Final Stage 4.5 results:
   sensitive-path, catalog, and diff-hygiene gates passed.
 
 Seven-run medians below compare the isolated Stage base `50c81f3` with the
-completed stack. Payload build/write counts are local dispatch captures; no
-remote Bubble write was executed. Resolution has no payload metrics.
+completed stack. Payload build/write and cache-save counts are local captures;
+no remote Bubble write was executed. Resolution has no payload metrics.
 
-| Workload | Before | After | Delta | JSON bytes | Builds / writes |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| 500 styles, cold index | 0.450 ms | 2.549 ms | +2.099 ms (+466.459%) | n/a | n/a |
-| 500 styles, 200 warm lookups | 88.234 ms | 1.281 ms | -86.953 ms (-98.548%) | n/a | n/a |
-| 5,000 styles, cold index | 4.457 ms | 34.625 ms | +30.168 ms (+676.802%) | n/a | n/a |
-| 5,000 styles, 200 warm lookups | 893.181 ms | 1.341 ms | -891.841 ms (-99.850%) | n/a | n/a |
-| 200 assignment payloads | 0.678 ms | 0.787 ms | +0.110 ms (+16.155%) | 140,294 → 140,294 | 1/0 → 1/0 |
-| color/font CRUD | 1.237 ms | 2.407 ms | +1.169 ms (+94.471%) | 2,939 → 2,899 | 6/6 → 6/6 |
-| 25/250/100 token import | 2,812.255 ms | 2,537.125 ms | -275.130 ms (-9.783%) | 3,605,189 → 293,916 | 475/475 → 202/202 |
-| definition operations | 2.080 ms | 1.826 ms | -0.254 ms (-12.190%) | 2,623 → 2,623 | 5/5 → 5/5 |
+| Workload | Before | After | Delta | JSON bytes | Builds / writes | Cache saves |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 styles, cold index | 0.446 ms | 2.627 ms | +2.181 ms (+489.159%) | n/a | n/a | 0 -> 0 |
+| 500 styles, 200 warm lookups | 88.110 ms | 1.209 ms | -86.900 ms (-98.628%) | n/a | n/a | 0 -> 0 |
+| 5,000 styles, cold index | 4.928 ms | 28.642 ms | +23.714 ms (+481.243%) | n/a | n/a | 0 -> 0 |
+| 5,000 styles, 200 warm lookups | 902.056 ms | 1.326 ms | -900.730 ms (-99.853%) | n/a | n/a | 0 -> 0 |
+| 200 assignment payloads | 0.678 ms | 0.753 ms | +0.075 ms (+11.056%) | 140,294 -> 140,294 | 1/0 -> 1/0 | 0 -> 0 |
+| color/font CRUD | 1.386 ms | 2.841 ms | +1.455 ms (+105.012%) | 2,939 -> 2,899 | 6/6 -> 6/6 | 3 -> 6 |
+| 25/250/100 token import | 2,301.017 ms | 1,531.266 ms | -769.751 ms (-33.453%) | 3,605,189 -> 293,916 | 475/475 -> 202/202 | 475 -> 202 |
+| definition operations | 1.773 ms | 1.977 ms | +0.204 ms (+11.531%) | 2,623 -> 2,623 | 5/5 -> 5/5 | 4 -> 4 |
 
-The cold cost builds the reusable index once. Combining cold construction with
-the warm workload improves end-to-end resolution by about 96% at both sizes.
-The other percentage increases are 0.110–1.169 ms absolute local orchestration
-costs and are immaterial relative to editor/network I/O. Token import improves
-9.8% while reducing serialized payload bytes by 91.8% and captured build/write
-count by 57.5%.
+The cold cost builds the reusable index once; the warm workload improves
+98.6-99.9%. Positive deltas are 0.075-23.714 ms of local orchestration. Token
+import improves 33.5%, reduces serialized bytes by 91.8%, and reduces cache
+saves by 57.5%. Literal bulk regressions separately prove one save for a
+500-color reorder, one for a 12-color delete, and two for a two-phase import.
 
-Every staged PR received independent review against its base. All
-Critical/Important findings were closed with literal regressions before the
-next phase, including default-style protection, stale-cache rejection,
+Every staged PR received independent review against its base. The consolidated
+final-review wave closed four additional Important and two Minor findings with
+literal RED/GREEN regressions: post-success reference invalidation, projected
+RGBA aliases, batched token-cache persistence, conditional runtime schemas,
+exhaustive finite-ID probing, and exact filter metadata. Earlier findings also
+remain covered, including default-style protection, stale-cache rejection,
 builder-owned transitions, real HTML/Figma failure propagation, deterministic
 ID collision handling, and static-gate enforcement. The consolidated evidence
 and closing review are recorded in

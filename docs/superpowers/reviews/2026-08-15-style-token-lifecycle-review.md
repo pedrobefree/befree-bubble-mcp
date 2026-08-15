@@ -243,3 +243,95 @@ Live representative runs `31898623436` (PR #29) and `31902065247` (PR #30)
 both report `jobs[0].steps: []`. This is the known billing/infrastructure
 failure signature, not a code failure; workflows were not changed. The full
 local matrix above is green.
+
+## Consolidated final-review fix wave
+
+This section supersedes the earlier closing verdict where the evidence differs.
+The final review against `bddec9c` found four Important and two Minor issues.
+All six were reproduced literally before implementation and fixed together on
+`codex/style-token-lifecycle-4-5f-final-evidence` in
+`99f3b87a65cb113a904f9bb76b0de14e849dc8b0`:
+
+1. **Important — successful definition mutations left stale references.** A
+   real-CLI rename RED still resolved `Article Copy` after the mocked successful
+   dispatch mutated discovery to `Renamed Body`; a sequential set-default/clear
+   RED deleted the newly configured default. Successful rename and set-default
+   dispatches now invalidate the reference snapshot only after dispatch. Dry
+   runs and failures retain the previous snapshot. Four focused regressions pass.
+2. **Important — Figma import reused stale projected RGBA aliases.** Updating an
+   existing custom color from red to blue while importing typography explicitly
+   referencing red produced `var(--color_cExisting_default)` in RED. Variables
+   are now recomputed from the post-update projected color defaults, so the
+   typography preserves literal red RGBA. Five focused regressions pass.
+3. **Important — bulk token cache persistence was O(N^2).** The literal REDs
+   observed 500 saves for a 500-color reorder, 12 saves for a 12-color bulk
+   delete, and four saves for a two-phase Figma import. The typed host protocol
+   now exposes one atomic in-memory cache delta per successful token phase.
+   Counts are 1, 1, and 2 respectively; ten focused regressions pass.
+4. **Important — delete/reorder input schemas admitted runtime-invalid shapes.**
+   Semantic tests against the actual MCP `tools/list` response showed that
+   delete accepted no selector and reorder move/swap accepted missing operands.
+   Conditional schemas now encode those runtime contracts while sort modes keep
+   their operand-free form. The complete 24-test server slice passes and the
+   catalog remains at 327 MCP tools.
+5. **Minor — the finite deterministic-ID allocator could report false
+   exhaustion.** With suffixes `b00ff` and `b0100` occupied, repeated digesting
+   did not reach free suffix `b0101`. The allocator now hashes once, preserves
+   attempt-zero compatibility, and linearly probes all 65,536 suffixes modulo
+   the namespace before explicit exhaustion. Four allocator regressions pass.
+6. **Minor — `filter` metadata was semantically vague.** The published schema
+   now states that it is a case-insensitive substring filter over generated
+   typography style names during Figma token import. The exact tools-list
+   metadata regression passes.
+
+The affected matrix passed 360 tests. Fresh closing gates produced:
+
+```text
+full Python: 1576 passed in 22.13s
+full Node: 11 passed
+coverage run: 1576 passed in 42.58s
+global combined coverage: 43.75762123628177%
+lifecycle combined branch coverage: 96.6%
+package/setup/sensitive/catalog tests: 16 passed in 3.95s
+catalog: 327 tools; 207 commands; 205 direct; 1 alias; 1 excluded; 0 missing
+Ruff src/tests/scripts: passed
+MyPy src: 141 files passed
+```
+
+Coverage contains 65,265 statements, 30,310 covered lines, 30,684 branches,
+and 11,675 covered branches. The ratchet remains at 43.6%; 43.7% would retain
+only 0.057621 point, below the prescribed 0.1-point headroom.
+
+Seven-run sequential medians compare the isolated Stage base `50c81f3` with
+the final worktree. Cache-save counts are observed calls to
+`BubbleCLI._save_cli_cache`; no remote Bubble write was executed.
+
+| Workload | Before | After | Delta | JSON bytes | Builds / writes | Cache saves |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 styles, cold index | 0.446 ms | 2.627 ms | +2.181 ms (+489.159%) | n/a | n/a | 0 -> 0 |
+| 500 styles, 200 warm lookups | 88.110 ms | 1.209 ms | -86.900 ms (-98.628%) | n/a | n/a | 0 -> 0 |
+| 5,000 styles, cold index | 4.928 ms | 28.642 ms | +23.714 ms (+481.243%) | n/a | n/a | 0 -> 0 |
+| 5,000 styles, 200 warm lookups | 902.056 ms | 1.326 ms | -900.730 ms (-99.853%) | n/a | n/a | 0 -> 0 |
+| 200 assignment payloads | 0.678 ms | 0.753 ms | +0.075 ms (+11.056%) | 140,294 -> 140,294 | 1/0 -> 1/0 | 0 -> 0 |
+| color/font CRUD | 1.386 ms | 2.841 ms | +1.455 ms (+105.012%) | 2,939 -> 2,899 | 6/6 -> 6/6 | 3 -> 6 |
+| 25/250/100 token import | 2,301.017 ms | 1,531.266 ms | -769.751 ms (-33.453%) | 3,605,189 -> 293,916 | 475/475 -> 202/202 | 475 -> 202 |
+| definition operations | 1.773 ms | 1.977 ms | +0.204 ms (+11.531%) | 2,623 -> 2,623 | 5/5 -> 5/5 | 4 -> 4 |
+
+Warm resolution improves 98.6-99.9%. Positive deltas are 0.075-23.714 ms of
+local orchestration; token import improves 33.5% while reducing both serialized
+bytes and cache saves. The CRUD benchmark intentionally covers six independent
+successful mutations, hence six after-stack saves; the new literal bulk tests
+prove one save per reorder/delete phase.
+
+Fresh no-profile smoke runs passed coverage 2/2 (`20260815203116_eceb9e`),
+agent routing 9/9 (`20260815203116_d84944`), and visual repair 1/1
+(`20260815203116_5b4ea6`). Authorized-profile safe reads, preview writes, and
+family previews ran as `20260815203147_60fe1d`, `20260815203156_45ebd0`, and
+`20260815203212_17479b`. Functional cases passed 10/10, 5/5, and 21/21; every
+preview reported `executed=false`. Each suite's sole failure remained the same
+stale-context profile-status preflight. No external write ran.
+
+The inherited unbounded configuration loader in
+`aria_runtime/figma_bridge/transform_tokens.py` is outside this lifecycle fix
+wave and remains explicit follow-up debt. It does not weaken any of the six
+closed review findings above.
