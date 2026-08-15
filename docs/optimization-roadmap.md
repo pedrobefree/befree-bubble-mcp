@@ -364,9 +364,9 @@ ID collision handling, and static-gate enforcement. The consolidated evidence
 and closing review are recorded in
 `docs/superpowers/reviews/2026-08-15-style-token-lifecycle-review.md`.
 
-GitHub CI for PRs #25–#30 remains infrastructure-blocked. The current check
+GitHub CI for PRs #25–#31 remains infrastructure-blocked. The current check
 jobs complete in two to four seconds with `steps: []`, so no workflow test step
-runs; representative live runs `31898623436` and `31902065247` show the same
+runs; final PR #31 runs `31907361361` and `31907359617` show the same
 billing/infrastructure signature. The complete local validation matrix above is
 the executable code evidence.
 

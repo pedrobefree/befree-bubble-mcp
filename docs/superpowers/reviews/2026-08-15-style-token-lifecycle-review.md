@@ -335,3 +335,13 @@ The inherited unbounded configuration loader in
 `aria_runtime/figma_bridge/transform_tokens.py` is outside this lifecycle fix
 wave and remains explicit follow-up debt. It does not weaken any of the six
 closed review findings above.
+
+### Publication verification
+
+The fix and evidence commits are
+`99f3b87a65cb113a904f9bb76b0de14e849dc8b0` and
+`543033c396591ebed283944e92dad96c380110e8`. Draft PR #31 remained OPEN and
+draft after its body was refreshed with this consolidated evidence. Push runs
+`31907361361` and `31907359617` each failed in two to three seconds with
+`jobs[0].steps: []`; no CI test step ran. This is the same known
+billing/infrastructure signature documented above, not a code-test failure.
