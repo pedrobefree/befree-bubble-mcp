@@ -5,6 +5,7 @@ from __future__ import annotations
 from .assignments import StyleAssignmentService, StyleOverridePolicy
 from .colors import ColorTokenService
 from .fonts import FontTokenService
+from .figma_import import FigmaTokenImportService
 from .protocols import StyleLifecycleHost
 from .references import StyleReferenceResolver
 
@@ -17,3 +18,4 @@ class StyleLifecycleService:
         self.assignments = StyleAssignmentService(StyleOverridePolicy(host, self.references))
         self.colors = ColorTokenService(host)
         self.fonts = FontTokenService(host)
+        self.figma_import = FigmaTokenImportService(host, self.colors, self.fonts, host)

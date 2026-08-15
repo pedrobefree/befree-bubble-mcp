@@ -85,6 +85,28 @@ def test_flatten_filter_groups_and_defaults(tmp_path: Path) -> None:
     }
 
 
+def test_filter_tokens_honors_excluded_color_paths(tmp_path: Path) -> None:
+    transformer = _transformer(
+        tmp_path,
+        filters={
+            "include_color_paths": ["color.*"],
+            "exclude_color_paths": ["color.private.*"],
+        },
+    )
+    tokens = transformer.flatten_tokens(
+        {
+            "color": {
+                "public": {"type": "color", "value": "#112233"},
+                "private": {"secret": {"type": "color", "value": "#445566"}},
+            }
+        }
+    )
+
+    assert [token["path"] for token in transformer.filter_tokens(tokens)["color"]] == [
+        "color.public"
+    ]
+
+
 def test_aggregates_themes_and_generates_commands(tmp_path: Path) -> None:
     transformer = _transformer(tmp_path)
     button_tokens = [

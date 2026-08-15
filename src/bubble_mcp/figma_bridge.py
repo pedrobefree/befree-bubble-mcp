@@ -373,6 +373,7 @@ def _sync_component_with_aria_runtime(
 
     def send_to_local_bubble(builder: Any, _url: str = "") -> Any:
         write_payload = _harden_figma_write_payload(builder.build())
+        write_payload["app_version"] = app_version
         captured_payloads.append(write_payload)
         if not execute:
             captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
@@ -386,6 +387,7 @@ def _sync_component_with_aria_runtime(
 
     stdout = StringIO()
     stderr = StringIO()
+    token_sync_result: dict[str, Any] | None = None
     try:
         bubble_sdk.PayloadBuilder.send_to_webhook = send_to_local_bubble
         with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -417,6 +419,31 @@ def _sync_component_with_aria_runtime(
                     list_options=meta.get("list_options") is True or meta.get("listOptions") is True,
                     filter=meta.get("filter"),
                 )
+                raw_token_result = getattr(cli, "_last_figma_token_sync_result", None)
+                if isinstance(raw_token_result, dict):
+                    token_sync_result = deepcopy(raw_token_result)
+                    if not execute:
+                        planned_payloads = token_sync_result.get("payloads")
+                        if isinstance(planned_payloads, list):
+                            for planned in planned_payloads:
+                                if not isinstance(planned, dict):
+                                    continue
+                                raw_write_payload = planned.get("payload")
+                                if not isinstance(raw_write_payload, dict):
+                                    continue
+                                raw_write_payload["app_version"] = app_version
+                                write_payload = _harden_figma_write_payload(deepcopy(raw_write_payload))
+                                write_payload["app_version"] = app_version
+                                captured_payloads.append(write_payload)
+                                captured_results.append(
+                                    {
+                                        "ok": True,
+                                        "executed": False,
+                                        "dry_run": True,
+                                        "phase": planned.get("phase"),
+                                        "payload": write_payload,
+                                    }
+                                )
                 action = "sync_tokens"
             elif sync_type == "style":
                 style_element_type = str(
@@ -455,7 +482,7 @@ def _sync_component_with_aria_runtime(
     if not success:
         raise RuntimeError("Aria Figma sync runtime failed.")
 
-    return {
+    response = {
         "ok": all(bool(item.get("ok")) for item in captured_results),
         "engine": "aria_runtime",
         "profile": profile,
@@ -470,6 +497,16 @@ def _sync_component_with_aria_runtime(
         "results": [{"index": index, **item} for index, item in enumerate(captured_results, start=1)],
         "logs": "\n".join(part for part in (stdout.getvalue().strip(), stderr.getvalue().strip()) if part),
     }
+    if is_token_sync:
+        response["token_sync"] = token_sync_result or {}
+        response["token_plan"] = deepcopy((token_sync_result or {}).get("payloads") or [])
+        response["session_context"] = {
+            "profile": profile,
+            "app_id": app_id,
+            "app_version": app_version,
+            "session_available": session is not None,
+        }
+    return response
 
 
 def _prune_stale_style_cache_for_bubble_file(bubble_file: Path) -> list[str]:

@@ -2662,6 +2662,93 @@ def test_color_font_schema_arguments_dispatch_to_literal_runtime_signature(
     assert _method_kwargs(method, arguments, execute=False) == expected
 
 
+def test_sync_figma_tokens_schema_matches_import_and_option_discovery_runtime_signature() -> None:
+    listed = handle_request({"jsonrpc": "2.0", "id": 1208, "method": "tools/list"})
+    assert listed is not None
+    listed_tools = listed["result"]["tools"]
+    tools = {tool["name"]: tool for tool in listed_tools}
+    schema = tools["sync_figma_tokens"]["inputSchema"]
+
+    assert len(listed_tools) == 327
+    assert schema["required"] == ["profile", "tokens_path"]
+    assert {
+        "tokens_path",
+        "config_path",
+        "types",
+        "color_bases",
+        "all_tokens",
+        "list_options",
+        "filter",
+    } <= set(schema["properties"])
+    runtime_fields = set(inspect.signature(BubbleCLI.sync_figma_tokens).parameters) - {"self", "dry_run"}
+    assert {
+        "tokens_path",
+        "config_path",
+        "types",
+        "color_bases",
+        "all_tokens",
+        "list_options",
+        "filter",
+    } <= runtime_fields
+    import_args = {
+        "tokens_path": "tokens.json",
+        "config_path": "config.json",
+        "types": "font,color,style",
+        "color_bases": "brand,base",
+        "all_tokens": True,
+        "filter": "body",
+    }
+    assert _method_kwargs(BubbleCLI.sync_figma_tokens, import_args, execute=False) == {
+        **import_args,
+        "dry_run": True,
+    }
+    assert _method_kwargs(
+        BubbleCLI.sync_figma_tokens,
+        {"tokens_path": "tokens.json", "list_options": True},
+        execute=False,
+    ) == {"tokens_path": "tokens.json", "dry_run": True, "list_options": True}
+
+
+@pytest.mark.parametrize("execute", [False, True])
+def test_sync_figma_tokens_list_options_dispatch_stays_read_only(
+    execute: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda name, args: calls.append((name, dict(args))) or {"ok": True, "groups": {}},
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1209,
+            "method": "tools/call",
+            "params": {
+                "name": "sync_figma_tokens",
+                "arguments": {
+                    "profile": "smoke",
+                    "tokens_path": "tokens.json",
+                    "list_options": True,
+                    "execute": execute,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    assert json.loads(response["result"]["content"][0]["text"])["ok"] is True
+    assert len(calls) == 1
+    assert calls[0][0] == "sync_figma_tokens"
+    assert calls[0][1]["profile"] == "smoke"
+    assert calls[0][1]["tokens_path"] == "tokens.json"
+    assert calls[0][1]["list_options"] is True
+    assert calls[0][1]["execute"] is False
+    assert calls[0][1]["dry_run"] is True
+
+
 @pytest.mark.parametrize(
     ("tool_name", "arguments"),
     [
