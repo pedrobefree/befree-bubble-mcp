@@ -108,6 +108,7 @@ class StyleOverridePolicy:
         "margin_top", "margin_right", "margin_bottom", "margin_left", "reference", "offset_top",
         "offset_left",
     }
+    _POPUP_STRUCTURAL_KEYS = _GROUP_STRUCTURAL_KEYS - {"%b4"}
     _PROTECTED_KEYS = {
         "Group": _GROUP_STRUCTURAL_KEYS,
         "FloatingGroup": _GROUP_STRUCTURAL_KEYS,
@@ -119,7 +120,7 @@ class StyleOverridePolicy:
             "fixed_columns", "show_all_items", "scroll_direction", "row_gap", "row_cell_gap",
             "column_cell_gap", "cell_min_width_css", "cell_min_height_css",
         },
-        "Popup": _GROUP_STRUCTURAL_KEYS,
+        "Popup": _POPUP_STRUCTURAL_KEYS,
         "DateInput": {
             "%c1", "initial_content", "input_type", "binding_content_format", "content_format",
             "date_format", "custom_format", "start_monday", "show_month_year_picker", "time_format",

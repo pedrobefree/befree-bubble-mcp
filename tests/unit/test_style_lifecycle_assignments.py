@@ -161,6 +161,48 @@ def test_protected_structural_properties_are_named_by_element_policy(
     assert required_keys <= policy.protected_keys(element_type)
 
 
+def test_popup_assignment_drops_stale_alignment_override_from_carried_properties(
+    services: tuple[StyleOverridePolicy, StyleAssignmentService],
+) -> None:
+    policy, assignment = services
+    path = ["%p3", "index", "%el", "modal"]
+    current_props: dict[str, Any] = {
+        "%b4": "center",
+        "container_layout": "column",
+        "%w": 640,
+        "%h": 480,
+        "%ds": {"%x": "CurrentPage"},
+    }
+    override_keys = set(policy.override_keys("Popup", target_style_id="Popup_modal_"))
+    protected_keys = policy.protected_keys("Popup")
+    carried_props = {
+        key: value
+        for key, value in current_props.items()
+        if key in protected_keys or key not in override_keys
+    }
+    payload = PayloadBuilder(appname="assignment-test")
+
+    assignment.assign(
+        payload,
+        path,
+        "Popup_modal_",
+        style_props=carried_props,
+        include_set_data=False,
+    )
+
+    popup_body = next(
+        row[2]
+        for row in _rows(payload)
+        if row[0] == "AssignStyle" and row[1][-1] == "%p"
+    )
+    assert popup_body == {
+        "container_layout": "column",
+        "%w": 640,
+        "%h": 480,
+        "%ds": {"%x": "CurrentPage"},
+    }
+
+
 def test_prune_sdk_properties_preserves_independent_borders_and_normalizes_px(
     services: tuple[StyleOverridePolicy, StyleAssignmentService],
 ) -> None:
