@@ -2,6 +2,7 @@
 
 from .assignments import StyleAssignmentService, StyleOverridePolicy
 from .colors import ColorSnapshot, ColorTokenService
+from .definitions import StyleDefinitionService
 from .fonts import FontSnapshot, FontTokenService
 from .figma_import import (
     DefaultColorUpdate,
@@ -13,6 +14,7 @@ from .figma_import import (
 )
 from .protocols import (
     StyleAssignmentHost,
+    StyleDefinitionHost,
     StyleLifecycleHost,
     StyleReferenceHost,
     StyleDefinitionSink,
@@ -34,6 +36,8 @@ __all__ = [
     "FigmaTokenSyncResult",
     "StyleAssignmentHost",
     "StyleAssignmentService",
+    "StyleDefinitionHost",
+    "StyleDefinitionService",
     "StyleLifecycleHost",
     "StyleLifecycleService",
     "StyleOverridePolicy",

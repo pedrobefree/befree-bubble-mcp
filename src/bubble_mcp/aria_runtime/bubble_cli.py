@@ -1050,6 +1050,93 @@ class BubbleCLI:
         self._cli_cache[kind] = {}
         self._save_cli_cache()
 
+    def resolve_style_definition_color(self, value: str) -> str:
+        """Resolve one style color through BubbleCLI's full live color boundary."""
+        return self._resolve_color_arg(value)
+
+    def dispatch_style_definition_payload(self, payload: PayloadBuilder) -> None:
+        """Dispatch a completed definition/state plan through the mutation boundary."""
+        self._dispatch_payload(payload)
+
+    def put_style_definition_cache(self, name: str, data: Dict[str, Any]) -> None:
+        """Stage one style cache value; the service controls persistence ordering."""
+        styles = self._cli_cache.setdefault("styles", {})
+        if not isinstance(styles, dict):
+            styles = {}
+            self._cli_cache["styles"] = styles
+        styles[name] = data
+
+    def remove_style_definition_cache(self, name: str) -> None:
+        """Stage removal of one style cache alias."""
+        styles = self._cli_cache.get("styles") if isinstance(self._cli_cache, dict) else None
+        if isinstance(styles, dict):
+            styles.pop(name, None)
+
+    def save_style_definition_cache(self) -> None:
+        """Persist staged definition cache changes once per successful operation."""
+        self._save_cli_cache()
+
+    def hydrate_style_definition(
+        self,
+        style_id: str,
+        name: str,
+        element_type: str,
+        properties: Dict[str, Any],
+        *,
+        clear_properties: Tuple[str, ...] = (),
+    ) -> None:
+        """Explicitly hydrate discovery for create and dry-run update chaining."""
+        styles = self.discovery.data.setdefault("styles", {})
+        if not isinstance(styles, dict):
+            styles = {}
+            self.discovery.data["styles"] = styles
+        current = styles.get(style_id)
+        if not isinstance(current, dict):
+            current = {}
+            styles[style_id] = current
+        current.update(
+            {
+                "name": name,
+                "display": name,
+                "%d": name,
+                "type": element_type,
+                "%x": element_type,
+            }
+        )
+        current_properties = current.get("%p")
+        if not isinstance(current_properties, dict):
+            current_properties = {}
+            current["%p"] = current_properties
+        current_properties.update(properties)
+        for property_name in clear_properties:
+            current_properties.pop(property_name, None)
+        self._invalidate_style_reference_index()
+
+    def base_style_properties(self, style_id: str) -> Dict[str, Any]:
+        """Return detached base properties for definition cache/state planning."""
+        return dict(self._style_lifecycle.references.base_properties(style_id))
+
+    def compensate_style_state_padding(
+        self,
+        style_id: str,
+        properties: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return self._compensate_padding_for_border_width(style_id, properties)
+
+    def augment_disabled_style_state(
+        self,
+        style_id: str,
+        properties: Dict[str, Any],
+        comparison_map: Dict[str, str],
+        base_properties: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        return self._augment_not_clickable_condition_props(
+            style_id,
+            properties,
+            comparison_map,
+            base_properties,
+        )
+
     def style_reference_revision(self) -> int:
         """Return the explicit revision for in-place style snapshot mutations."""
         return self._style_reference_revision
@@ -10117,6 +10204,20 @@ class BubbleCLI:
         dry_run: bool = False,
         prune_missing: bool = False,
     ) -> bool:
+        return self._style_lifecycle.definitions.reorder_style_states(
+            style_name,
+            order_list,
+            dry_run=dry_run,
+            prune_missing=prune_missing,
+        )
+
+    def _legacy_reorder_style_states(
+        self,
+        style_name: str,
+        order_list: Union[List[str], str],
+        dry_run: bool = False,
+        prune_missing: bool = False,
+    ) -> bool:
         """
         Reorders style conditional states based on a provided list of triggers.
         Triggers: 'disabled', 'hover', 'pressed', 'focus', 'visible', 'not_visible'
@@ -10255,8 +10356,11 @@ class BubbleCLI:
             logger.error(f"Failed to reorder states: {e}")
             return False
 
+    def _normalize_style_trigger_alias(self, token: str) -> Optional[str]:
+        return self._style_lifecycle.definitions.normalize_trigger_alias(token)
+
     @staticmethod
-    def _normalize_style_trigger_alias(token: str) -> Optional[str]:
+    def _legacy_normalize_style_trigger_alias(token: str) -> Optional[str]:
         raw = str(token or "").strip().lower()
         if not raw:
             return None
@@ -10326,6 +10430,9 @@ class BubbleCLI:
         return None
 
     def _parse_reorder_style_order(self, order_input: Union[List[str], str]) -> List[str]:
+        return self._style_lifecycle.definitions.parse_reorder_order(order_input)
+
+    def _legacy_parse_reorder_style_order(self, order_input: Union[List[str], str]) -> List[str]:
         """
         Accepts:
         - CSV: "hover,disabled"
@@ -10395,6 +10502,22 @@ class BubbleCLI:
         return _dedupe([trig for _, trig in hits])
 
     def add_style_condition(
+        self,
+        style_name: str,
+        condition: str,
+        dry_run: bool = False,
+        index: Optional[str] = None,
+        **props: Any
+    ) -> bool:
+        return self._style_lifecycle.definitions.add_style_condition(
+            style_name,
+            condition,
+            dry_run=dry_run,
+            index=index,
+            **props,
+        )
+
+    def _legacy_add_style_condition(
         self,
         style_name: str,
         condition: str,
@@ -10956,6 +11079,9 @@ class BubbleCLI:
         return None
 
     def find_style_condition_id(self, style_id: str, condition_type: Union[str, List[Tuple[str, Optional[str]]]]) -> Optional[str]:
+        return self._style_lifecycle.definitions.find_style_condition_id(style_id, condition_type)
+
+    def _legacy_find_style_condition_id(self, style_id: str, condition_type: Union[str, List[Tuple[str, Optional[str]]]]) -> Optional[str]:
         """Look up existing condition ID for a given trigger in discovery data or CLI cache."""
 
         # Normalize target to list of (name, op)
@@ -24064,6 +24190,13 @@ class BubbleCLI:
         return self._style_lifecycle.assignments.overrides.base_override_keys()
 
     def set_default_style(self, element_type: str, style_id: str, dry_run: bool = False) -> bool:
+        return self._style_lifecycle.definitions.set_default_style(
+            element_type,
+            style_id,
+            dry_run=dry_run,
+        )
+
+    def _legacy_set_default_style(self, element_type: str, style_id: str, dry_run: bool = False) -> bool:
         """Sets a style as the default for its element type."""
         settings_key = self._default_style_settings_key(element_type)
         logger.info(f"Setting '{style_id}' as default for {settings_key}...")
@@ -24089,6 +24222,9 @@ class BubbleCLI:
             return False
 
     def _normalize_style_kwargs(self, kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        return self._style_lifecycle.definitions.normalize_kwargs(kwargs)
+
+    def _legacy_normalize_style_kwargs(self, kwargs: Optional[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Normalize shared style kwargs before create/update operations.
         Centralized so all style-capability tools behave consistently.
@@ -24361,6 +24497,12 @@ class BubbleCLI:
         self,
         raw_states: Any,
     ) -> List[Tuple[str, Dict[str, Any]]]:
+        return self._style_lifecycle.definitions.normalize_state_definitions(raw_states)
+
+    def _legacy_normalize_style_state_definitions(
+        self,
+        raw_states: Any,
+    ) -> List[Tuple[str, Dict[str, Any]]]:
         """
         Normalize style state definitions into [(condition, props_dict)].
         Accepted formats:
@@ -24408,8 +24550,11 @@ class BubbleCLI:
 
         raise ValueError("states_json must be a JSON object or array.")
 
+    def _style_state_prop_wire_map(self) -> Dict[str, str]:
+        return self._style_lifecycle.definitions.state_property_wire_map()
+
     @staticmethod
-    def _style_state_prop_wire_map() -> Dict[str, str]:
+    def _legacy_style_state_prop_wire_map() -> Dict[str, str]:
         return {
             "border_radius": "%br",
             "border_width": "%bw",
@@ -24474,6 +24619,19 @@ class BubbleCLI:
         *,
         comparison_map: Optional[Dict[str, str]] = None,
     ) -> List[Dict[str, Any]]:
+        return self._style_lifecycle.definitions.build_transition_intents(
+            style_id,
+            props,
+            comparison_map=comparison_map,
+        )
+
+    def _legacy_build_style_transition_intents(
+        self,
+        style_id: str,
+        props: Dict[str, Any],
+        *,
+        comparison_map: Optional[Dict[str, str]] = None,
+    ) -> List[Dict[str, Any]]:
         """
         Auto-generate AddTransition intents for style condition props.
         Mirrors sync-figma-style transition rules.
@@ -24508,6 +24666,19 @@ class BubbleCLI:
         *,
         dry_run: bool = False,
     ) -> bool:
+        return self._style_lifecycle.definitions.apply_state_definitions(
+            style_name,
+            state_defs,
+            dry_run=dry_run,
+        )
+
+    def _legacy_apply_style_state_definitions(
+        self,
+        style_name: str,
+        state_defs: List[Tuple[str, Dict[str, Any]]],
+        *,
+        dry_run: bool = False,
+    ) -> bool:
         if not state_defs:
             return True
         logger.info(f"Applying {len(state_defs)} style state(s) to '{style_name}'...")
@@ -24517,6 +24688,22 @@ class BubbleCLI:
         return True
 
     def create_style(
+        self,
+        name: str,
+        element_type: str,
+        dry_run: bool = False,
+        allow_property_match: bool = True,
+        **kwargs,
+    ) -> bool:
+        return self._style_lifecycle.definitions.create_style(
+            name,
+            element_type,
+            dry_run=dry_run,
+            allow_property_match=allow_property_match,
+            **kwargs,
+        )
+
+    def _legacy_create_style(
         self,
         name: str,
         element_type: str,
@@ -24888,6 +25075,13 @@ class BubbleCLI:
         return self._apply_style_state_definitions(name, state_defs, dry_run=dry_run)
 
     def rename_style(self, style_id: str, new_name: str, dry_run: bool = False) -> bool:
+        return self._style_lifecycle.definitions.rename_style(
+            style_id,
+            new_name,
+            dry_run=dry_run,
+        )
+
+    def _legacy_rename_style(self, style_id: str, new_name: str, dry_run: bool = False) -> bool:
         """
         Renames a style by updating its %d property.
         Useful for recovering styles created without a name.
@@ -24918,6 +25112,13 @@ class BubbleCLI:
             return False
 
     def create_button_style(self, name: str, theme_json: str, dry_run: bool = False) -> bool:
+        return self._style_lifecycle.definitions.create_button_style(
+            name,
+            theme_json,
+            dry_run=dry_run,
+        )
+
+    def _legacy_create_button_style(self, name: str, theme_json: str, dry_run: bool = False) -> bool:
         """
         Creates a button style with base and conditional states (hover, pressed, etc.)
         Example: create-button-style 'Primary' '{"base": {"bg_color": "#000"}, "hover": {"bg_color": "#333"}}'
@@ -24982,6 +25183,22 @@ class BubbleCLI:
             return False
 
     def update_style_definition(
+        self,
+        name: str,
+        element_type: str,
+        dry_run: bool = False,
+        style_id_override: Optional[str] = None,
+        **kwargs,
+    ) -> bool:
+        return self._style_lifecycle.definitions.update_style_definition(
+            name,
+            element_type,
+            dry_run=dry_run,
+            style_id_override=style_id_override,
+            **kwargs,
+        )
+
+    def _legacy_update_style_definition(
         self,
         name: str,
         element_type: str,
@@ -25200,6 +25417,13 @@ class BubbleCLI:
             return False
 
     def delete_style(self, name: str, element_type: str = None, dry_run: bool = False) -> bool:
+        return self._style_lifecycle.definitions.delete_style(
+            name,
+            element_type,
+            dry_run=dry_run,
+        )
+
+    def _legacy_delete_style(self, name: str, element_type: str = None, dry_run: bool = False) -> bool:
         """
         Deletes a style by name or ID.
         """
@@ -25250,6 +25474,13 @@ class BubbleCLI:
             return False
 
     def delete_styles(self, names: List[str] = None, pattern: str = None, dry_run: bool = False) -> bool:
+        return self._style_lifecycle.definitions.delete_styles(
+            names=names,
+            pattern=pattern,
+            dry_run=dry_run,
+        )
+
+    def _legacy_delete_styles(self, names: List[str] = None, pattern: str = None, dry_run: bool = False) -> bool:
         """Delete multiple styles by name list or regex pattern."""
         # Get styles from discovery
         styles = self.discovery.list_styles()
@@ -25312,6 +25543,9 @@ class BubbleCLI:
             return False
 
     def clear_custom_styles(self, dry_run: bool = False) -> bool:
+        return self._style_lifecycle.definitions.clear_custom_styles(dry_run=dry_run)
+
+    def _legacy_clear_custom_styles(self, dry_run: bool = False) -> bool:
         """Delete ALL custom styles."""
         logger.info("Clearing ALL custom styles...")
 
