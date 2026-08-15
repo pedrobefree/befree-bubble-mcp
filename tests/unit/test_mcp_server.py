@@ -1,4 +1,5 @@
 import json
+import inspect
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from typing import Any
@@ -13,6 +14,8 @@ from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import BubbleSessionData, load_session, save_session, session_from_payload
+from bubble_mcp.aria_dispatch import _method_kwargs
+from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
 
 
 def first_change(payload: dict, intent_name: str) -> dict:  # type: ignore[type-arg]
@@ -2563,6 +2566,188 @@ def test_update_style_all_schema_dispatches_by_contains_to_runtime(monkeypatch) 
             "by_contains": True,
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "required", "operation_fields", "method_name"),
+    [
+        ("list_colors", ["profile"], {"show_default", "show_custom"}, "list_colors"),
+        ("create_color", ["profile", "name", "rgba"], {"description"}, "create_color"),
+        ("update_color", ["profile", "name", "rgba"], set(), "update_color"),
+        ("delete_color", ["profile", "name"], {"confirm"}, "delete_color"),
+        ("delete_colors", ["profile"], {"names", "pattern", "confirm"}, "delete_colors"),
+        ("clear_custom_colors", ["profile"], {"confirm"}, "clear_custom_colors"),
+        ("reorder_colors", ["profile", "mode"], {"color_name", "target"}, "reorder_colors"),
+        ("list_fonts", ["profile"], {"show_app", "show_custom"}, "list_fonts"),
+        ("create_font", ["profile", "name", "font_family"], {"description"}, "create_font"),
+        ("update_font", ["profile", "name", "font_family"], set(), "update_font"),
+        ("delete_font", ["profile", "name"], {"confirm"}, "delete_font"),
+    ],
+)
+def test_color_font_mcp_schemas_match_runtime_signatures(
+    tool_name: str,
+    required: list[str],
+    operation_fields: set[str],
+    method_name: str,
+) -> None:
+    listed = handle_request({"jsonrpc": "2.0", "id": 1203, "method": "tools/list"})
+    assert listed is not None
+    tools = {tool["name"]: tool for tool in listed["result"]["tools"]}
+    schema = tools[tool_name]["inputSchema"]
+
+    assert schema["required"] == required
+    assert operation_fields <= set(schema["properties"])
+    runtime_fields = set(inspect.signature(getattr(BubbleCLI, method_name)).parameters) - {"self", "dry_run"}
+    assert operation_fields - {"confirm"} <= runtime_fields
+    assert set(required) - {"profile"} <= runtime_fields
+
+    if tool_name == "delete_colors":
+        assert schema["properties"]["names"] == {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Exact custom color names to soft-delete in one grouped operation.",
+        }
+    if tool_name == "reorder_colors":
+        assert schema["properties"]["mode"]["enum"] == ["sort-az", "sort-za", "move", "swap"]
+    for boolean_field in {"show_default", "show_custom", "show_app"} & operation_fields:
+        assert schema["properties"][boolean_field]["type"] == "boolean"
+
+
+@pytest.mark.parametrize(
+    ("method_name", "arguments", "expected"),
+    [
+        ("list_colors", {"show_default": False, "show_custom": True}, {"show_default": False, "show_custom": True}),
+        (
+            "create_color",
+            {"name": "Brand", "rgba": "rgba(1,2,3,1)", "description": "Core"},
+            {"name": "Brand", "rgba": "rgba(1,2,3,1)", "description": "Core", "dry_run": True},
+        ),
+        (
+            "update_color",
+            {"name": "Brand", "rgba": "rgba(4,5,6,1)"},
+            {"name": "Brand", "rgba": "rgba(4,5,6,1)", "dry_run": True},
+        ),
+        ("delete_color", {"name": "Brand"}, {"name": "Brand", "dry_run": True}),
+        (
+            "delete_colors",
+            {"names": ["Brand"], "pattern": "^Old"},
+            {"names": ["Brand"], "pattern": "^Old", "dry_run": True},
+        ),
+        (
+            "reorder_colors",
+            {"mode": "move", "color_name": "Brand", "target": "0"},
+            {"mode": "move", "color_name": "Brand", "target": "0", "dry_run": True},
+        ),
+        ("list_fonts", {"show_app": False, "show_custom": True}, {"show_app": False, "show_custom": True}),
+        (
+            "create_font",
+            {"name": "Body", "font_family": "Inter", "description": "Copy"},
+            {"name": "Body", "font_family": "Inter", "description": "Copy", "dry_run": True},
+        ),
+        (
+            "update_font",
+            {"name": "Body", "font_family": "Noto Sans"},
+            {"name": "Body", "font_family": "Noto Sans", "dry_run": True},
+        ),
+        ("delete_font", {"name": "Body"}, {"name": "Body", "dry_run": True}),
+    ],
+)
+def test_color_font_schema_arguments_dispatch_to_literal_runtime_signature(
+    method_name: str,
+    arguments: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    method = getattr(BubbleCLI, method_name)
+
+    assert _method_kwargs(method, arguments, execute=False) == expected
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "arguments"),
+    [
+        ("delete_color", {"name": "Brand"}),
+        ("delete_colors", {"names": ["Brand"]}),
+        ("clear_custom_colors", {}),
+        ("delete_font", {"name": "Body"}),
+    ],
+)
+def test_destructive_color_font_tools_require_confirmation_only_when_executing(
+    tool_name: str,
+    arguments: dict[str, Any],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda name, args: calls.append((name, dict(args)))
+        or {"ok": True, "executed": bool(args.get("execute"))},
+    )
+
+    preview = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1204,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {"profile": "smoke", **arguments, "execute": False},
+            },
+        }
+    )
+    assert preview is not None
+    preview_payload = json.loads(preview["result"]["content"][0]["text"])
+    assert preview_payload == {"ok": True, "executed": False}
+    assert len(calls) == 1
+    assert calls[0][0] == tool_name
+    for key, value in {"profile": "smoke", **arguments, "execute": False}.items():
+        assert calls[0][1][key] == value
+
+    calls.clear()
+    blocked = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1205,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {"profile": "smoke", **arguments, "execute": True},
+            },
+        }
+    )
+    assert blocked is not None
+    blocked_payload = json.loads(blocked["result"]["content"][0]["text"])
+    assert blocked_payload["error"] == f"{tool_name} requires confirm=true when execute=true."
+    assert calls == []
+
+    confirmed = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1206,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {
+                    "profile": "smoke",
+                    **arguments,
+                    "execute": True,
+                    "confirm": True,
+                },
+            },
+        }
+    )
+    assert confirmed is not None
+    confirmed_payload = json.loads(confirmed["result"]["content"][0]["text"])
+    assert confirmed_payload == {"ok": True, "executed": True}
+    assert len(calls) == 1
+    assert calls[0][0] == tool_name
+    for key, value in {
+        "profile": "smoke",
+        **arguments,
+        "execute": True,
+        "confirm": True,
+    }.items():
+        assert calls[0][1][key] == value
 
 
 def test_batch_dispatch_accepts_inline_commands(monkeypatch) -> None:  # type: ignore[no-untyped-def]
