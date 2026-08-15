@@ -12,7 +12,8 @@ def test_setup_smoke_environment_prepends_checkout_source(tmp_path: Path) -> Non
     environment = setup_smoke_environment(tmp_path, {"PYTHONPATH": "/existing/source", "LANG": "C"})
 
     entries = environment["PYTHONPATH"].split(os.pathsep)
-    assert entries[0].endswith("befree-bubble-mcp/src")
+    expected_source = Path(__file__).resolve().parents[2] / "src"
+    assert entries[0] == str(expected_source)
     assert entries[1] == "/existing/source"
     assert environment["BUBBLE_MCP_CONFIG_DIR"] == str(tmp_path)
     assert environment["LANG"] == "C"
