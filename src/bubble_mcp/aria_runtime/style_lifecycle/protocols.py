@@ -1,0 +1,23 @@
+"""Typed host callbacks for style lifecycle services."""
+
+from __future__ import annotations
+
+from typing import Any, Protocol
+
+
+class StyleReferenceHost(Protocol):
+    """Immutable snapshots and normalization callbacks used by style reads."""
+
+    def style_reference_snapshots(self) -> tuple[dict[str, Any], dict[str, Any]]: ...
+
+    def style_reference_revision(self) -> int: ...
+
+    def list_style_references(self) -> list[dict[str, Any]]: ...
+
+    def list_style_reference_elements(self) -> list[dict[str, Any]]: ...
+
+    def normalize_style_reference(self, value: Any) -> str: ...
+
+    def compact_style_reference(self, value: Any) -> str: ...
+
+    def plain_style_reference_text(self, value: Any) -> str: ...
