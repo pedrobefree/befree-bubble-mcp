@@ -18,6 +18,7 @@ tmp/
 logs/
 captures/
 .local/
+.superpowers/
 .worktrees/
 profiles.d/
 settings.json
