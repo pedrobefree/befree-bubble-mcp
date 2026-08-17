@@ -18,6 +18,13 @@ COMPACT_CONTEXT_FIND_ARGS: dict[str, Any] = {
     "include_metadata": False,
 }
 
+REUSABLE_DEFINITION_MODULE_GUIDANCE = (
+    "In split bubble_modules, reusable definition root objects live in "
+    "element_definitions/CustomDefinition. Do not use element_definitions/ReusableElement to "
+    "locate definitions: ReusableElement represents instances placed on pages, even when that "
+    "directory exists."
+)
+
 
 ROUTES: tuple[dict[str, Any], ...] = (
     {
@@ -1338,6 +1345,7 @@ def agent_guide(task: str = "", *, include_knowledge_advice: bool = True) -> dic
             "preview_default": "Leave execute=false unless the user explicitly asked to apply the change in Bubble.",
             "profile_first": "Prefer profile-based calls so the server can use stored session, context, and mutation overlay.",
             "refresh_context_when_stale": "Run bubble_profile_cache_refresh with force=true for routine profile cache refresh; use bubble_context_detect only for lower-level context-specific options.",
+            "reusable_definition_modules": REUSABLE_DEFINITION_MODULE_GUIDANCE,
         },
         "setup_requirements": [
             "Each Bubble project needs a profile.",

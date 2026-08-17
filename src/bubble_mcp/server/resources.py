@@ -7,7 +7,7 @@ from typing import Any
 
 from bubble_mcp import __version__
 from bubble_mcp.profile_status import profile_status
-from bubble_mcp.server.agent_guide import RECIPES, ROUTES
+from bubble_mcp.server.agent_guide import REUSABLE_DEFINITION_MODULE_GUIDANCE, RECIPES, ROUTES
 from bubble_mcp.server.schemas import list_tool_schemas
 
 
@@ -50,6 +50,10 @@ def _agent_runtime_markdown() -> str:
             "- Destructive operations require explicit confirmation arguments.",
             "- After real writes, verify with context refresh, changelog, or a smoke suite when materialization matters.",
             "",
+            "Split module semantics:",
+            "",
+            f"- {REUSABLE_DEFINITION_MODULE_GUIDANCE}",
+            "",
             "Operational checks:",
             "",
             "- `bubble_readiness_check` runs the recommended health, coverage, catalog-quality, routing, and profile-status sequence.",
@@ -91,6 +95,7 @@ def _agent_quickstart_markdown() -> str:
             "- Every Bubble app needs a local profile.",
             "- Mutating calls need a captured session for that profile; use `bubble_session_login` when the user can complete interactive Bubble login in the opened browser.",
             "- Reliable page/reusable/element resolution needs current context from `bubble_context_detect`.",
+            f"- {REUSABLE_DEFINITION_MODULE_GUIDANCE}",
             "",
             "User interaction policy:",
             "",

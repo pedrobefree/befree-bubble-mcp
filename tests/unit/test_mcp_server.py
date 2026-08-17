@@ -425,6 +425,9 @@ def test_resources_list_and_read_agent_runtime() -> None:
     assert "Preview first" in content["text"]
     assert "bubble_context_find" in content["text"]
     assert "include_metadata=false" in content["text"]
+    assert "element_definitions/CustomDefinition" in content["text"]
+    assert "ReusableElement" in content["text"]
+    assert "instances placed on pages" in content["text"]
 
 
 def test_resources_read_agent_quickstart() -> None:
@@ -1303,6 +1306,12 @@ def test_agent_guide_routes_user_tasks_without_cli_discovery() -> None:
     assert payload["ok"] is True
     assert payload["direct_tool_policy"]["use_mcp_tools_directly"] is True
     assert payload["direct_tool_policy"]["avoid_shell_cli_discovery"] is True
+    assert "element_definitions/CustomDefinition" in payload["direct_tool_policy"][
+        "reusable_definition_modules"
+    ]
+    assert "instances placed on pages" in payload["direct_tool_policy"][
+        "reusable_definition_modules"
+    ]
     intents = {route["intent"] for route in payload["recommended_routes"]}
     assert "import_html_component" in intents
     assert "branches_or_changelog" in intents
