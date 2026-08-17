@@ -3,10 +3,19 @@
 from .assignments import StyleAssignmentService, StyleOverridePolicy
 from .colors import ColorSnapshot, ColorTokenService
 from .fonts import FontSnapshot, FontTokenService
+from .figma_import import (
+    DefaultColorUpdate,
+    FigmaTokenCounts,
+    FigmaTokenImportService,
+    FigmaTokenPlan,
+    FigmaTokenSyncResult,
+    StyleDefinitionOperation,
+)
 from .protocols import (
     StyleAssignmentHost,
     StyleLifecycleHost,
     StyleReferenceHost,
+    StyleDefinitionSink,
     StyleTokenHost,
     TokenMutationResult,
 )
@@ -18,12 +27,19 @@ __all__ = [
     "ColorTokenService",
     "FontSnapshot",
     "FontTokenService",
+    "DefaultColorUpdate",
+    "FigmaTokenCounts",
+    "FigmaTokenImportService",
+    "FigmaTokenPlan",
+    "FigmaTokenSyncResult",
     "StyleAssignmentHost",
     "StyleAssignmentService",
     "StyleLifecycleHost",
     "StyleLifecycleService",
     "StyleOverridePolicy",
     "StyleReferenceHost",
+    "StyleDefinitionOperation",
+    "StyleDefinitionSink",
     "StyleReferenceResolver",
     "StyleTokenHost",
     "TokenMutationResult",

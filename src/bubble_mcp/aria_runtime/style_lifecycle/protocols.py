@@ -85,5 +85,18 @@ class StyleTokenHost(Protocol):
     def clear_style_token_cache(self, kind: str) -> None: ...
 
 
-class StyleLifecycleHost(StyleAssignmentHost, StyleTokenHost, Protocol):
+class StyleDefinitionSink(Protocol):
+    """Narrow compatibility sink for style definitions until phase 4.5e."""
+
+    def create_style(
+        self,
+        name: str,
+        element_type: str,
+        dry_run: bool = False,
+        allow_property_match: bool = True,
+        **properties: Any,
+    ) -> bool: ...
+
+
+class StyleLifecycleHost(StyleAssignmentHost, StyleTokenHost, StyleDefinitionSink, Protocol):
     """Complete composition-root host without widening individual services."""

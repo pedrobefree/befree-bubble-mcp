@@ -2662,6 +2662,203 @@ def test_color_font_schema_arguments_dispatch_to_literal_runtime_signature(
     assert _method_kwargs(method, arguments, execute=False) == expected
 
 
+def test_sync_figma_tokens_schema_matches_import_and_option_discovery_runtime_signature() -> None:
+    listed = handle_request({"jsonrpc": "2.0", "id": 1208, "method": "tools/list"})
+    assert listed is not None
+    listed_tools = listed["result"]["tools"]
+    tools = {tool["name"]: tool for tool in listed_tools}
+    schema = tools["sync_figma_tokens"]["inputSchema"]
+
+    assert len(listed_tools) == 327
+    assert schema["required"] == ["profile", "tokens_path"]
+    assert {
+        "tokens_path",
+        "config_path",
+        "types",
+        "color_bases",
+        "all_tokens",
+        "list_options",
+        "filter",
+    } <= set(schema["properties"])
+    runtime_fields = set(inspect.signature(BubbleCLI.sync_figma_tokens).parameters) - {"self", "dry_run"}
+    assert {
+        "tokens_path",
+        "config_path",
+        "types",
+        "color_bases",
+        "all_tokens",
+        "list_options",
+        "filter",
+    } <= runtime_fields
+    import_args = {
+        "tokens_path": "tokens.json",
+        "config_path": "config.json",
+        "types": "font,color,style",
+        "color_bases": "brand,base",
+        "all_tokens": True,
+        "filter": "body",
+    }
+    assert _method_kwargs(BubbleCLI.sync_figma_tokens, import_args, execute=False) == {
+        **import_args,
+        "dry_run": True,
+    }
+    assert _method_kwargs(
+        BubbleCLI.sync_figma_tokens,
+        {"tokens_path": "tokens.json", "list_options": True},
+        execute=False,
+    ) == {"tokens_path": "tokens.json", "dry_run": True, "list_options": True}
+
+
+@pytest.mark.parametrize("execute", [False, True])
+def test_sync_figma_tokens_list_options_dispatch_stays_read_only(
+    execute: bool,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda name, args: calls.append((name, dict(args))) or {"ok": True, "groups": {}},
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1209,
+            "method": "tools/call",
+            "params": {
+                "name": "sync_figma_tokens",
+                "arguments": {
+                    "profile": "smoke",
+                    "tokens_path": "tokens.json",
+                    "list_options": True,
+                    "execute": execute,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    assert json.loads(response["result"]["content"][0]["text"])["ok"] is True
+    assert len(calls) == 1
+    assert calls[0][0] == "sync_figma_tokens"
+    assert calls[0][1]["profile"] == "smoke"
+    assert calls[0][1]["tokens_path"] == "tokens.json"
+    assert calls[0][1]["list_options"] is True
+    assert calls[0][1]["execute"] is False
+    assert calls[0][1]["dry_run"] is True
+
+
+def test_sync_figma_tokens_tools_call_preview_exposes_structured_plan_additively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakePayloadBuilder:
+        def __init__(self, appname="synthetic-app", app_version="test", **_kwargs):
+            self.appname = appname
+            self.app_version = app_version
+
+        def send_to_webhook(self, _url=""):
+            return {"ok": True}
+
+        def to_json(self, indent=2):
+            return json.dumps({}, indent=indent)
+
+    class FakeBubbleSdk:
+        PayloadBuilder = FakePayloadBuilder
+
+    class FakeBubbleCliModule:
+        inquirer = None
+
+        class BubbleCLI:
+            def __init__(self, **kwargs):
+                self.app_version = kwargs["app_version"]
+                self._last_figma_token_sync_result = None
+
+            def sync_figma_tokens(
+                self,
+                tokens_path: str,
+                config_path: str = "figma_bridge/token_config.json",
+                dry_run: bool = False,
+                types: str | None = None,
+                color_bases: str | None = None,
+                all_tokens: bool = False,
+                list_options: bool = False,
+                filter: str | None = None,
+            ) -> bool:
+                self._last_figma_token_sync_result = {
+                    "ok": True,
+                    "dry_run": dry_run,
+                    "counts": {"fonts": 0, "created": 1, "updated": 0, "skipped": 0, "styles": 0},
+                    "applied_counts": {"fonts": 0, "colors": 0, "styles": 0},
+                    "payloads": [
+                        {
+                            "phase": "colors",
+                            "payload": {
+                                "v": 1,
+                                "appname": "synthetic-app",
+                                "app_version": self.app_version,
+                                "changes": [{"intent": {"name": "ChangeAppSettings"}}],
+                            },
+                        }
+                    ],
+                    "errors": [],
+                    "warnings": [],
+                }
+                return True
+
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._load_aria_runtime_modules",
+        lambda: (FakeBubbleCliModule, FakeBubbleSdk),
+    )
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._resolve_runtime_environment",
+        lambda _args: SimpleNamespace(
+            profile="smoke",
+            app_id="synthetic-app",
+            app_version="version-stage",
+            app_json_path=None,
+            consolelog_json_path=None,
+            crawler_index_path=None,
+            mutation_overlay_path=None,
+        ),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1210,
+            "method": "tools/call",
+            "params": {
+                "name": "sync_figma_tokens",
+                "arguments": {
+                    "profile": "smoke",
+                    "tokens_path": "tokens.json",
+                    "execute": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert payload["compiled"] is False
+    assert payload["write_count"] == 0
+    assert payload["results"] == []
+    assert payload["figma_import"]["result"]["counts"]["created"] == 1
+    assert payload["figma_import"]["plan"] == [
+        {
+            "phase": "colors",
+            "payload": {
+                "v": 1,
+                "appname": "synthetic-app",
+                "app_version": "version-stage",
+                "changes": [{"intent": {"name": "ChangeAppSettings"}}],
+            },
+        }
+    ]
+
+
 @pytest.mark.parametrize(
     ("tool_name", "arguments"),
     [

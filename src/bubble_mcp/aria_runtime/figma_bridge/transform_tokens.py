@@ -5,6 +5,7 @@ import re
 import argparse
 from typing import Dict, List, Any, Optional, Set
 
+
 class TokenTransformer:
     def __init__(self, config_path: str = "figma_bridge/token_config.json"):
         self.config = self._load_json(config_path)
@@ -30,7 +31,7 @@ class TokenTransformer:
             "ultra-bold": 800,
             "ultrabold": 800,
             "black": 900,
-            "heavy": 900
+            "heavy": 900,
         }
 
     def normalize_font_weight(self, raw_weight: Any) -> Optional[str]:
@@ -86,7 +87,9 @@ class TokenTransformer:
 
         return text
 
-    def _normalize_token_parts(self, path_parts: List[str], token_type: Optional[str] = None) -> List[str]:
+    def _normalize_token_parts(
+        self, path_parts: List[str], token_type: Optional[str] = None
+    ) -> List[str]:
         """Normalize duplicated top-level token prefixes from plugin exports."""
         parts = [str(part).strip() for part in path_parts if str(part).strip()]
         if not parts:
@@ -98,28 +101,37 @@ class TokenTransformer:
         elif token_type in {"style", "font", "typography"}:
             duplicate_roots = {"typography", "font"}
 
-        while len(parts) > 1 and parts[0].lower() in duplicate_roots and parts[1].lower() == parts[0].lower():
+        while (
+            len(parts) > 1
+            and parts[0].lower() in duplicate_roots
+            and parts[1].lower() == parts[0].lower()
+        ):
             parts = [parts[0]] + parts[2:]
 
         return parts
 
     def _load_json(self, path: str) -> Dict:
         if os.path.exists(path):
-            with open(path, 'r') as f:
+            with open(path, "r") as f:
                 return json.load(f)
         return {}
 
     def hex_to_rgba(self, hex_str: str) -> str:
         """Convert #RRGGBBAA or #RRGGBB to rgba(r, g, b, a)"""
-        if not isinstance(hex_str, str) or not hex_str.startswith('#'):
+        if not isinstance(hex_str, str) or not hex_str.startswith("#"):
             return self.normalize_rgba(hex_str)
-        hex_str = hex_str.lstrip('#')
+        hex_str = hex_str.lstrip("#")
         try:
             if len(hex_str) == 6:
                 r, g, b = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16)
                 return self.normalize_rgba(f"rgba({r},{g},{b},1)")
             elif len(hex_str) == 8:
-                r, g, b, a = int(hex_str[0:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16), int(hex_str[6:8], 16)
+                r, g, b, a = (
+                    int(hex_str[0:2], 16),
+                    int(hex_str[2:4], 16),
+                    int(hex_str[4:6], 16),
+                    int(hex_str[6:8], 16),
+                )
                 alpha = round(a / 255, 2)
                 return self.normalize_rgba(f"rgba({r},{g},{b},{alpha})")
         except ValueError:
@@ -139,7 +151,7 @@ class TokenTransformer:
             a = parts[3] if len(parts) > 3 else "1"
             # Normalize alpha: "1.0" or "1" -> "1", "0.50" -> "0.5"
             a_val = float(a)
-            a_str = f"{a_val:g}" # removes trailing zeros
+            a_str = f"{a_val:g}"  # removes trailing zeros
             return f"rgba({r}, {g}, {b}, {a_str})"
 
         return rgba_str
@@ -160,7 +172,7 @@ class TokenTransformer:
 
         # Skip top-level 'color' or 'typography' or 'font'
         parts = list(path_parts)
-        if parts[0] in ['color', 'typography', 'font']:
+        if parts[0] in ["color", "typography", "font"]:
             parts = parts[1:]
 
         name = separator.join(parts)
@@ -173,8 +185,10 @@ class TokenTransformer:
 
         return name
 
-    def flatten_tokens(self, data: Any, current_path: List[str] = []) -> List[Dict]:
+    def flatten_tokens(self, data: Any, current_path: Optional[List[str]] = None) -> List[Dict]:
         """Recursively flatten the nested token structure"""
+        if current_path is None:
+            current_path = []
         tokens = []
 
         if isinstance(data, dict):
@@ -182,26 +196,33 @@ class TokenTransformer:
             if "type" in data and "value" in data:
                 token_type = data["type"]
                 normalized_parts = self._normalize_token_parts(current_path, token_type=token_type)
-                tokens.append({
-                    "path": ".".join(normalized_parts),
-                    "parts": normalized_parts,
-                    "type": token_type,
-                    "value": data["value"],
-                    "description": data.get("description", "")
-                })
+                tokens.append(
+                    {
+                        "path": ".".join(normalized_parts),
+                        "parts": normalized_parts,
+                        "type": token_type,
+                        "value": data["value"],
+                        "description": data.get("description", ""),
+                    }
+                )
             # Check if this is a typography/fontStyle object
             elif any(k in data for k in ["fontFamily", "fontSize", "fontWeight"]):
-                 normalized_parts = self._normalize_token_parts(current_path, token_type="typography")
-                 tokens.append({
-                     "path": ".".join(normalized_parts),
-                     "parts": normalized_parts,
-                     "type": "typography",
-                     "value": data if "value" not in data else data["value"],
-                     "description": data.get("description", "")
-                 })
+                normalized_parts = self._normalize_token_parts(
+                    current_path, token_type="typography"
+                )
+                tokens.append(
+                    {
+                        "path": ".".join(normalized_parts),
+                        "parts": normalized_parts,
+                        "type": "typography",
+                        "value": data if "value" not in data else data["value"],
+                        "description": data.get("description", ""),
+                    }
+                )
             else:
                 for key, value in data.items():
-                    if key == "extensions": continue
+                    if key == "extensions":
+                        continue
                     tokens.extend(self.flatten_tokens(value, current_path + [key]))
 
         return tokens
@@ -212,8 +233,11 @@ class TokenTransformer:
 
         filter_cfg = self.config.get("filters", {})
         include_colors = filter_cfg.get("include_color_paths", ["color.*"])
+        exclude_colors = filter_cfg.get("exclude_color_paths", [])
         include_typography = filter_cfg.get("include_typography_paths", ["typography.*", "font.*"])
-        include_buttons = filter_cfg.get("include_button_paths", ["button.*", "components.button.*"])
+        include_buttons = filter_cfg.get(
+            "include_button_paths", ["button.*", "components.button.*"]
+        )
 
         for token in tokens:
             path = token["path"]
@@ -221,7 +245,8 @@ class TokenTransformer:
             # Match colors
             if token["type"] == "color":
                 is_included = any(path.startswith(p.replace(".*", "")) for p in include_colors)
-                if is_included:
+                is_excluded = any(path.startswith(p.replace(".*", "")) for p in exclude_colors)
+                if is_included and not is_excluded:
                     filtered["color"].append(token)
 
             # Match typography (fonts AND styles)
@@ -265,7 +290,11 @@ class TokenTransformer:
 
                 if group_type == "color" and token["type"] == "color":
                     groups["color"].add(group_name)
-                elif group_type in ["typography", "font"] and isinstance(token["value"], dict) and "fontSize" in token["value"]:
+                elif (
+                    group_type in ["typography", "font"]
+                    and isinstance(token["value"], dict)
+                    and "fontSize" in token["value"]
+                ):
                     groups["style"].add(group_name)
 
         return {k: sorted(list(v)) for k, v in groups.items()}
@@ -279,7 +308,9 @@ class TokenTransformer:
             name = self.format_name(token["parts"], token_type="color")
             rgba = self.hex_to_rgba(token["value"])
             # Default to create-color
-            commands.append(f"python3 bubble_cli.py --profile {profile} create-color \"{name}\" \"{rgba}\"")
+            commands.append(
+                f'python3 bubble_cli.py --profile {profile} create-color "{name}" "{rgba}"'
+            )
 
         # Unique font families
         families = set()
@@ -294,13 +325,17 @@ class TokenTransformer:
                 families.add(family)
 
         for family in sorted(list(families)):
-            commands.append(f"python3 bubble_cli.py --profile {profile} create-font \"{family}\" \"{family}\"")
+            commands.append(
+                f'python3 bubble_cli.py --profile {profile} create-font "{family}" "{family}"'
+            )
 
         # Button Style Commands (Aggregated)
         button_themes = self.aggregate_button_themes(filtered_tokens["button"])
         for name, theme in button_themes.items():
             theme_json = json.dumps(theme)
-            commands.append(f"python3 bubble_cli.py --profile {profile} create-button-style \"{name}\" '{theme_json}'")
+            commands.append(
+                f"python3 bubble_cli.py --profile {profile} create-button-style \"{name}\" '{theme_json}'"
+            )
 
         # Typography Style Commands (Aggregated)
         text_themes = self.aggregate_typography_themes(filtered_tokens["style"])
@@ -311,17 +346,27 @@ class TokenTransformer:
             args = []
             for k, v in base_props.items():
                 # Map keys to CLI arguments
-                if k == "bg_color": args.append(f"--bg-color \"{v}\"")
-                elif k == "font_color": args.append(f"--font-color \"{v}\"")
-                elif k == "font_size": args.append(f"--font-size {v}")
-                elif k == "font_family": args.append(f"--font-family \"{v}\"")
-                elif k == "font_weight": args.append(f"--font-weight \"{v}\"")
-                elif k == "line_height": args.append(f"--line-height {v}")
-                elif k == "letter_spacing": args.append(f"--letter-spacing {v}")
-                else: args.append(f"--{k.replace('_', '-')} \"{v}\"")
+                if k == "bg_color":
+                    args.append(f'--bg-color "{v}"')
+                elif k == "font_color":
+                    args.append(f'--font-color "{v}"')
+                elif k == "font_size":
+                    args.append(f"--font-size {v}")
+                elif k == "font_family":
+                    args.append(f'--font-family "{v}"')
+                elif k == "font_weight":
+                    args.append(f'--font-weight "{v}"')
+                elif k == "line_height":
+                    args.append(f"--line-height {v}")
+                elif k == "letter_spacing":
+                    args.append(f"--letter-spacing {v}")
+                else:
+                    args.append(f'--{k.replace("_", "-")} "{v}"')
 
             arg_str = " ".join(args)
-            commands.append(f"python3 bubble_cli.py --profile {profile} create-style \"{name}\" Text {arg_str}")
+            commands.append(
+                f'python3 bubble_cli.py --profile {profile} create-style "{name}" Text {arg_str}'
+            )
 
         return commands
 
@@ -343,7 +388,7 @@ class TokenTransformer:
             "border": "border_color",
             "radius": "border_radius",
             "padding": "padding",
-            "gap": "gap"
+            "gap": "gap",
         }
 
         for token in tokens:
@@ -352,12 +397,13 @@ class TokenTransformer:
 
             # Find the starting index of the component properties
             try:
-                start_idx = parts.index('button') + 1
+                start_idx = parts.index("button") + 1
             except ValueError:
                 continue
 
             property_parts = parts[start_idx:]
-            if not property_parts: continue
+            if not property_parts:
+                continue
 
             # Name follows 'button' (e.g. 'primary', 'secondary')
             comp_name = property_parts[0]
@@ -372,7 +418,13 @@ class TokenTransformer:
                     break
 
             if comp_name not in themes:
-                themes[comp_name] = {"base": {}, "hover": {}, "pressed": {}, "focus": {}, "disabled": {}}
+                themes[comp_name] = {
+                    "base": {},
+                    "hover": {},
+                    "pressed": {},
+                    "focus": {},
+                    "disabled": {},
+                }
 
             # Map the field
             style_prop = prop_map.get(field.lower(), field)
@@ -399,23 +451,27 @@ class TokenTransformer:
         for token in tokens:
             name = self.format_name(token["parts"], token_type="font")
             val = token["value"]
-            if not isinstance(val, dict): continue
+            if not isinstance(val, dict):
+                continue
 
             theme = {"base": {}}
 
             # Map Figma/Token properties to StyleBuilder
             if "fontFamily" in val:
                 family = val["fontFamily"]
-                if isinstance(family, dict): family = family.get("value", family)
+                if isinstance(family, dict):
+                    family = family.get("value", family)
                 theme["base"]["font_family"] = family
 
             if "fontSize" in val:
                 size = val["fontSize"]
-                if isinstance(size, dict): size = size.get("value", size)
+                if isinstance(size, dict):
+                    size = size.get("value", size)
                 # Ensure it's numeric
                 try:
                     theme["base"]["font_size"] = int(float(str(size).replace("px", "")))
-                except: pass
+                except (TypeError, ValueError):
+                    pass
 
             if "fontWeight" in val:
                 weight = self.normalize_font_weight(val["fontWeight"])
@@ -424,7 +480,8 @@ class TokenTransformer:
 
             if "lineHeight" in val:
                 lh = val["lineHeight"]
-                if isinstance(lh, dict): lh = lh.get("value", lh)
+                if isinstance(lh, dict):
+                    lh = lh.get("value", lh)
                 # Bubble uses a multiplier (e.g. 1.2 or 1.5)
                 # Figma tokens might be pixels ("24px") or percentage ("120%")
                 if isinstance(lh, str):
@@ -447,18 +504,22 @@ class TokenTransformer:
 
             if "letterSpacing" in val:
                 ls = val["letterSpacing"]
-                if isinstance(ls, dict): ls = ls.get("value", ls)
+                if isinstance(ls, dict):
+                    ls = ls.get("value", ls)
                 # Bubble uses pixels
                 if isinstance(ls, str):
                     if ls.endswith("%"):
                         # Percentage of font size
                         fs_val = theme["base"].get("font_size")
                         if fs_val:
-                            theme["base"]["letter_spacing"] = round((float(ls.replace("%", "")) / 100) * fs_val, 1)
+                            theme["base"]["letter_spacing"] = round(
+                                (float(ls.replace("%", "")) / 100) * fs_val, 1
+                            )
                     else:
                         try:
                             theme["base"]["letter_spacing"] = float(ls.replace("px", ""))
-                        except: pass
+                        except (TypeError, ValueError):
+                            pass
                 else:
                     theme["base"]["letter_spacing"] = ls
 
@@ -466,19 +527,22 @@ class TokenTransformer:
 
         return themes
 
+
 def main():
     parser = argparse.ArgumentParser(description="Transform Figma tokens to Bubble CLI commands")
     parser.add_argument("--input", required=True, help="Path to figma tokens JSON")
     parser.add_argument("--output", help="Path to output script file")
     parser.add_argument("--profile", default="cli-test", help="Bubble CLI profile to use")
-    parser.add_argument("--dry-run", action="store_true", help="Only log commands, don't write to file")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Only log commands, don't write to file"
+    )
 
     args = parser.parse_args()
 
     transformer = TokenTransformer()
 
     print(f"Reading tokens from {args.input}...")
-    with open(args.input, 'r') as f:
+    with open(args.input, "r") as f:
         data = json.load(f)
 
     all_tokens = transformer.flatten_tokens(data)
@@ -494,7 +558,7 @@ def main():
         for cmd in commands:
             print(f"  {cmd}")
     elif args.output:
-        with open(args.output, 'w') as f:
+        with open(args.output, "w") as f:
             f.write("#!/bin/bash\n")
             f.write(f"# Generated from {args.input}\n\n")
             for cmd in commands:
@@ -503,6 +567,7 @@ def main():
     else:
         for cmd in commands:
             print(cmd)
+
 
 if __name__ == "__main__":
     main()

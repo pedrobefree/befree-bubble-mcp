@@ -1946,6 +1946,8 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     when the caller provides an exact Bubble ``write_payload``.
     """
 
+    if name == "sync_figma_tokens" and args.get("list_options") is True:
+        args = {**args, "execute": False, "dry_run": True}
     executing = args.get("execute") is True and args.get("dry_run") is not True
     if name in _DESTRUCTIVE_STYLE_TOKEN_TOOLS and executing and args.get("confirm") is not True:
         raise ValueError(f"{name} requires confirm=true when execute=true.")

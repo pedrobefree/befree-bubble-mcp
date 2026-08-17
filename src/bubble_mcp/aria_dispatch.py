@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 import importlib
 import inspect
 import sys
@@ -546,6 +547,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
     stdout = StringIO()
     stderr = StringIO()
     return_value: Any = None
+    token_sync_result: dict[str, Any] | None = None
     try:
         bubble_sdk.PayloadBuilder.__init__ = init_builder_with_target_version
         bubble_sdk.PayloadBuilder.send_to_webhook = send_to_local_bubble
@@ -576,6 +578,10 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
             else:
                 method = getattr(cli, method_name)
                 return_value = method(**_method_kwargs(method, args, execute=execute))
+            if name == "sync_figma_tokens":
+                raw_token_result = getattr(cli, "_last_figma_token_sync_result", None)
+                if isinstance(raw_token_result, dict):
+                    token_sync_result = deepcopy(raw_token_result)
     finally:
         bubble_sdk.PayloadBuilder.__init__ = original_builder_init
         bubble_sdk.PayloadBuilder.send_to_webhook = original_send
@@ -599,6 +605,11 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         "results": [{"index": index, **item} for index, item in enumerate(captured_results, start=1)],
         "logs": logs,
     }
+    if name == "sync_figma_tokens":
+        response["figma_import"] = {
+            "result": token_sync_result or {},
+            "plan": deepcopy((token_sync_result or {}).get("payloads") or []),
+        }
     local_state_warnings = [
         str(item["local_state_warning"])
         for item in captured_results

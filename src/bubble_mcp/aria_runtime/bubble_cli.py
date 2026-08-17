@@ -1031,7 +1031,7 @@ class BubbleCLI:
 
     def new_style_token_payload(self) -> PayloadBuilder:
         """Create token payloads with the SDK identity used by this BubbleCLI mode."""
-        return PayloadBuilder(appname=self.appname)
+        return PayloadBuilder(appname=self.appname, app_version=self.app_version)
 
     def dispatch_style_token_payload(self, payload: PayloadBuilder) -> None:
         """Dispatch a completed token plan through BubbleCLI's mutation boundary."""
@@ -23482,382 +23482,65 @@ class BubbleCLI:
         """
         logger.info(f"Syncing Figma tokens from: {tokens_path}")
 
-        try:
-            import sys
-            import os
-            sys.path.append(os.getcwd())
+        resolved_config_path = str(config_path or "figma_bridge/token_config.json")
+        if not os.path.isabs(resolved_config_path) and not os.path.exists(resolved_config_path):
+            runtime_config_path = os.path.join(RUNTIME_ROOT, resolved_config_path)
+            if os.path.exists(runtime_config_path):
+                resolved_config_path = runtime_config_path
 
-            from figma_bridge.transform_tokens import TokenTransformer
-            transformer = TokenTransformer(config_path=config_path)
-
-            with open(tokens_path, 'r') as f:
-                data = json.load(f)
-
-            # If this is a bridge payload, the actual tokens are in "content"
-            tokens_data = data.get("content", {}) if data.get("action") == "sync_tokens" else data
-
-            all_raw_tokens = transformer.flatten_tokens(tokens_data)
-
-            if list_options:
-                groups = transformer.get_available_groups(all_raw_tokens)
-                logger.info("\nAvailable Token Options in Figma Export:")
-                print(f"\n🎨 COLOR BASES (groups):")
-                if groups["color"]:
-                    print("   • " + ", ".join(groups["color"]))
-                else:
-                    print("   • None found")
-
-                print(f"\n📝 STYLE GROUPS (typography):")
-                if groups["style"]:
-                    print("   • " + ", ".join(groups["style"]))
-                else:
-                    print("   • None found")
-
-                print(f"\n💡 Usage Hint:")
-                print(f"   bubble-cli sync-figma-tokens {tokens_path} --types color --color-bases {groups['color'][0] if groups['color'] else 'base'}")
-                return True
-
-            filtered = transformer.filter_tokens(all_raw_tokens)
-
-            # 1. Parse Filters
-            sync_types = [t.strip() for t in types.split(",")] if types else ["color", "font", "style"]
-            bases = [b.strip() for b in color_bases.split(",")] if color_bases else []
-
-            stats = {"created": 0, "updated": 0, "skipped": 0, "fonts": 0, "styles": 0}
-
-            # --- STEP 1: FONTS ---
-            if "font" in sync_types:
-                logger.info("Step 1: Syncing Fonts...")
-                existing_fonts_data = self._get_current_custom_fonts()
-                existing_fonts = {f.get("%nm") for f in existing_fonts_data.values()}
-                existing_fonts.add("App Font") # System default
-
-                families = set()
-                for i, token in enumerate(filtered["font"]):
-                    val = token["value"]
-                    family = None
-                    if isinstance(val, dict):
-                        family_obj = val.get("fontFamily")
-                        if isinstance(family_obj, dict):
-                            family = family_obj.get("value")
-                        else:
-                            family = family_obj
-                    else:
-                        family = val
-
-                    if family and isinstance(family, str):
-                        families.add(family)
-                    elif family and isinstance(family, dict):
-                        f_val = family.get("value")
-                        if isinstance(f_val, str):
-                            families.add(f_val)
-
-                for family in sorted(list(families)):
-                    if family in existing_fonts:
-                        stats["skipped"] += 1
-                    else:
-                        if not dry_run:
-                            logger.info(f"Creating font variable: {family}")
-                        self.create_font(family, family, dry_run=dry_run)
-                        stats["fonts"] += 1
-
-            # Refresh font cache after sync so styles can use them
-            self._get_current_custom_fonts()
-
-            # --- STEP 2: COLORS ---
-            # Pre-fetch existing colors for matching
-            existing_colors_data = self._get_active_custom_colors()
-            default_colors = self._get_current_default_colors()
-
-            # Map by Name -> Data (Encompasses both Default and Custom)
-            existing_colors_map = {}
-
-            # 1. Add Default Colors to map
-            for key, rgba in default_colors.items():
-                friendly = DEFAULT_COLOR_NAMES.get(key, key)
-                # Map by lowercase name for consistent matching during sync
-                existing_colors_map[friendly.lower()] = {"type": "default", "id": key, "rgba": rgba, "original_name": friendly}
-
-            # 2. Add Custom Colors to map (Custom overrides Default names if same)
-            for k, c in existing_colors_data.items():
-                name = c.get("%nm")
-                if name:
-                    # Sync uses case-insensitive matching for idempotency
-                    existing_colors_map[name.lower()] = {"type": "custom", "id": k, "rgba": c.get("rgba"), "original_name": name}
-
-            # Map by RGBA -> Key (for variable resolution)
-            rgba_to_key = {}
-            # Defaults first
-            for k, rgba in default_colors.items():
-                if rgba: rgba_to_key[rgba] = k
-            # Custom second (can override if same RGBA, usually custom is more specific)
-            for k, c in existing_colors_data.items():
-                rgba = c.get("rgba")
-                if rgba: rgba_to_key[rgba] = k
-
-            if "color" in sync_types:
-                logger.info("\nStep 2: Syncing Colors...")
-                default_mappings = transformer.get_default_color_mappings()
-
-                # Filter colors to process
-                colors_to_sync = []
-                for t in filtered["color"]:
-                    parts = t["parts"]
-                    # If --all or no bases filter, include everything.
-                    # If bases are specified, use case-insensitive substring match on the group name (parts[1]).
-                    if all_tokens or not bases:
-                        include = True
-                    else:
-                        include = False
-                        if len(parts) > 1:
-                            group = parts[1].lower()
-                            include = any(b.lower() in group or group in b.lower() for b in bases)
-
-                    if include:
-                        colors_to_sync.append(t)
-
-                filter_desc = f"bases={bases}" if bases else "all bases"
-                logger.info(f"Color filter ({filter_desc}): {len(colors_to_sync)}/{len(filtered['color'])} tokens matched.")
-
-                # Track variables updated in this run for style resolution
-                synced_colors = {}
-
-
-                for i, token in enumerate(colors_to_sync):
-                    raw_name = transformer.format_name(token["parts"])
-                    rgba = transformer.hex_to_rgba(token["value"])
-
-                    # Check if this Figma path maps to multiple Bubble Default Colors
-                    figma_path_clean = ".".join(token["parts"][1:]) # skip 'color.' prefix
-                    targets = default_mappings.get(figma_path_clean, [raw_name])
-
-                    for target_name in targets:
-                        target_lower = target_name.lower()
-                        if target_lower in existing_colors_map:
-                            info = existing_colors_map[target_lower]
-                            color_id = info.get("id")
-                            current_rgba = info.get("rgba")
-
-                            if current_rgba == rgba:
-                                stats["skipped"] += 1
-                                # Still track it for style resolution even if skipped (it's current)
-                                synced_colors[transformer.normalize_rgba(rgba)] = color_id
-                                continue
-
-                            if not dry_run:
-                                logger.info(f"[{i+1}/{len(colors_to_sync)}] Updating {target_name}: {rgba}")
-                                updated = self.update_color(target_name, rgba, dry_run=False)
-                                if updated:
-                                    stats["updated"] += 1
-                                    synced_colors[transformer.normalize_rgba(rgba)] = color_id
-                            else:
-                                logger.info(f"[{i+1}/{len(colors_to_sync)}] [DRY RUN] Would update {target_name}: {rgba}")
-                                stats["updated"] += 1
-                                synced_colors[transformer.normalize_rgba(rgba)] = color_id
-                        else:
-                            if not dry_run:
-                                logger.info(f"[{i+1}/{len(colors_to_sync)}] Creating {target_name}: {rgba}")
-                                color_id = self.create_color(target_name, rgba, dry_run=False)
-                                if color_id:
-                                    stats["created"] += 1
-                                    synced_colors[transformer.normalize_rgba(rgba)] = color_id
-                            else:
-                                logger.info(f"[{i+1}/{len(colors_to_sync)}] [DRY RUN] Would create {target_name}: {rgba}")
-                                stats["created"] += 1
-                                synced_colors[transformer.normalize_rgba(rgba)] = "mock_id"
-
-                # Final refresh of rgba_to_key for Step 3 (Styles)
-                rgba_to_key = {}
-                # 1. Base Default Colors from Discovery
-                for k, rgba in self._get_current_default_colors().items():
-                    if rgba: rgba_to_key[rgba] = k
-                # 2. Base Custom Colors from Discovery
-                for k, c in self._get_active_custom_colors().items():
-                    r = c.get("rgba")
-                    if r: rgba_to_key[r] = k
-                # 3. Override with stuff we JUST synced (more accurate)
-                rgba_to_key.update(synced_colors)
-
-            # --- STEP 3: STYLES ---
-            if "style" in sync_types:
-                logger.info("\nStep 3: Syncing Text Styles...")
-                styles_to_sync = filtered["style"]
-
-                if filter:
-                    filter_lower = filter.lower()
-                    original_count = len(styles_to_sync)
-                    styles_to_sync = [
-                        s for s in styles_to_sync
-                        if filter_lower in transformer.format_name(s["parts"], token_type="style").lower()
-                    ]
-                    logger.info(f"Filtering styles for '{filter}': {len(styles_to_sync)}/{original_count} matched.")
-
-                # Track variables updated in this run for style resolution
-                if 'synced_colors' not in locals():
-                    synced_colors = {}
-
-                # REBUILD Variable Maps to include newly synced colors/fonts
-                rgba_to_key = {}
-
-                # High-fidelity: Bubble uses reserved names for default colors in CSS variables
-                RESERVED_COLOR_NAMES = {
-                    "%3": "text",
-                    "primary": "primary",
-                    "alert": "alert",
-                    "success": "success",
-                    "destructive": "destructive",
-                    "background": "background",
-                    "surface": "surface",
-                    "primary_contrast": "primary_contrast"
+        if list_options:
+            try:
+                groups = self._style_lifecycle.figma_import.list_options(
+                    tokens_path,
+                    config_path=resolved_config_path,
+                )
+            except Exception as e:
+                self._last_figma_token_sync_result = {
+                    "ok": False,
+                    "list_options": True,
+                    "groups": {"color": [], "style": []},
+                    "counts": {"fonts": 0, "created": 0, "updated": 0, "skipped": 0, "styles": 0},
+                    "payloads": [],
+                    "errors": [str(e)],
                 }
-
-                # 1. Base Default Colors from Discovery
-                for k, rgba in self._get_current_default_colors().items():
-                    if rgba:
-                        # Use reserved name if available, otherwise fallback to key
-                        key = RESERVED_COLOR_NAMES.get(k, k)
-                        rgba_to_key[transformer.normalize_rgba(rgba)] = key
-                # 2. Base Custom Colors from Discovery
-                for k, c in self._get_active_custom_colors().items():
-                    r = c.get("rgba")
-                    if r: rgba_to_key[transformer.normalize_rgba(r)] = k
-                # 3. Override with stuff we JUST synced (more accurate)
-                if 'synced_colors' in locals():
-                    rgba_to_key.update(synced_colors)
-
-                # Special Case: Default black to Text variable ('text') if it exists
-                # We use 'text' now instead of '%3' for the variable name
-                if "%3" in self._get_current_default_colors():
-                    black_rgba = transformer.normalize_rgba("rgba(0, 0, 0, 1)")
-                    if black_rgba not in rgba_to_key:
-                        rgba_to_key[black_rgba] = "text"
-
-                # 3. Fonts
-                existing_fonts_data = self._get_current_custom_fonts()
-                font_to_var = {}
-                # Default Font (App Font)
-                default_font = self._get_current_app_font()
-                if default_font and default_font != "not set":
-                    font_to_var[default_font.lower()] = "var(--font_default)"
-
-                # Custom Fonts
-                for font_id, f in existing_fonts_data.items():
-                    fname = f.get("%nm")
-                    if fname:
-                        # Map both the font family and the name to the variable for robust lookup
-                        font_to_var[fname.lower()] = f"var(--font_{font_id}_default)"
-                        family = f.get("font_family")
-                        if family:
-                            font_to_var[family.lower()] = f"var(--font_{font_id}_default)"
-
-                for i, token in enumerate(styles_to_sync):
-                    name = transformer.format_name(token["parts"], token_type="style")
-                    val = token["value"]
-
-                    # 1. Resolve Font Family
-                    font_family_raw = val.get("fontFamily")
-                    # If it's a dict like {"value": "Inter"}, extract it
-                    if isinstance(font_family_raw, dict):
-                        font_family_raw = font_family_raw.get("value")
-
-                    # 2. Resolve Color to variable if possible
-                    color_raw = val.get("color")
-                    if isinstance(color_raw, dict):
-                        color_raw = color_raw.get("value")
-
-                    # Default to black if no color is specified in typography token
-                    if not color_raw:
-                        color_raw = "#000000"
-
-                    resolved_color = None
-                    if color_raw:
-                        rgba = transformer.hex_to_rgba(color_raw)
-                        normalized_rgba = transformer.normalize_rgba(rgba)
-                        color_key = rgba_to_key.get(normalized_rgba)
-                        if color_key:
-                            resolved_color = f"var(--color_{color_key}_default)"
-                        else:
-                            resolved_color = rgba
-
-                    # 3. Handle Font Weight/Size
-                    font_size = val.get("fontSize")
-                    if isinstance(font_size, dict): font_size = font_size.get("value")
-                    try:
-                        font_size_num = float(font_size) if font_size is not None else None
-                    except Exception:
-                        font_size_num = None
-
-                    font_weight = val.get("fontWeight")
-                    font_weight = transformer.normalize_font_weight(font_weight)
-
-                    raw_line_height = val.get("lineHeight")
-                    if isinstance(raw_line_height, dict):
-                        raw_line_height = raw_line_height.get("value")
-                    resolved_line_height = None
-                    if raw_line_height not in (None, ""):
-                        try:
-                            if isinstance(raw_line_height, str):
-                                lh_text = raw_line_height.strip()
-                                if lh_text.endswith("%"):
-                                    resolved_line_height = round(float(lh_text[:-1]) / 100, 2)
-                                else:
-                                    lh_text = lh_text.replace("px", "").strip()
-                                    lh_num = float(lh_text)
-                                    if font_size_num and font_size_num > 0:
-                                        resolved_line_height = round(lh_num / font_size_num, 2) if lh_num > 5 else round(lh_num, 2)
-                                    else:
-                                        resolved_line_height = round(lh_num, 2) if lh_num <= 5 else None
-                            elif isinstance(raw_line_height, (int, float)):
-                                lh_num = float(raw_line_height)
-                                if font_size_num and font_size_num > 0 and lh_num > 5:
-                                    resolved_line_height = round(lh_num / font_size_num, 2)
-                                else:
-                                    resolved_line_height = round(lh_num, 2)
-                        except Exception:
-                            resolved_line_height = None
-
-                    # Resolve font variable if name matches.
-                    resolved_font = font_family_raw
-                    if font_family_raw and font_family_raw.lower() in font_to_var:
-                        resolved_font = font_to_var[font_family_raw.lower()]
-
-                    # Bubble text styles expect font_face plus a numeric font_weight.
-                    resolved_font_face = None
-                    if resolved_font:
-                        resolved_font_face = f"{resolved_font}:::regular"
-
-                    # Map Figma props to create_style args
-                    style_args = {
-                        "font_size": font_size,
-                        "font_weight": font_weight,
-                        "bold": False,
-                    }
-                    if resolved_line_height is not None:
-                        style_args["line_height"] = resolved_line_height
-                    if resolved_font_face:
-                        style_args["font_face"] = resolved_font_face
-                    if resolved_color:
-                        style_args["font_color"] = resolved_color
-
-                    if not dry_run:
-                        logger.info(f"[{i+1}/{len(styles_to_sync)}] Syncing text style: {name}")
-                    self.create_style(name, "Text", dry_run=dry_run, **style_args)
-                    stats["styles"] += 1
-
-            logger.success("\nSync Complete!")
-            logger.log(f"   • Fonts synced:   {stats['fonts']}")
-            logger.log(f"   • Colors created: {stats['created']}")
-            logger.log(f"   • Colors updated: {stats['updated']}")
-            logger.log(f"   • Colors skipped: {stats['skipped']}")
-            logger.log(f"   • Styles synced:  {stats['styles']}")
-
+                logger.error(f"Figma token option discovery failed: {e}")
+                return False
+            self._last_figma_token_sync_result = {
+                "ok": True,
+                "list_options": True,
+                "groups": groups,
+                "counts": {"fonts": 0, "created": 0, "updated": 0, "skipped": 0, "styles": 0},
+                "payloads": [],
+                "errors": [],
+            }
+            logger.info("\nAvailable Token Options in Figma Export:")
+            print("\n🎨 COLOR BASES (groups):")
+            print("   • " + ", ".join(groups["color"]) if groups["color"] else "   • None found")
+            print("\n📝 STYLE GROUPS (typography):")
+            print("   • " + ", ".join(groups["style"]) if groups["style"] else "   • None found")
             return True
 
-        except Exception as e:
-            logger.error(f"Figma sync failed: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
+        result = self._style_lifecycle.figma_import.sync(
+            tokens_path,
+            config_path=resolved_config_path,
+            dry_run=dry_run,
+            types=types,
+            color_bases=color_bases,
+            all_tokens=all_tokens,
+            filter_text=filter,
+        )
+        self._last_figma_token_sync_result = result.as_dict()
+        if not result.ok:
+            logger.error("Figma sync failed: " + "; ".join(result.errors))
             return False
+        stats = result.counts.as_dict()
+        logger.success("\nSync Complete!")
+        logger.log(f"   • Fonts synced:   {stats['fonts']}")
+        logger.log(f"   • Colors created: {stats['created']}")
+        logger.log(f"   • Colors updated: {stats['updated']}")
+        logger.log(f"   • Colors skipped: {stats['skipped']}")
+        logger.log(f"   • Styles synced:  {stats['styles']}")
+        return True
 
     def update_font(
         self,
