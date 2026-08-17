@@ -1,6 +1,7 @@
 import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 
@@ -2458,6 +2459,110 @@ def test_legacy_catalog_tool_dispatches_to_aria_runtime(monkeypatch) -> None:  #
     assert payload["results"][0]["payload"]["changes"][0]["body"]["%x"] == "Page"
     assert calls[0][0] == "init"
     assert calls[1] == ("create_page", {"name": "mcp-03", "dry_run": True})
+
+
+def test_update_style_all_schema_dispatches_by_contains_to_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    listed = handle_request({"jsonrpc": "2.0", "id": 1201, "method": "tools/list"})
+    assert listed is not None
+    tools = {tool["name"]: tool for tool in listed["result"]["tools"]}
+    schema = tools["update_style_all"]["inputSchema"]
+    assert schema["properties"]["by_contains"]["type"] == "boolean"
+
+    calls: list[dict[str, Any]] = []
+
+    class FakePayloadBuilder:
+        send_to_webhook = None
+        to_json = None
+
+        def __init__(self, appname="synthetic-app"):  # type: ignore[no-untyped-def]
+            self.appname = appname
+
+    class FakeBubbleSdk:
+        PayloadBuilder = FakePayloadBuilder
+
+    class FakeBubbleCliModule:
+        inquirer = None
+
+        class BubbleCLI:
+            def __init__(self, **kwargs):  # type: ignore[no-untyped-def]
+                self.appname = kwargs["appname"]
+                self.discovery = SimpleNamespace(data={})
+
+            def update_style_all(
+                self,
+                context_name,
+                element_type,
+                from_style,
+                to_style,
+                dry_run=False,
+                keep_overrides=False,
+                by_contains=False,
+            ):  # type: ignore[no-untyped-def]
+                calls.append(
+                    {
+                        "context_name": context_name,
+                        "element_type": element_type,
+                        "from_style": from_style,
+                        "to_style": to_style,
+                        "dry_run": dry_run,
+                        "keep_overrides": keep_overrides,
+                        "by_contains": by_contains,
+                    }
+                )
+                return True
+
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._load_aria_runtime_modules",
+        lambda: (FakeBubbleCliModule, FakeBubbleSdk),
+    )
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch._resolve_runtime_environment",
+        lambda args: __import__("bubble_mcp.aria_dispatch").aria_dispatch.AriaRuntimeEnvironment(
+            profile=args["profile"],
+            app_id="synthetic-app",
+            app_version="test",
+            app_json_path="/tmp/app.bubble",
+            consolelog_json_path=None,
+            crawler_index_path=None,
+            mutation_overlay_path=None,
+        ),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1202,
+            "method": "tools/call",
+            "params": {
+                "name": "update_style_all",
+                "arguments": {
+                    "profile": "smoke",
+                    "context": "index",
+                    "element_type": "Text",
+                    "from_style": "Body",
+                    "to_style": "Heading",
+                    "keep_overrides": True,
+                    "by_contains": True,
+                    "execute": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["ok"] is True
+    assert calls == [
+        {
+            "context_name": "index",
+            "element_type": "Text",
+            "from_style": "Body",
+            "to_style": "Heading",
+            "dry_run": True,
+            "keep_overrides": True,
+            "by_contains": True,
+        }
+    ]
 
 
 def test_batch_dispatch_accepts_inline_commands(monkeypatch) -> None:  # type: ignore[no-untyped-def]
