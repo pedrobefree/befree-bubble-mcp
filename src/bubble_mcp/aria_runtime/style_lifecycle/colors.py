@@ -5,12 +5,15 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 import re
-from typing import Any, Mapping
+from typing import TYPE_CHECKING, Any, Mapping, cast
 
-try:
+if TYPE_CHECKING:
     from ..bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
-except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
+else:
+    try:
+        from ..bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
+    except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
+        from bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, PayloadBuilder
 
 from .protocols import StyleTokenHost, TokenMutationResult, dispatch_token_mutation
 
@@ -216,8 +219,11 @@ class ColorTokenService:
         payload = self._custom_payload(all_colors)
 
         def remove_targets() -> None:
-            for token_id in target_ids:
-                self._host.remove_style_token_cache("colors", token_id)
+            self._host.apply_style_token_cache_batch(
+                "colors",
+                upserts={},
+                removals=tuple(target_ids),
+            )
 
         return self._dispatch(payload, dry_run=dry_run, after=remove_targets)
 
@@ -268,13 +274,15 @@ class ColorTokenService:
         payload = self._custom_payload(complete)
 
         def cache_orders() -> None:
-            for token_id, entry in reordered.items():
-                self._host.put_style_token_cache("colors", token_id, entry)
+            self._host.apply_style_token_cache_batch(
+                "colors",
+                upserts=reordered,
+            )
 
         return self._dispatch(payload, dry_run=dry_run, after=cache_orders)
 
     def _payload(self) -> PayloadBuilder:
-        return self._host.new_style_token_payload()
+        return cast(PayloadBuilder, self._host.new_style_token_payload())
 
     def _custom_payload(self, colors: dict[str, dict[str, Any]]) -> PayloadBuilder:
         payload = self._payload()

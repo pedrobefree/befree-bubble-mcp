@@ -283,10 +283,106 @@ context root; reusable-instance and icon finalization now also delegate to the
 creation service, with icon post-create sizing retained after successful
 execution only.
 
-**Next Stage 4 boundary — Family 3 style/color/token lifecycle.** Extract style
-resolution, override pruning/clearing, assignment payloads, and color/font token
-operations behind a typed host boundary while preserving the Family 2 service
-callbacks and public tool contracts.
+#### Family 3: style, color, font, and token lifecycle
+
+Family 3 was delivered as the six-part Stage 4.5 stack on 2026-08-15. Public
+CLI/MCP names, schemas, aliases, signatures, preview/confirmation behavior,
+dispatch order, and result shapes remain unchanged throughout the stack.
+
+1. **Stage 4.5a — style references (PR #26):** `StyleReferenceResolver` owns
+   normalized snapshots, settings-backed defaults, ID/name/type matching,
+   deterministic ambiguity handling, cache aliases, and raw/cache merge rules.
+2. **Stage 4.5b — assignments and override policy (PR #27):**
+   `StyleAssignmentService` owns style application, style removal, override
+   pruning/clearing, property matching, and shared dry-run/dispatch behavior.
+3. **Stage 4.5c — colors and fonts (PR #28):** `ColorTokenService` and
+   `FontTokenService` own CRUD, canonical IDs, reference lookup, cache
+   reconciliation, and preview/dispatch behavior for design tokens.
+4. **Stage 4.5d — deterministic Figma import (PR #29):**
+   `FigmaTokenImportService` owns normalized token ingestion, deterministic IDs,
+   references, deduplication, result accounting, and definition-sink routing.
+5. **Stage 4.5e — definitions and states (PR #30):**
+   `StyleDefinitionService` owns definition CRUD, defaults, themes, states,
+   transitions, order, and fail-closed cache/dispatch orchestration.
+6. **Stage 4.5f — final evidence:** the finite 16^4 deterministic-ID suffix
+   namespace now uses exhaustive deterministic probing and terminates explicitly
+   on exhaustion; successful definition mutations invalidate stale references;
+   Figma RGBA aliases use the projected color state; bulk token phases persist
+   cache once; conditional MCP schemas match runtime operands; filter metadata
+   is precise; and real Ruff/MyPy gates plus reproducible evidence close the
+   stage.
+
+Final Stage 4.5 results:
+
+- full local suites: 1,576 Python and 11 Node tests passed;
+- global combined line/branch coverage: 43.7576%; the ratchet remains 43.6%,
+  leaving 0.1576 percentage point of measured headroom (43.7% would retain less
+  than the prescribed 0.1 point);
+- the complete `style_lifecycle` package: 96.6% combined branch coverage, with
+  each behavior-bearing lifecycle module above 95%;
+- catalog parity: 327 MCP tools and 207 CLI operation commands, with zero
+  missing mappings;
+- profile-independent smokes passed coverage 2/2, agent routing 9/9, and visual
+  repair 1/1;
+- an authorized local `smoke` profile compiled every safe read and preview:
+  safe-read functionality 10/10, preview mutations 5/5, and family previews
+  21/21, all with `executed=false`. The suite totals were 10/11, 15/16, and
+  31/32 only because each includes the same `bubble_profile_status` preflight;
+  its locally cached context was loadable and write-ready but stale;
+- full Ruff (`src tests scripts`), MyPy (`src`, 141 files), package/setup,
+  sensitive-path, catalog, and diff-hygiene gates passed.
+
+Seven-run medians below compare the isolated Stage base `50c81f3` with the
+completed stack. Payload build/write and cache-save counts are local captures;
+no remote Bubble write was executed. Resolution has no payload metrics.
+
+| Workload | Before | After | Delta | JSON bytes | Builds / writes | Cache saves |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 500 styles, cold index | 0.446 ms | 2.627 ms | +2.181 ms (+489.159%) | n/a | n/a | 0 -> 0 |
+| 500 styles, 200 warm lookups | 88.110 ms | 1.209 ms | -86.900 ms (-98.628%) | n/a | n/a | 0 -> 0 |
+| 5,000 styles, cold index | 4.928 ms | 28.642 ms | +23.714 ms (+481.243%) | n/a | n/a | 0 -> 0 |
+| 5,000 styles, 200 warm lookups | 902.056 ms | 1.326 ms | -900.730 ms (-99.853%) | n/a | n/a | 0 -> 0 |
+| 200 assignment payloads | 0.678 ms | 0.753 ms | +0.075 ms (+11.056%) | 140,294 -> 140,294 | 1/0 -> 1/0 | 0 -> 0 |
+| color/font CRUD | 1.386 ms | 2.841 ms | +1.455 ms (+105.012%) | 2,939 -> 2,899 | 6/6 -> 6/6 | 3 -> 6 |
+| 25/250/100 token import | 2,301.017 ms | 1,531.266 ms | -769.751 ms (-33.453%) | 3,605,189 -> 293,916 | 475/475 -> 202/202 | 475 -> 202 |
+| definition operations | 1.773 ms | 1.977 ms | +0.204 ms (+11.531%) | 2,623 -> 2,623 | 5/5 -> 5/5 | 4 -> 4 |
+
+The cold cost builds the reusable index once; the warm workload improves
+98.6-99.9%. Positive deltas are 0.075-23.714 ms of local orchestration. Token
+import improves 33.5%, reduces serialized bytes by 91.8%, and reduces cache
+saves by 57.5%. Literal bulk regressions separately prove one save for a
+500-color reorder, one for a 12-color delete, and two for a two-phase import.
+
+Every staged PR received independent review against its base. The consolidated
+final-review wave closed four additional Important and two Minor findings with
+literal RED/GREEN regressions: post-success reference invalidation, projected
+RGBA aliases, batched token-cache persistence, conditional runtime schemas,
+exhaustive finite-ID probing, and exact filter metadata. Earlier findings also
+remain covered, including default-style protection, stale-cache rejection,
+builder-owned transitions, real HTML/Figma failure propagation, deterministic
+ID collision handling, and static-gate enforcement. The consolidated evidence
+and closing review are recorded in
+`docs/superpowers/reviews/2026-08-15-style-token-lifecycle-review.md`.
+
+GitHub CI for PRs #25–#31 remains infrastructure-blocked. The current check
+jobs complete in two to four seconds with `steps: []`, so no workflow test step
+runs; final PR #31 runs `31907361361` and `31907359617` show the same
+billing/infrastructure signature. The complete local validation matrix above is
+the executable code evidence.
+
+A final scoped follow-up on 2026-08-17 closed the multi-type default-style
+preservation gap found by re-review. All definition paths now retain unrelated
+entries when replacing `settings.client_safe.default_styles`; a real-dispatch
+Text-plus-Button regression proves that `clear_custom_styles` cannot delete the
+unchanged Button default. Fresh gates passed 1,576 Python and 11 Node tests,
+96.5% lifecycle branch coverage, 43.77944% global combined coverage, Ruff,
+MyPy, audits, catalog parity, and all functional safe-read/preview smoke cases.
+PR #31 remains the closing review surface for this follow-up.
+
+**Next Stage 4 boundary — Family 4 data/schema/settings lifecycle.** Extract
+data types, fields, privacy, option sets/values, project settings, and redirects
+behind typed services while retaining the public `BubbleCLI` facades and the
+same catalog, preview, confirmation, payload, and dispatch contracts.
 
 ### Stage 5: Supporting debt
 

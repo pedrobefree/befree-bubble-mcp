@@ -2604,13 +2604,100 @@ def test_color_font_mcp_schemas_match_runtime_signatures(
     if tool_name == "delete_colors":
         assert schema["properties"]["names"] == {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
             "description": "Exact custom color names to soft-delete in one grouped operation.",
         }
     if tool_name == "reorder_colors":
         assert schema["properties"]["mode"]["enum"] == ["sort-az", "sort-za", "move", "swap"]
     for boolean_field in {"show_default", "show_custom", "show_app"} & operation_fields:
         assert schema["properties"][boolean_field]["type"] == "boolean"
+
+
+def _schema_contract_accepts(schema: dict[str, Any], arguments: dict[str, Any]) -> bool:
+    def value_matches(rule: dict[str, Any], value: Any) -> bool:
+        expected_type = rule.get("type")
+        if expected_type == "string" and not isinstance(value, str):
+            return False
+        if expected_type == "array" and not isinstance(value, list):
+            return False
+        if "const" in rule and value != rule["const"]:
+            return False
+        if "enum" in rule and value not in rule["enum"]:
+            return False
+        if isinstance(value, str) and len(value) < int(rule.get("minLength", 0)):
+            return False
+        if isinstance(value, list):
+            if len(value) < int(rule.get("minItems", 0)):
+                return False
+            item_rule = rule.get("items")
+            if isinstance(item_rule, dict) and any(
+                not value_matches(item_rule, item) for item in value
+            ):
+                return False
+        return True
+
+    def object_matches(rule: dict[str, Any]) -> bool:
+        if not set(rule.get("required", ())) <= set(arguments):
+            return False
+        properties = rule.get("properties")
+        if not isinstance(properties, dict):
+            return True
+        return all(
+            name not in arguments or not isinstance(field_rule, dict) or value_matches(field_rule, arguments[name])
+            for name, field_rule in properties.items()
+        )
+
+    if not object_matches(schema):
+        return False
+    alternatives = schema.get("anyOf")
+    return not isinstance(alternatives, list) or any(
+        isinstance(alternative, dict) and object_matches(alternative)
+        for alternative in alternatives
+    )
+
+
+def test_delete_colors_tools_list_requires_one_non_empty_selector() -> None:
+    listed = handle_request({"jsonrpc": "2.0", "id": 1213, "method": "tools/list"})
+    assert listed is not None
+    tools = {tool["name"]: tool for tool in listed["result"]["tools"]}
+    schema = tools["delete_colors"]["inputSchema"]
+
+    for arguments in (
+        {"profile": "smoke", "names": ["Brand"]},
+        {"profile": "smoke", "pattern": "^Old"},
+        {"profile": "smoke", "names": ["Brand"], "pattern": "^Old"},
+    ):
+        assert _schema_contract_accepts(schema, arguments) is True
+    for arguments in (
+        {"profile": "smoke"},
+        {"profile": "smoke", "names": []},
+        {"profile": "smoke", "names": [""]},
+        {"profile": "smoke", "pattern": ""},
+    ):
+        assert _schema_contract_accepts(schema, arguments) is False
+
+
+def test_reorder_colors_tools_list_requires_runtime_operands_by_mode() -> None:
+    listed = handle_request({"jsonrpc": "2.0", "id": 1214, "method": "tools/list"})
+    assert listed is not None
+    tools = {tool["name"]: tool for tool in listed["result"]["tools"]}
+    schema = tools["reorder_colors"]["inputSchema"]
+
+    for arguments in (
+        {"profile": "smoke", "mode": "sort-az"},
+        {"profile": "smoke", "mode": "sort-za"},
+        {"profile": "smoke", "mode": "move", "color_name": "Brand", "target": "0"},
+        {"profile": "smoke", "mode": "swap", "color_name": "Brand", "target": "Accent"},
+    ):
+        assert _schema_contract_accepts(schema, arguments) is True
+    for arguments in (
+        {"profile": "smoke", "mode": "move"},
+        {"profile": "smoke", "mode": "move", "color_name": "Brand"},
+        {"profile": "smoke", "mode": "swap", "target": "Accent"},
+        {"profile": "smoke", "mode": "swap", "color_name": "", "target": "Accent"},
+    ):
+        assert _schema_contract_accepts(schema, arguments) is False
 
 
 @pytest.mark.parametrize(
@@ -2690,6 +2777,10 @@ def test_sync_figma_tokens_schema_matches_import_and_option_discovery_runtime_si
         "list_options",
         "filter",
     } <= runtime_fields
+    assert schema["properties"]["filter"]["description"] == (
+        "Case-insensitive substring filter applied to generated typography style names during "
+        "Figma token import."
+    )
     import_args = {
         "tokens_path": "tokens.json",
         "config_path": "config.json",

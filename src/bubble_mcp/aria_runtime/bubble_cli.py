@@ -1050,6 +1050,30 @@ class BubbleCLI:
         self._cli_cache[kind] = {}
         self._save_cli_cache()
 
+    def apply_style_token_cache_batch(
+        self,
+        kind: str,
+        *,
+        upserts: Dict[str, Dict[str, Any]],
+        removals: Tuple[str, ...] = (),
+        clear: bool = False,
+    ) -> None:
+        """Apply one successful bulk token delta and persist it once."""
+        if clear:
+            bucket: Dict[str, Any] = {}
+            self._cli_cache[kind] = bucket
+        else:
+            current = self._cli_cache.setdefault(kind, {})
+            if not isinstance(current, dict):
+                current = {}
+                self._cli_cache[kind] = current
+            bucket = current
+        for token_id in removals:
+            bucket.pop(token_id, None)
+        for token_id, data in upserts.items():
+            bucket[token_id] = data
+        self._save_cli_cache()
+
     def resolve_style_definition_color(self, value: str) -> str:
         """Resolve one style color through BubbleCLI's full live color boundary."""
         return self._resolve_color_arg(value)

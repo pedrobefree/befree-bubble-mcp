@@ -84,6 +84,15 @@ class StyleTokenHost(Protocol):
 
     def clear_style_token_cache(self, kind: str) -> None: ...
 
+    def apply_style_token_cache_batch(
+        self,
+        kind: str,
+        *,
+        upserts: dict[str, dict[str, Any]],
+        removals: tuple[str, ...] = (),
+        clear: bool = False,
+    ) -> None: ...
+
 
 class StyleDefinitionSink(Protocol):
     """Narrow compatibility sink for style definitions until phase 4.5e."""

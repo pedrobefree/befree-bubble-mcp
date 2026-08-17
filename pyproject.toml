@@ -57,7 +57,7 @@ branch = true
 source = ["src/bubble_mcp"]
 
 [tool.coverage.report]
-fail_under = 40.5
+fail_under = 43.6
 precision = 1
 show_missing = true
 skip_covered = true
@@ -65,17 +65,37 @@ skip_covered = true
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["src/bubble_mcp/aria_runtime"]
+extend-exclude = [
+  "src/bubble_mcp/aria_runtime/__init__.py",
+  "src/bubble_mcp/aria_runtime/bubble_cli.py",
+  "src/bubble_mcp/aria_runtime/bubble_sdk.py",
+  "src/bubble_mcp/aria_runtime/cli_cache.py",
+  "src/bubble_mcp/aria_runtime/color_mapper.py",
+  "src/bubble_mcp/aria_runtime/config.py",
+  "src/bubble_mcp/aria_runtime/context_alias_registry.py",
+  "src/bubble_mcp/aria_runtime/context_reference_resolver.py",
+  "src/bubble_mcp/aria_runtime/element_capabilities.py",
+  "src/bubble_mcp/aria_runtime/metadata_scanner.py",
+  "src/bubble_mcp/aria_runtime/source_query_builder.py",
+  "src/bubble_mcp/aria_runtime/agents",
+  "src/bubble_mcp/aria_runtime/figma_bridge",
+  "src/bubble_mcp/aria_runtime/html_to_bubble",
+  "src/bubble_mcp/aria_runtime/scripts",
+  "src/bubble_mcp/aria_runtime/visual_mutations",
+]
 
 [tool.mypy]
 python_version = "3.11"
 strict = true
-exclude = "(src/bubble_mcp/aria_runtime/|src/bubble_mcp/figma_bridge.py)"
+exclude = "(src/bubble_mcp/aria_runtime/(?!style_lifecycle(?:/|$))|src/bubble_mcp/figma_bridge.py)"
 
 [[tool.mypy.overrides]]
 module = ["playwright.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = ["bubble_mcp.aria_runtime.*"]
+module = [
+  "bubble_mcp.aria_runtime.bubble_sdk",
+  "bubble_mcp.aria_runtime.figma_bridge.*",
+]
 ignore_errors = true

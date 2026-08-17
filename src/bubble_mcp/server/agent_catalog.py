@@ -1383,15 +1383,39 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
     if name == "delete_colors":
         properties["names"] = {
             "type": "array",
-            "items": {"type": "string"},
+            "items": {"type": "string", "minLength": 1},
+            "minItems": 1,
             "description": "Exact custom color names to soft-delete in one grouped operation.",
         }
+        properties["pattern"]["minLength"] = 1
+        input_schema["anyOf"] = [
+            {"required": ["names"]},
+            {"required": ["pattern"]},
+        ]
     if name == "reorder_colors":
         properties["mode"] = {
             "type": "string",
             "enum": ["sort-az", "sort-za", "move", "swap"],
             "description": "Color reorder operation: alphabetical sort, positional move, or pairwise swap.",
         }
+        properties["color_name"]["minLength"] = 1
+        properties["target"]["minLength"] = 1
+        input_schema["anyOf"] = [
+            {"properties": {"mode": {"enum": ["sort-az", "sort-za"]}}},
+            {
+                "properties": {"mode": {"const": "move"}},
+                "required": ["color_name", "target"],
+            },
+            {
+                "properties": {"mode": {"const": "swap"}},
+                "required": ["color_name", "target"],
+            },
+        ]
+    if name == "sync_figma_tokens":
+        properties["filter"]["description"] = (
+            "Case-insensitive substring filter applied to generated typography style names during "
+            "Figma token import."
+        )
     _apply_visual_create_metadata(name, input_schema, properties)
     _apply_data_field_reference_metadata(name, input_schema, properties)
 

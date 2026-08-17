@@ -8,12 +8,15 @@ import random
 import re
 import string
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-try:
+if TYPE_CHECKING:
     from ..bubble_sdk import PayloadBuilder, StyleBuilder, logger
-except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import PayloadBuilder, StyleBuilder, logger
+else:
+    try:
+        from ..bubble_sdk import PayloadBuilder, StyleBuilder, logger
+    except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
+        from bubble_sdk import PayloadBuilder, StyleBuilder, logger
 
 from .protocols import StyleDefinitionHost
 from .references import StyleReferenceResolver
@@ -494,19 +497,31 @@ class StyleDefinitionService:
         hits.sort(key=lambda item: item[0])
         return dedupe([trigger for _, trigger in hits])
 
+    def _updated_default_styles(self, element_type: str, style_id: str) -> dict[str, Any]:
+        discovery, _cache = self._host.style_reference_snapshots()
+        settings = discovery.get("settings") if isinstance(discovery, dict) else None
+        client_safe = settings.get("client_safe") if isinstance(settings, dict) else None
+        current = client_safe.get("default_styles") if isinstance(client_safe, dict) else None
+        updated = copy.deepcopy(current) if isinstance(current, dict) else {}
+        updated[self._references.default_style_settings_key(element_type)] = style_id
+        return updated
+
     def set_default_style(self, element_type: str, style_id: str, dry_run: bool = False) -> bool:
-        settings_key = self._references.default_style_settings_key(element_type)
         payload = PayloadBuilder(self._host.appname)
         payload.add_change(
             intent_name="ChangeAppSetting",
             path_array=["settings", "client_safe", "default_styles"],
-            body={settings_key: style_id},
+            body=self._updated_default_styles(element_type, style_id),
         )
         if dry_run:
             logger.info("\n DRY RUN - Set Default Style Payload:")
             logger.log(payload.to_json())
             return True
-        return self._dispatch(payload, "Failed to set default style")
+        return self._dispatch(
+            payload,
+            "Failed to set default style",
+            invalidate_references=True,
+        )
 
     def create_style(
         self,
@@ -598,7 +613,7 @@ class StyleDefinitionService:
             payload.add_change(
                 intent_name="ChangeAppSetting",
                 path_array=["settings", "client_safe", "default_styles"],
-                body={self._references.default_style_settings_key(element_type): style_id},
+                body=self._updated_default_styles(element_type, style_id),
             )
         payload.add_change_raw({"type": "id_counter", "value": random.randint(10000000, 20000000)})
 
@@ -686,7 +701,7 @@ class StyleDefinitionService:
             payload.add_change(
                 intent_name="ChangeAppSetting",
                 path_array=["settings", "client_safe", "default_styles"],
-                body={self._references.default_style_settings_key(element_type): style_id},
+                body=self._updated_default_styles(element_type, style_id),
             )
 
         wire_changes = self._wire_properties(changes)
@@ -726,7 +741,11 @@ class StyleDefinitionService:
             logger.info(f"\n DRY RUN - Rename Payload ({style_id}):")
             logger.log(json.dumps(payload.changes, indent=2))
             return True
-        return self._dispatch(payload, "Failed to rename")
+        return self._dispatch(
+            payload,
+            "Failed to rename",
+            invalidate_references=True,
+        )
 
     def create_button_style(self, name: str, theme_json: str, dry_run: bool = False) -> bool:
         try:
@@ -964,7 +983,7 @@ class StyleDefinitionService:
             condition = state.get("%c") if isinstance(state, dict) else None
             node = condition.get("%n") if isinstance(condition, dict) else None
             name = node.get("%nm") if isinstance(node, dict) else None
-            trigger = wire_to_trigger.get(name)
+            trigger = wire_to_trigger.get(str(name)) if name is not None else None
             if trigger and isinstance(state, dict):
                 identified[trigger] = state
         if not identified:
@@ -1427,13 +1446,21 @@ class StyleDefinitionService:
         normalized = " ".join(str(value or "").casefold().replace("-", " ").replace("_", " ").split())
         return normalized in {"button", "text", "group", "input", "image", "content", "wrapper"}
 
-    def _dispatch(self, payload: PayloadBuilder, error_prefix: str) -> bool:
+    def _dispatch(
+        self,
+        payload: PayloadBuilder,
+        error_prefix: str,
+        *,
+        invalidate_references: bool = False,
+    ) -> bool:
         try:
             self._host.dispatch_style_definition_payload(payload)
-            return True
         except Exception as exc:
             logger.error(f"{error_prefix}: {exc}")
             return False
+        if invalidate_references:
+            self._references.invalidate()
+        return True
 
     def _put_cache(self, name: str, data: dict[str, Any]) -> bool:
         try:

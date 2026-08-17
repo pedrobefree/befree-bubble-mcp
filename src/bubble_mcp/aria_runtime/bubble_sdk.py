@@ -5493,7 +5493,7 @@ class StyleBuilder:
     def add_style_condition(
         style_id: str,
         condition_id: str, # e.g. bTUud0
-        condition_type: Union[str, List[str], List[Tuple[str, str]]], # "hover", ["hover", "focus"], [('hover', 'and_'), ('focus', None)]
+        condition_type: Union[str, List[str], List[Tuple[str, Optional[str]]]], # "hover", ["hover", "focus"], [('hover', 'and_'), ('focus', None)]
         properties: Dict[str, Any],
         is_new: bool = True
     ) -> List[Dict[str, Any]]:

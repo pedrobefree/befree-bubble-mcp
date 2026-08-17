@@ -238,7 +238,7 @@ Create `codex/style-token-lifecycle-4-5c-design-tokens`, commit `refactor: extra
 - Modify: `src/bubble_mcp/aria_runtime/bubble_cli.py`
 - Modify: `src/bubble_mcp/server/agent_catalog.py`
 - Modify: `src/bubble_mcp/server/tools.py`
-- Modify: `src/bubble_mcp/aria_runtime/figma_bridge.py`
+- Modify: `src/bubble_mcp/figma_bridge.py`
 - Create: `tests/unit/test_style_lifecycle_figma_import.py`
 - Modify: `tests/unit/test_runtime_token_transformer.py`
 - Modify: `tests/unit/test_figma_bridge.py`
@@ -273,7 +273,7 @@ discovery in `tests/unit/test_mcp_server.py`.
 ```bash
 PYTHONPATH=src ./.venv/bin/python -m pytest tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_audit.py -q
 PYTHONPATH=src ./.venv/bin/python scripts/audit_cli_catalog.py
-./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle src/bubble_mcp/aria_runtime/bubble_cli.py src/bubble_mcp/aria_runtime/figma_bridge.py src/bubble_mcp/server/agent_catalog.py src/bubble_mcp/server/tools.py tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py
+./.venv/bin/ruff check src/bubble_mcp/aria_runtime/style_lifecycle src/bubble_mcp/aria_runtime/bubble_cli.py src/bubble_mcp/figma_bridge.py src/bubble_mcp/server/agent_catalog.py src/bubble_mcp/server/tools.py tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py
 ./.venv/bin/mypy src/bubble_mcp/aria_runtime/style_lifecycle
 PYTHONPATH=src ./.venv/bin/python -m coverage erase
 PYTHONPATH=src ./.venv/bin/python -m coverage run --branch -m pytest tests/unit/test_style_lifecycle_figma_import.py tests/unit/test_runtime_token_transformer.py tests/unit/test_figma_bridge.py tests/unit/test_mcp_server.py -q
