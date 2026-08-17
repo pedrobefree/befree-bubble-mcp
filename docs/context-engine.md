@@ -67,6 +67,10 @@ directory:
 - Split export modules: `~/.config/bubble-mcp/contexts/{profile}/bubble_modules/{appId}/`.
   This split is produced by Aria's `bubble_modules.py` parser, vendored in the
   package as `bubble_mcp.vendor.bubble_modules`.
+  Reusable definition roots belong in `element_definitions/CustomDefinition/`.
+  Do not use `element_definitions/ReusableElement/` to locate definitions:
+  `ReusableElement` represents instances placed on pages, even when that
+  directory exists in the split output.
 - Compact context: `~/.config/bubble-mcp/contexts/{profile}/{appId}-context.json`.
 - Captured console fallback, when needed:
   `~/.config/bubble-mcp/contexts/{profile}/{appId}-consolelog-app.json`.

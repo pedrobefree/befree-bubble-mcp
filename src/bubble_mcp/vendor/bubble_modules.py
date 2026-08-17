@@ -6,6 +6,7 @@ Split and merge Bubble .bubble JSON exports into modules for version control.
 """
 
 import argparse
+import copy
 import json
 import os
 import re
@@ -27,6 +28,7 @@ DEFAULT_SECTIONS: Dict[str, Dict[str, str]] = {
         "dir": "element_definitions",
         "group_by": "type",
         "index_label": "type_name",
+        "derived_dirs": ["CustomDefinition", "ReusableElement"],
     },
     "pages": {
         "mode": "split",
@@ -85,9 +87,13 @@ def _dump_json(path: Path, data: Any, pretty: bool) -> None:
 
 def _pick_label(item: Any) -> str:
     if isinstance(item, dict):
-        for key in ("name", "display", "title", "label"):
+        for key in ("name", "display", "title", "label", "%nm", "%d", "%dn", "default_name"):
             if key in item and isinstance(item[key], (str, int, float, bool)):
                 return str(item[key])
+        props = _pick_dict(item, "properties", "%p")
+        for key in ("name", "display", "title", "label", "%nm", "%d", "%dn", "default_name"):
+            if key in props and isinstance(props[key], (str, int, float, bool)):
+                return str(props[key])
     return ""
 
 
@@ -120,8 +126,8 @@ def _api_label(item: Any) -> str:
 def _type_name_label(item: Any) -> str:
     if not isinstance(item, dict):
         return ""
-    type_name = item.get("type")
-    name = item.get("name") or item.get("display")
+    type_name = item.get("type") or item.get("%x")
+    name = _pick_label(item)
     if type_name and name:
         return f"{type_name}:{name}"
     if name:
@@ -129,6 +135,134 @@ def _type_name_label(item: Any) -> str:
     if type_name:
         return str(type_name)
     return _pick_label(item)
+
+
+def _element_type(item: Any) -> str:
+    if not isinstance(item, dict):
+        return ""
+    return str(item.get("type") or item.get("%x") or "").strip()
+
+
+def _reusable_index_paths(data: Dict[str, Any]) -> Dict[str, List[tuple[str, List[str]]]]:
+    index = _pick_dict(data, "_index")
+    id_to_path = _pick_dict(index, "id_to_path")
+    reusable_roots = {"%ed", "element_definitions", "CustomDefinition", "custom_definitions"}
+    paths: Dict[str, List[tuple[str, List[str]]]] = {}
+    for object_id, raw_path in id_to_path.items():
+        parts = _split_path_tokens(raw_path)
+        if len(parts) < 2 or parts[0] not in reusable_roots or parts[1] == "length":
+            continue
+        paths.setdefault(parts[1], []).append((str(object_id), parts))
+    return paths
+
+
+def _merge_missing_definition(target: Dict[str, Any], incoming: Dict[str, Any]) -> None:
+    for key, value in incoming.items():
+        current = target.get(key)
+        if isinstance(current, dict) and isinstance(value, dict):
+            _merge_missing_definition(current, value)
+        elif key not in target or current in (None, "", {}, []):
+            target[key] = copy.deepcopy(value)
+
+
+def _reusable_material_definitions(data: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    definitions: Dict[str, Dict[str, Any]] = {}
+    for source_key in (
+        "element_definitions",
+        "%ed",
+        "CustomDefinition",
+        "custom_definitions",
+    ):
+        source = data.get(source_key)
+        if not isinstance(source, dict):
+            continue
+        for reusable_key, raw in source.items():
+            if reusable_key == "length" or not isinstance(raw, dict):
+                continue
+            current = definitions.setdefault(str(reusable_key), {})
+            _merge_missing_definition(current, raw)
+    return definitions
+
+
+def _materialize_index_path(definition: Dict[str, Any], object_id: str, parts: List[str]) -> None:
+    if len(parts) == 2:
+        definition.setdefault("id", object_id)
+        return
+
+    current = definition
+    offset = 2
+    while offset + 1 < len(parts):
+        token = parts[offset]
+        if token in {"%el", "elements"}:
+            readable_key, raw_key = "elements", "%el"
+        elif token in {"%wf", "workflows"}:
+            readable_key, raw_key = "workflows", "%wf"
+        else:
+            return
+
+        container_key = raw_key if raw_key in current else readable_key
+        container = current.get(container_key)
+        if not isinstance(container, dict):
+            container = {}
+            current[container_key] = container
+        child_key = parts[offset + 1]
+        child = container.get(child_key)
+        if not isinstance(child, dict):
+            child = {}
+            container[child_key] = child
+        current = child
+        offset += 2
+
+    if offset == len(parts):
+        current.setdefault("id", object_id)
+
+
+def _export_indexed_reusable_definitions(
+    out_dir: Path,
+    data: Dict[str, Any],
+    pretty: bool,
+    write_index: bool,
+) -> None:
+    indexed_paths = _reusable_index_paths(data)
+    material_definitions = _reusable_material_definitions(data)
+    reusable_keys = list(material_definitions)
+    reusable_keys.extend(key for key in indexed_paths if key not in material_definitions)
+    if not reusable_keys:
+        return
+
+    section_dir = out_dir / "element_definitions"
+    root_index_path = section_dir / "__index.json"
+    root_index = _load_json(root_index_path) if root_index_path.exists() else {}
+    group_indexes: Dict[str, Dict[str, str]] = {}
+
+    for reusable_key in reusable_keys:
+        raw = material_definitions.get(reusable_key)
+        definition = copy.deepcopy(raw) if isinstance(raw, dict) else {}
+        group_name = "CustomDefinition"
+        group_dir = section_dir / group_name
+        group_dir.mkdir(parents=True, exist_ok=True)
+        if not definition:
+            definition["_inferred_from_index"] = True
+        definition.setdefault("type", group_name)
+        for object_id, parts in indexed_paths.get(reusable_key, []):
+            _materialize_index_path(definition, object_id, parts)
+
+        display_name = _pick_label(definition) or reusable_key
+        label = f"{group_name}:{display_name}"
+        root_index[reusable_key] = label
+        if group_name not in group_indexes:
+            group_index_path = group_dir / "__index.json"
+            group_indexes[group_name] = (
+                _load_json(group_index_path) if group_index_path.exists() else {}
+            )
+        group_index = group_indexes[group_name]
+        group_index[reusable_key] = label
+        _dump_json(group_dir / f"{reusable_key}.json", definition, pretty)
+
+    if write_index:
+        _dump_json(root_index_path, root_index, pretty)
+        for group_name, group_index in group_indexes.items():
+            _dump_json(section_dir / group_name / "__index.json", group_index, pretty)
 
 def _slugify(value: str) -> str:
     if not value:
@@ -527,6 +661,11 @@ def split_app(
 
     data = _load_json(input_path)
     top_order = list(data.keys())
+    reusable_section_dir = out_dir / DEFAULT_SECTIONS["element_definitions"]["dir"]
+    if force and reusable_section_dir.exists():
+        for path in reusable_section_dir.rglob("*.json"):
+            if path.is_file():
+                path.unlink()
 
     sections: Dict[str, Dict[str, str]] = {}
     for key, spec in DEFAULT_SECTIONS.items():
@@ -573,8 +712,14 @@ def split_app(
                             filename = f"{slug}.json"
                     group_segment = ""
                     if group_by:
-                        group_value = _get_nested(item_value, group_by)
+                        group_value = (
+                            _element_type(item_value)
+                            if group_by == "type"
+                            else _get_nested(item_value, group_by)
+                        )
                         group_segment = _safe_segment(group_value) or "unknown"
+                    if key == "element_definitions":
+                        group_segment = (Path("_source") / (group_segment or "unknown")).as_posix()
                     if group_segment:
                         group_dir = section_dir / group_segment
                         group_dir.mkdir(parents=True, exist_ok=True)
@@ -689,6 +834,12 @@ def split_app(
 
     _dump_json(out_dir / "root.json", root, pretty)
     _dump_json(out_dir / "manifest.json", manifest, True)
+    _export_indexed_reusable_definitions(
+        out_dir,
+        data,
+        pretty=pretty,
+        write_index=write_index,
+    )
     _export_api_connector(out_dir, data, pretty=pretty, force=force)
     _export_custom_definitions(out_dir, data, pretty=pretty, force=force)
 
@@ -764,9 +915,8 @@ def merge_app(
             ignore_dirs = set(spec.get("derived_dirs") or [])
             for path in extra_files:
                 rel = path.relative_to(section_dir).as_posix()
-                if ignore_dirs:
-                    if any(part in ignore_dirs for part in rel.split("/")):
-                        continue
+                if Path(rel).parts and Path(rel).parts[0] in ignore_dirs:
+                    continue
                 item_id = reverse_map.get(rel, path.stem)
                 if item_id in out:
                     continue

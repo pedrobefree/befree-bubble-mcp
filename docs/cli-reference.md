@@ -597,6 +597,11 @@ writes. Successful downloads are cached under
 `~/.config/bubble-mcp/contexts/{profile}/` and split into
 `bubble_modules/{appId}/` next to the compact context.
 
+Within the split modules, reusable definition roots are stored under
+`element_definitions/CustomDefinition/`. The similarly named
+`element_definitions/ReusableElement/` directory is not the definition source;
+`ReusableElement` identifies instances placed on pages.
+
 ```bash
 bubble-mcp context detect --profile my-app --app-id my-bubble-app --force
 bubble-mcp context detect --profile my-app --app-id my-bubble-app --bubble-file ./app.bubble
