@@ -140,6 +140,13 @@ from bubble_mcp.validators.semantic import validate_plan
 
 _scheduled_deploys_rearmed = False
 
+_DESTRUCTIVE_STYLE_TOKEN_TOOLS = {
+    "delete_color",
+    "delete_colors",
+    "clear_custom_colors",
+    "delete_font",
+}
+
 
 def _ensure_scheduled_deploys_rearmed() -> None:
     global _scheduled_deploys_rearmed
@@ -1939,6 +1946,10 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     when the caller provides an exact Bubble ``write_payload``.
     """
 
+    executing = args.get("execute") is True and args.get("dry_run") is not True
+    if name in _DESTRUCTIVE_STYLE_TOKEN_TOOLS and executing and args.get("confirm") is not True:
+        raise ValueError(f"{name} requires confirm=true when execute=true.")
+
     if name == "create_from_html":
         html_file = str(args.get("url") or args.get("html_file") or args.get("file") or "").strip()
         html = str(args.get("html") or "").strip()
@@ -1985,7 +1996,7 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
     write_payload = args.get("write_payload") or args.get("payload")
     profile = str(args.get("profile") or "").strip()
-    execute = bool(args.get("execute"))
+    execute = executing
 
     if isinstance(write_payload, dict):
         if name == "delete_data_type_permanently" or permanent_data_type_delete_targets(write_payload):

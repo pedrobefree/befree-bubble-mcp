@@ -53,7 +53,6 @@ from bubble_sdk import (
     ColorBuilder,
     DEFAULT_COLOR_KEYS,
     DEFAULT_COLOR_NAMES,
-    FontBuilder,
     StyleBuilder,
     logger
 )
@@ -1029,6 +1028,27 @@ class BubbleCLI:
         discovery_data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
         cache_data = self._cli_cache if isinstance(self._cli_cache, dict) else {}
         return discovery_data, cache_data
+
+    def new_style_token_payload(self) -> PayloadBuilder:
+        """Create token payloads with the SDK identity used by this BubbleCLI mode."""
+        return PayloadBuilder(appname=self.appname)
+
+    def dispatch_style_token_payload(self, payload: PayloadBuilder) -> None:
+        """Dispatch a completed token plan through BubbleCLI's mutation boundary."""
+        self._dispatch_payload(payload)
+
+    def put_style_token_cache(self, kind: str, token_id: str, data: Dict[str, Any]) -> None:
+        """Persist one successful token cache delta."""
+        self._add_to_cache(kind, token_id, data)
+
+    def remove_style_token_cache(self, kind: str, token_id: str) -> None:
+        """Remove one successfully deleted token from the cache."""
+        self._remove_from_cache(kind, token_id)
+
+    def clear_style_token_cache(self, kind: str) -> None:
+        """Clear one token cache family after a successful hard delete."""
+        self._cli_cache[kind] = {}
+        self._save_cli_cache()
 
     def style_reference_revision(self) -> int:
         """Return the explicit revision for in-place style snapshot mutations."""
@@ -23143,68 +23163,18 @@ class BubbleCLI:
 
     def _get_current_default_colors(self) -> Dict[str, Any]:
         """Read current default colors from app.bubble settings."""
-        settings = self.discovery.data.get("settings", {})
-        client_safe = settings.get("client_safe", {})
-        raw_colors = client_safe.get("color_tokens", {})
-
-        # Resolve nested consolelog format: {"%3": {"%d1": "rgba(...)"}} -> {"%3": "rgba(...)"}
-        resolved = {}
-        for k, v in raw_colors.items():
-            if isinstance(v, dict):
-                # Console log fallback usually puts the value under "%d1" (or "default")
-                resolved[k] = v.get("%d1") or v.get("default") or v
-            else:
-                resolved[k] = v
-        return resolved
+        return dict(self._style_lifecycle.colors.snapshot().defaults)
 
     def _get_current_custom_colors(self) -> Dict[str, Any]:
         """
         Read current custom colors from app.bubble settings AND CLI cache.
         Supports both app.bubble format (key: "default") and console.log format (key: "%d1").
         """
-        settings = self.discovery.data.get("settings", {})
-        client_safe = settings.get("client_safe", {})
-        tokens_user = client_safe.get("color_tokens_user", {})
-
-        # Try both formats
-        file_colors = tokens_user.get("default", {}) or tokens_user.get("%d1", {})
-
-        # Convert file format to API format
-        converted = {}
-        for color_id, color_data in file_colors.items():
-            if isinstance(color_data, dict):
-                # If color_data is still nested like {"%d1": {...}}, resolve it
-                if "%d1" in color_data and isinstance(color_data["%d1"], dict):
-                    color_data = color_data["%d1"]
-                elif "default" in color_data and isinstance(color_data["default"], dict):
-                    color_data = color_data["default"]
-
-                converted[color_id] = {
-                    "%nm": color_data.get("%nm", "") or color_data.get("name", ""),
-                    "name": color_data.get("name", "") or color_data.get("%nm", ""),
-                    "rgba": color_data.get("rgba", ""),
-                    "order": color_data.get("order", 0),
-                    "%del": bool(color_data.get("%del", color_data.get("deleted", False))),
-                }
-            else:
-                converted[color_id] = {"%nm": "", "rgba": color_data}
-
-        # Merge with CLI cache
-        cache_colors = self._cli_cache.get("colors", {})
-        for color_id, color_data in cache_colors.items():
-            if color_id not in converted:
-                converted[color_id] = color_data
-
-        return converted
+        return dict(self._style_lifecycle.colors.snapshot().custom)
 
     def _get_active_custom_colors(self) -> Dict[str, Any]:
         """Return only custom colors that are not soft-deleted."""
-        custom_colors = self._get_current_custom_colors()
-        return {
-            color_id: color_data
-            for color_id, color_data in custom_colors.items()
-            if not (isinstance(color_data, dict) and color_data.get("%del", False))
-        }
+        return self._style_lifecycle.colors.active_custom()
 
     def resolve_color_variable(self, color_name: str) -> str:
         """
@@ -23213,44 +23183,7 @@ class BubbleCLI:
              "My Custom Color" -> "var(c123...)" (if custom)
              "Red" -> "#FF0000" (fallback to hex)
         """
-        if not color_name: return color_name
-
-        name_lower = color_name.lower()
-
-        # 1. Check Custom Colors (Priority)
-        # We check custom first because a user might name a custom color "Primary" to override default?
-        # Actually usually default is distinct, but let's check custom first as it's user-specific.
-        custom_colors = self._get_active_custom_colors()
-        for color_id, data in custom_colors.items():
-            c_name = data.get("%nm", "").lower()
-            if c_name == name_lower:
-                return f"var({color_id})"
-
-        # 2. Check Default Colors
-        # Default keys are like "destructive", "success", "surface"
-        # Map to Bubble's CSS variable syntax: var(--color_{key}_default)
-        default_colors = self._get_current_default_colors()
-        for key, val in default_colors.items():
-            # Check against key (e.g. "destructive")
-            if key.lower() == name_lower:
-                return f"var(--color_{key}_default)"
-            # Check against friendly name from map
-            friendly = DEFAULT_COLOR_NAMES.get(key, "").lower()
-            if friendly == name_lower:
-                return f"var(--color_{key}_default)"
-
-        # 3. Fallback: Standard Web Colors to Hex
-        # Limited list of common colors to ensure "White" -> "#FFFFFF"
-        WEB_COLORS = {
-            "white": "#FFFFFF", "black": "#000000", "red": "#FF0000", "green": "#008000",
-            "blue": "#0000FF", "yellow": "#FFFF00", "orange": "#FFA500", "purple": "#800080",
-            "gray": "#808080", "grey": "#808080", "transparent": "rgba(0,0,0,0)"
-        }
-        if name_lower in WEB_COLORS:
-            return WEB_COLORS[name_lower]
-
-        # 4. Return original if it looks like a hex or rgba, or unknown
-        return color_name
+        return self._style_lifecycle.colors.resolve(color_name)
 
     def _find_color_by_name(self, name: str) -> Optional[Tuple[str, str, Dict[str, Any]]]:
         """
@@ -23261,56 +23194,11 @@ class BubbleCLI:
             color_key: The key or ID of the color
             color_data: The color data dict
         """
-        def _norm_color_token(value: Any) -> str:
-            token = str(value or "").strip().lower()
-            token = token.replace("-", " ").replace("_", " ")
-            token = re.sub(r"\s+", " ", token)
-            token = re.sub(r"\bcolor\b", "", token)
-            token = re.sub(r"\s+", " ", token).strip()
-            return token
-
-        name_lower = str(name or "").lower().strip()
-        name_norm = _norm_color_token(name)
-        if not name_lower:
-            return None
-
-        # Check default colors first
-        for key, friendly_name in DEFAULT_COLOR_NAMES.items():
-            if (
-                friendly_name.lower() == name_lower
-                or key.lower() == name_lower
-                or _norm_color_token(friendly_name) == name_norm
-                or _norm_color_token(key) == name_norm
-            ):
-                default_colors = self._get_current_default_colors()
-                color_data = default_colors.get(key, {})
-                return ('default', key, color_data)
-
-        # Check custom colors
-        custom_colors = self._get_active_custom_colors()
-        for color_id, color_data in custom_colors.items():
-            if isinstance(color_data, dict):
-                color_name = color_data.get("%nm", "") or color_data.get("name", "")
-                if (
-                    color_name.lower() == name_lower
-                    or _norm_color_token(color_name) == name_norm
-                    or color_id.lower() == name_lower
-                ):
-                    return ('custom', color_id, color_data)
-
-        return None
+        return self._style_lifecycle.colors.find(name)
 
     def _get_next_order_value(self) -> int:
         """Get the next available order value for new custom colors."""
-        custom_colors = self._get_current_custom_colors()
-        if not custom_colors:
-            return 0
-        max_order = max(
-            c.get("order", 0)
-            for c in custom_colors.values()
-            if isinstance(c, dict)
-        )
-        return max_order + 1
+        return self._style_lifecycle.colors.next_order()
 
     def list_colors(self, show_default: bool = True, show_custom: bool = True) -> bool:
         """List all color variables (default and custom)."""
@@ -23357,48 +23245,15 @@ class BubbleCLI:
     ) -> bool:
         """Update a color (default or custom) by name."""
         logger.info(f"Looking for color: '{name}'")
-
-        result = self._find_color_by_name(name)
-        if not result:
-            logger.error(f"Color '{name}' not found")
-            return False
-
-        color_type, color_key, current_data = result
-        logger.success(f"Found {color_type} color: {color_key}")
-
-        pb = PayloadBuilder(appname=self.appname)
-
-        if color_type == 'default':
-            # Targeted update for specific default color key
-            # Path: settings.client_safe.color_tokens.<color_key>
-            # Body: {"%d1": rgba}
-            path = ColorBuilder.get_default_color_path() + [color_key]
-            body = {"%d1": rgba}
-        else:
-            # CRITICAL: Get ALL existing custom colors and update the specific one
-            # Custom colors are still updated as a block for now, as they live in a nested structure
-            all_colors = dict(self._get_current_custom_colors())
-            updated_entry = dict(current_data)
-            updated_entry["rgba"] = rgba
-            all_colors[color_key] = updated_entry
-            body = ColorBuilder.build_custom_colors_body(all_colors)
-            path = ColorBuilder.get_custom_color_path()
-
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
-            msg = f" (sending {len(all_colors)} colors)" if color_type == 'custom' else ""
-            logger.info(f"\n DRY RUN - Payload preview{msg}:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
+        result = self._style_lifecycle.colors.update(name, rgba, dry_run=dry_run)
+        if result.ok and dry_run and result.payload is not None:
+            logger.info("\n DRY RUN - Payload preview:")
+            logger.log(result.payload.to_json())
+        elif result.ok:
             logger.success(f"Updated '{name}' to {rgba}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        else:
+            logger.error(result.error or f"Color '{name}' not found")
+        return bool(result.ok)
 
     def create_color(
         self,
@@ -23409,177 +23264,62 @@ class BubbleCLI:
     ) -> bool:
         """Create a new custom color."""
         logger.info(f"Creating custom color: '{name}'")
-
-        # Check if name already exists
-        existing = self._find_color_by_name(name)
-        if existing:
-            logger.error(f"Color '{name}' already exists")
-            return False
-
-        # Generate ID and order
-        color_builder = ColorBuilder()
-        color_id = color_builder.generate_color_id()
-        order = self._get_next_order_value()
-
-        logger.log(f"   ID: {color_id}, Order: {order}")
-
-        # Build the color entry
-        color_entry = ColorBuilder.build_color_entry(
-            name=name,
-            rgba=rgba,
-            order=order,
-            description=description
+        result = self._style_lifecycle.colors.create(
+            name,
+            rgba,
+            description=description,
+            dry_run=dry_run,
         )
-
-        # CRITICAL: Get ALL existing custom colors and merge with new one
-        all_colors = dict(self._get_current_custom_colors())
-        all_colors[color_id] = color_entry
-
-        # Build payload with ALL colors
-        pb = PayloadBuilder(appname=self.appname)
-        body = ColorBuilder.build_custom_colors_body(all_colors)
-        path = ColorBuilder.get_custom_color_path()
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
-            logger.info(f"\n DRY RUN - Payload preview (sending {len(all_colors)} colors):")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            # Add to CLI cache so reorder/update can find it without sync
-            self._add_to_cache("colors", color_id, color_entry)
-            logger.success(f"Created color '{name}' ({color_id})")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        if result.ok and dry_run and result.payload is not None:
+            logger.info("\n DRY RUN - Payload preview:")
+            logger.log(result.payload.to_json())
+        elif result.ok:
+            logger.success(f"Created color '{name}' ({result.token_id})")
+        else:
+            logger.error(result.error or f"Color '{name}' already exists")
+        return bool(result.ok)
 
     def delete_color(self, name: str, dry_run: bool = False) -> bool:
         """Soft-delete a custom color by name."""
         logger.info(f"Deleting custom color: '{name}'")
-
-        result = self._find_color_by_name(name)
-        if not result:
-            logger.error(f"Color '{name}' not found")
-            return False
-
-        color_type, color_key, current_data = result
-
-        if color_type == 'default':
-            logger.error("Cannot delete default colors")
-            return False
-
-        # CRITICAL: Get ALL existing custom colors and mark the target as deleted
-        all_colors = dict(self._get_current_custom_colors())
-        delete_entry = dict(current_data)
-        delete_entry["%del"] = True
-        all_colors[color_key] = delete_entry
-
-        pb = PayloadBuilder(appname=self.appname)
-        body = ColorBuilder.build_custom_colors_body(all_colors)
-        path = ColorBuilder.get_custom_color_path()
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
-            logger.info(f"\n DRY RUN - Payload preview (sending {len(all_colors)} colors):")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            self._remove_from_cache("colors", color_key)
+        result = self._style_lifecycle.colors.delete(name, dry_run=dry_run)
+        if result.ok and dry_run and result.payload is not None:
+            logger.info("\n DRY RUN - Payload preview:")
+            logger.log(result.payload.to_json())
+        elif result.ok:
             logger.success(f"Deleted color '{name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to delete color: {e}")
-            return False
+        else:
+            logger.error(result.error or f"Color '{name}' not found")
+        return bool(result.ok)
 
     def clear_custom_colors(self, dry_run: bool = False) -> bool:
         """Wipe ALL custom colors (Hard Delete)."""
         logger.info("Wiping ALL custom colors...")
-
-        # Send an empty dict to the custom colors path
-        all_colors = {}
-
-        pb = PayloadBuilder(appname=self.appname)
-        body = ColorBuilder.build_custom_colors_body(all_colors)
-        path = ColorBuilder.get_custom_color_path()
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
+        result = self._style_lifecycle.colors.clear(dry_run=dry_run)
+        if result.ok and dry_run and result.payload is not None:
             logger.info("\n DRY RUN - Payload preview (Hard Wipe ALL custom colors):")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            # CRITICAL: Clear CLI cache
-            if "colors" in self._cli_cache:
-                self._cli_cache["colors"] = {}
-                self._save_cli_cache()
-
+            logger.log(result.payload.to_json())
+        elif result.ok:
             logger.success("Successfully wiped all custom colors.")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to clear colors: {e}")
-            return False
+        else:
+            logger.error(result.error or "Failed to clear colors")
+        return bool(result.ok)
 
     def delete_colors(self, names: List[str] = None, pattern: str = None, dry_run: bool = False) -> bool:
         """Delete multiple colors by name list or regex pattern."""
-        custom_colors = self._get_current_custom_colors()
-        if not custom_colors:
-            logger.error("No custom colors found")
-            return False
-
-        targets = []
-        if names:
-            name_set = {n.lower().strip() for n in names}
-            for cid, data in custom_colors.items():
-                if data.get("%nm", "").lower().strip() in name_set:
-                    targets.append((cid, data))
-
-        if pattern:
-            regex = re.compile(pattern, re.IGNORECASE)
-            for cid, data in custom_colors.items():
-                if regex.search(data.get("%nm", "")):
-                    if (cid, data) not in targets:
-                        targets.append((cid, data))
-
-        if not targets:
-            logger.error("No matching colors found to delete")
-            return False
-
-        logger.info(f"Deleting {len(targets)} colors...")
-        all_colors = dict(custom_colors)
-        for cid, data in targets:
-            delete_entry = dict(data)
-            delete_entry["%del"] = True
-            all_colors[cid] = delete_entry
-
-        pb = PayloadBuilder(appname=self.appname)
-        body = ColorBuilder.build_custom_colors_body(all_colors)
-        path = ColorBuilder.get_custom_color_path()
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
-            logger.info(f"\n DRY RUN - Payload preview (deleting {len(targets)} colors):")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            for cid, _ in targets:
-                self._remove_from_cache("colors", cid)
-            logger.success(f"Successfully deleted {len(targets)} colors.")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to delete colors: {e}")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        result = self._style_lifecycle.colors.delete_many(
+            names=names,
+            pattern=pattern,
+            dry_run=dry_run,
+        )
+        if result.ok and dry_run and result.payload is not None:
+            logger.info("\n DRY RUN - Payload preview:")
+            logger.log(result.payload.to_json())
+        elif result.ok:
+            logger.success("Successfully deleted matching colors.")
+        else:
+            logger.error(result.error or "No matching colors found to delete")
+        return bool(result.ok)
 
     def reorder_colors(
         self,
@@ -23597,75 +23337,20 @@ class BubbleCLI:
             target: For 'move' (position) or 'swap' (other color name)
         """
         logger.info(f"Reordering colors (mode: {mode})")
-
-        custom_colors = self._get_current_custom_colors()
-        if not custom_colors:
-            logger.warning("No custom colors to reorder")
-            return True
-
-        # Filter out non-dict entries and deleted colors
-        active_colors = {
-            k: v for k, v in custom_colors.items()
-            if isinstance(v, dict) and not v.get("%del", False)
-        }
-
-        if mode == 'sort-az':
-            reordered = ColorBuilder.sort_colors_by_name(active_colors, reverse=False)
-        elif mode == 'sort-za':
-            reordered = ColorBuilder.sort_colors_by_name(active_colors, reverse=True)
-        elif mode == 'move':
-            if not color_name or target is None:
-                logger.error("'move' mode requires color_name and target position")
-                return False
-            result = self._find_color_by_name(color_name)
-            if not result or result[0] != 'custom':
-                logger.error(f"Custom color '{color_name}' not found")
-                return False
-            try:
-                position = int(target)
-                reordered = ColorBuilder.move_color_to_position(active_colors, result[1], position)
-            except ValueError as e:
-                logger.error(f"Error: {e}")
-                return False
-        elif mode == 'swap':
-            if not color_name or not target:
-                logger.error("'swap' mode requires color_name and target color name")
-                return False
-            result1 = self._find_color_by_name(color_name)
-            result2 = self._find_color_by_name(target)
-            if not result1 or result1[0] != 'custom':
-                logger.error(f"Custom color '{color_name}' not found")
-                return False
-            if not result2 or result2[0] != 'custom':
-                logger.error(f"Custom color '{target}' not found")
-                return False
-            try:
-                reordered = ColorBuilder.swap_colors(active_colors, result1[1], result2[1])
-            except ValueError as e:
-                logger.error(f"Error: {e}")
-                return False
-        else:
-            logger.error(f"Unknown mode: {mode}")
-            return False
-
-        # Build payload
-        pb = PayloadBuilder(appname=self.appname)
-        body = ColorBuilder.build_custom_colors_body(reordered)
-        path = ColorBuilder.get_custom_color_path()
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
+        result = self._style_lifecycle.colors.reorder(
+            mode,
+            color_name=color_name,
+            target=target,
+            dry_run=dry_run,
+        )
+        if result.ok and dry_run and result.payload is not None:
             logger.info("\n DRY RUN - Payload preview:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            logger.success(f"Colors reordered successfully")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+            logger.log(result.payload.to_json())
+        elif result.ok:
+            logger.success("Colors reordered successfully")
+        else:
+            logger.error(result.error or f"Unknown mode: {mode}")
+        return bool(result.ok)
 
     # ==========================================
     # FONT VARIABLE METHODS
@@ -23675,43 +23360,14 @@ class BubbleCLI:
         """Read current App Font from app.bubble settings.
         Supports both app.bubble format (key: "default") and console.log format (key: "%d1").
         """
-        settings = self.discovery.data.get("settings", {})
-        client_safe = settings.get("client_safe", {})
-        font_tokens = client_safe.get("font_tokens", {})
-        # Try both formats
-        return font_tokens.get("default") or font_tokens.get("%d1", "not set")
+        return self._style_lifecycle.fonts.snapshot().app_font
 
     def _get_current_custom_fonts(self) -> Dict[str, Any]:
         """
         Read current custom fonts from app.bubble settings AND CLI cache.
         Supports both app.bubble format (key: "default") and console.log format (key: "%d1").
         """
-        settings = self.discovery.data.get("settings", {})
-        client_safe = settings.get("client_safe", {})
-        tokens_user = client_safe.get("font_tokens_user", {})
-
-        # Try both formats
-        file_fonts = tokens_user.get("default", {}) or tokens_user.get("%d1", {})
-
-        # Convert file format to API format if needed
-        converted = {}
-        for font_id, font_data in file_fonts.items():
-            if isinstance(font_data, dict):
-                converted[font_id] = {
-                    "%nm": font_data.get("name") or font_data.get("%nm", ""),
-                    "%d3": font_data.get("description") or font_data.get("%d3", ""),
-                    "%del": font_data.get("deleted") or font_data.get("%del", False),
-                    "font_family": font_data.get("font_family", ""),
-                    "order": font_data.get("order", 0)
-                }
-
-        # Merge with CLI cache
-        cache_fonts = self._cli_cache.get("fonts", {})
-        for font_id, font_data in cache_fonts.items():
-            if font_id not in converted:
-                converted[font_id] = font_data
-
-        return converted
+        return dict(self._style_lifecycle.fonts.snapshot().custom)
 
     def _find_font_by_name(self, name: str) -> Optional[Tuple[str, str, Dict[str, Any]]]:
         """
@@ -23722,23 +23378,7 @@ class BubbleCLI:
             font_key: 'app_font' or the font ID
             font_data: The font data dict (or string for app font)
         """
-        name_lower = name.lower().strip()
-
-        # Check if it's the App Font
-        if name_lower in ["app font", "app_font", "default font", "default"]:
-            app_font = self._get_current_app_font()
-            return ('app', 'app_font', {"font_family": app_font})
-
-        # Check custom fonts
-        custom_fonts = self._get_current_custom_fonts()
-        for font_id, font_data in custom_fonts.items():
-            if isinstance(font_data, dict):
-                font_name = font_data.get("%nm", "")
-                font_family = font_data.get("font_family", "")
-                if font_name.lower() == name_lower or font_family.lower() == name_lower:
-                    return ('custom', font_id, font_data)
-
-        return None
+        return self._style_lifecycle.fonts.find(name)
 
     def _resolve_bubble_font_reference(self, font_family: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
         """
@@ -23789,15 +23429,7 @@ class BubbleCLI:
 
     def _get_next_font_order_value(self) -> int:
         """Get the next available order value for new custom fonts."""
-        custom_fonts = self._get_current_custom_fonts()
-        if not custom_fonts:
-            return 0
-        max_order = max(
-            f.get("order", 0)
-            for f in custom_fonts.values()
-            if isinstance(f, dict)
-        )
-        return max_order + 1
+        return self._style_lifecycle.fonts.next_order()
 
     def list_fonts(self, show_app: bool = True, show_custom: bool = True) -> bool:
         """List all font variables (App Font and custom)."""
@@ -24235,44 +23867,15 @@ class BubbleCLI:
     ) -> bool:
         """Update a font (App Font or custom) by name."""
         logger.info(f"Looking for font: '{name}'")
-
-        result = self._find_font_by_name(name)
-        if not result:
-            logger.error(f"Font '{name}' not found")
-            return False
-
-        font_type, font_key, current_data = result
-        logger.success(f"Found {font_type} font: {font_key}")
-
-        pb = PayloadBuilder(appname=self.appname)
-
-        if font_type == 'app':
-            body = FontBuilder.build_app_font_body(font_family)
-            path = FontBuilder.get_app_font_path()
-        else:
-            # CRITICAL: Get ALL existing custom fonts and update the specific one
-            all_fonts = dict(self._get_current_custom_fonts())
-            updated_entry = dict(current_data)
-            updated_entry["font_family"] = font_family
-            all_fonts[font_key] = updated_entry
-            body = FontBuilder.build_custom_fonts_body(all_fonts)
-            path = FontBuilder.get_custom_font_path()
-
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
-            msg = f" (sending {len(all_fonts)} fonts)" if font_type == 'custom' else ""
-            logger.info(f"\n DRY RUN - Payload preview{msg}:")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
+        result = self._style_lifecycle.fonts.update(name, font_family, dry_run=dry_run)
+        if result.ok and dry_run and result.payload is not None:
+            logger.info("\n DRY RUN - Payload preview:")
+            logger.log(result.payload.to_json())
+        elif result.ok:
             logger.success(f"Updated '{name}' to {font_family}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        else:
+            logger.error(result.error or f"Font '{name}' not found")
+        return bool(result.ok)
 
     def create_font(
         self,
@@ -24283,91 +23886,33 @@ class BubbleCLI:
     ) -> bool:
         """Create a new custom font variable."""
         logger.info(f"Creating custom font: '{name}'")
-
-        # Check if name already exists
-        existing = self._find_font_by_name(name)
-        if existing:
-            logger.error(f"Font '{name}' already exists")
-            return False
-
-        # Generate ID and order
-        font_builder = FontBuilder()
-        font_id = font_builder.generate_font_id()
-        order = self._get_next_font_order_value()
-
-        logger.log(f"   ID: {font_id}, Order: {order}")
-
-        # Build the font entry
-        font_entry = FontBuilder.build_font_entry(
-            name=name,
-            font_family=font_family,
-            order=order,
-            description=description
+        result = self._style_lifecycle.fonts.create(
+            name,
+            font_family,
+            description=description,
+            dry_run=dry_run,
         )
-
-        # CRITICAL: Get ALL existing custom fonts and merge with new one
-        all_fonts = dict(self._get_current_custom_fonts())
-        all_fonts[font_id] = font_entry
-
-        # Build payload with ALL fonts
-        pb = PayloadBuilder(appname=self.appname)
-        body = FontBuilder.build_custom_fonts_body(all_fonts)
-        path = FontBuilder.get_custom_font_path()
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
-            logger.info(f"\n DRY RUN - Payload preview (sending {len(all_fonts)} fonts):")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
-            # Add to CLI cache so reorder/update can find it without sync
-            self._add_to_cache("fonts", font_id, font_entry)
-            logger.success(f"Created font '{name}' ({font_id})")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        if result.ok and dry_run and result.payload is not None:
+            logger.info("\n DRY RUN - Payload preview:")
+            logger.log(result.payload.to_json())
+        elif result.ok:
+            logger.success(f"Created font '{name}' ({result.token_id})")
+        else:
+            logger.error(result.error or f"Font '{name}' already exists")
+        return bool(result.ok)
 
     def delete_font(self, name: str, dry_run: bool = False) -> bool:
         """Soft-delete a custom font by name."""
         logger.info(f"Deleting custom font: '{name}'")
-
-        result = self._find_font_by_name(name)
-        if not result:
-            logger.error(f"Font '{name}' not found")
-            return False
-
-        font_type, font_key, current_data = result
-
-        if font_type == 'app':
-            logger.error("Cannot delete the App Font")
-            return False
-
-        # CRITICAL: Get ALL existing custom fonts and mark the target as deleted
-        all_fonts = dict(self._get_current_custom_fonts())
-        delete_entry = dict(current_data)
-        delete_entry["%del"] = True
-        all_fonts[font_key] = delete_entry
-
-        pb = PayloadBuilder(appname=self.appname)
-        body = FontBuilder.build_custom_fonts_body(all_fonts)
-        path = FontBuilder.get_custom_font_path()
-        pb.add_change_app_setting(path, body)
-
-        if dry_run:
-            logger.info(f"\n DRY RUN - Payload preview (sending {len(all_fonts)} fonts):")
-            logger.log(pb.to_json())
-            return True
-
-        try:
-            self._dispatch_payload(pb)
+        result = self._style_lifecycle.fonts.delete(name, dry_run=dry_run)
+        if result.ok and dry_run and result.payload is not None:
+            logger.info("\n DRY RUN - Payload preview:")
+            logger.log(result.payload.to_json())
+        elif result.ok:
             logger.success(f"Deleted font '{name}'")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to send: {e}")
-            return False
+        else:
+            logger.error(result.error or f"Font '{name}' not found")
+        return bool(result.ok)
 
     @staticmethod
     def _parse_color_literal_to_rgba(color_value: str) -> Optional[Tuple[int, int, int, float]]:
@@ -24511,18 +24056,26 @@ class BubbleCLI:
         if "var(" in str(base_color_name).lower():
              return str(base_color_name)
 
-        # 1. Direct name lookup through ColorMapper friendly names.
+        # 1. Named token resolution must use the live lifecycle snapshot before
+        # the long-lived ColorMapper, whose aliases can outlive delete/recreate.
+        is_literal = str(base_color_name).startswith("#") or "rgb" in str(base_color_name).lower()
+        if not is_literal:
+            resolved_name = self._style_lifecycle.colors.resolve(str(base_color_name))
+            if resolved_name != str(base_color_name):
+                return resolved_name
+
+        # 2. Direct name lookup through ColorMapper friendly names.
         if self.color_mapper:
             by_friendly_name = self.color_mapper.find_variable_by_name(str(base_color_name))
             if by_friendly_name:
                 return by_friendly_name
 
-        # 2. Resolve raw color literals to known variables when possible.
-        if str(base_color_name).startswith("#") or "rgb" in str(base_color_name).lower():
+        # 3. Resolve raw color literals to known variables when possible.
+        if is_literal:
             # Use the more robust _resolve_color_value which handles creation and logging
             return self._resolve_color_value(str(base_color_name), create_missing=create_missing, dry_run=dry_run)
 
-        # 3. Match by default/custom names (friendly names and %nm labels).
+        # 4. Match by default/custom names (friendly names and %nm labels).
         found = self._find_color_by_name(str(base_color_name))
         if not found:
              return str(base_color_name)
