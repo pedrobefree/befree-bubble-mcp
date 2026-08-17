@@ -273,35 +273,50 @@ def test_successful_set_default_protects_new_default_during_sequential_clear(
         {
             "Text_system_": {"%d": "System Body", "%x": "Text", "%p": {}, "%s": {}},
             "Text_caption_": {"%d": "Caption", "%x": "Text", "%p": {}, "%s": {}},
+            "Button_system_": {
+                "%d": "System Button",
+                "%x": "Button",
+                "%p": {},
+                "%s": {},
+            },
         }
     )
     cli.discovery.data["settings"] = {
-        "client_safe": {"default_styles": {"Text": "Text_system_"}}
+        "client_safe": {
+            "default_styles": {
+                "Text": "Text_system_",
+                "Button": "Button_system_",
+            }
+        }
     }
     assert cli.find_style_id("default", "Text") == "Text_system_"
-    dispatched: list[Any] = []
+    assert cli.find_style_id("default", "Button") == "Button_system_"
+    dispatched: list[list[dict[str, Any]]] = []
 
-    def dispatch(payload: Any) -> None:
-        dispatched.append(payload)
-        for change in payload.changes:
-            intent = change.get("intent") if isinstance(change, dict) else None
-            if isinstance(intent, dict) and intent.get("name") == "ChangeAppSetting":
-                cli.discovery.data["settings"]["client_safe"]["default_styles"].update(
-                    change["body"]
-                )
+    def capture_webhook(payload: Any, _url: str) -> None:
+        dispatched.append(list(payload.changes))
 
-    monkeypatch.setattr(cli, "dispatch_style_definition_payload", dispatch)
+    monkeypatch.setattr(
+        "bubble_mcp.aria_runtime.style_lifecycle.definitions.PayloadBuilder.send_to_webhook",
+        capture_webhook,
+    )
 
     assert cli.set_default_style("Text", "Text_body_") is True
+    assert cli.discovery.data["settings"]["client_safe"]["default_styles"] == {
+        "Text": "Text_body_",
+        "Button": "Button_system_",
+    }
+    assert cli.find_style_id("default", "Button") == "Button_system_"
     assert cli.clear_custom_styles() is True
 
     deleted_ids = [
         change["path_array"][1]
-        for change in dispatched[1].changes
+        for change in dispatched[1]
         if change.get("intent", {}).get("name") == "DeleteStyle"
     ]
     assert deleted_ids == ["Text_system_", "Text_caption_"]
     assert "Text_body_" not in deleted_ids
+    assert "Button_system_" not in deleted_ids
 
 
 def test_html_style_execution_remains_failed_when_definition_sink_returns_false(

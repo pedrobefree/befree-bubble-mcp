@@ -370,6 +370,15 @@ runs; final PR #31 runs `31907361361` and `31907359617` show the same
 billing/infrastructure signature. The complete local validation matrix above is
 the executable code evidence.
 
+A final scoped follow-up on 2026-08-17 closed the multi-type default-style
+preservation gap found by re-review. All definition paths now retain unrelated
+entries when replacing `settings.client_safe.default_styles`; a real-dispatch
+Text-plus-Button regression proves that `clear_custom_styles` cannot delete the
+unchanged Button default. Fresh gates passed 1,576 Python and 11 Node tests,
+96.5% lifecycle branch coverage, 43.77944% global combined coverage, Ruff,
+MyPy, audits, catalog parity, and all functional safe-read/preview smoke cases.
+PR #31 remains the closing review surface for this follow-up.
+
 **Next Stage 4 boundary — Family 4 data/schema/settings lifecycle.** Extract
 data types, fields, privacy, option sets/values, project settings, and redirects
 behind typed services while retaining the public `BubbleCLI` facades and the

@@ -345,3 +345,51 @@ draft after its body was refreshed with this consolidated evidence. Push runs
 `31907361361` and `31907359617` each failed in two to three seconds with
 `jobs[0].steps: []`; no CI test step ran. This is the same known
 billing/infrastructure signature documented above, not a code-test failure.
+
+## Post-review multi-type default preservation
+
+The scoped re-review of the consolidated fix wave found one additional
+Important boundary defect: `set_default_style` emitted a partial body at the
+path of the complete `settings.client_safe.default_styles` map. The real
+`BubbleCLI._dispatch_payload` optimistic update therefore replaced defaults for
+other element types. A subsequent `clear_custom_styles` could delete those
+formerly protected styles.
+
+The literal RED used the real dispatch boundary with simultaneous Text and
+Button defaults. After changing only Text, discovery became
+`{"Text": "Text_body_"}` instead of preserving
+`{"Text": "Text_body_", "Button": "Button_system_"}`. The regression no
+longer substitutes a test-only `.update()` implementation. Default-map bodies
+for explicit set, create-with-default, and update-with-default now copy the
+current discovery map and replace only the requested element-type entry.
+
+Fresh verification on 2026-08-17 produced:
+
+```text
+literal RED: default map lost Button_system_
+literal GREEN: 1 passed
+affected definition/reference/MCP matrix: 269 passed
+lifecycle focused matrix: 234 passed; 96.5% branch-aware coverage
+full Python: 1576 passed in 21.29s
+coverage run: 1576 passed in 42.11s
+global combined coverage: 43.779440576931094%
+full Node: 11 passed
+package/setup/sensitive/catalog tests: 16 passed
+Ruff src/tests/scripts: passed
+MyPy src: 141 files passed
+catalog: 327 tools; 207 commands; 205 direct; 1 alias; 1 excluded; 0 missing
+```
+
+No-profile smokes passed coverage 2/2 (`20260817120608_dfd3f3`), agent
+routing 9/9 (`20260817120608_9ed768`), and visual repair 1/1
+(`20260817120608_9b8ef7`). Authorized-profile functional cases again passed
+10/10 safe reads (`20260817120623_a78262`), 5/5 preview mutations
+(`20260817120627_68429e`), and 21/21 family previews
+(`20260817120700_5d6784`). Every preview remained `executed=false`; each
+profile suite's only failure was the existing stale-context status preflight.
+No external write ran.
+
+The fresh seven-run benchmark remained stable. Definition operations measured
+1.794 ms median, 2,623 JSON bytes, five builds/writes, and four cache saves.
+The global coverage ratchet remains 43.6%, retaining 0.17944 percentage point
+of measured headroom.
