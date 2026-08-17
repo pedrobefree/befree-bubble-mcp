@@ -98,5 +98,55 @@ class StyleDefinitionSink(Protocol):
     ) -> bool: ...
 
 
-class StyleLifecycleHost(StyleAssignmentHost, StyleTokenHost, StyleDefinitionSink, Protocol):
+class StyleDefinitionHost(StyleReferenceHost, Protocol):
+    """Mutation callbacks used by definition and conditional-state orchestration."""
+
+    appname: str
+    dry_run: bool
+    id_gen: Any
+
+    def resolve_style_definition_color(self, value: str) -> str: ...
+
+    def dispatch_style_definition_payload(self, payload: Any) -> None: ...
+
+    def put_style_definition_cache(self, name: str, data: dict[str, Any]) -> None: ...
+
+    def remove_style_definition_cache(self, name: str) -> None: ...
+
+    def save_style_definition_cache(self) -> None: ...
+
+    def hydrate_style_definition(
+        self,
+        style_id: str,
+        name: str,
+        element_type: str,
+        properties: dict[str, Any],
+        *,
+        clear_properties: tuple[str, ...] = (),
+    ) -> None: ...
+
+    def base_style_properties(self, style_id: str) -> dict[str, Any]: ...
+
+    def compensate_style_state_padding(
+        self,
+        style_id: str,
+        properties: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+    def augment_disabled_style_state(
+        self,
+        style_id: str,
+        properties: dict[str, Any],
+        comparison_map: dict[str, str],
+        base_properties: dict[str, Any],
+    ) -> dict[str, Any]: ...
+
+
+class StyleLifecycleHost(
+    StyleAssignmentHost,
+    StyleTokenHost,
+    StyleDefinitionHost,
+    StyleDefinitionSink,
+    Protocol,
+):
     """Complete composition-root host without widening individual services."""

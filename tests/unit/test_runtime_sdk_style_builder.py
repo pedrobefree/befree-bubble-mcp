@@ -311,6 +311,31 @@ def test_transition_mapping_targets_wire_properties(builder: StyleBuilder) -> No
     assert ["styles", "style", "transitions", "custom"] in paths
 
 
+def test_state_transition_intents_use_builder_mapping_and_literal_input_order(
+    builder: StyleBuilder,
+) -> None:
+    assert builder.build_state_transition_intents(
+        "style",
+        {
+            "%bgc": "red",
+            "font_color": "white",
+            "border_color": "black",
+            "font_size": 16,
+        },
+    ) == [
+        {
+            "intent": "AddTransition",
+            "path": ["styles", "style", "transitions", "%fc"],
+            "body": {"duration": 200, "fn": "ease"},
+        },
+        {
+            "intent": "AddTransition",
+            "path": ["styles", "style", "transitions", "%bc"],
+            "body": {"duration": 200, "fn": "ease"},
+        },
+    ]
+
+
 @pytest.mark.parametrize(
     ("condition_type", "message"),
     [
