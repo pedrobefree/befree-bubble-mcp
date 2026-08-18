@@ -412,6 +412,16 @@ PYTHONPATH=src python scripts/audit_cli_catalog.py
 `bubble_catalog_quality` also enforces this parity and verifies that all
 Aria-compatible tools declare explicit agent-required fields.
 
+### Round A.1: Deterministic catalog selection
+
+Stage 1 owns the structural baseline for all 327 MCP tools and 207 legacy CLI
+commands. It verifies exact-name deterministic selection, required-argument
+metadata, and reversed-order stability without consolidating tools or migrating
+aliases. Stage 2 starts only after this baseline closes and adds
+natural-language ambiguity evaluations for related tool families. Round A.2
+owns the explicit modern nested CLI leaf-command map; it is not part of this
+stage.
+
 The modern nested `bubble-mcp` CLI is an orchestration and administration
 surface, so words such as `list`, `run`, and `status` are not one-to-one MCP
 capabilities. A later catalog round should add an explicit leaf-command map

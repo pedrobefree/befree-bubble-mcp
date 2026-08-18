@@ -1,3 +1,9 @@
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
 from bubble_mcp.harness.catalog_selection import catalog_selection_report
 from bubble_mcp.server.schemas import list_tool_schemas
 
@@ -89,3 +95,21 @@ def test_selection_failure_names_case_expected_and_actual_tool(monkeypatch) -> N
         {"case_id", "expected_tool", "actual_tool", "essential_args"} <= failure.keys()
         for failure in report["failures"]
     )
+
+
+def test_selection_audit_runs_from_checkout_without_pythonpath() -> None:
+    root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [sys.executable, "scripts/audit_catalog_selection.py"],
+        cwd=root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    report = json.loads(result.stdout)
+    assert report["ok"] is True
+    assert report["summary"]["case_count"] == 327

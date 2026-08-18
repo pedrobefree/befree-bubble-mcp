@@ -25,6 +25,18 @@ def test_catalog_quality_report_passes_current_catalog() -> None:
     }
 
 
+def test_catalog_quality_includes_complete_deterministic_selection_coverage() -> None:
+    report = catalog_quality_report()
+    checks = {check["name"]: check for check in report["checks"]}
+
+    assert checks["deterministic_selection_coverage"] == {
+        "name": "deterministic_selection_coverage",
+        "ok": True,
+        "issue_count": 0,
+    }
+    assert report["summary"]["tool_count"] == 327
+
+
 def test_catalog_quality_rejects_read_only_description_without_annotation() -> None:
     _, issues = _check_tool_schemas(
         [

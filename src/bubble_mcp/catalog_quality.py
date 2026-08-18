@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from bubble_mcp.catalog_audit import cli_catalog_parity_report
+from bubble_mcp.harness.catalog_selection import catalog_selection_report
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 from bubble_mcp.server.prompts import list_prompts
@@ -405,6 +406,28 @@ def _cli_catalog_check(tools: list[dict[str, Any]]) -> tuple[dict[str, Any], lis
     }, issues
 
 
+def _deterministic_selection_check() -> tuple[dict[str, Any], list[Issue]]:
+    report = catalog_selection_report()
+    issues: list[Issue] = []
+    for failure in report["failures"]:
+        _add_issue(
+            issues,
+            check="deterministic_selection_coverage",
+            scope="tool",
+            name=failure["expected_tool"],
+            field="selection",
+            message=(
+                f"{failure['case_id']}: expected {failure['expected_tool']}, "
+                f"got {failure['actual_tool']}"
+            ),
+        )
+    return {
+        "name": "deterministic_selection_coverage",
+        "ok": not issues,
+        "issue_count": len(issues),
+    }, issues
+
+
 def catalog_quality_report() -> dict[str, Any]:
     """Return a compact machine-readable quality report for MCP clients and CI."""
 
@@ -436,6 +459,10 @@ def catalog_quality_report() -> dict[str, Any]:
     checks.append(cli_catalog_check)
     issues.extend(cli_catalog_issues)
 
+    deterministic_selection_check, deterministic_selection_issues = _deterministic_selection_check()
+    checks.append(deterministic_selection_check)
+    issues.extend(deterministic_selection_issues)
+
     by_scope: dict[str, int] = {}
     for issue in issues:
         scope = str(issue.get("scope") or "unknown")
@@ -460,5 +487,6 @@ def catalog_quality_report() -> dict[str, Any]:
             "required_annotations": list(REQUIRED_ANNOTATIONS),
             "coverage": "No uncovered exposed tools; no uncovered Aria-compatible runtime tools.",
             "cli_catalog_parity": "Every packaged Bubble-operation CLI command maps to a canonical MCP tool, an explicit alias, or an explained CLI-only exclusion.",
+            "deterministic_selection_coverage": "Every exposed MCP tool must win its exact-name selection case with required-argument metadata and reversed-order stability.",
         },
     }
