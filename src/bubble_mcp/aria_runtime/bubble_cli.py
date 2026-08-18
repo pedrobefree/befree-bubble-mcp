@@ -4268,6 +4268,23 @@ class BubbleCLI:
                 body["private_key"] = "[REDACTED]"
         return preview
 
+    @staticmethod
+    def _api_token_private_values(payload: PayloadBuilder) -> set[str]:
+        """Collect private-key strings solely for error-message redaction."""
+        values: set[str] = set()
+        for change in payload.changes:
+            if not isinstance(change, dict):
+                continue
+            path = change.get("path_array")
+            if not isinstance(path, list) or path[:3] != ["settings", "secure", "api_tokens"]:
+                continue
+            body = change.get("body")
+            if path[-1:] == ["private_key"] and isinstance(body, str) and body:
+                values.add(body)
+            elif isinstance(body, dict) and isinstance(body.get("private_key"), str) and body["private_key"]:
+                values.add(body["private_key"])
+        return values
+
     def _send_api_token_payload(self, pb: PayloadBuilder, dry_run: bool, success_message: str) -> bool:
         """Send API-token writes while keeping previews local and redacted."""
         if dry_run:
@@ -4279,7 +4296,10 @@ class BubbleCLI:
             logger.success(success_message)
             return True
         except Exception as exc:
-            logger.error(f"Failed to send: {exc}")
+            if any(value in str(exc) for value in self._api_token_private_values(pb)):
+                logger.error("Failed to send: API token write failed.")
+            else:
+                logger.error(f"Failed to send: {exc}")
             return False
 
     def _mutate_api_token_setting(self, path: List[str], value: Any, dry_run: bool, success_message: str) -> bool:

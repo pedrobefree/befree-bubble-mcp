@@ -353,3 +353,27 @@ def test_api_token_private_keys_are_redacted_from_dry_run_and_logs_but_preserved
     assert dispatched[0]["changes"][0]["body"]["private_key"] == secret  # type: ignore[index]
     assert dispatched[1]["changes"][0]["body"] == secret  # type: ignore[index]
     assert all(secret not in message for message in infos)
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda instance, secret: instance.create_api_token(token_id="token-id", private_key=secret),
+        lambda instance, secret: instance.regenerate_api_token_private_key("token-id", private_key=secret),
+    ],
+)
+def test_api_token_dispatch_failures_redact_private_keys_but_keep_generic_failures_useful(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], operation: object
+) -> None:
+    secret = "private-key-in-dispatch-error"
+    errors: list[str] = []
+    monkeypatch.setattr(cli, "_dispatch_payload", lambda _payload: (_ for _ in ()).throw(RuntimeError(f"webhook rejected {secret}")))
+    monkeypatch.setattr("bubble_mcp.aria_runtime.bubble_cli.logger.error", errors.append)
+    assert operation(cli, secret) is False  # type: ignore[operator]
+    assert secret not in capsys.readouterr().out
+    assert errors == ["Failed to send: API token write failed."]
+
+    errors.clear()
+    monkeypatch.setattr(cli, "_dispatch_payload", lambda _payload: (_ for _ in ()).throw(RuntimeError("offline")))
+    assert operation(cli, secret) is False  # type: ignore[operator]
+    assert errors == ["Failed to send: offline"]
