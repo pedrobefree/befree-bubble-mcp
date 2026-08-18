@@ -7,6 +7,7 @@ from .data_types import DataTypeLifecycleService
 from .options import OptionLifecycleService
 from .privacy import PrivacyLifecycleService
 from .references import SchemaReferenceResolver
+from .settings import SettingsLifecycleService
 
 
 class SchemaLifecycleService:
@@ -17,3 +18,4 @@ class SchemaLifecycleService:
         self.data_types = DataTypeLifecycleService(host, self.references)
         self.options = OptionLifecycleService(host, self.references)
         self.privacy = PrivacyLifecycleService(host, self.references)
+        self.settings = SettingsLifecycleService(host, self.references)

@@ -79,83 +79,10 @@ from context_reference_resolver import ContextReferenceResolver
 from visual_mutations import VisualMutationService
 try:
     from .style_lifecycle import StyleLifecycleService, StyleReferenceResolver
-    from .schema_lifecycle import SchemaLifecycleService
+    from .schema_lifecycle import PROJECT_SETTING_ALIASES, SchemaLifecycleService  # noqa: F401
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
     from style_lifecycle import StyleLifecycleService, StyleReferenceResolver
-    from schema_lifecycle import SchemaLifecycleService
-
-PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
-    # Application rights
-    "app-rights": {"path": ["settings", "client_safe", "app_rights"], "value_type": "string"},
-
-    # Preview password protection
-    "preview-password-protection": {"path": ["settings", "client_safe", "pw_protection"], "value_type": "bool"},
-    "preview-username": {"path": ["settings", "secure", "username"], "value_type": "string"},
-    "preview-password": {"path": ["settings", "secure", "%pw"], "value_type": "string"},
-    "preview-password-dev-only": {"path": ["settings", "client_safe", "pw_protection_dev_only"], "value_type": "bool"},
-
-    # User password policy
-    "password-policy-enabled": {"path": ["settings", "client_safe", "have_pw_policy"], "value_type": "bool"},
-    "password-min-length": {"path": ["settings", "client_safe", "pw_length"], "value_type": "int"},
-    "password-require-number": {"path": ["settings", "client_safe", "pw_require_number"], "value_type": "bool"},
-    "password-require-capital": {"path": ["settings", "client_safe", "pw_require_capital_letter"], "value_type": "bool"},
-    "password-require-special-char": {"path": ["settings", "client_safe", "pw_require_special_char"], "value_type": "bool"},
-    "temp-password-redirect-page": {"path": ["settings", "client_safe", "temp_pw_page_redirect"], "value_type": "string"},
-
-    # Additional settings
-    "iframe-policy": {"path": ["settings", "client_safe", "allow_iframe"], "value_type": "string"},
-    "cookie-opt-in": {"path": ["settings", "client_safe", "cookie_opt_in"], "value_type": "bool"},
-    "disable-file-upload-api": {"path": ["settings", "client_safe", "is_deprecated_fileupload_disabled"], "value_type": "bool"},
-
-    # General appearance
-    "favicon": {"path": ["favicon"], "value_type": "string"},
-    "status-bar-color": {"path": ["settings", "client_safe", "status_bar_color"], "value_type": "string"},
-    "spinner-color": {"path": ["settings", "client_safe", "spinner_color"], "value_type": "string"},
-    "ios-hide-safari-ui": {"path": ["settings", "client_safe", "ios_meta_tag_hide_safari_ui"], "value_type": "bool"},
-    "ios-prevent-zoom": {"path": ["settings", "client_safe", "ios_meta_tag_prevent_zoom"], "value_type": "bool"},
-
-    # Service/API keys
-    "google-geocode-key": {"path": ["settings", "secure", "general_keys", "google_geocode_key"], "value_type": "string"},
-    "google-map-key": {"path": ["settings", "client_safe", "general_keys", "google_map_key"], "value_type": "string"},
-
-    # Advanced options
-    "advanced-timezone-controls": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls"], "value_type": "bool"},
-    "advanced-timezone-date-time-inputs": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls_date_time_inputs"], "value_type": "bool"},
-    "advanced-timezone-page": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls_page"], "value_type": "bool"},
-    "advanced-timezone-backend-workflows": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls_backend_workflows"], "value_type": "bool"},
-    "advanced-expose-id-option": {"path": ["settings", "client_safe", "advanced_features", "expose_id_option"], "value_type": "bool"},
-    "advanced-show-parens": {"path": ["settings", "client_safe", "advanced_features", "parens"], "value_type": "bool"},
-
-    # Settings > API
-    "api-backend-workflows-enabled": {"path": ["settings", "client_safe", "exposes_wf_api"], "value_type": "bool"},
-    "api-data-enabled": {"path": ["settings", "client_safe", "exposes_get_api"], "value_type": "bool"},
-    "api-data-use-display-fields": {"path": ["settings", "client_safe", "use_captions_for_get"], "value_type": "bool"},
-    "api-hide-swagger-docs": {"path": ["settings", "client_safe", "hide_swagger_api"], "value_type": "bool"},
-
-    # Infinite recursion protection (accepts ints or null)
-    "workflow-max-depth-dev": {"path": ["settings", "client_safe", "max_recursive_workflow_depth_test"], "value_type": "auto"},
-    "workflow-max-depth-live": {"path": ["settings", "client_safe", "max_recursive_workflow_depth_live"], "value_type": "auto"},
-
-    # Settings > SEO and metatags
-    "meta-title": {"path": ["settings", "client_safe", "facebook_meta_tag_title"], "value_type": "string"},
-    "meta-site-name": {"path": ["settings", "client_safe", "facebook_meta_tag_site_name"], "value_type": "string"},
-    "meta-description": {"path": ["settings", "client_safe", "facebook_meta_tag_description"], "value_type": "string"},
-    "meta-thumbnail": {"path": ["settings", "client_safe", "facebook_meta_tag_image"], "value_type": "string"},
-    "seo-expose-text-tags": {"path": ["settings", "client_safe", "expose_text_tags"], "value_type": "bool"},
-    "seo-enable-canonical-url": {"path": ["settings", "client_safe", "enable_canonical_url"], "value_type": "bool"},
-    "seo-customize-robots-txt-enabled": {"path": ["settings", "client_safe", "customize_robots_txt"], "value_type": "bool"},
-    "seo-custom-robots-txt": {"path": ["settings", "client_safe", "custom_robot_txt"], "value_type": "string"},
-    "seo-generate-sitemap": {"path": ["settings", "client_safe", "generate_sitemap"], "value_type": "bool"},
-    "seo-sitemap-pages": {"path": ["settings", "client_safe", "sitemap_pages"], "value_type": "string"},
-    "seo-header-meta-tags": {"path": ["settings", "client_safe", "custom_header_meta_tag_content"], "value_type": "string"},
-    "seo-body-scripts": {"path": ["settings", "client_safe", "custom_header_meta_tag_body_content"], "value_type": "string"},
-    "seo-allow-wildcard-redirects": {"path": ["settings", "client_safe", "allow_wildcards"], "value_type": "bool"},
-
-    # App texts / i18n
-    "app-primary-language": {"path": ["settings", "client_safe", "app_language"], "value_type": "string"},
-    "user-language-field": {"path": ["settings", "client_safe", "language_field"], "value_type": "string"},
-}
-
+    from schema_lifecycle import PROJECT_SETTING_ALIASES, SchemaLifecycleService  # noqa: F401
 
 # ==========================================
 # EVENT MAPPER - CORREÇÃO CRÍTICA
@@ -4070,6 +3997,48 @@ class BubbleCLI:
         """Keep option attribute coercion at BubbleCLI's established boundary."""
         return self._coerce_schema_value(value, parse_json=parse_json)
 
+    def parse_schema_setting_path(self, value: Any) -> List[str]:
+        """Keep setting-path parsing at BubbleCLI's established public boundary."""
+        return self._parse_path_array(value)
+
+    def coerce_schema_setting_value(self, value: Any, *, value_type: str = "string") -> Any:
+        """Keep setting value coercion at BubbleCLI's established public boundary."""
+        return self._coerce_setting_value(value, value_type=value_type)
+
+    @staticmethod
+    def next_schema_setting_intent_id() -> int:
+        """Preserve legacy random ChangeAppSetting intent identifiers."""
+        return random.randint(1, 999999)
+
+    def next_schema_redirect_key(self) -> str:
+        """Return the Bubble-native ID used for a newly-created redirect rule."""
+        return self.id_gen.element_id()
+
+    def project_schema_settings(self, updates: List[Tuple[List[str], Any]]) -> Optional[str]:
+        """Project successful setting writes without persisting values into schema cache."""
+        discovery_data = self.discovery.data
+        data = discovery_data if isinstance(discovery_data, dict) else {}
+        if not isinstance(discovery_data, dict):
+            self.discovery._data = data
+        redirect_changed = False
+        for path, value in updates:
+            normalized = [str(token) for token in path if str(token).strip()]
+            if not normalized:
+                continue
+            if value is None:
+                self._delete_nested_cache_value(data, normalized)
+            else:
+                self._set_nested_cache_value(data, normalized, copy.deepcopy(value))
+            redirect_changed = redirect_changed or normalized[:3] == ["settings", "client_safe", "301_redirects"]
+        warning: Optional[str] = None
+        try:
+            self.discovery.persist_disk_cache()
+        except Exception as exc:
+            warning = f"Post-write setting cache update failed: {exc}"
+        if redirect_changed:
+            self._invalidate_schema_reference_index("redirects")
+        return warning
+
     def _lookup_existing_comment(
         self,
         target_type: str,
@@ -4166,32 +4135,8 @@ class BubbleCLI:
         value_type: str = "string",
         dry_run: bool = False
     ) -> bool:
-        """
-        Generic app settings mutation via ChangeAppSetting.
-        Works for both settings paths and root keys like `favicon`.
-        """
-        try:
-            path_array = self._parse_path_array(path)
-            coerced_value = self._coerce_setting_value(value, value_type=value_type)
-        except ValueError as e:
-            logger.error(str(e))
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            path_array,
-            coerced_value,
-            intent_id=random.randint(1, 999999),
-            source_appname=""
-        )
-        joined_path = ".".join(path_array)
-        return self._send_schema_payload(
-            pb,
-            dry_run,
-            f"App setting '{joined_path}' updated."
-        )
+        """Generic app settings mutation via ChangeAppSetting."""
+        return self._schema_lifecycle.settings.set_app_setting(path, value, value_type, dry_run)
 
     def set_project_setting(
         self,
@@ -4200,46 +4145,12 @@ class BubbleCLI:
         value_type: Optional[str] = None,
         dry_run: bool = False
     ) -> bool:
-        """
-        Set a mapped project setting alias.
-        Example alias: `preview-password-protection`.
-        """
-        normalized_key = str(setting_key or "").strip().lower().replace("_", "-")
-        spec = PROJECT_SETTING_ALIASES.get(normalized_key)
-        if not spec:
-            logger.error(
-                f"Unknown project setting '{setting_key}'. "
-                "Use 'list-project-settings' to inspect available aliases."
-            )
-            return False
-
-        resolved_value_type = (value_type or spec.get("value_type", "string")).strip().lower()
-        return self.set_app_setting(
-            spec["path"],
-            value,
-            value_type=resolved_value_type,
-            dry_run=dry_run
-        )
+        """Set a mapped project setting alias."""
+        return self._schema_lifecycle.settings.set_project_setting(setting_key, value, value_type, dry_run)
 
     def list_project_settings(self, as_json: bool = False) -> bool:
         """List mapped project-setting aliases and target paths."""
-        rows: List[Dict[str, Any]] = []
-        for alias in sorted(PROJECT_SETTING_ALIASES.keys()):
-            spec = PROJECT_SETTING_ALIASES[alias]
-            rows.append({
-                "alias": alias,
-                "path": ".".join(spec.get("path", [])),
-                "value_type": spec.get("value_type", "string")
-            })
-
-        if as_json:
-            print(json.dumps(rows, indent=2, ensure_ascii=False))
-            return True
-
-        print(f"📋 Project setting aliases ({len(rows)}):")
-        for row in rows:
-            print(f"- {row['alias']} ({row['value_type']}): {row['path']}")
-        return True
+        return self._schema_lifecycle.settings.list_project_settings(as_json)
 
     def _get_user_types(self, include_cache: bool = True) -> Dict[str, Any]:
         """Get user_types map from discovery, optionally merging cache fallback."""
@@ -4333,23 +4244,36 @@ class BubbleCLI:
             logger.info(f"Private key: {resolved_private_key}")
         return ok
 
+    def _mutate_api_token_setting(self, path: List[str], value: Any, dry_run: bool, success_message: str) -> bool:
+        """Keep API-token CRUD on BubbleCLI's dedicated, non-settings-service path."""
+        pb = PayloadBuilder(appname=self.appname)
+        self._add_schema_change(
+            pb,
+            "ChangeAppSetting",
+            path,
+            value,
+            intent_id=random.randint(1, 999999),
+            source_appname="",
+        )
+        return self._send_schema_payload(pb, dry_run, success_message)
+
     def rename_api_token(self, token_id: str, new_label: str, dry_run: bool = False) -> bool:
         """Rename API token label (%nm)."""
-        return self.set_app_setting(
+        return self._mutate_api_token_setting(
             ["settings", "secure", "api_tokens", token_id, "%nm"],
             new_label,
-            value_type="string",
-            dry_run=dry_run
+            dry_run,
+            f"App setting 'settings.secure.api_tokens.{token_id}.%nm' updated.",
         )
 
     def regenerate_api_token_private_key(self, token_id: str, private_key: Optional[str] = None, dry_run: bool = False) -> bool:
         """Regenerate/set API token private key."""
         resolved_private_key = private_key or self._generate_token_hex()
-        ok = self.set_app_setting(
+        ok = self._mutate_api_token_setting(
             ["settings", "secure", "api_tokens", token_id, "private_key"],
             resolved_private_key,
-            value_type="string",
-            dry_run=dry_run
+            dry_run,
+            f"App setting 'settings.secure.api_tokens.{token_id}.private_key' updated.",
         )
         if ok:
             logger.info(f"New private key: {resolved_private_key}")
@@ -4357,45 +4281,18 @@ class BubbleCLI:
 
     def delete_api_token(self, token_id: str, dry_run: bool = False) -> bool:
         """Delete API token by writing null at token object path."""
-        return self.set_app_setting(
+        return self._mutate_api_token_setting(
             ["settings", "secure", "api_tokens", token_id],
-            "null",
-            value_type="auto",
-            dry_run=dry_run
+            None,
+            dry_run,
+            f"App setting 'settings.secure.api_tokens.{token_id}' updated.",
         )
 
     def _get_301_redirects(self) -> Dict[str, Any]:
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        settings = data.get("settings")
-        if not isinstance(settings, dict):
-            return {}
-        client_safe = settings.get("client_safe")
-        if not isinstance(client_safe, dict):
-            return {}
-        redirects = client_safe.get("301_redirects")
-        return redirects if isinstance(redirects, dict) else {}
+        return self._schema_lifecycle.references.redirects()
 
     def list_301_redirects(self, as_json: bool = False) -> bool:
-        redirects = self._get_301_redirects()
-        rows: List[Dict[str, Any]] = []
-        for key in sorted(redirects.keys()):
-            rule = redirects.get(key, {})
-            if not isinstance(rule, dict):
-                continue
-            rows.append({
-                "key": key,
-                "from": rule.get("%fr"),
-                "to": rule.get("to")
-            })
-
-        if as_json:
-            print(json.dumps(rows, indent=2, ensure_ascii=False))
-            return True
-
-        print(f"📋 301 redirects ({len(rows)}):")
-        for row in rows:
-            print(f"- {row['key']}: {row.get('from')} -> {row.get('to')}")
-        return True
+        return self._schema_lifecycle.settings.list_301_redirects(as_json)
 
     def create_301_redirect(
         self,
@@ -4406,37 +4303,11 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Create a 301 redirect rule."""
-        resolved_rule_key = rule_key or self.id_gen.element_id()
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            ["settings", "client_safe", "301_redirects", resolved_rule_key],
-            {
-                "%fr": from_url,
-                "to": to_url
-            },
-            intent_id=random.randint(1, 999999),
-            source_appname=""
-        )
-        if id_counter is not None:
-            pb.add_change_raw({
-                "type": "id_counter",
-                "value": int(id_counter)
-            })
-        ok = self._send_schema_payload(pb, dry_run, f"301 redirect created ({resolved_rule_key}).")
-        if ok:
-            logger.info(f"Redirect key: {resolved_rule_key}")
-        return ok
+        return self._schema_lifecycle.settings.create_301_redirect(from_url, to_url, rule_key, id_counter, dry_run)
 
     def delete_301_redirect(self, rule_key: str, dry_run: bool = False) -> bool:
         """Delete a 301 redirect rule by key."""
-        return self.set_app_setting(
-            ["settings", "client_safe", "301_redirects", rule_key],
-            "null",
-            value_type="auto",
-            dry_run=dry_run
-        )
+        return self._schema_lifecycle.settings.delete_301_redirect(rule_key, dry_run)
 
     def _settings_client_safe(self) -> Dict[str, Any]:
         data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
