@@ -87,7 +87,7 @@ extend-exclude = [
 [tool.mypy]
 python_version = "3.11"
 strict = true
-exclude = "(src/bubble_mcp/aria_runtime/(?!style_lifecycle(?:/|$))|src/bubble_mcp/figma_bridge.py)"
+exclude = "(src/bubble_mcp/aria_runtime/(?!(?:style_lifecycle|schema_lifecycle)(?:/|$))|src/bubble_mcp/figma_bridge.py)"
 
 [[tool.mypy.overrides]]
 module = ["playwright.*"]

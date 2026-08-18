@@ -79,8 +79,10 @@ from context_reference_resolver import ContextReferenceResolver
 from visual_mutations import VisualMutationService
 try:
     from .style_lifecycle import StyleLifecycleService, StyleReferenceResolver
+    from .schema_lifecycle import SchemaLifecycleService
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
     from style_lifecycle import StyleLifecycleService, StyleReferenceResolver
+    from schema_lifecycle import SchemaLifecycleService
 
 PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
     # Application rights
@@ -446,6 +448,7 @@ class BubbleCLI:
         self._cli_cache = self._load_cli_cache()
         self._cli_cache_base = copy.deepcopy(self._cli_cache)
         self._style_reference_revision = 0
+        self._schema_reference_revision = 0
 
         self.profile_name = profile_name
         self.app_version = str(app_version or "test")
@@ -466,6 +469,7 @@ class BubbleCLI:
         self._context_reference_resolver = ContextReferenceResolver(self)
         self._visual_mutations = VisualMutationService(self)
         self._style_lifecycle = StyleLifecycleService(self)
+        self._schema_lifecycle = SchemaLifecycleService(self)
 
         self.color_mapper = ColorMapper(self.discovery.data)
         # Seed with cached colors
@@ -1028,6 +1032,61 @@ class BubbleCLI:
         discovery_data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
         cache_data = self._cli_cache if isinstance(self._cli_cache, dict) else {}
         return discovery_data, cache_data
+
+    def schema_reference_snapshots(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Return detached schema snapshots so reference callers cannot mutate live state."""
+        discovery_data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        cache_data = self._cli_cache if isinstance(self._cli_cache, dict) else {}
+        return copy.deepcopy(discovery_data), copy.deepcopy(cache_data)
+
+    def schema_reference_modules_dir(self) -> Optional[str]:
+        """Return the active split-module root, if it belongs to this app."""
+        return self._bubble_modules_project_dir()
+
+    def schema_reference_profile_key(self) -> str:
+        """Return the cache profile from which schema fallback entries may be read."""
+        return self._schema_profile_key()
+
+    def normalize_schema_reference(self, value: Any) -> str:
+        """Normalize a caller-facing schema label without changing its public spelling."""
+        return self._norm_lookup(value)
+
+    def slugify_schema_reference(self, value: str) -> str:
+        """Convert an option-set shorthand into Bubble's canonical key fragment."""
+        try:
+            return self._slugify_identifier(value)
+        except ValueError:
+            return ""
+
+    def schema_reference_revision(self) -> int:
+        """Return the revision used to invalidate detached schema reference indexes."""
+        return self._schema_reference_revision
+
+    def _invalidate_schema_reference_index(self, *families: str) -> None:
+        """Advance schema snapshot state after a successful relevant projected write."""
+        self._schema_reference_revision = getattr(self, "_schema_reference_revision", 0) + 1
+        lifecycle = getattr(self, "_schema_lifecycle", None)
+        references = getattr(lifecycle, "references", None)
+        if references is not None:
+            references.invalidate(*families)
+
+    def _invalidate_schema_reference_indexes_for_changes(self, changes: List[Dict[str, Any]]) -> None:
+        """Invalidate only indexes touched by a completed schema/settings payload."""
+        families: set[str] = set()
+        for change in changes:
+            if not isinstance(change, dict):
+                continue
+            path = self._normalize_capture_path(change.get("path_array"))
+            if not path:
+                continue
+            if path[0] == "user_types":
+                families.add("user_types")
+            elif path[0] == "option_sets":
+                families.add("option_sets")
+            elif path[:3] == ["settings", "client_safe", "301_redirects"]:
+                families.add("redirects")
+        if families:
+            self._invalidate_schema_reference_index(*sorted(families))
 
     def new_style_token_payload(self) -> PayloadBuilder:
         """Create token payloads with the SDK identity used by this BubbleCLI mode."""
@@ -1847,14 +1906,15 @@ class BubbleCLI:
     def _dispatch_payload(self, pb: PayloadBuilder) -> None:
         """Send payload and opportunistically sync profile cache from emitted schema changes."""
         pb.send_to_webhook(self.webhook_url)
+        changes = getattr(pb, "changes", None)
+        normalized_changes = changes if isinstance(changes, list) else []
         try:
-            changes = getattr(pb, "changes", None)
-            normalized_changes = changes if isinstance(changes, list) else []
             self._apply_changes_to_discovery_cache(normalized_changes)
             self._sync_profile_cache_from_changes(normalized_changes)
             self.discovery.persist_disk_cache()
         except Exception as e:
             logger.warning(f"Post-write cache sync skipped: {e}")
+        self._invalidate_schema_reference_indexes_for_changes(normalized_changes)
 
     @staticmethod
     def _set_nested_cache_value(target: Dict[str, Any], path: List[str], value: Any) -> None:
@@ -4075,46 +4135,7 @@ class BubbleCLI:
 
     def _get_user_types(self, include_cache: bool = True) -> Dict[str, Any]:
         """Get user_types map from discovery, optionally merging cache fallback."""
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        source = data.get("user_types")
-        merged: Dict[str, Any] = {}
-        if isinstance(source, dict):
-            merged.update(source)
-        if include_cache:
-            cache_types = self._schema_user_types_cache()
-            if isinstance(cache_types, dict):
-                for key, value in cache_types.items():
-                    if key not in merged and isinstance(value, dict):
-                        merged[key] = value
-
-        # Fallback to bubble_modules user_types index to preserve renamed display labels.
-        project_dir = self._bubble_modules_project_dir()
-        if project_dir:
-            index_path = os.path.join(project_dir, "user_types", "__index.json")
-            try:
-                with open(index_path, "r", encoding="utf-8") as f:
-                    index_payload = json.load(f)
-                if isinstance(index_payload, dict):
-                    for key, display in index_payload.items():
-                        key_str = str(key)
-                        display_str = str(display) if isinstance(display, str) else key_str
-                        if key_str in merged:
-                            entry = merged.get(key_str)
-                            if isinstance(entry, dict):
-                                if not entry.get("%d"):
-                                    entry["%d"] = display_str
-                                if not entry.get("display"):
-                                    entry["display"] = display_str
-                                merged[key_str] = entry
-                            continue
-                        merged[key_str] = {
-                            "%d": display_str,
-                            "display": display_str,
-                            "%f3": {},
-                        }
-            except Exception:
-                pass
-        return merged
+        return self._schema_lifecycle.references.user_types(include_cache=include_cache)
 
     def _resolve_data_type_key(
         self,
@@ -4122,71 +4143,11 @@ class BubbleCLI:
         ref_kind: str = "key",
         include_cache: bool = True
     ) -> Optional[str]:
-        user_types = self._get_user_types(include_cache=include_cache)
-        if not user_types:
-            return None
-
-        kind = (ref_kind or "key").strip().lower()
-        raw_ref = str(data_type_ref or "").strip()
-        if not raw_ref:
-            return None
-        if raw_ref.lower().startswith("custom."):
-            raw_ref = raw_ref.split(".", 1)[1].strip()
-        if raw_ref.lower() in {"user", "current user", "current_user"}:
-            return "user"
-        needle = self._norm_lookup(raw_ref)
-        needle_slug = self._slugify_identifier(raw_ref)
-
-        def _match_by_display() -> Optional[str]:
-            for key, data in user_types.items():
-                if not isinstance(data, dict):
-                    continue
-                display = str(data.get("%d") or "").strip()
-                if not display:
-                    continue
-                if self._norm_lookup(display) == needle:
-                    return key
-                if needle_slug and self._slugify_identifier(display) == needle_slug:
-                    return key
-            return None
-
-        def _match_by_key_like() -> Optional[str]:
-            for key in user_types.keys():
-                key_str = str(key or "").strip()
-                if not key_str:
-                    continue
-                if self._norm_lookup(key_str) == needle:
-                    return key_str
-                if needle_slug and self._slugify_identifier(key_str) == needle_slug:
-                    return key_str
-            return None
-
-        if kind == "key":
-            if raw_ref in user_types:
-                return raw_ref
-            # Convenience fallback: try display name.
-            matched = _match_by_display()
-            if matched:
-                return matched
-            matched = _match_by_key_like()
-            if matched:
-                return matched
-            return None
-
-        if kind in {"label", "name", "display"}:
-            matched = _match_by_display()
-            if matched:
-                return matched
-            return None
-
-        if kind == "auto":
-            if raw_ref in user_types:
-                return raw_ref
-            for resolver in (_match_by_display, _match_by_key_like):
-                matched = resolver()
-                if matched:
-                    return matched
-        return None
+        return self._schema_lifecycle.references.resolve_data_type(
+            data_type_ref,
+            ref_kind=ref_kind,
+            include_cache=include_cache,
+        )
 
     def set_data_type_api_exposure(
         self,
@@ -6509,87 +6470,11 @@ class BubbleCLI:
         return tuple(sorted(tokens))
 
     def _get_option_set_values(self, option_set_key: str) -> Optional[Dict[str, Any]]:
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        option_sets = data.get("option_sets")
-        if isinstance(option_sets, dict):
-            option_set = option_sets.get(option_set_key)
-            if isinstance(option_set, dict):
-                values = option_set.get("values", {})
-                if isinstance(values, dict):
-                    return values
-
-        # Fallback to per-profile schema cache
-        cached_option_set = self._schema_option_sets_cache().get(option_set_key, {})
-        if isinstance(cached_option_set, dict):
-            values = cached_option_set.get("values", {})
-            if isinstance(values, dict):
-                return values
-
-        # Fallback to bubble_modules option set payload.
-        project_dir = self._bubble_modules_project_dir()
-        if project_dir:
-            candidate = os.path.join(project_dir, "option_sets", f"{option_set_key}.json")
-            if os.path.isfile(candidate):
-                try:
-                    with open(candidate, "r", encoding="utf-8") as f:
-                        payload = json.load(f)
-                    raw_values = payload.get("values", {}) if isinstance(payload, dict) else {}
-                    if isinstance(raw_values, dict):
-                        normalized_values: Dict[str, Any] = {}
-                        for value_key, value_data in raw_values.items():
-                            if not isinstance(value_data, dict):
-                                continue
-                            entry = dict(value_data)
-                            if "%d" not in entry and isinstance(entry.get("display"), str):
-                                entry["%d"] = entry.get("display")
-                            normalized_values[str(value_key)] = entry
-                        if normalized_values:
-                            return normalized_values
-                except Exception:
-                    pass
-        return None
+        return self._schema_lifecycle.references.option_values(option_set_key)
 
     def _get_option_sets(self, include_cache: bool = True) -> Dict[str, Any]:
         """Get option_sets map from discovery, optionally merging cache fallback."""
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        source = data.get("option_sets")
-        merged: Dict[str, Any] = {}
-        if isinstance(source, dict):
-            merged.update(source)
-        if include_cache:
-            cache_sets = self._schema_option_sets_cache()
-            if isinstance(cache_sets, dict):
-                for key, value in cache_sets.items():
-                    if key not in merged and isinstance(value, dict):
-                        merged[key] = value
-
-        # Fallback to bubble_modules index to preserve renamed display labels.
-        project_dir = self._bubble_modules_project_dir()
-        if project_dir:
-            index_path = os.path.join(project_dir, "option_sets", "__index.json")
-            try:
-                with open(index_path, "r", encoding="utf-8") as f:
-                    index_payload = json.load(f)
-                if isinstance(index_payload, dict):
-                    for key, display in index_payload.items():
-                        key_str = str(key)
-                        if key_str in merged:
-                            entry = merged.get(key_str)
-                            if isinstance(entry, dict):
-                                if not entry.get("%d") and isinstance(display, str):
-                                    entry["%d"] = display
-                                if not entry.get("display") and isinstance(display, str):
-                                    entry["display"] = display
-                                merged[key_str] = entry
-                            continue
-                        merged[key_str] = {
-                            "%d": display if isinstance(display, str) else key_str,
-                            "display": display if isinstance(display, str) else key_str,
-                            "values": self._get_option_set_values(key_str) or {},
-                        }
-            except Exception:
-                pass
-        return merged
+        return self._schema_lifecycle.references.option_sets(include_cache=include_cache)
 
     def _resolve_option_set_key(
         self,
@@ -6597,56 +6482,11 @@ class BubbleCLI:
         ref_kind: str = "key",
         include_cache: bool = True
     ) -> Optional[str]:
-        option_sets = self._get_option_sets(include_cache=include_cache)
-        if not option_sets:
-            return None
-
-        raw_ref = str(option_set_ref or "").strip()
-        if not raw_ref:
-            return None
-        needle = self._norm_lookup(raw_ref)
-        needle_trimmed = needle[3:] if needle.startswith("os:") else needle
-        needle_slug = self._slugify_identifier(needle_trimmed)
-        kind = (ref_kind or "key").strip().lower()
-
-        if kind in {"key", "auto"}:
-            if raw_ref in option_sets:
-                return raw_ref
-            if raw_ref.startswith("option."):
-                key = raw_ref.split(".", 1)[1]
-                if key in option_sets:
-                    return key
-            if raw_ref.lower().startswith("option."):
-                key = raw_ref.split(".", 1)[1]
-                if key in option_sets:
-                    return key
-            if raw_ref.lower().startswith("os:"):
-                slug = self._slugify_identifier(raw_ref.split(":", 1)[1])
-                key = f"os_{slug}" if slug else ""
-                if key in option_sets:
-                    return key
-            if raw_ref.lower().startswith("os_"):
-                normalized_key = f"os_{self._slugify_identifier(raw_ref[3:])}"
-                if normalized_key in option_sets:
-                    return normalized_key
-
-        if kind in {"label", "name", "display", "auto"}:
-            for key, data in option_sets.items():
-                if not isinstance(data, dict):
-                    continue
-                for candidate in (data.get("%d"), data.get("display"), data.get("name")):
-                    candidate_norm = self._norm_lookup(candidate)
-                    if not candidate_norm:
-                        continue
-                    if candidate_norm == needle:
-                        return key
-                    candidate_trimmed = candidate_norm[3:] if candidate_norm.startswith("os:") else candidate_norm
-                    if candidate_trimmed == needle_trimmed:
-                        return key
-                    if needle_slug and self._slugify_identifier(candidate_trimmed) == needle_slug:
-                        return key
-
-        return None
+        return self._schema_lifecycle.references.resolve_option_set(
+            option_set_ref,
+            ref_kind=ref_kind,
+            include_cache=include_cache,
+        )
 
     def _normalize_custom_state_type(self, state_type: str) -> str:
         """
@@ -10071,48 +9911,11 @@ class BubbleCLI:
         return raw
 
     def _resolve_option_value_key(self, option_set_key: str, value_ref: str, ref_kind: str = "key") -> Optional[str]:
-        values = self._get_option_set_values(option_set_key)
-        if values is None:
-            return None
-
-        kind = (ref_kind or "key").strip().lower()
-        needle = self._norm_lookup(value_ref)
-        needle_compact = re.sub(r"[\s_\-]+", "", needle)
-
-        def _matches(candidate_raw: Any) -> bool:
-            candidate = self._norm_lookup(candidate_raw)
-            if candidate == needle:
-                return True
-            candidate_compact = re.sub(r"[\s_\-]+", "", candidate)
-            return bool(candidate_compact) and candidate_compact == needle_compact
-
-        if kind == "key":
-            if value_ref in values:
-                return value_ref
-            # Convenience fallback when key is not found:
-            # try db_value first, then display label.
-            for key, data in values.items():
-                if not isinstance(data, dict):
-                    continue
-                if _matches(data.get("db_value")):
-                    return key
-            for key, data in values.items():
-                if not isinstance(data, dict):
-                    continue
-                if _matches(data.get("%d")) or _matches(data.get("display")):
-                    return key
-            return None
-
-        for key, data in values.items():
-            if not isinstance(data, dict):
-                continue
-            if kind in {"db", "db_value", "db-value"}:
-                if _matches(data.get("db_value")):
-                    return key
-            elif kind == "label":
-                if _matches(data.get("%d")) or _matches(data.get("display")):
-                    return key
-        return None
+        return self._schema_lifecycle.references.resolve_option_value(
+            option_set_key,
+            value_ref,
+            ref_kind=ref_kind,
+        )
 
     def _find_option_sets_with_value_ref(self, value_ref: str, exclude: Optional[str] = None, limit: int = 5) -> List[str]:
         needle = str(value_ref or "").strip()
