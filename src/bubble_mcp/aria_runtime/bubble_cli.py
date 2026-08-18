@@ -4006,9 +4006,10 @@ class BubbleCLI:
 
     def project_schema_data_type(self, key: str, entry: Optional[Dict[str, Any]]) -> Optional[str]:
         """Apply one completed data-type delta to discovery and profile cache before invalidation."""
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        if not isinstance(data, dict):
-            return "Post-write data type projection skipped: malformed discovery data."
+        discovery_data = self.discovery.data
+        data = discovery_data if isinstance(discovery_data, dict) else {}
+        if not isinstance(discovery_data, dict):
+            self.discovery._data = data
         user_types = data.get("user_types")
         if not isinstance(user_types, dict):
             user_types = {}

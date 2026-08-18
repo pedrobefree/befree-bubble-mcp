@@ -173,13 +173,18 @@ class DataTypeLifecycleService:
         return self._commit(payload, dry_run, f"Data API exposure for data type '{resolved}' set to {bool(enabled)}.", resolved, entry)
 
     def _resolve_type_for_write(self, value: str) -> str | None:
-        current = self._references.user_types(include_cache=False)
+        discovery, _cache = self._host.schema_reference_snapshots()
+        current = discovery.get("user_types") if isinstance(discovery, dict) else None
         raw = str(value or "").strip()
-        if not current:
-            return raw or None
+        if not isinstance(current, dict) or not current:
+            self._host.log_schema_lifecycle_error(
+                f"Could not resolve current data type '{value}': no fresh user_types metadata available."
+            )
+            return None
         resolved = self._references.resolve_data_type(raw, ref_kind="auto", include_cache=False)
-        if not resolved:
+        if not resolved or resolved not in current:
             self._host.log_schema_lifecycle_error(f"Could not resolve current data type '{value}'.")
+            return None
         return resolved
 
     def _resolve_field_for_write(self, data_type_ref: str, field_ref: str) -> tuple[str | None, str | None]:

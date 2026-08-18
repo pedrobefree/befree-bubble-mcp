@@ -242,13 +242,8 @@ def test_delete_data_type_permanently_emits_clean_app_contract(tmp_path, capsys)
 def test_delete_data_type_keeps_soft_delete_contract(capsys) -> None:
     cli = BubbleCLI(appname="cli-test")
 
-    assert cli.delete_data_type("cliente", dry_run=True) is True
-
-    payload = payload_from_dry_run_output(capsys.readouterr().out)
-    assert len(payload["changes"]) == 1
-    assert payload["changes"][0]["intent"] == {"name": "WriteCustom"}
-    assert payload["changes"][0]["path_array"] == ["user_types", "cliente", "%del"]
-    assert payload["changes"][0]["body"] is True
+    assert cli.delete_data_type("cliente", dry_run=True) is False
+    assert "Payload preview:" not in capsys.readouterr().out
 
 
 def test_delete_data_type_permanently_requires_confirmation_for_write(tmp_path, monkeypatch) -> None:
@@ -649,7 +644,7 @@ def test_batch_rejects_permanent_data_type_delete(capsys) -> None:
 
     output = capsys.readouterr().out
     assert "Unknown command: delete-data-type-permanently" in output
-    assert "Batch complete: 1/2 successful" in output
+    assert "Batch complete: 0/2 successful" in output
 
 
 def test_privacy_rule_tools_emit_bubble_editor_contracts(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]

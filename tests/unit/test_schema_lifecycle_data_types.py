@@ -186,3 +186,55 @@ def test_data_type_service_rejects_missing_current_field_and_type_references(cli
     assert cli.delete_data_field("account", "missing", dry_run=True) is False
     assert cli.create_data_field("account", "Broken", "option.Unknown", dry_run=True) is False
     assert cli.set_data_type_api_exposure("missing", True, dry_run=True) is False
+
+
+@pytest.mark.parametrize("fresh_schema", [{}, {"user_types": "malformed"}])
+def test_type_and_field_writes_fail_closed_without_fresh_user_type_metadata(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, fresh_schema: dict[str, object]
+) -> None:
+    cli.discovery._data = fresh_schema  # type: ignore[assignment]
+    cli._schema_user_types_cache()["account"] = {"%d": "Cached Account", "%f3": {}}
+    cli._invalidate_schema_reference_index("user_types")
+    before = json.loads(json.dumps(fresh_schema))
+    revision = cli.schema_reference_revision()
+
+    def unexpected_builder(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("PayloadBuilder constructed without fresh user_types metadata")
+
+    monkeypatch.setattr(cli, "new_schema_lifecycle_payload", unexpected_builder)
+
+    assert cli.rename_data_type("account", "Renamed", dry_run=True) is False
+    assert cli.delete_data_type("account", dry_run=True) is False
+    assert cli.create_data_field("account", "Status", "text", dry_run=True) is False
+    assert cli.discovery.data == before
+    assert cli.schema_reference_revision() == revision
+
+
+def test_successful_create_attaches_projected_schema_when_discovery_is_malformed(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli.discovery._data = "malformed"  # type: ignore[assignment]
+    cli._invalidate_schema_reference_index("user_types")
+    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url: None)
+
+    assert cli.create_data_type("Audit") is True
+    assert cli.discovery.data == {"user_types": {"audit": {"%d": "Audit"}}}
+    assert cli._schema_user_types_cache()["audit"] == {"%d": "Audit"}
+
+
+def test_type_writes_reject_module_fallback_without_fresh_schema(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    modules = tmp_path / "bubble_modules"
+    (modules / "user_types").mkdir(parents=True)
+    (modules / "user_types" / "__index.json").write_text(json.dumps({"account": "Module Account"}))
+    cli.discovery._data = {"user_types": {}}  # type: ignore[assignment]
+    monkeypatch.setattr(cli, "_bubble_modules_project_dir", lambda: str(modules))
+    cli._invalidate_schema_reference_index("user_types")
+
+    def unexpected_builder(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("PayloadBuilder constructed from module-only schema metadata")
+
+    monkeypatch.setattr(cli, "new_schema_lifecycle_payload", unexpected_builder)
+
+    assert cli.rename_data_type("account", "Renamed", dry_run=True) is False
