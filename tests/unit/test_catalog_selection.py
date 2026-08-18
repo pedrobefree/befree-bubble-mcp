@@ -25,6 +25,51 @@ def test_selection_report_is_identical_for_reversed_schema_input() -> None:
     assert catalog_selection_report(schemas) == catalog_selection_report(list(reversed(schemas)))
 
 
+def test_selection_report_rejects_a_missing_candidate_schema() -> None:
+    schemas = [schema for schema in list_tool_schemas() if schema["name"] != "create_text"]
+
+    report = catalog_selection_report(schemas)
+
+    assert report["ok"] is False
+    assert report["summary"]["tool_count"] == 327
+    assert report["summary"]["case_count"] == 327
+    failure = next(
+        failure
+        for failure in report["failures"]
+        if failure.get("failure_type") == "missing_schema"
+    )
+    assert {
+        "case_id": "catalog.schema.missing.create_text",
+        "failure_type": "missing_schema",
+        "expected_tool": "create_text",
+    }.items() <= failure.items()
+
+
+def test_selection_report_rejects_changed_candidate_required_args() -> None:
+    schemas = [dict(schema) for schema in list_tool_schemas()]
+    create_text = next(schema for schema in schemas if schema["name"] == "create_text")
+    input_schema = dict(create_text["inputSchema"])
+    input_schema["required"] = ["profile"]
+    create_text["inputSchema"] = input_schema
+
+    report = catalog_selection_report(schemas)
+
+    assert report["ok"] is False
+    failure = next(
+        failure
+        for failure in report["failures"]
+        if failure.get("failure_type") == "contract_mismatch"
+        and failure.get("expected_tool") == "create_text"
+    )
+    assert {
+        "case_id": "catalog.schema.contract.create_text",
+        "failure_type": "contract_mismatch",
+        "expected_tool": "create_text",
+        "essential_args": ["content", "context", "parent", "profile"],
+        "actual_required": ["profile"],
+    }.items() <= failure.items()
+
+
 def test_selection_failure_names_case_expected_and_actual_tool(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     import bubble_mcp.harness.catalog_selection as selection
 

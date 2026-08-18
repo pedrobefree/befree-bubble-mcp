@@ -47,15 +47,112 @@ def _required_names(match: Mapping[str, Any]) -> list[str]:
     return sorted(str(name) for name in required)
 
 
+def _schema_required_names(schema: Mapping[str, Any]) -> list[str]:
+    input_schema = schema.get("inputSchema")
+    if not isinstance(input_schema, Mapping):
+        return []
+    required = input_schema.get("required")
+    if not isinstance(required, list):
+        return []
+    return sorted(str(name) for name in required)
+
+
+def _schema_failure(
+    *,
+    case_id: str,
+    failure_type: str,
+    expected_tool: str,
+    actual_tool: str,
+    essential_args: list[str],
+    actual_required: list[str],
+) -> dict[str, Any]:
+    return {
+        "case_id": case_id,
+        "query": expected_tool,
+        "expected_tool": expected_tool,
+        "actual_tool": actual_tool,
+        "reordered_actual_tool": actual_tool,
+        "essential_args": essential_args,
+        "actual_required": actual_required,
+        "canonical_ok": False,
+        "reordered_ok": False,
+        "order_independent": False,
+        "failure_type": failure_type,
+    }
+
+
 def catalog_selection_report(
     tool_schemas: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Return deterministic exact-selection evidence for every exposed MCP tool."""
 
-    schemas = list_tool_schemas() if tool_schemas is None else tool_schemas
-    canonical_schemas = sorted((dict(schema) for schema in schemas), key=_schema_name)
-    records = _canonical_records(build_catalog_inventory(canonical_schemas))
+    authoritative_schemas = sorted((dict(schema) for schema in list_tool_schemas()), key=_schema_name)
+    canonical_schemas = (
+        authoritative_schemas
+        if tool_schemas is None
+        else sorted((dict(schema) for schema in tool_schemas), key=_schema_name)
+    )
+    records = _canonical_records(build_catalog_inventory(authoritative_schemas))
     inventory_tools = {record.mcp_tool for record in records if record.mcp_tool is not None}
+    essential_args_by_tool = {
+        record.mcp_tool: list(record.essential_args)
+        for record in records
+        if record.mcp_tool is not None
+    }
+    candidate_by_tool: dict[str, Mapping[str, Any]] = {}
+    candidate_counts: dict[str, int] = {}
+    for schema in canonical_schemas:
+        name = _schema_name(schema)
+        candidate_by_tool.setdefault(name, schema)
+        candidate_counts[name] = candidate_counts.get(name, 0) + 1
+
+    schema_failures: list[dict[str, Any]] = []
+    for name in sorted(inventory_tools - candidate_by_tool.keys()):
+        schema_failures.append(
+            _schema_failure(
+                case_id=f"catalog.schema.missing.{name}",
+                failure_type="missing_schema",
+                expected_tool=name,
+                actual_tool="",
+                essential_args=essential_args_by_tool[name],
+                actual_required=[],
+            )
+        )
+    for name in sorted(candidate_by_tool.keys() - inventory_tools):
+        schema_failures.append(
+            _schema_failure(
+                case_id=f"catalog.schema.extra.{name}",
+                failure_type="extra_schema",
+                expected_tool="",
+                actual_tool=name,
+                essential_args=[],
+                actual_required=_schema_required_names(candidate_by_tool[name]),
+            )
+        )
+    for name in sorted(inventory_tools & candidate_by_tool.keys()):
+        actual_required = _schema_required_names(candidate_by_tool[name])
+        if actual_required != essential_args_by_tool[name]:
+            schema_failures.append(
+                _schema_failure(
+                    case_id=f"catalog.schema.contract.{name}",
+                    failure_type="contract_mismatch",
+                    expected_tool=name,
+                    actual_tool=name,
+                    essential_args=essential_args_by_tool[name],
+                    actual_required=actual_required,
+                )
+            )
+    for name in sorted(name for name, count in candidate_counts.items() if count > 1):
+        schema_failures.append(
+            _schema_failure(
+                case_id=f"catalog.schema.duplicate.{name}",
+                failure_type="duplicate_schema",
+                expected_tool=name if name in inventory_tools else "",
+                actual_tool=name,
+                essential_args=essential_args_by_tool.get(name, []),
+                actual_required=_schema_required_names(candidate_by_tool[name]),
+            )
+        )
     results: list[dict[str, Any]] = []
 
     for record in records:
@@ -92,7 +189,7 @@ def catalog_selection_report(
         )
 
     results.sort(key=lambda result: str(result["expected_tool"]))
-    failures = [
+    failures = schema_failures + [
         result
         for result in results
         if not (
@@ -110,6 +207,7 @@ def catalog_selection_report(
         "missing_cases": max(0, len(inventory_tools) - len(results)),
         "failed_cases": len(failures),
     }
+    failures.sort(key=lambda result: str(result["case_id"]))
     return {
         "ok": not failures and summary["missing_cases"] == 0 and len(results) == len(inventory_tools),
         "summary": summary,

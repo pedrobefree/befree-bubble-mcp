@@ -1358,6 +1358,12 @@ def test_tool_search_exact_name_is_independent_of_catalog_order() -> None:
     assert forward["matches"][0]["name"] == "create_text"
 
 
+def test_tool_search_space_separated_query_retains_pre_bonus_ranking() -> None:
+    result = search_tool_catalog("bubble branch create", limit=1)
+
+    assert result["matches"][0]["name"] == "bubble_branch_contributors"
+
+
 def test_tool_search_ignores_generic_action_noise_when_specific_terms_exist() -> None:
     response = handle_request(
         {

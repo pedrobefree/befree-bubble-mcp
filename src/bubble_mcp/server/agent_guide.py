@@ -1637,7 +1637,8 @@ def search_tool_catalog(
 
     from bubble_mcp.server.schemas import list_tool_schemas
 
-    normalized_query = _normalize_text(str(query or "").strip())
+    raw_query = str(query or "").strip()
+    normalized_query = _normalize_text(raw_query)
     raw_terms = _query_terms(normalized_query, prune_generic_actions=False)
     terms = _query_terms(normalized_query)
     action_prefixes = _action_prefixes(raw_terms)
@@ -1670,7 +1671,7 @@ def search_tool_catalog(
             normalized_name = _normalize_text(name)
             normalized_description = _normalize_text(description)
             normalized_properties = [_normalize_text(property_name) for property_name in property_names]
-            if normalized_query == normalized_name:
+            if raw_query == name:
                 score += 100
             for term in terms:
                 if term == normalized_name:
