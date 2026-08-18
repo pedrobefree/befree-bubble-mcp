@@ -3466,6 +3466,70 @@ def test_legacy_catalog_tools_expose_specific_family_schemas() -> None:
         "auto_binding",
     ]
 
+
+def test_privacy_tool_schemas_preserve_required_selectors_preview_defaults_and_delete_confirmation() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 171, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    expected_required = {
+        "list_privacy_rules": ["profile", "data_type_ref"],
+        "create_privacy_rule": ["profile", "data_type_ref"],
+        "delete_privacy_rule": ["profile", "data_type_ref", "rule_key"],
+        "set_privacy_rule_name": ["profile", "data_type_ref", "rule_key", "new_name"],
+        "set_privacy_rule_condition": ["profile", "data_type_ref", "rule_key", "condition_json"],
+        "set_privacy_rule_permission": ["profile", "data_type_ref", "rule_key", "permission", "value"],
+        "set_privacy_rule_field_visibility": ["profile", "data_type_ref", "rule_key"],
+        "set_privacy_rule_auto_binding": ["profile", "data_type_ref", "rule_key", "auto_binding"],
+    }
+    for name, required in expected_required.items():
+        schema = tools[name]["inputSchema"]
+        assert schema["required"] == required
+        assert schema["properties"]["dry_run"]["default"] is True
+        assert schema["properties"]["profile"]["description"]
+        assert "data type" in schema["properties"]["data_type_ref"]["description"].lower()
+
+    create = tools["create_privacy_rule"]["inputSchema"]["properties"]
+    for field in [
+        "rule_key",
+        "rule_name",
+        "view_all",
+        "view_attachments",
+        "search_for",
+        "auto_binding",
+        "view_fields",
+        "binding_fields",
+        "condition_json",
+        "include_everyone_default",
+        "id_counter",
+    ]:
+        assert create[field]["description"]
+    assert create["include_everyone_default"]["default"] is True
+    assert "field_name_text" in create["view_fields"]["description"]
+    assert "field_name_text" in create["binding_fields"]["description"]
+
+    for name in [
+        "delete_privacy_rule",
+        "set_privacy_rule_name",
+        "set_privacy_rule_condition",
+        "set_privacy_rule_permission",
+        "set_privacy_rule_field_visibility",
+        "set_privacy_rule_auto_binding",
+    ]:
+        properties = tools[name]["inputSchema"]["properties"]
+        assert properties["rule_key"]["description"]
+
+    delete = tools["delete_privacy_rule"]
+    assert delete["annotations"]["destructiveHint"] is True
+    assert delete["inputSchema"]["properties"]["confirm"]["default"] is False
+    assert "destructive" in delete["inputSchema"]["properties"]["confirm"]["description"].lower()
+    assert "confirm" not in delete["inputSchema"]["required"]
+
+    visibility = tools["set_privacy_rule_field_visibility"]["inputSchema"]["properties"]
+    binding = tools["set_privacy_rule_auto_binding"]["inputSchema"]["properties"]
+    assert "field_name_text" in visibility["view_fields"]["description"]
+    assert "field_name_text" in binding["binding_fields"]["description"]
+
     list_styles = tools["list_styles"]["inputSchema"]
     assert "execute" not in list_styles["properties"]
     assert "payload" not in list_styles["properties"]

@@ -49,6 +49,7 @@ class PrivacyLifecycleService:
         view_fields: Optional[Any] = None, binding_fields: Optional[Any] = None, condition_json: Optional[Any] = None,
         include_everyone_default: bool = True, id_counter: Optional[int] = None, dry_run: bool = False,
     ) -> bool:
+        parsed_id_counter = int(id_counter) if id_counter is not None else None
         parsed_auto_binding = self._parse_bool(auto_binding, "auto_binding")
         permissions: dict[str, Any] = {
             "view_all": self._parse_bool(view_all, "view_all"),
@@ -79,8 +80,8 @@ class PrivacyLifecycleService:
         if add_default:
             self._change(payload, ["user_types", data_type_key, "privacy_role", "everyone"], self._default_everyone_rule(data_type_key))
         self._change(payload, ["user_types", data_type_key, "privacy_role", resolved_rule_key], rule_payload)
-        if id_counter is not None:
-            payload.add_change_raw({"type": "id_counter", "value": int(id_counter)})
+        if parsed_id_counter is not None:
+            payload.add_change_raw({"type": "id_counter", "value": parsed_id_counter})
         return self._commit(payload, dry_run, f"Privacy rule '{resolved_rule_key}' created on '{data_type_key}'.", data_type_key, resolved_rule_key, rule_payload)
 
     def delete_privacy_rule(self, data_type_key: str, rule_key: str, dry_run: bool = False) -> bool:

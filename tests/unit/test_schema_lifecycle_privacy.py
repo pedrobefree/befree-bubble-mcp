@@ -53,9 +53,26 @@ def test_privacy_boolean_parser_accepts_public_inputs(cli: BubbleCLI, capsys: py
     lambda instance: instance.set_privacy_rule_field_visibility("account", "members", view_fields="[bad", dry_run=True),
 ])
 def test_privacy_rejects_malformed_input_before_payload_construction(cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, operation: object) -> None:
-    monkeypatch.setattr("bubble_mcp.aria_runtime.schema_lifecycle.privacy.PayloadBuilder", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("payload constructed")))
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload constructed")),
+    )
     with pytest.raises(ValueError):
         operation(cli)  # type: ignore[operator]
+
+
+def test_privacy_create_rejects_malformed_id_counter_before_host_payload_factory(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload constructed")),
+    )
+
+    with pytest.raises(ValueError):
+        cli.create_privacy_rule("account", id_counter="not-an-integer", dry_run=True)  # type: ignore[arg-type]
 
 
 def test_successful_privacy_mutation_projects_only_rule_and_saves_once(cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch) -> None:
