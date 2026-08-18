@@ -1398,6 +1398,57 @@ def test_tool_search_exact_raw_name_fast_paths_only_the_matching_schema(monkeypa
     assert compacted == ["create_text"]
 
 
+def test_tool_search_exact_name_with_limit_two_retains_ranked_matches() -> None:
+    schemas = [
+        {
+            "name": "create_text",
+            "description": "Create text.",
+            "inputSchema": {"properties": {}, "required": []},
+            "annotations": {},
+        },
+        {
+            "name": "another_create_text",
+            "description": "Create text.",
+            "inputSchema": {"properties": {}, "required": []},
+            "annotations": {},
+        },
+    ]
+
+    result = search_tool_catalog("create_text", limit=2, tool_schemas=schemas)
+
+    assert [match["name"] for match in result["matches"]] == ["create_text", "another_create_text"]
+
+
+def test_tool_search_duplicate_exact_names_use_full_ranking_path(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    schemas = [
+        {
+            "name": "create_text",
+            "description": "First candidate.",
+            "inputSchema": {"properties": {}, "required": []},
+            "annotations": {},
+        },
+        {
+            "name": "create_text",
+            "description": "Second candidate.",
+            "inputSchema": {"properties": {}, "required": []},
+            "annotations": {},
+        },
+    ]
+    compacted: list[str] = []
+    real_compact = agent_guide_module._compact_tool_schema
+
+    def record_compact(schema):  # type: ignore[no-untyped-def]
+        compacted.append(str(schema["description"]))
+        return real_compact(schema)
+
+    monkeypatch.setattr(agent_guide_module, "_compact_tool_schema", record_compact)
+
+    result = search_tool_catalog("create_text", limit=1, tool_schemas=schemas)
+
+    assert result["matches"][0]["description"] == "First candidate."
+    assert compacted == ["First candidate.", "Second candidate."]
+
+
 def test_tool_search_space_separated_query_retains_pre_bonus_ranking() -> None:
     result = search_tool_catalog("bubble branch create", limit=1)
 

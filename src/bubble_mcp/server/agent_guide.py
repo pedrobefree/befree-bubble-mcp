@@ -1707,8 +1707,9 @@ def search_tool_catalog(
     project_transfer_query = _looks_like_project_transfer(normalized_query)
     max_results = min(max(int(limit or 8), 1), 25)
     tools = list_tool_schemas() if tool_schemas is None else [dict(schema) for schema in tool_schemas]
-    exact_tool = next((tool for tool in tools if raw_query == str(tool.get("name") or "")), None)
-    if exact_tool is not None:
+    exact_tools = [tool for tool in tools if raw_query == str(tool.get("name") or "")]
+    if max_results == 1 and len(exact_tools) == 1:
+        exact_tool = exact_tools[0]
         exact_match = _score_tool_catalog_match(
             exact_tool,
             raw_query=raw_query,
