@@ -51,7 +51,8 @@ def cli_catalog_parity_report(catalog_names: Iterable[str]) -> dict[str, object]
     """Compare Bubble-operation CLI commands with canonical or aliased MCP tools."""
 
     records = build_catalog_inventory(
-        {"name": str(name), "inputSchema": {}} for name in catalog_names
+        ({"name": str(name), "inputSchema": {}} for name in catalog_names),
+        strict=False,
     )
     direct = [
         {"command": record.legacy_command, "tool": record.mcp_tool}
@@ -74,13 +75,21 @@ def cli_catalog_parity_report(catalog_names: Iterable[str]) -> dict[str, object]
         and record.legacy_command is not None
         and record.reason is not None
     ]
-    missing: list[dict[str, str]] = []
+    mapped_commands = {
+        record.legacy_command for record in records if record.legacy_command is not None
+    }
+    missing = [
+        {"command": command, "candidate_tool": command.replace("-", "_")}
+        for command in legacy_cli_commands()
+        if command not in mapped_commands
+    ]
     mcp_only_count = sum(record.relationship == "mcp_only" for record in records)
     mcp_tool_count = len({record.mcp_tool for record in records if record.mcp_tool is not None})
 
     return {
         "ok": not missing,
-        "cli_command_count": sum(record.legacy_command is not None for record in records),
+        "cli_command_count": sum(record.legacy_command is not None for record in records)
+        + len(missing),
         "direct_match_count": len(direct),
         "alias_count": len(aliases),
         "excluded_count": len(excluded),

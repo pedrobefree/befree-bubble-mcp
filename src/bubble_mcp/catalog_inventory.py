@@ -46,8 +46,13 @@ def build_catalog_inventory(
     tool_schemas: Iterable[Mapping[str, Any]],
     *,
     cli_commands: Iterable[str] | None = None,
+    strict: bool = True,
 ) -> tuple[CatalogInventoryRecord, ...]:
-    """Build a complete, stable mapping of MCP tools and legacy CLI commands."""
+    """Build a stable mapping of MCP tools and legacy CLI commands.
+
+    Strict construction fails closed when a legacy command cannot be mapped.
+    Diagnostic callers may opt out to retain records for the mapped surface.
+    """
 
     from bubble_mcp.catalog_audit import (
         LEGACY_CLI_ALIASES,
@@ -93,9 +98,11 @@ def build_catalog_inventory(
         alias_target = LEGACY_CLI_ALIASES.get(command)
         if alias_target is not None:
             if alias_target not in tools:
-                raise ValueError(
-                    f"legacy CLI alias target is absent: {command} -> {alias_target}"
-                )
+                if strict:
+                    raise ValueError(
+                        f"legacy CLI alias target is absent: {command} -> {alias_target}"
+                    )
+                continue
             mapped_tools.add(alias_target)
             records.append(
                 CatalogInventoryRecord(
@@ -126,7 +133,8 @@ def build_catalog_inventory(
             )
             continue
 
-        raise ValueError(f"unmapped legacy CLI command: {command}")
+        if strict:
+            raise ValueError(f"unmapped legacy CLI command: {command}")
 
     for name, schema in tools.items():
         if name not in mapped_tools:
