@@ -156,6 +156,23 @@ def _reusable_index_paths(data: Dict[str, Any]) -> Dict[str, List[tuple[str, Lis
     return paths
 
 
+def _reusable_display_names(data: Dict[str, Any]) -> Dict[str, str]:
+    """Map reusable definition ids to display names via _index.custom_name_to_id."""
+    index = _pick_dict(data, "_index")
+    raw_names = _pick_dict(index, "custom_name_to_id")
+    names: Dict[str, str] = {}
+    for index_name, raw in raw_names.items():
+        if isinstance(raw, dict):
+            reusable_id = str(raw.get("custom_id") or raw.get("id") or index_name).strip()
+            display = str(raw.get("display") or raw.get("%d") or raw.get("name") or raw.get("%nm") or index_name).strip()
+        else:
+            reusable_id = str(raw or index_name).strip()
+            display = str(index_name).strip()
+        if reusable_id and display:
+            names.setdefault(reusable_id, display)
+    return names
+
+
 def _merge_missing_definition(target: Dict[str, Any], incoming: Dict[str, Any]) -> None:
     for key, value in incoming.items():
         current = target.get(key)
@@ -222,13 +239,15 @@ def _export_indexed_reusable_definitions(
     data: Dict[str, Any],
     pretty: bool,
     write_index: bool,
-) -> None:
+) -> Dict[str, int]:
     indexed_paths = _reusable_index_paths(data)
     material_definitions = _reusable_material_definitions(data)
+    display_names = _reusable_display_names(data)
     reusable_keys = list(material_definitions)
     reusable_keys.extend(key for key in indexed_paths if key not in material_definitions)
+    counts = {"material": len(material_definitions), "index_only": 0}
     if not reusable_keys:
-        return
+        return counts
 
     section_dir = out_dir / "element_definitions"
     root_index_path = section_dir / "__index.json"
@@ -243,11 +262,20 @@ def _export_indexed_reusable_definitions(
         group_dir.mkdir(parents=True, exist_ok=True)
         if not definition:
             definition["_inferred_from_index"] = True
+            counts["index_only"] += 1
         definition.setdefault("type", group_name)
         for object_id, parts in indexed_paths.get(reusable_key, []):
             _materialize_index_path(definition, object_id, parts)
 
-        display_name = _pick_label(definition) or reusable_key
+        display_name = _pick_label(definition)
+        if not display_name:
+            # Sparse exports omit the definition payload; the editor index still
+            # knows the reusable's display name. These files are derived (never
+            # merged back), so enriching them cannot affect round-trips.
+            display_name = display_names.get(reusable_key, "")
+            if display_name:
+                definition["name"] = display_name
+        display_name = display_name or reusable_key
         label = f"{group_name}:{display_name}"
         root_index[reusable_key] = label
         if group_name not in group_indexes:
@@ -263,6 +291,8 @@ def _export_indexed_reusable_definitions(
         _dump_json(root_index_path, root_index, pretty)
         for group_name, group_index in group_indexes.items():
             _dump_json(section_dir / group_name / "__index.json", group_index, pretty)
+    return counts
+
 
 def _slugify(value: str) -> str:
     if not value:
@@ -834,7 +864,7 @@ def split_app(
 
     _dump_json(out_dir / "root.json", root, pretty)
     _dump_json(out_dir / "manifest.json", manifest, True)
-    _export_indexed_reusable_definitions(
+    reusable_counts = _export_indexed_reusable_definitions(
         out_dir,
         data,
         pretty=pretty,
@@ -845,6 +875,18 @@ def split_app(
 
     print(f"Split complete: {input_path} -> {out_dir}")
     print(f"Sections: {', '.join(sections.keys())}")
+    if reusable_counts["material"] or reusable_counts["index_only"]:
+        print(
+            "Reusable definitions: "
+            f"{reusable_counts['material']} material, "
+            f"{reusable_counts['index_only']} index-only"
+        )
+    if reusable_counts["index_only"] > reusable_counts["material"]:
+        print(
+            "WARNING: most reusable definitions were inferred from _index.id_to_path; "
+            "the .bubble export is missing element_definitions payloads (sparse export). "
+            "Check the export source/version before trusting element_definitions/CustomDefinition contents."
+        )
 
 
 def merge_app(

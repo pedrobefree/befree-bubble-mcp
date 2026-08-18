@@ -602,10 +602,36 @@ Within the split modules, reusable definition roots are stored under
 `element_definitions/ReusableElement/` directory is not the definition source;
 `ReusableElement` identifies instances placed on pages.
 
+Version resolution: when `--app-version` is omitted, the detector uses the
+profile's configured `app_version`, then the captured session's `app_version`,
+and only then falls back to `test`. Pass `--app-version <branch-id>` explicitly
+to export a specific branch (for example a staging branch id). Every successful
+export download writes a `<appId>.bubble.meta.json` sidecar recording the URL,
+version, byte size, and SHA-256 so the branch that produced the cached export
+can be audited later.
+
 ```bash
 bubble-mcp context detect --profile my-app --app-id my-bubble-app --force
 bubble-mcp context detect --profile my-app --app-id my-bubble-app --bubble-file ./app.bubble
 bubble-mcp context detect --profile my-app --app-id my-bubble-app --consolelog-file ./consolelog-app.txt
+```
+
+## `bubble-mcp context inspect-bubble`
+
+Diagnoses a `.bubble` export without mutating anything. The report lists the
+top-level sections and entry counts, version hints and the download provenance
+sidecar (branch/version, URL, hash), and a reusable-definition breakdown:
+how many definitions carry material payloads per source key
+(`element_definitions`, `%ed`, `CustomDefinition`, `custom_definitions`),
+how many exist only in `_index.id_to_path` (the ids that split into
+`_inferred_from_index` skeleton modules), and whether reusable-looking payloads
+sit under unexpected top-level roots. Use it to compare a suspicious export
+against a healthy one when `element_definitions/CustomDefinition/` files come
+out sparse.
+
+```bash
+bubble-mcp context inspect-bubble --profile my-app
+bubble-mcp context inspect-bubble --file ~/.config/bubble-mcp/contexts/smoke/bovichain-g3.bubble
 ```
 
 ## `bubble-mcp eval run`

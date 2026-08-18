@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -57,6 +58,22 @@ class DetectionResult:
             "summary": self.summary,
             "attempts": self.attempts,
         }
+
+
+def _resolve_app_version(
+    requested: str,
+    configured_profile: BubbleProfile | None,
+    session: BubbleSessionData | None,
+) -> str:
+    """Resolve the export/crawl app version: explicit arg > profile > session > test."""
+    requested = str(requested or "").strip()
+    if requested:
+        return requested
+    if configured_profile and str(configured_profile.app_version or "").strip():
+        return str(configured_profile.app_version).strip()
+    if session and str(session.app_version or "").strip():
+        return str(session.app_version).strip()
+    return "test"
 
 
 def context_cache_dir() -> Path:
@@ -130,7 +147,7 @@ def detect_project_context(
     *,
     profile: str,
     app_id: str | None = None,
-    app_version: str = "test",
+    app_version: str = "",
     force: bool = False,
     output: Path | None = None,
     bubble_file: Path | None = None,
@@ -150,6 +167,17 @@ def detect_project_context(
     ).strip()
     if not resolved_app_id:
         raise ValueError("Context detection requires --app-id or a profile/session with app_id.")
+
+    requested_app_version = str(app_version or "").strip()
+    app_version = _resolve_app_version(requested_app_version, configured_profile, session)
+    attempts.append(
+        {
+            "source": "app_version_resolution",
+            "ok": True,
+            "app_version": app_version,
+            "requested": requested_app_version or None,
+        }
+    )
 
     canonical_context_path = default_context_path(profile, resolved_app_id)
     if canonical_context_path.exists() and not force:
@@ -908,16 +936,57 @@ def _try_download_bubble_export(
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _write_bubble_export_meta(
+        target_path,
+        url=export_url,
+        app_id=app_id,
+        app_version=version,
+        profile=profile,
+        raw_bytes=content,
+    )
     attempts.append(
         {
             "source": "downloaded_bubble",
             "ok": True,
             "url": export_url,
+            "app_version": version,
             "path": str(target_path),
             "bytes": len(content),
         }
     )
     return target_path
+
+
+def bubble_export_meta_path(export_path: Path) -> Path:
+    return export_path.with_name(export_path.name + ".meta.json")
+
+
+def _write_bubble_export_meta(
+    export_path: Path,
+    *,
+    url: str,
+    app_id: str,
+    app_version: str,
+    profile: str,
+    raw_bytes: bytes,
+) -> None:
+    """Record which branch/version produced the cached export, for later audit."""
+    meta = {
+        "url": url,
+        "app_id": app_id,
+        "app_version": app_version,
+        "profile": profile,
+        "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "bytes": len(raw_bytes),
+        "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+        "source": "https://bubble.io/appeditor/export",
+    }
+    try:
+        bubble_export_meta_path(export_path).write_text(
+            json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    except OSError:
+        pass
 
 
 def _export_headers(session: BubbleSessionData) -> dict[str, str]:
