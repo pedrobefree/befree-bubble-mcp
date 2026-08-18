@@ -18,7 +18,11 @@ from bubble_mcp.browser_automation import (
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.converters.html.converter import html_to_plan
 from bubble_mcp.context.importers import import_context_artifact
-from bubble_mcp.context.detector import default_bubble_export_path, detect_project_context
+from bubble_mcp.context.detector import (
+    default_bubble_export_path,
+    detect_project_context,
+    hydrate_profile_reusables,
+)
 from bubble_mcp.context.export_inspect import inspect_bubble_export
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import context_find_payload
@@ -396,6 +400,20 @@ def command_context_detect(args: argparse.Namespace) -> int:
     )
     emit_json(result.to_dict())
     return 0
+
+
+def command_context_hydrate_reusables(args: argparse.Namespace) -> int:
+    ids = [item.strip() for item in str(args.ids or "").split(",") if item.strip()]
+    report = hydrate_profile_reusables(
+        profile=args.profile,
+        app_id=args.app_id or None,
+        app_version=args.app_version,
+        ids=ids or None,
+        batch_size=args.batch_size,
+        bubble_file=Path(args.file) if args.file else None,
+    )
+    emit_json({"ok": not report.get("failed"), **report})
+    return 0 if not report.get("failed") else 1
 
 
 def command_context_inspect_bubble(args: argparse.Namespace) -> int:
@@ -1972,6 +1990,25 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_bubble_parser.add_argument("--app-id", default="")
     inspect_bubble_parser.add_argument("--sample-limit", type=int, default=20)
     inspect_bubble_parser.set_defaults(func=command_context_inspect_bubble)
+
+    hydrate_parser = context_subparsers.add_parser(
+        "hydrate-reusables",
+        help=(
+            "Deterministically fetch missing reusable definitions from the editor path API, "
+            "merge them into the cached .bubble export, re-split modules, and refresh context."
+        ),
+    )
+    hydrate_parser.add_argument("--profile", required=True)
+    hydrate_parser.add_argument("--app-id", default="")
+    hydrate_parser.add_argument(
+        "--app-version",
+        default="",
+        help="Bubble version/branch id. Defaults to the profile's app_version, then the session's, then 'test'.",
+    )
+    hydrate_parser.add_argument("--ids", default="", help="Comma-separated reusable ids. Defaults to every index-only id.")
+    hydrate_parser.add_argument("--batch-size", type=int, default=10)
+    hydrate_parser.add_argument("--file", default="", help="Explicit .bubble path. Defaults to the profile's cached export.")
+    hydrate_parser.set_defaults(func=command_context_hydrate_reusables)
 
     plan_parser = subparsers.add_parser("plan", help="Create a Bubble plan.")
     plan_parser.add_argument("message")

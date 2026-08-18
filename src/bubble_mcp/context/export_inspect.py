@@ -104,11 +104,19 @@ def inspect_bubble_export(path: Path, *, sample_limit: int = 20) -> dict[str, An
         wrapped = True
 
     id_to_path = _obj(_obj(app.get("_index")).get("id_to_path"))
+    # A real reusable owns a length-2 root entry (%ed.<id>). Ids seen only in
+    # deeper paths with no root entry are stale/orphaned references.
     index_reusable_ids: set[str] = set()
+    deep_reusable_ids: set[str] = set()
     for encoded_path in id_to_path.values():
         parts = _split_path(encoded_path)
-        if len(parts) >= 2 and parts[0] in REUSABLE_INDEX_ROOTS and parts[1] != "length":
+        if len(parts) < 2 or parts[0] not in REUSABLE_INDEX_ROOTS or parts[1] == "length":
+            continue
+        if len(parts) == 2:
             index_reusable_ids.add(parts[1])
+        else:
+            deep_reusable_ids.add(parts[1])
+    orphan_ids = sorted(deep_reusable_ids - index_reusable_ids)
 
     material_by_source: dict[str, int] = {}
     material_ids: set[str] = set()
@@ -171,11 +179,18 @@ def inspect_bubble_export(path: Path, *, sample_limit: int = 20) -> dict[str, An
             "material_count": material_count,
             "index_reusable_count": len(index_reusable_ids),
             "index_only_count": index_only_count,
+            "orphan_index_ref_count": len(orphan_ids),
             "named_in_index_count": len(names),
             "index_only_sample": [
                 {"id": reusable_id, "name": names.get(reusable_id)} for reusable_id in index_only[:sample_limit]
             ],
             "sparse_export": sparse,
+            "hint": (
+                "Run `bubble-mcp context hydrate-reusables --profile <p>` to fetch the missing "
+                "definitions from the editor path API."
+                if sparse
+                else None
+            ),
         },
         "reusable_payloads_under_unexpected_roots": suspect_roots,
         "verdict": (

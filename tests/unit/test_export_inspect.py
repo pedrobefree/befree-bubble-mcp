@@ -42,6 +42,30 @@ def test_inspect_reports_sparse_export_with_named_index_only_reusables(tmp_path)
     assert report["verdict"].startswith("sparse:")
 
 
+def test_inspect_separates_orphan_index_refs_from_real_reusables(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    path = _write(
+        tmp_path,
+        {
+            "_id": "app",
+            "element_definitions": {},
+            "_index": {
+                "id_to_path": {
+                    "rootReal": "%ed.reReal",
+                    "childReal": "%ed.reReal.%el.child",
+                    "ghostAction": "%ed.reGhost.%wf.wfX.actions.0",
+                }
+            },
+        },
+    )
+
+    report = inspect_bubble_export(path)
+
+    assert report["reusables"]["index_reusable_count"] == 1
+    assert report["reusables"]["index_only_count"] == 1
+    assert report["reusables"]["orphan_index_ref_count"] == 1
+    assert report["reusables"]["hint"] and "hydrate-reusables" in report["reusables"]["hint"]
+
+
 def test_inspect_reports_material_export_and_provenance_meta(tmp_path) -> None:  # type: ignore[no-untyped-def]
     path = _write(
         tmp_path,

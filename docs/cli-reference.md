@@ -629,9 +629,39 @@ sit under unexpected top-level roots. Use it to compare a suspicious export
 against a healthy one when `element_definitions/CustomDefinition/` files come
 out sparse.
 
+The breakdown separates real reusables (ids with a length-2 `%ed.<id>` root
+entry) from `orphan_index_ref_count`: ids that appear only inside deeper
+`%ed.<id>.…` paths with no resolvable root node. Orphans are stale index
+references the editor path API returns null for; they are not hydrated and no
+skeleton module is written for them.
+
 ```bash
 bubble-mcp context inspect-bubble --profile my-app
 bubble-mcp context inspect-bubble --file ~/.config/bubble-mcp/contexts/smoke/bovichain-g3.bubble
+```
+
+## `bubble-mcp context hydrate-reusables`
+
+Fills in reusable definitions that Bubble's export endpoint omits for large apps.
+The endpoint ships every reusable id in `_index.id_to_path` but leaves
+`element_definitions` almost empty, so the raw export splits into
+`_inferred_from_index` skeletons. This command fetches each missing definition
+**deterministically** from the editor path API
+(`/appeditor/load_multiple_paths` + `/appeditor/load_single_path`, the same
+source the Bubble editor uses), merges the full payloads (properties, elements,
+workflows) into the cached `.bubble`, re-splits the modules, and refreshes the
+compact context. No LLM is involved. Detection runs it automatically after every
+export download; run it by hand to re-hydrate an existing cache.
+
+The path API addresses definitions by raw token (`%ed`) and encodes each path
+segment with the editor's Crockford base32 (`encode5`) before requesting
+`load_single_path`. The command honors the profile's `app_version` (e.g. the
+staging branch id), reports `hydrated`/`failed`/`orphan_index_refs`, and records
+a `hydration` block in the export's `.meta.json` sidecar.
+
+```bash
+bubble-mcp context hydrate-reusables --profile my-app
+bubble-mcp context hydrate-reusables --profile my-app --ids bVTOc1,b4rqI
 ```
 
 ## `bubble-mcp eval run`

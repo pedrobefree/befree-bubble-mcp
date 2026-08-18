@@ -147,10 +147,22 @@ def _reusable_index_paths(data: Dict[str, Any]) -> Dict[str, List[tuple[str, Lis
     index = _pick_dict(data, "_index")
     id_to_path = _pick_dict(index, "id_to_path")
     reusable_roots = {"%ed", "element_definitions", "CustomDefinition", "custom_definitions"}
+    # A real reusable definition owns a length-2 root entry (%ed.<id>). Ids seen
+    # only inside deeper paths (%ed.<id>.%wf.…) with no root entry are stale
+    # references the editor can no longer resolve; skip them so the split does not
+    # emit orphan _inferred_from_index skeletons for definitions that don't exist.
+    root_ids: set[str] = set()
+    for raw_path in id_to_path.values():
+        parts = _split_path_tokens(raw_path)
+        if len(parts) == 2 and parts[0] in reusable_roots and parts[1] != "length":
+            root_ids.add(parts[1])
+
     paths: Dict[str, List[tuple[str, List[str]]]] = {}
     for object_id, raw_path in id_to_path.items():
         parts = _split_path_tokens(raw_path)
         if len(parts) < 2 or parts[0] not in reusable_roots or parts[1] == "length":
+            continue
+        if parts[1] not in root_ids:
             continue
         paths.setdefault(parts[1], []).append((str(object_id), parts))
     return paths

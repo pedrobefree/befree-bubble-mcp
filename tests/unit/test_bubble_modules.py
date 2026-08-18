@@ -232,6 +232,30 @@ def test_split_reports_sparse_reusable_counts(tmp_path, capsys) -> None:  # type
     assert "WARNING: most reusable definitions were inferred" in output
 
 
+def test_split_skips_orphan_deep_only_reusable_references(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # reGhost appears only inside a deep %ed path with no length-2 root entry:
+    # it is a stale reference the editor cannot resolve, so no skeleton file.
+    modules = _split(
+        tmp_path,
+        {
+            "_id": "sparse-app",
+            "_index": {
+                "id_to_path": {
+                    "rootReal": "%ed.reReal",
+                    "ghostAction": "%ed.reGhost.%wf.wfX.actions.0",
+                }
+            },
+        },
+    )
+    definitions = modules / "element_definitions" / "CustomDefinition"
+    assert (definitions / "reReal.json").exists()
+    assert not (definitions / "reGhost.json").exists()
+    index = json.loads(
+        (modules / "element_definitions" / "__index.json").read_text(encoding="utf-8")
+    )
+    assert set(index) == {"reReal"}
+
+
 def test_split_force_removes_stale_index_only_reusable_modules(tmp_path) -> None:  # type: ignore[no-untyped-def]
     modules = _split(
         tmp_path,
