@@ -54,6 +54,9 @@ class PrivacyLifecycleService:
         resolved_type = self._resolve_current_type(data_type_key)
         if not resolved_type:
             return False
+        current_rules = self._current_privacy_rules(resolved_type)
+        if current_rules is None:
+            return False
         permissions: dict[str, Any] = {
             "view_all": self._parse_bool(view_all, "view_all"),
             "view_attachments": self._parse_bool(view_attachments, "view_attachments"),
@@ -78,7 +81,7 @@ class PrivacyLifecycleService:
         if condition_json is not None:
             rule_payload["%c"] = self._parse_json_value(condition_json, "condition_json")
         resolved_rule_key = rule_key or self._next_rule_key(resolved_type)
-        add_default = self._parse_bool(include_everyone_default, "include_everyone_default") and not self._rules(resolved_type, include_cache=False)
+        add_default = self._parse_bool(include_everyone_default, "include_everyone_default") and not current_rules
         payload = self._payload()
         if add_default:
             self._change(payload, ["user_types", resolved_type, "privacy_role", "everyone"], self._default_everyone_rule(resolved_type))
@@ -115,7 +118,7 @@ class PrivacyLifecycleService:
             print("❌ Missing privacy field visibility change: pass view_all and/or view_fields.")
             return False
         parsed_view_all = self._parse_bool(view_all, "view_all") if view_all is not None else None
-        resolved_type = self._resolve_existing_rule(data_type_key, rule_key)
+        resolved_type = self._resolve_permission_rule(data_type_key, rule_key)
         if not resolved_type:
             return False
         try:
@@ -133,7 +136,7 @@ class PrivacyLifecycleService:
         self, data_type_key: str, rule_key: str, auto_binding: bool, binding_fields: Optional[Any] = None, dry_run: bool = False,
     ) -> bool:
         parsed_auto_binding = self._parse_bool(auto_binding, "auto_binding")
-        resolved_type = self._resolve_existing_rule(data_type_key, rule_key)
+        resolved_type = self._resolve_permission_rule(data_type_key, rule_key)
         if not resolved_type:
             return False
         try:
@@ -146,7 +149,12 @@ class PrivacyLifecycleService:
         return self._commit_paths(payload, dry_run, f"Privacy rule '{rule_key}' auto-binding updated.", resolved_type, rule_key, [(["permissions", "auto_binding"], parsed_auto_binding), (["permissions", "binding_fields"], binding_body)])
 
     def _set_path(self, data_type_key: str, rule_key: str, suffix: list[str], body: Any, dry_run: bool, message: str) -> bool:
-        resolved_type = self._resolve_existing_rule(data_type_key, rule_key)
+        resolver = (
+            self._resolve_permission_rule
+            if suffix and suffix[0] == "permissions"
+            else self._resolve_existing_rule
+        )
+        resolved_type = resolver(data_type_key, rule_key)
         if not resolved_type:
             return False
         payload = self._payload()
@@ -219,15 +227,48 @@ class PrivacyLifecycleService:
         resolved_type = self._resolve_current_type(data_type_key)
         if not resolved_type:
             return None
-        entry = self._current_entry(resolved_type)
-        rules = entry.get("privacy_role")
-        rule = rules.get(rule_key) if isinstance(rules, dict) else None
+        rules = self._current_privacy_rules(resolved_type)
+        if rules is None:
+            return None
+        rule = rules.get(rule_key)
         if not isinstance(rule, dict) or rule.get("%del") is True:
             self._host.log_schema_lifecycle_error(
                 f"Could not resolve current privacy rule '{rule_key}' on data type '{data_type_key}'."
             )
             return None
         return resolved_type
+
+    def _resolve_permission_rule(self, data_type_key: str, rule_key: str) -> str | None:
+        resolved_type = self._resolve_existing_rule(data_type_key, rule_key)
+        if not resolved_type:
+            return None
+        rules = self._current_privacy_rules(resolved_type)
+        if rules is None:
+            return None
+        rule = rules.get(rule_key)
+        if not isinstance(rule, dict):
+            return None
+        permissions = rule.get("permissions")
+        if "permissions" in rule and not isinstance(permissions, dict):
+            self._host.log_schema_lifecycle_error(
+                f"Could not mutate privacy rule '{rule_key}' on data type '{data_type_key}': "
+                "current permissions metadata is malformed."
+            )
+            return None
+        return resolved_type
+
+    def _current_privacy_rules(self, data_type_key: str) -> dict[str, Any] | None:
+        entry = self._current_entry(data_type_key)
+        if "privacy_role" not in entry:
+            return {}
+        rules = entry["privacy_role"]
+        if not isinstance(rules, dict):
+            self._host.log_schema_lifecycle_error(
+                f"Could not mutate privacy rules on data type '{data_type_key}': "
+                "current privacy_role metadata is malformed."
+            )
+            return None
+        return copy.deepcopy(rules)
 
     def _field_list_payload(self, data_type_key: str, fields: Any) -> dict[str, str] | None:
         values = self._parse_field_values(fields)

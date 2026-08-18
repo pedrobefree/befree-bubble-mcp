@@ -238,6 +238,76 @@ def test_sensitive_mcp_dispatch_preserves_remote_request_without_local_secret_eg
     )
 
 
+def test_sensitive_mcp_dispatch_with_short_secret_preserves_trusted_response_metadata(
+    tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    secret = "a"
+    export_path = tmp_path / "current.bubble"
+    export_path.write_text(json.dumps({"settings": {"secure": {}}}), encoding="utf-8")
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", str(tmp_path / "cli-cache.json"))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="literal-app",
+                    appname="literal-app",
+                    app_version="test",
+                    app_json_path=str(export_path),
+                )
+            },
+        )
+    )
+    save_session(
+        "smoke",
+        session_from_payload(
+            {
+                "appId": "literal-app",
+                "appVersion": "test",
+                "headers": {"Cookie": "sid=" + "session-only"},
+            }
+        ),
+    )
+
+    def fake_write(_self, payload, _session, **_kwargs):  # type: ignore[no-untyped-def]
+        print(f"echo::{secret}")
+        return {
+            "ok": True,
+            "request": {"payload": payload},
+            "response": {"debug": f"echo::{secret}"},
+        }
+
+    monkeypatch.setattr("bubble_mcp.aria_dispatch.BubbleEditorClient.write", fake_write)
+
+    result = dispatch_aria_runtime_tool(
+        "set_project_setting",
+        {
+            "profile": "smoke",
+            "name": "preview-username",
+            "value": secret,
+            "execute": True,
+        },
+    )
+
+    assert result is not None
+    assert result["engine"] == "aria_runtime"
+    assert result["app_id"] == "literal-app"
+    assert result["tool_name"] == "set_project_setting"
+    assert result["profile"] == "smoke"
+    assert result["ok"] is True
+    assert result["executed"] is True
+    assert result["compiled"] is True
+    assert result["write_count"] == 1
+    assert result["return_value"] is True
+    editor_result = result["results"][0]["result"]
+    assert editor_result["request"]["payload"]["changes"][0]["body"] == "[REDACTED]"
+    assert editor_result["response"]["debug"] == "echo::[REDACTED]"
+    assert "echo::[REDACTED]" in result["logs"]
+
+
 def test_delete_data_field_requires_calculate_derived_refresh() -> None:
     assert _requires_calculate_derived("delete_data_field") is True
     assert _requires_calculate_derived("delete_data_type_permanently") is False

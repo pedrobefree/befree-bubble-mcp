@@ -15,7 +15,7 @@ from typing import Any, cast
 from bubble_mcp.context.detector import default_bubble_export_path, detect_project_context, refresh_bubble_export
 from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mutation_overlay
 from bubble_mcp.core.config import load_settings, resolve_config_artifact_path, resolve_profile
-from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.core.redaction import SENSITIVE_KEY_PATTERN, redact_sensitive
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.store import load_session
 from bubble_mcp.visual_defaults import (
@@ -470,6 +470,43 @@ def _scrub_sensitive_literals(value: Any, literals: set[str]) -> Any:
     return scrub(redacted)
 
 
+def _sanitize_sensitive_editor_result(
+    result: dict[str, Any], literals: set[str]
+) -> dict[str, Any]:
+    sensitive_text_branches = {
+        "debug",
+        "error",
+        "local_state_warning",
+        "message",
+        "reason",
+        "response",
+        "warning",
+        "warnings",
+    }
+
+    def sanitize(candidate: Any) -> Any:
+        if isinstance(candidate, dict):
+            output: dict[str, Any] = {}
+            for key, child in candidate.items():
+                key_text = str(key)
+                if SENSITIVE_KEY_PATTERN.search(key_text):
+                    output[key_text] = "[REDACTED]"
+                elif key_text == "payload" and isinstance(child, dict):
+                    output[key_text] = _sensitive_payload_copy(child)
+                elif key_text.lower() in sensitive_text_branches:
+                    output[key_text] = _scrub_sensitive_literals(child, literals)
+                else:
+                    output[key_text] = sanitize(child)
+            return output
+        if isinstance(candidate, list):
+            return [sanitize(child) for child in candidate]
+        if isinstance(candidate, tuple):
+            return tuple(sanitize(child) for child in candidate)
+        return candidate
+
+    return cast(dict[str, Any], sanitize(deepcopy(result)))
+
+
 def _list_element_ref_maps(cli: Any, args: dict[str, Any]) -> dict[str, Any]:
     context_name = str(args.get("context") or "").strip()
     rows: list[dict[str, Any]] = []
@@ -589,7 +626,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
             calculate_derived=_requires_calculate_derived(name),
         )
         safe_result = (
-            cast(dict[str, Any], _scrub_sensitive_literals(result, sensitive_literals))
+            _sanitize_sensitive_editor_result(result, sensitive_literals)
             if sensitive
             else result
         )
@@ -749,6 +786,4 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
                 "The remote write succeeded, but read-back verification was unavailable. "
                 "Do not retry automatically; refresh and inspect the Bubble editor state."
             )
-    if sensitive_literals:
-        return cast(dict[str, Any], _scrub_sensitive_literals(response, sensitive_literals))
     return response

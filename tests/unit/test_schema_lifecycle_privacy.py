@@ -178,18 +178,26 @@ def test_privacy_field_payload_accepts_system_fields_and_rejects_wrong_json_and_
 def test_privacy_successful_create_delete_and_warning_project_only_affected_rule(
     cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"other": {"plugin": {"keep": True}}}
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {
+        "other": {"plugin": {"keep": True}},
+        "plugin_opaque": "keep",
+    }
     cli._invalidate_schema_reference_index("user_types")
     monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url: None)
     assert cli.create_privacy_rule("account", rule_key="members")
     assert cli.discovery.data["user_types"]["account"]["privacy_role"] == {
         "other": {"plugin": {"keep": True}},
+        "plugin_opaque": "keep",
         "members": {"%d": "New rule", "permissions": {"view_all": True, "view_attachments": True, "search_for": True, "auto_binding": False}},
     }
     assert cli.delete_privacy_rule("account", "members")
-    assert cli.discovery.data["user_types"]["account"]["privacy_role"] == {"other": {"plugin": {"keep": True}}}
+    assert cli.discovery.data["user_types"]["account"]["privacy_role"] == {
+        "other": {"plugin": {"keep": True}},
+        "plugin_opaque": "keep",
+    }
     monkeypatch.setattr(cli, "project_schema_data_type", lambda _key, _entry: "cache warning")
     assert cli.set_privacy_rule_name("account", "other", "Other")
+    assert cli.discovery.data["user_types"]["account"]["privacy_role"]["plugin_opaque"] == "keep"
 
 
 def test_privacy_create_rejects_missing_current_type_and_keeps_optional_binding_fields(cli: BubbleCLI, capsys: pytest.CaptureFixture[str]) -> None:
@@ -200,15 +208,19 @@ def test_privacy_create_rejects_missing_current_type_and_keeps_optional_binding_
     assert permissions["binding_fields"] == {"0": "email_text"}
 
 
-def test_privacy_field_resolution_failure_and_nested_permission_projection_are_atomic(
-    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch
+def test_privacy_field_resolution_failure_preserves_valid_nested_permission_siblings(
+    cli: BubbleCLI,
 ) -> None:
-    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"members": {"permissions": "opaque"}}
+    current_rule = {
+        "permissions": {"opaque": {"keep": True}},
+        "plugin_owned": "untouched",
+    }
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {
+        "members": copy.deepcopy(current_rule)
+    }
     cli._invalidate_schema_reference_index("user_types")
     assert cli.set_privacy_rule_field_visibility("account", "members", view_fields=["Missing"], dry_run=True) is False
-    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url: None)
-    assert cli.set_privacy_rule_permission("account", "members", "view_all", True)
-    assert cli.discovery.data["user_types"]["account"]["privacy_role"]["members"] == {"permissions": {"view_all": True}}
+    assert cli.discovery.data["user_types"]["account"]["privacy_role"]["members"] == current_rule
 
 
 def test_privacy_parser_handles_none_and_rejects_non_array_json(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -292,6 +304,61 @@ def test_privacy_create_rejects_module_only_type_before_payload(
     )
 
     assert cli.create_privacy_rule("module_account", dry_run=True) is False
+
+
+def test_privacy_create_rejects_malformed_current_rule_container_before_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = "opaque"
+    cli._invalidate_schema_reference_index("user_types")
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("payload built from malformed current privacy_role")
+        ),
+    )
+
+    assert cli.create_privacy_rule("account", dry_run=True) is False
+    assert cli.discovery.data["user_types"]["account"]["privacy_role"] == "opaque"
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda instance: instance.set_privacy_rule_permission(
+            "account", "members", "view_all", True, dry_run=True
+        ),
+        lambda instance: instance.set_privacy_rule_field_visibility(
+            "account", "members", view_all=True, dry_run=True
+        ),
+        lambda instance: instance.set_privacy_rule_auto_binding(
+            "account", "members", False, dry_run=True
+        ),
+    ],
+)
+def test_privacy_permission_path_mutations_reject_malformed_permissions_before_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, operation: object
+) -> None:
+    current_rule = {
+        "%d": "Members",
+        "permissions": "opaque",
+        "plugin_owned": {"keep": True},
+    }
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {
+        "members": copy.deepcopy(current_rule)
+    }
+    cli._invalidate_schema_reference_index("user_types")
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("payload built from malformed current permissions")
+        ),
+    )
+
+    assert operation(cli) is False  # type: ignore[operator]
+    assert cli.discovery.data["user_types"]["account"]["privacy_role"]["members"] == current_rule
 
 
 @pytest.mark.parametrize(
