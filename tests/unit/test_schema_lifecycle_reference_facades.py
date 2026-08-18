@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
+from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI, PayloadBuilder
 
 
 @pytest.fixture
@@ -90,3 +90,33 @@ def test_successful_schema_dispatch_invalidates_schema_references_but_dry_run_an
     monkeypatch.setattr(cli, "_dispatch_payload", lambda payload: (_ for _ in ()).throw(RuntimeError("nope")))
     assert cli.rename_data_type("account", "Renamed", dry_run=False) is False
     assert cli.schema_reference_revision() == revision
+
+    monkeypatch.setattr(cli, "_dispatch_payload", BubbleCLI._dispatch_payload.__get__(cli))
+    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda payload, url: None)
+    assert cli.rename_data_type("account", "Renamed", dry_run=False) is True
+    assert cli.schema_reference_revision() == revision + 1
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda instance: instance.delete_option_value("os_status", "stale", dry_run=True),
+        lambda instance: instance.rename_option_value("os_status", "stale", "Renamed", dry_run=True),
+        lambda instance: instance.set_option_value_attribute("os_status", "stale", "role", "admin", dry_run=True),
+        lambda instance: instance.reorder_option_values("os_status", ["stale:1"], dry_run=True),
+    ],
+)
+def test_option_value_mutations_reject_cache_only_values_before_payload_construction(
+    cli: BubbleCLI,
+    capsys: pytest.CaptureFixture[str],
+    mutation: Any,
+) -> None:
+    cli.discovery.data["option_sets"]["os_status"] = {"%d": "OS:Status", "values": {}}
+    cli._schema_option_sets_cache()["os_status"] = {
+        "%d": "OS:Status",
+        "values": {"stale": {"%d": "Stale", "db_value": "stale"}},
+    }
+    cli._invalidate_schema_reference_index("option_sets")
+
+    assert mutation(cli) is False
+    assert "DRY RUN - Payload preview:" not in capsys.readouterr().out

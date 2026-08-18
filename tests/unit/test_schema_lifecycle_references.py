@@ -233,7 +233,7 @@ def test_modules_and_cache_profiles_ignore_invalid_payloads_and_preserve_unique_
     )
     resolver = SchemaReferenceResolver(host)
 
-    assert resolver.user_types(include_cache=True) == {"cached": {"%d": "Cached"}}
+    assert resolver.user_types(include_cache=True) == {}
     assert resolver.resolve_option_set("option.os_flags") == "os_flags"
     assert resolver.resolve_option_set("OS:flags") == "os_flags"
     assert resolver.resolve_option_set("os_FLAGS") == "os_flags"
@@ -267,3 +267,38 @@ def test_cache_result_and_missing_profiles_do_not_cross_reference_boundaries() -
         )
     )
     assert cached.data_type_result("cached").source == "cache"  # type: ignore[union-attr]
+
+
+def test_module_only_result_reports_module_source(tmp_path: Path) -> None:
+    modules = tmp_path / "modules"
+    (modules / "user_types").mkdir(parents=True)
+    (modules / "user_types" / "__index.json").write_text(json.dumps({"module_only": "Module only"}))
+    resolver = SchemaReferenceResolver(ReferenceHost(module_dir=modules))
+
+    result = resolver.data_type_result("module only", ref_kind="label", include_cache=False)
+
+    assert result is not None
+    assert result.key == "module_only"
+    assert result.source == "module"
+
+
+def test_family_invalidation_retains_unaffected_option_snapshot_until_that_family_is_invalidated() -> None:
+    host = ReferenceHost(
+        discovery={
+            "user_types": {"account": {"%d": "Account"}},
+            "option_sets": {"os_status": {"%d": "Status", "values": {"active": {"%d": "Active"}}}},
+        }
+    )
+    resolver = SchemaReferenceResolver(host)
+
+    assert resolver.resolve_option_set("Status", ref_kind="label") == "os_status"
+    host.discovery["user_types"]["invoice"] = {"%d": "Invoice"}
+    host.discovery["option_sets"]["os_status"]["%d"] = "Fresh label"
+    resolver.invalidate("user_types")
+
+    assert resolver.resolve_data_type("Invoice", ref_kind="label") == "invoice"
+    assert resolver.resolve_option_set("Status", ref_kind="label") == "os_status"
+    assert resolver.resolve_option_set("Fresh label", ref_kind="label") is None
+
+    resolver.invalidate("option_sets")
+    assert resolver.resolve_option_set("Fresh label", ref_kind="label") == "os_status"

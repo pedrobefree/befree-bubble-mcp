@@ -6,7 +6,7 @@ import copy
 import json
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 
 from .protocols import SchemaReferenceHost
@@ -30,6 +30,9 @@ class SchemaReferenceSnapshot:
     user_types: dict[str, dict[str, Any]]
     option_sets: dict[str, dict[str, Any]]
     redirects: dict[str, dict[str, Any]]
+    user_type_sources: dict[str, Source]
+    option_set_sources: dict[str, Source]
+    redirect_sources: dict[str, Source]
 
 
 @dataclass(frozen=True)
@@ -43,17 +46,20 @@ class _EntryIndex:
 class SchemaReferenceResolver:
     """Resolve typed schema IDs from detached, current-first snapshots."""
 
+    _FAMILIES = frozenset({"user_types", "option_sets", "redirects"})
+
     def __init__(self, host: SchemaReferenceHost) -> None:
         self._host = host
         self._revision: int | None = None
-        self._current = SchemaReferenceSnapshot({}, {}, {})
-        self._with_cache = SchemaReferenceSnapshot({}, {}, {})
+        self._current = SchemaReferenceSnapshot({}, {}, {}, {}, {}, {})
+        self._with_cache = SchemaReferenceSnapshot({}, {}, {}, {}, {}, {})
         self._entry_indexes: dict[tuple[int, tuple[str, ...]], _EntryIndex] = {}
+        self._dirty_families = set(self._FAMILIES)
 
-    def invalidate(self, *_families: str) -> None:
+    def invalidate(self, *families: str) -> None:
         """Force the next lookup to rebuild from the host's projected state."""
-        self._revision = None
-        self._entry_indexes.clear()
+        requested = set(families) if families else set(self._FAMILIES)
+        self._dirty_families.update(requested & self._FAMILIES)
 
     def user_types(self, *, include_cache: bool = True) -> dict[str, Any]:
         return copy.deepcopy(self._snapshot(include_cache).user_types)
@@ -160,45 +166,70 @@ class SchemaReferenceResolver:
 
     def data_type_result(self, value: str, *, ref_kind: str = "key", include_cache: bool = True) -> SchemaReferenceResult | None:
         key = self.resolve_data_type(value, ref_kind=ref_kind, include_cache=include_cache)
-        return self._result("user_types", key, include_cache)
-
-    def _result(self, family: str, key: str | None, include_cache: bool) -> SchemaReferenceResult | None:
         if not key:
             return None
-        current = self._snapshot(False)
-        entries = getattr(current, family)
-        if key in entries:
-            return SchemaReferenceResult(key, "current")
-        if include_cache:
-            return SchemaReferenceResult(key, "cache")
-        return None
+        source = self._snapshot(include_cache).user_type_sources.get(key)
+        return SchemaReferenceResult(key, source) if source is not None else None
 
     def _snapshot(self, include_cache: bool) -> SchemaReferenceSnapshot:
         revision = self._host.schema_reference_revision()
         if self._revision != revision:
-            self._rebuild(revision)
+            self._dirty_families.update(self._FAMILIES)
+        if self._dirty_families:
+            self._rebuild(revision, self._dirty_families)
+            self._dirty_families.clear()
         return self._with_cache if include_cache else self._current
 
-    def _rebuild(self, revision: int) -> None:
+    def _rebuild(self, revision: int, families: set[str]) -> None:
         discovery, cache = self._host.schema_reference_snapshots()
-        current_types = self._normalized_map(discovery.get("user_types") if isinstance(discovery, dict) else None)
-        current_sets = self._normalized_map(discovery.get("option_sets") if isinstance(discovery, dict) else None)
-        redirects = self._redirects(discovery)
-        module_types, module_sets = self._module_maps()
-        self._merge_missing(current_types, module_types)
-        self._merge_missing(current_sets, module_sets)
-        self._normalize_option_values(current_sets)
-        self._current = SchemaReferenceSnapshot(current_types, current_sets, redirects)
-
         cache_types, cache_sets = self._cache_maps(cache)
-        with_cache_types = copy.deepcopy(current_types)
-        with_cache_sets = copy.deepcopy(current_sets)
-        self._merge_missing(with_cache_types, cache_types)
-        self._merge_missing(with_cache_sets, cache_sets)
-        self._normalize_option_values(with_cache_sets)
-        self._with_cache = SchemaReferenceSnapshot(with_cache_types, with_cache_sets, copy.deepcopy(redirects))
+        root = self._host.schema_reference_modules_dir()
+
+        if "user_types" in families:
+            self._discard_indexes(self._current.user_types, self._with_cache.user_types)
+            current_types = self._normalized_map(discovery.get("user_types") if isinstance(discovery, dict) else None)
+            current_sources: dict[str, Source] = {key: "current" for key in current_types}
+            module_types = self._module_family(root, "user_types", include_values=False) if root else {}
+            self._merge_missing(current_types, module_types, current_sources, "module")
+            with_cache_types = copy.deepcopy(current_types)
+            with_cache_sources = dict(current_sources)
+            self._merge_missing(with_cache_types, cache_types, with_cache_sources, "cache")
+            self._current = replace(self._current, user_types=current_types, user_type_sources=current_sources)
+            self._with_cache = replace(
+                self._with_cache,
+                user_types=with_cache_types,
+                user_type_sources=with_cache_sources,
+            )
+
+        if "option_sets" in families:
+            self._discard_indexes(self._current.option_sets, self._with_cache.option_sets)
+            current_sets = self._normalized_map(discovery.get("option_sets") if isinstance(discovery, dict) else None)
+            current_sources = {key: "current" for key in current_sets}
+            module_sets = self._module_family(root, "option_sets", include_values=True) if root else {}
+            self._merge_missing(current_sets, module_sets, current_sources, "module")
+            self._normalize_option_values(current_sets)
+            with_cache_sets = copy.deepcopy(current_sets)
+            with_cache_sources = dict(current_sources)
+            self._merge_missing(with_cache_sets, cache_sets, with_cache_sources, "cache")
+            self._normalize_option_values(with_cache_sets)
+            self._current = replace(self._current, option_sets=current_sets, option_set_sources=current_sources)
+            self._with_cache = replace(
+                self._with_cache,
+                option_sets=with_cache_sets,
+                option_set_sources=with_cache_sources,
+            )
+
+        if "redirects" in families:
+            self._discard_indexes(self._current.redirects, self._with_cache.redirects)
+            redirects = self._redirects(discovery)
+            redirect_sources: dict[str, Source] = {key: "current" for key in redirects}
+            self._current = replace(self._current, redirects=redirects, redirect_sources=redirect_sources)
+            self._with_cache = replace(
+                self._with_cache,
+                redirects=copy.deepcopy(redirects),
+                redirect_sources=dict(redirect_sources),
+            )
         self._revision = revision
-        self._entry_indexes.clear()
 
     @staticmethod
     def _is_live(value: Any) -> bool:
@@ -220,28 +251,26 @@ class SchemaReferenceResolver:
         profiles = schema.get("profiles") if isinstance(schema, dict) else None
         profile_key = self._host.schema_reference_profile_key()
         profile = profiles.get(profile_key) if isinstance(profiles, dict) else None
-        if not isinstance(profile, dict) and isinstance(profiles, dict) and len(profiles) == 1:
-            profile = next(iter(profiles.values()))
         if not isinstance(profile, dict):
             return {}, {}
         return self._normalized_map(profile.get("user_types")), self._normalized_map(profile.get("option_sets"))
 
     @staticmethod
-    def _merge_missing(target: dict[str, dict[str, Any]], incoming: dict[str, dict[str, Any]]) -> None:
+    def _merge_missing(
+        target: dict[str, dict[str, Any]],
+        incoming: dict[str, dict[str, Any]],
+        sources: dict[str, Source],
+        source: Source,
+    ) -> None:
         for key, value in incoming.items():
             current = target.get(key)
             if current is None:
                 target[key] = copy.deepcopy(value)
+                sources[key] = source
                 continue
             for name in ("%d", "display", "name", "%f3", "fields", "values"):
                 if not current.get(name) and value.get(name):
                     current[name] = copy.deepcopy(value[name])
-
-    def _module_maps(self) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
-        root = self._host.schema_reference_modules_dir()
-        if not root:
-            return {}, {}
-        return self._module_family(root, "user_types", include_values=False), self._module_family(root, "option_sets", include_values=True)
 
     def _module_family(self, root: str, family: str, *, include_values: bool) -> dict[str, dict[str, Any]]:
         directory = os.path.join(root, family)
@@ -263,6 +292,12 @@ class SchemaReferenceResolver:
                     entry["values"] = self._normalized_map(values)
             result[key] = entry
         return result
+
+    def _discard_indexes(self, *entries: dict[str, dict[str, Any]]) -> None:
+        ids = {id(entry) for entry in entries}
+        self._entry_indexes = {
+            key: index for key, index in self._entry_indexes.items() if key[0] not in ids
+        }
 
     @staticmethod
     def _read_json(path: str) -> Any:

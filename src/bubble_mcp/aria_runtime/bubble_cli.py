@@ -55562,7 +55562,12 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Delete a single option value from an option set."""
-        value_key = self._resolve_option_value_key(option_set_key, value_ref, ref_kind=ref_kind)
+        value_key = self._schema_lifecycle.references.resolve_option_value(
+            option_set_key,
+            value_ref,
+            ref_kind=ref_kind,
+            include_cache=False,
+        )
         if not value_key:
             logger.error(
                 f"Could not resolve option value '{value_ref}' in '{option_set_key}' by {ref_kind}. "
@@ -55601,7 +55606,12 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Rename a single option value."""
-        value_key = self._resolve_option_value_key(option_set_key, value_ref, ref_kind=ref_kind)
+        value_key = self._schema_lifecycle.references.resolve_option_value(
+            option_set_key,
+            value_ref,
+            ref_kind=ref_kind,
+            include_cache=False,
+        )
         if not value_key:
             logger.error(
                 f"Could not resolve option value '{value_ref}' in '{option_set_key}' by {ref_kind}. "
@@ -55644,7 +55654,12 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Set an attribute value for a specific option value."""
-        value_key = self._resolve_option_value_key(option_set_key, value_ref, ref_kind=ref_kind)
+        value_key = self._schema_lifecycle.references.resolve_option_value(
+            option_set_key,
+            value_ref,
+            ref_kind=ref_kind,
+            include_cache=False,
+        )
         if not value_key:
             logger.error(
                 f"Could not resolve option value '{value_ref}' in '{option_set_key}' by {ref_kind}."
@@ -55711,7 +55726,12 @@ class BubbleCLI:
                 logger.error(f"Invalid assignment '{token}'.")
                 return False
 
-            value_key = self._resolve_option_value_key(option_set_key, value_ref, ref_kind=ref_kind)
+            value_key = self._schema_lifecycle.references.resolve_option_value(
+                option_set_key,
+                value_ref,
+                ref_kind=ref_kind,
+                include_cache=False,
+            )
             if not value_key:
                 logger.error(
                     f"Could not resolve option value '{value_ref}' in '{option_set_key}' by {ref_kind}."
