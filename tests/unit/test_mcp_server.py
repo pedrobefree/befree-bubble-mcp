@@ -8,6 +8,7 @@ import pytest
 
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 import bubble_mcp.server.completion as completion_module
+import bubble_mcp.server.agent_guide as agent_guide_module
 import bubble_mcp.server.tools as tools_module
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
@@ -1356,6 +1357,45 @@ def test_tool_search_exact_name_is_independent_of_catalog_order() -> None:
 
     assert forward["matches"] == reverse["matches"]
     assert forward["matches"][0]["name"] == "create_text"
+
+
+def test_tool_search_exact_raw_name_fast_paths_only_the_matching_schema(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    schemas = [
+        {
+            "name": "create_text",
+            "description": "Create text.",
+            "inputSchema": {"properties": {}, "required": []},
+            "annotations": {},
+        },
+        {
+            "name": "another_create_text",
+            "description": "Create text.",
+            "inputSchema": {"properties": {}, "required": []},
+            "annotations": {},
+        },
+    ]
+    compacted: list[str] = []
+    real_compact = agent_guide_module._compact_tool_schema
+
+    def record_compact(schema):  # type: ignore[no-untyped-def]
+        compacted.append(str(schema["name"]))
+        return real_compact(schema)
+
+    monkeypatch.setattr(agent_guide_module, "_compact_tool_schema", record_compact)
+
+    result = search_tool_catalog("create_text", limit=1, tool_schemas=schemas)
+
+    assert result["matches"] == [
+        {
+            "score": 145,
+            "name": "create_text",
+            "description": "Create text.",
+            "required": [],
+            "properties": [],
+            "annotations": {},
+        }
+    ]
+    assert compacted == ["create_text"]
 
 
 def test_tool_search_space_separated_query_retains_pre_bonus_ranking() -> None:

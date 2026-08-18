@@ -409,21 +409,48 @@ def _cli_catalog_check(tools: list[dict[str, Any]]) -> tuple[dict[str, Any], lis
 def _deterministic_selection_check() -> tuple[dict[str, Any], list[Issue]]:
     report = catalog_selection_report()
     issues: list[Issue] = []
-    for failure in report["failures"]:
+    failures = report.get("failures")
+    if not isinstance(failures, list):
+        failures = []
+    for failure in failures:
+        if not isinstance(failure, dict):
+            continue
+        case_id = str(failure.get("case_id") or "<unknown>")
+        failure_type = str(failure.get("failure_type") or "selection_mismatch")
+        expected_tool = str(failure.get("expected_tool") or "")
+        actual_tool = str(failure.get("actual_tool") or "")
+        name = expected_tool or actual_tool or "<catalog>"
+        if failure_type == "extra_schema":
+            message = f"{case_id}: unexpected candidate schema {actual_tool or name}."
+        elif failure_type == "missing_schema":
+            message = f"{case_id}: missing candidate schema {expected_tool or name}."
+        elif failure_type == "duplicate_schema":
+            message = f"{case_id}: duplicate candidate schema {actual_tool or name}."
+        elif failure_type == "contract_mismatch":
+            message = f"{case_id}: required-argument contract differs for {name}."
+        else:
+            message = f"{case_id}: expected {expected_tool}, got {actual_tool}"
         _add_issue(
             issues,
             check="deterministic_selection_coverage",
             scope="tool",
-            name=failure["expected_tool"],
+            name=name,
             field="selection",
-            message=(
-                f"{failure['case_id']}: expected {failure['expected_tool']}, "
-                f"got {failure['actual_tool']}"
-            ),
+            message=message,
+        )
+    report_ok = report.get("ok") is True
+    if not report_ok and not issues:
+        _add_issue(
+            issues,
+            check="deterministic_selection_coverage",
+            scope="catalog",
+            name="catalog_selection",
+            field="selection",
+            message="Catalog selection report was not ok without convertible failures.",
         )
     return {
         "name": "deterministic_selection_coverage",
-        "ok": not issues,
+        "ok": report_ok and not issues,
         "issue_count": len(issues),
     }, issues
 
