@@ -3999,6 +3999,13 @@ class BubbleCLI:
 
     def parse_schema_setting_path(self, value: Any) -> List[str]:
         """Keep setting-path parsing at BubbleCLI's established public boundary."""
+        if isinstance(value, list):
+            return [str(part) for part in value]
+        text = str(value or "").strip()
+        if text and not text.startswith("["):
+            separator = "." if "." in text else "/"
+            if separator in text:
+                return [part.strip() for part in text.split(separator)]
         return self._parse_path_array(value)
 
     def coerce_schema_setting_value(self, value: Any, *, value_type: str = "string") -> Any:
@@ -4238,11 +4245,42 @@ class BubbleCLI:
                 source_appname=""
             )
 
-        ok = self._send_schema_payload(pb, dry_run, f"API token '{resolved_token_id}' created.")
+        ok = self._send_api_token_payload(pb, dry_run, f"API token '{resolved_token_id}' created.")
         if ok:
             logger.info(f"Token id: {resolved_token_id}")
-            logger.info(f"Private key: {resolved_private_key}")
+            logger.info("Private key: [REDACTED]")
         return ok
+
+    @staticmethod
+    def _redact_api_token_payload(payload: PayloadBuilder) -> PayloadBuilder:
+        """Copy a token payload for display without exposing its private-key material."""
+        preview = copy.deepcopy(payload)
+        for change in preview.changes:
+            if not isinstance(change, dict):
+                continue
+            path = change.get("path_array")
+            if not isinstance(path, list) or path[:3] != ["settings", "secure", "api_tokens"]:
+                continue
+            body = change.get("body")
+            if path[-1:] == ["private_key"]:
+                change["body"] = "[REDACTED]"
+            elif isinstance(body, dict) and "private_key" in body:
+                body["private_key"] = "[REDACTED]"
+        return preview
+
+    def _send_api_token_payload(self, pb: PayloadBuilder, dry_run: bool, success_message: str) -> bool:
+        """Send API-token writes while keeping previews local and redacted."""
+        if dry_run:
+            print("\n DRY RUN - Payload preview:")
+            print(self._redact_api_token_payload(pb).to_json())
+            return True
+        try:
+            self._dispatch_payload(pb)
+            logger.success(success_message)
+            return True
+        except Exception as exc:
+            logger.error(f"Failed to send: {exc}")
+            return False
 
     def _mutate_api_token_setting(self, path: List[str], value: Any, dry_run: bool, success_message: str) -> bool:
         """Keep API-token CRUD on BubbleCLI's dedicated, non-settings-service path."""
@@ -4255,7 +4293,7 @@ class BubbleCLI:
             intent_id=random.randint(1, 999999),
             source_appname="",
         )
-        return self._send_schema_payload(pb, dry_run, success_message)
+        return self._send_api_token_payload(pb, dry_run, success_message)
 
     def rename_api_token(self, token_id: str, new_label: str, dry_run: bool = False) -> bool:
         """Rename API token label (%nm)."""
@@ -4276,7 +4314,7 @@ class BubbleCLI:
             f"App setting 'settings.secure.api_tokens.{token_id}.private_key' updated.",
         )
         if ok:
-            logger.info(f"New private key: {resolved_private_key}")
+            logger.info("New private key: [REDACTED]")
         return ok
 
     def delete_api_token(self, token_id: str, dry_run: bool = False) -> bool:

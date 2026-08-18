@@ -159,7 +159,10 @@ class SettingsLifecycleService:
         self._change(payload, path, rule)
         if parsed_counter is not None:
             payload.add_change_raw({"type": "id_counter", "value": parsed_counter})
-        return self._commit(payload, dry_run, f"301 redirect created ({resolved_key}).", [(path, rule)])
+        ok = self._commit(payload, dry_run, f"301 redirect created ({resolved_key}).", [(path, rule)])
+        if ok:
+            self._host.log_schema_lifecycle_info(f"Redirect key: {resolved_key}")
+        return ok
 
     def delete_301_redirect(self, rule_key: str, dry_run: bool = False) -> bool:
         redirects = self._current_redirects_for_write()
@@ -191,10 +194,23 @@ class SettingsLifecycleService:
         raw = client_safe.get("301_redirects")
         if raw is None:
             return {}
-        if not isinstance(raw, dict) or any(not str(key).strip() or not isinstance(rule, dict) or rule.get("%del") is True for key, rule in raw.items()):
+        if not isinstance(raw, dict):
             self._host.log_schema_lifecycle_error("Could not resolve current 301 redirects: malformed redirect metadata.")
             return None
-        return copy.deepcopy(cast(dict[str, dict[str, Any]], raw))
+        redirects: dict[str, dict[str, Any]] = {}
+        for key, rule in raw.items():
+            if not str(key).strip() or not isinstance(rule, dict):
+                self._host.log_schema_lifecycle_error("Could not resolve current 301 redirects: malformed redirect metadata.")
+                return None
+            if rule.get("%del") is True:
+                continue
+            source = rule.get("%fr")
+            target = rule.get("to")
+            if not isinstance(source, str) or not source.strip() or not isinstance(target, str) or not target.strip():
+                self._host.log_schema_lifecycle_error("Could not resolve current 301 redirects: malformed redirect metadata.")
+                return None
+            redirects[str(key)] = copy.deepcopy(rule)
+        return redirects
 
     def _path(self, path: Any) -> list[str]:
         parsed = self._host.parse_schema_setting_path(path)

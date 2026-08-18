@@ -166,6 +166,37 @@ def test_redirects_are_current_only_and_malformed_or_duplicate_writes_fail_close
 
 
 @pytest.mark.parametrize(
+    "rule",
+    [
+        {},
+        {"%fr": "/from"},
+        {"to": "/to"},
+        {"%fr": "", "to": "/to"},
+        {"%fr": "/from", "to": ""},
+        {"%fr": ["/from"], "to": "/to"},
+        {"%fr": "/from", "to": {"path": "/to"}},
+    ],
+)
+def test_redirect_create_rejects_incomplete_or_malformed_current_rules_before_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, rule: object
+) -> None:
+    cli.discovery._data["settings"]["client_safe"]["301_redirects"] = {"existing": rule}  # type: ignore[index]
+    cli._invalidate_schema_reference_index("redirects")
+    monkeypatch.setattr(
+        "bubble_mcp.aria_runtime.schema_lifecycle.settings.PayloadBuilder",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload built")),
+    )
+    assert cli.create_301_redirect("/new", "/destination", rule_key="new", dry_run=True) is False
+
+
+def test_redirect_create_keeps_legacy_info_output_after_dry_run(cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch) -> None:
+    infos: list[str] = []
+    monkeypatch.setattr("bubble_mcp.aria_runtime.bubble_cli.logger.info", infos.append)
+    assert cli.create_301_redirect("/new", "/destination", rule_key="redirect_new", dry_run=True)
+    assert infos == ["Redirect key: redirect_new"]
+
+
+@pytest.mark.parametrize(
     ("settings", "operation"),
     [
         (None, lambda instance: instance.create_301_redirect("/new", "/destination", rule_key="new", dry_run=True)),
@@ -273,6 +304,24 @@ def test_setting_path_validation_and_post_success_warning_are_preserved(cli: Bub
     assert cli.set_project_setting("app-rights", "public")
 
 
+@pytest.mark.parametrize("path", [["settings", "", "flag"], "settings..flag", "settings//flag"])
+def test_setting_path_rejects_empty_or_repeated_segments_before_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, path: object
+) -> None:
+    monkeypatch.setattr(
+        "bubble_mcp.aria_runtime.schema_lifecycle.settings.PayloadBuilder",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload built")),
+    )
+    assert cli.set_app_setting(path, "x", dry_run=True) is False
+
+
+def test_setting_path_preserves_valid_list_and_slash_paths(cli: BubbleCLI, capsys: pytest.CaptureFixture[str]) -> None:
+    assert cli.set_app_setting(["settings", "client_safe", "flag"], "x", dry_run=True)
+    assert _payload(capsys)["changes"][0]["path_array"] == ["settings", "client_safe", "flag"]  # type: ignore[index]
+    assert cli.set_app_setting("settings/client_safe/flag", "x", dry_run=True)
+    assert _payload(capsys)["changes"][0]["path_array"] == ["settings", "client_safe", "flag"]  # type: ignore[index]
+
+
 def test_sensitive_setting_messages_do_not_contain_values(cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url: (_ for _ in ()).throw(RuntimeError("offline")))
     assert cli.set_project_setting("preview-password", "very-secret") is False
@@ -283,3 +332,24 @@ def test_sensitive_setting_messages_do_not_contain_values(cli: BubbleCLI, monkey
     assert cli.set_project_setting("preview-password", "very-secret", dry_run=True)
     preview = capsys.readouterr().out
     assert "very-secret" not in preview and "[REDACTED]" in preview
+
+
+def test_api_token_private_keys_are_redacted_from_dry_run_and_logs_but_preserved_for_dispatch(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    secret = "private-key-that-must-not-leak"
+    infos: list[str] = []
+    monkeypatch.setattr("bubble_mcp.aria_runtime.bubble_cli.logger.info", infos.append)
+    assert cli.create_api_token(token_id="token-id", private_key=secret, dry_run=True)
+    assert cli.regenerate_api_token_private_key("token-id", private_key=secret, dry_run=True)
+    dry_output = capsys.readouterr().out
+    assert secret not in dry_output and dry_output.count("[REDACTED]") >= 2
+    assert all(secret not in message for message in infos)
+
+    dispatched: list[dict[str, object]] = []
+    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda payload, _url: dispatched.append(json.loads(payload.to_json())))
+    assert cli.create_api_token(token_id="token-id-live", private_key=secret)
+    assert cli.regenerate_api_token_private_key("token-id-live", private_key=secret)
+    assert dispatched[0]["changes"][0]["body"]["private_key"] == secret  # type: ignore[index]
+    assert dispatched[1]["changes"][0]["body"] == secret  # type: ignore[index]
+    assert all(secret not in message for message in infos)
