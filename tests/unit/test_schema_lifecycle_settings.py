@@ -262,7 +262,7 @@ def test_settings_and_redirect_success_projects_atomically_without_general_schem
     before_cache = copy.deepcopy(cli._cli_cache)
     revision = cli.schema_reference_revision()
     saves = 0
-    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url: None)
+    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url, **_kwargs: None)
     original_save = cli._save_cli_cache
 
     def count_save() -> None:
@@ -325,7 +325,11 @@ def test_setting_path_preserves_valid_list_and_slash_paths(cli: BubbleCLI, capsy
 
 
 def test_sensitive_setting_messages_do_not_contain_values(cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url: (_ for _ in ()).throw(RuntimeError("offline")))
+    monkeypatch.setattr(
+        PayloadBuilder,
+        "send_to_webhook",
+        lambda _payload, _url, **_kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
     assert cli.set_project_setting("preview-password", "very-secret") is False
     assert "very-secret" not in capsys.readouterr().out
     assert SettingsLifecycleService._is_sensitive_path(["settings", "secure", "%pw"])
@@ -334,6 +338,96 @@ def test_sensitive_setting_messages_do_not_contain_values(cli: BubbleCLI, monkey
     assert cli.set_project_setting("preview-password", "very-secret", dry_run=True)
     preview = capsys.readouterr().out
     assert "very-secret" not in preview and "[REDACTED]" in preview
+
+
+@pytest.mark.parametrize(
+    ("alias", "path"),
+    [
+        ("preview-password", ["settings", "secure", "%pw"]),
+        ("preview-username", ["settings", "secure", "username"]),
+        ("google-geocode-key", ["settings", "secure", "general_keys", "google_geocode_key"]),
+    ],
+)
+def test_sensitive_project_setting_aliases_use_real_sensitive_transport_without_egress(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    alias: str,
+    path: list[str],
+) -> None:
+    secret = f"literal-{alias}-transport-secret"
+    captured: dict[str, object] = {}
+
+    class FailingResponse:
+        text = f"response includes {secret}"
+
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError(f"transport includes {secret}", response=self)
+
+    monkeypatch.setenv("BUBBLE_CLI_WEBHOOK_ENVELOPE_MODE", "body")
+    monkeypatch.setattr(bubble_sdk.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(bubble_sdk.requests, "post", lambda _url, **kwargs: captured.update(kwargs) or FailingResponse())
+
+    assert cli.set_project_setting(alias, secret) is False
+
+    output = capsys.readouterr()
+    assert secret not in output.out + output.err
+    assert not (tmp_path / "bubble-webhook-debug").exists()
+    envelope = captured["json"]  # type: ignore[index]
+    change = envelope["body"]["changes"][0]  # type: ignore[index]
+    assert change["path_array"] == path
+    assert change["body"] == secret
+
+
+def test_non_sensitive_project_setting_keeps_legacy_transport_detail_and_debug_artifacts(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    value = "client-visible-map-key"
+    captured: dict[str, object] = {}
+
+    class FailingResponse:
+        text = "ordinary project-setting response detail"
+
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError("ordinary project-setting transport detail", response=self)
+
+    monkeypatch.setenv("BUBBLE_CLI_WEBHOOK_ENVELOPE_MODE", "body")
+    monkeypatch.setattr(bubble_sdk.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(bubble_sdk.requests, "post", lambda _url, **kwargs: captured.update(kwargs) or FailingResponse())
+
+    assert cli.set_project_setting("google-map-key", value) is False
+
+    output = capsys.readouterr()
+    combined = output.out + output.err
+    assert "ordinary project-setting transport detail" in combined
+    assert "ordinary project-setting response detail" in combined
+    debug_dir = tmp_path / "bubble-webhook-debug"
+    assert json.loads((debug_dir / "last_payload.json").read_text(encoding="utf-8"))["changes"][0]["body"] == value
+    assert captured["json"]["body"]["changes"][0]["body"] == value  # type: ignore[index]
+
+
+def test_sensitive_project_setting_cache_failures_are_sanitized_after_real_transport(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    secret = "literal-sensitive-setting-cache-secret"
+    captured: dict[str, object] = {}
+
+    class SuccessResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setenv("BUBBLE_CLI_WEBHOOK_ENVELOPE_MODE", "body")
+    monkeypatch.setattr(bubble_sdk.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(bubble_sdk.requests, "post", lambda _url, **kwargs: captured.update(kwargs) or SuccessResponse())
+    monkeypatch.setattr(cli.discovery, "persist_disk_cache", lambda: (_ for _ in ()).throw(RuntimeError(secret)))
+
+    assert cli.set_project_setting("preview-password", secret)
+
+    output = capsys.readouterr()
+    assert secret not in output.out + output.err
+    assert not (tmp_path / "bubble-webhook-debug").exists()
+    assert captured["json"]["body"]["changes"][0]["body"] == secret  # type: ignore[index]
 
 
 def test_api_token_private_keys_are_redacted_from_dry_run_and_logs_but_preserved_for_dispatch(

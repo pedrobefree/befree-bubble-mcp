@@ -3916,11 +3916,14 @@ class BubbleCLI:
         """Keep lifecycle payload wire records byte-compatible with legacy schema writes."""
         self._add_schema_change(payload, intent_name, path_array, body, intent_id, source_appname)
 
-    def dispatch_schema_lifecycle_payload(self, payload: PayloadBuilder) -> None:
+    def dispatch_schema_lifecycle_payload(self, payload: PayloadBuilder, *, sensitive: bool = False) -> None:
         """Dispatch a lifecycle payload before its service applies the atomic projection."""
         self._schema_lifecycle_dispatching = True
         try:
-            self._dispatch_payload(payload)
+            if sensitive:
+                self._dispatch_payload(payload, sensitive=True)
+            else:
+                self._dispatch_payload(payload)
         finally:
             self._schema_lifecycle_dispatching = False
 

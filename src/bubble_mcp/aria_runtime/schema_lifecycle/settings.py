@@ -23,8 +23,8 @@ from .references import SchemaReferenceResolver
 PROJECT_SETTING_ALIASES: dict[str, dict[str, Any]] = {
     "app-rights": {"path": ["settings", "client_safe", "app_rights"], "value_type": "string"},
     "preview-password-protection": {"path": ["settings", "client_safe", "pw_protection"], "value_type": "bool"},
-    "preview-username": {"path": ["settings", "secure", "username"], "value_type": "string"},
-    "preview-password": {"path": ["settings", "secure", "%pw"], "value_type": "string"},
+    "preview-username": {"path": ["settings", "secure", "username"], "value_type": "string", "sensitive": True},
+    "preview-password": {"path": ["settings", "secure", "%pw"], "value_type": "string", "sensitive": True},
     "preview-password-dev-only": {"path": ["settings", "client_safe", "pw_protection_dev_only"], "value_type": "bool"},
     "password-policy-enabled": {"path": ["settings", "client_safe", "have_pw_policy"], "value_type": "bool"},
     "password-min-length": {"path": ["settings", "client_safe", "pw_length"], "value_type": "int"},
@@ -40,7 +40,11 @@ PROJECT_SETTING_ALIASES: dict[str, dict[str, Any]] = {
     "spinner-color": {"path": ["settings", "client_safe", "spinner_color"], "value_type": "string"},
     "ios-hide-safari-ui": {"path": ["settings", "client_safe", "ios_meta_tag_hide_safari_ui"], "value_type": "bool"},
     "ios-prevent-zoom": {"path": ["settings", "client_safe", "ios_meta_tag_prevent_zoom"], "value_type": "bool"},
-    "google-geocode-key": {"path": ["settings", "secure", "general_keys", "google_geocode_key"], "value_type": "string"},
+    "google-geocode-key": {
+        "path": ["settings", "secure", "general_keys", "google_geocode_key"],
+        "value_type": "string",
+        "sensitive": True,
+    },
     "google-map-key": {"path": ["settings", "client_safe", "general_keys", "google_map_key"], "value_type": "string"},
     "advanced-timezone-controls": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls"], "value_type": "bool"},
     "advanced-timezone-date-time-inputs": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls_date_time_inputs"], "value_type": "bool"},
@@ -80,6 +84,11 @@ class SettingsLifecycleService:
         self._references = references
 
     def set_app_setting(self, path: Any, value: Any, value_type: str = "string", dry_run: bool = False) -> bool:
+        return self._set_app_setting(path, value, value_type, dry_run, sensitive=None)
+
+    def _set_app_setting(
+        self, path: Any, value: Any, value_type: str, dry_run: bool, *, sensitive: bool | None
+    ) -> bool:
         try:
             path_array = self._path(path)
             coerced_value = self._host.coerce_schema_setting_value(value, value_type=value_type)
@@ -88,7 +97,14 @@ class SettingsLifecycleService:
             return False
         payload = self._payload()
         self._change(payload, path_array, coerced_value)
-        return self._commit(payload, dry_run, f"App setting '{'.'.join(path_array)}' updated.", [(path_array, coerced_value)])
+        is_sensitive = self._is_sensitive_path(path_array) if sensitive is None else sensitive
+        return self._commit(
+            payload,
+            dry_run,
+            f"App setting '{'.'.join(path_array)}' updated.",
+            [(path_array, coerced_value)],
+            sensitive=is_sensitive,
+        )
 
     def set_project_setting(self, setting_key: str, value: Any, value_type: str | None = None, dry_run: bool = False) -> bool:
         normalized_key = str(setting_key or "").strip().lower().replace("_", "-")
@@ -98,7 +114,13 @@ class SettingsLifecycleService:
                 f"Unknown project setting '{setting_key}'. Use 'list-project-settings' to inspect available aliases."
             )
             return False
-        return self.set_app_setting(spec["path"], value, (value_type or spec["value_type"]).strip().lower(), dry_run)
+        return self._set_app_setting(
+            spec["path"],
+            value,
+            (value_type or spec["value_type"]).strip().lower(),
+            dry_run,
+            sensitive=spec.get("sensitive") is True,
+        )
 
     def list_project_settings(self, as_json: bool = False) -> bool:
         rows = [
@@ -224,18 +246,35 @@ class SettingsLifecycleService:
     def _change(self, payload: PayloadBuilder, path: list[str], body: Any) -> None:
         self._host.add_schema_lifecycle_change(payload, "ChangeAppSetting", path, body, intent_id=self._host.next_schema_setting_intent_id(), source_appname="")
 
-    def _commit(self, payload: PayloadBuilder, dry_run: bool, message: str, updates: list[tuple[list[str], Any]]) -> bool:
+    def _commit(
+        self,
+        payload: PayloadBuilder,
+        dry_run: bool,
+        message: str,
+        updates: list[tuple[list[str], Any]],
+        *,
+        sensitive: bool = False,
+    ) -> bool:
         if dry_run:
             self._host.preview_schema_lifecycle_payload(self._redacted_preview(payload, updates))
             return True
         try:
-            self._host.dispatch_schema_lifecycle_payload(payload)
+            if sensitive:
+                self._host.dispatch_schema_lifecycle_payload(payload, sensitive=True)
+            else:
+                self._host.dispatch_schema_lifecycle_payload(payload)
         except Exception as exc:
-            self._host.log_schema_lifecycle_error(f"Failed to send: {exc}")
+            if sensitive:
+                self._host.log_schema_lifecycle_error("Failed to send: Sensitive project setting write failed.")
+            else:
+                self._host.log_schema_lifecycle_error(f"Failed to send: {exc}")
             return False
         warning = self._host.project_schema_settings(updates)
         if warning:
-            self._host.log_schema_lifecycle_error(warning)
+            if sensitive:
+                self._host.log_schema_lifecycle_error("Post-write sensitive setting cache update failed.")
+            else:
+                self._host.log_schema_lifecycle_error(warning)
         self._host.log_schema_lifecycle_success(message)
         return True
 
@@ -250,5 +289,7 @@ class SettingsLifecycleService:
 
     @staticmethod
     def _is_sensitive_path(path: Any) -> bool:
-        parts = [str(part).lower() for part in path] if isinstance(path, list) else []
-        return "secure" in parts or any(token in {"%pw", "private_key"} or any(word in token for word in ("password", "secret", "token", "api_key", "apikey")) for token in parts)
+        if not isinstance(path, list):
+            return False
+        normalized = [str(part) for part in path]
+        return any(spec.get("sensitive") is True and spec.get("path") == normalized for spec in PROJECT_SETTING_ALIASES.values())
