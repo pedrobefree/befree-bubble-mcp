@@ -153,7 +153,7 @@ class DataTypeLifecycleService:
     def set_data_type_api_exposure(
         self, data_type_ref: str, enabled: bool, ref_kind: str = "key", dry_run: bool = False
     ) -> bool:
-        resolved = self._references.resolve_data_type(data_type_ref, ref_kind=ref_kind, include_cache=False)
+        resolved = self._resolve_type_for_write(data_type_ref, ref_kind=ref_kind)
         if not resolved:
             known = sorted(self._references.user_types(include_cache=False).keys())
             if known:
@@ -172,7 +172,7 @@ class DataTypeLifecycleService:
         self._change(payload, "WriteCustom", ["user_types", resolved, "exposed_api"], bool(enabled))
         return self._commit(payload, dry_run, f"Data API exposure for data type '{resolved}' set to {bool(enabled)}.", resolved, entry)
 
-    def _resolve_type_for_write(self, value: str) -> str | None:
+    def _resolve_type_for_write(self, value: str, *, ref_kind: str = "auto") -> str | None:
         discovery, _cache = self._host.schema_reference_snapshots()
         current = discovery.get("user_types") if isinstance(discovery, dict) else None
         raw = str(value or "").strip()
@@ -181,7 +181,7 @@ class DataTypeLifecycleService:
                 f"Could not resolve current data type '{value}': no fresh user_types metadata available."
             )
             return None
-        resolved = self._references.resolve_data_type(raw, ref_kind="auto", include_cache=False)
+        resolved = self._references.resolve_data_type(raw, ref_kind=ref_kind, include_cache=False)
         if not resolved or resolved not in current:
             self._host.log_schema_lifecycle_error(f"Could not resolve current data type '{value}'.")
             return None

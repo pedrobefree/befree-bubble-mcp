@@ -37,7 +37,11 @@ def test_privacy_field_writes_resolve_current_field_keys_and_reject_cache_only_b
     assert cli.set_privacy_rule_field_visibility("account", "members", view_fields=["Email", "secret_text"], dry_run=True)
     assert _payload(capsys)["changes"][0]["body"] == {"0": "email_text", "1": "secret_text"}
 
-    monkeypatch.setattr("bubble_mcp.aria_runtime.schema_lifecycle.privacy.PayloadBuilder", lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("payload constructed")))
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload constructed")),
+    )
     assert cli.set_privacy_rule_auto_binding("account", "members", True, ["Cached"], dry_run=True) is False
 
 
@@ -140,8 +144,9 @@ def test_privacy_rejects_invalid_permission_empty_change_and_missing_fresh_schem
     cli.discovery._data = {"user_types": {}}  # type: ignore[assignment]
     cli._invalidate_schema_reference_index("user_types")
     monkeypatch.setattr(
-        "bubble_mcp.aria_runtime.schema_lifecycle.privacy.PayloadBuilder",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("payload constructed")),
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload constructed")),
     )
     assert cli.set_privacy_rule_field_visibility("account", "members", view_fields=["Email"], dry_run=True) is False
     assert cli.set_privacy_rule_auto_binding("account", "members", True, dry_run=True) is False

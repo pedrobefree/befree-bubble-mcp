@@ -10,6 +10,7 @@ import requests
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI, PayloadBuilder
 from bubble_mcp.aria_runtime import bubble_sdk
 from bubble_mcp.aria_runtime.schema_lifecycle.settings import PROJECT_SETTING_ALIASES, SettingsLifecycleService
+from bubble_mcp.aria_dispatch import _method_kwargs
 from bubble_mcp.server.schemas import list_tool_schemas
 
 
@@ -81,6 +82,52 @@ def test_setting_and_redirect_tool_schemas_keep_existing_required_fields_and_pre
         "seo-custom-robots-txt", "seo-generate-sitemap", "seo-sitemap-pages", "seo-header-meta-tags",
         "seo-body-scripts", "seo-allow-wildcard-redirects", "app-primary-language", "user-language-field",
     }
+
+
+@pytest.mark.parametrize(
+    ("method_name", "arguments", "expected"),
+    [
+        (
+            "set_app_setting",
+            {"name": "favicon", "value": "stage46", "execute": False},
+            {"path": "favicon", "value": "stage46", "dry_run": True},
+        ),
+        (
+            "set_project_setting",
+            {"name": "password-min-length", "value": 12, "execute": False},
+            {"setting_key": "password-min-length", "value": 12, "dry_run": True},
+        ),
+        (
+            "set_data_type_api_exposure",
+            {"data_type_ref": "account", "value": True, "execute": False},
+            {"data_type_ref": "account", "enabled": True, "dry_run": True},
+        ),
+        (
+            "delete_301_redirect",
+            {"name": "redirect_rule", "execute": False},
+            {"rule_key": "redirect_rule", "dry_run": True},
+        ),
+        (
+            "rename_data_field",
+            {
+                "data_type_ref": "account",
+                "name": "email_text",
+                "new_name": "Email address",
+                "execute": False,
+            },
+            {
+                "data_type_key": "account",
+                "field_key": "email_text",
+                "new_name": "Email address",
+                "dry_run": True,
+            },
+        ),
+    ],
+)
+def test_family_four_generic_mcp_fields_dispatch_to_literal_runtime_signatures(
+    method_name: str, arguments: dict[str, object], expected: dict[str, object]
+) -> None:
+    assert _method_kwargs(getattr(BubbleCLI, method_name), arguments, execute=False) == expected
 
 
 @pytest.mark.parametrize(

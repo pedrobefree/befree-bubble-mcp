@@ -239,7 +239,7 @@ class OptionLifecycleService:
             print(json.dumps(rows, indent=2, ensure_ascii=False))
             return True
         if not rows:
-            self._host.log_schema_lifecycle_success(f"No values found for option set '{option_set_ref}'.")
+            self._host.log_schema_lifecycle_info(f"No values found for option set '{option_set_ref}'.")
             return True
         print(f"✅ Option values for '{option_set_ref}':")
         print(f"{'KEY':<10} | {'SORT':<5} | {'DB VALUE':<24} | LABEL")

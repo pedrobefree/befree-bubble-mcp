@@ -252,6 +252,21 @@ def test_reorder_accepts_equals_delimiter_and_list_reads_remain_cache_assisted(
     assert cli.list_option_values("os_status")
 
 
+def test_empty_option_value_list_keeps_legacy_info_log_level(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    infos: list[str] = []
+    successes: list[str] = []
+    cli.discovery.data["option_sets"]["os_status"]["values"] = {}
+    cli._invalidate_schema_reference_index("option_sets")
+    monkeypatch.setattr("bubble_mcp.aria_runtime.bubble_cli.logger.info", infos.append)
+    monkeypatch.setattr("bubble_mcp.aria_runtime.bubble_cli.logger.success", successes.append)
+
+    assert cli.list_option_values("os_status") is True
+    assert infos == ["No values found for option set 'os_status'."]
+    assert successes == []
+
+
 def test_option_helpers_cover_malformed_current_data_and_sort_fallbacks(cli: BubbleCLI) -> None:
     assert OptionLifecycleService._sort_weight("2") == 2
     assert OptionLifecycleService._sort_weight(object()) == 10**9

@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from bubble_mcp import runtime_smoke as runtime_smoke_module
 from bubble_mcp.server.tools import call_tool
 from bubble_mcp.runtime_smoke import (
     AGENT_ROUTING_CASES,
@@ -176,6 +179,39 @@ def test_family_preview_covers_representative_tool_families_without_execute() ->
     assert all(case.arguments.get("app_id") == "courselaunch" for case in cases if case.tool.startswith("create_"))
     action_case = next(case for case in cases if case.tool == "add_action")
     assert action_case.arguments["action_type"] == "show_alert"
+
+
+def test_family_preview_uses_current_profile_option_set_instead_of_fixture_only_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export_path = tmp_path / "current.bubble"
+    export_path.write_text(
+        json.dumps(
+            {
+                "option_sets": {
+                    "os_deleted": {"deleted": True, "values": {}},
+                    "os_current": {"display": "OS:current", "values": {}},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        runtime_smoke_module,
+        "default_bubble_export_path",
+        lambda _profile, _app_id: export_path,
+        raising=False,
+    )
+
+    cases = build_runtime_smoke_cases(
+        suite="family-preview",
+        profile="smoke",
+        app_id="current-app",
+        run_id="profile-option-set",
+    )
+
+    option_value = next(case for case in cases if case.tool == "create_option_value")
+    assert option_value.arguments["option_set_key"] == "os_current"
 
 
 def test_family_preview_runs_call_sequence() -> None:
