@@ -201,13 +201,16 @@ def detect_project_context(
         app_id=resolved_app_id,
     )
     if force and session and bubble_file is None:
+        # A forced refresh must never be satisfied by the previously downloaded
+        # export cache, no matter which candidate slot it entered through
+        # (profile_app_json_path or local_bubble_candidate) — otherwise a stale
+        # cache silently wins and the fresh download never happens.
         default_export = default_bubble_export_path(profile, resolved_app_id).expanduser().resolve()
         bubble_candidates = [
             candidate
             for candidate in bubble_candidates
             if not (
-                candidate.get("source") == "profile_app_json_path"
-                and isinstance(candidate.get("path"), Path)
+                isinstance(candidate.get("path"), Path)
                 and candidate["path"].expanduser().resolve() == default_export
             )
         ]
