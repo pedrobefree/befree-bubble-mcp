@@ -1836,8 +1836,8 @@ class BubbleCLI:
         """Send payload and opportunistically sync profile cache from emitted schema changes."""
         if sensitive:
             pb.send_to_webhook(self.webhook_url, sensitive=True)
-        else:
-            pb.send_to_webhook(self.webhook_url)
+            return
+        pb.send_to_webhook(self.webhook_url)
         changes = getattr(pb, "changes", None)
         normalized_changes = changes if isinstance(changes, list) else []
         try:
@@ -1845,10 +1845,7 @@ class BubbleCLI:
             self._sync_profile_cache_from_changes(normalized_changes)
             self.discovery.persist_disk_cache()
         except Exception as e:
-            if sensitive:
-                logger.warning("Post-write cache sync skipped for sensitive payload.")
-            else:
-                logger.warning(f"Post-write cache sync skipped: {e}")
+            logger.warning(f"Post-write cache sync skipped: {e}")
         self._invalidate_schema_reference_indexes_for_changes(normalized_changes)
 
     @staticmethod
@@ -54822,149 +54819,8 @@ class BubbleCLI:
             data_type_key, rule_key, auto_binding, binding_fields, dry_run
         )
 
-    def _set_privacy_rule_path(
-        self,
-        data_type_key: str,
-        rule_key: str,
-        path_suffix: List[str],
-        body: Any,
-        *,
-        dry_run: bool,
-        success_message: str,
-    ) -> bool:
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            ["user_types", data_type_key, "privacy_role", rule_key, *path_suffix],
-            body,
-        )
-        ok = self._send_schema_payload(pb, dry_run, success_message)
-        if ok and not dry_run:
-            self._update_privacy_rule_cache_path(data_type_key, rule_key, path_suffix, body)
-            self._save_cli_cache()
-        return ok
-
-    def _privacy_rules_for_type(self, data_type_key: str) -> Dict[str, Any]:
-        user_types = self._get_user_types(include_cache=True)
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        return rules
-
-    def _next_privacy_rule_key(self, data_type_key: str) -> str:
-        rules = self._privacy_rules_for_type(data_type_key)
-        if "new_rule_" not in rules:
-            return "new_rule_"
-        index = 1
-        while f"new_rule_{index}" in rules:
-            index += 1
-        return f"new_rule_{index}"
-
-    def _default_everyone_privacy_rule(self, data_type_key: str) -> Dict[str, Any]:
-        fields = self._data_type_field_keys(data_type_key, include_system_fields=True)
-        return {
-            "%d": "everyone",
-            "permissions": {
-                "view_all": False,
-                "view_attachments": False,
-                "search_for": False,
-                "auto_binding": False,
-                "non_filterable_fields": {field: True for field in fields},
-            },
-        }
-
-    def _data_type_field_keys(self, data_type_key: str, *, include_system_fields: bool = False) -> List[str]:
-        user_types = self._get_user_types(include_cache=True)
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-        result = [str(key) for key in fields.keys()]
-        if include_system_fields:
-            for system_field in ("Created Date", "Modified Date", "Slug", "Created By"):
-                if system_field not in result:
-                    result.append(system_field)
-        return result
-
-    def _privacy_field_list_payload(self, fields: Any) -> Optional[Dict[str, str]]:
-        if fields is None:
-            return None
-        values: List[str]
-        if isinstance(fields, str):
-            stripped = fields.strip()
-            if not stripped:
-                values = []
-            elif stripped.startswith("["):
-                parsed = self._parse_json_arg(stripped, "fields")
-                if not isinstance(parsed, list):
-                    raise ValueError("fields JSON must be an array.")
-                values = [str(item) for item in parsed]
-            else:
-                values = [part.strip() for part in stripped.split(",") if part.strip()]
-        elif isinstance(fields, dict):
-            values = [
-                str(fields[key])
-                for key in sorted(
-                    fields,
-                    key=lambda item: (0, int(str(item))) if str(item).isdigit() else (1, str(item)),
-                )
-            ]
-        elif isinstance(fields, list):
-            values = [str(item) for item in fields]
-        else:
-            raise ValueError("fields must be a comma-separated string, JSON array, or object.")
-        return {str(index): field for index, field in enumerate(values)}
-
     def _parse_privacy_bool(self, value: Any, label: str) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)) and value in {0, 1}:
-            return bool(value)
-        normalized = str(value).strip().lower()
-        if normalized in {"1", "true", "yes", "on", "enable", "enabled"}:
-            return True
-        if normalized in {"0", "false", "no", "off", "disable", "disabled"}:
-            return False
-        raise ValueError(f"Invalid boolean value for {label}: {value!r}")
-
-    def _parse_privacy_json_value(self, value: Any, label: str) -> Any:
-        if isinstance(value, str):
-            parsed = self._parse_json_arg(value, label)
-            if parsed is None:
-                raise ValueError(f"Invalid {label}.")
-            return parsed
-        return value
-
-    def _update_privacy_rule_cache(self, data_type_key: str, rule_key: str, rule_payload: Dict[str, Any]) -> None:
-        user_types = self._schema_user_types_cache()
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        rules[rule_key] = copy.deepcopy(rule_payload)
-        entry["privacy_role"] = rules
-        user_types[data_type_key] = entry
-
-    def _delete_privacy_rule_cache(self, data_type_key: str, rule_key: str) -> None:
-        user_types = self._schema_user_types_cache()
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        rules.pop(rule_key, None)
-        entry["privacy_role"] = rules
-        user_types[data_type_key] = entry
-
-    def _update_privacy_rule_cache_path(self, data_type_key: str, rule_key: str, path_suffix: List[str], body: Any) -> None:
-        user_types = self._schema_user_types_cache()
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        rule_payload = rules.get(rule_key, {}) if isinstance(rules.get(rule_key), dict) else {}
-        cursor = rule_payload
-        for token in path_suffix[:-1]:
-            current = cursor.get(token)
-            if not isinstance(current, dict):
-                current = {}
-                cursor[token] = current
-            cursor = current
-        cursor[path_suffix[-1]] = copy.deepcopy(body)
-        rules[rule_key] = rule_payload
-        entry["privacy_role"] = rules
-        user_types[data_type_key] = entry
+        return self._schema_lifecycle.privacy.parse_bool(value, label)
 
     # Option lifecycle facades deliberately remain explicit public CLI entry points.
     def create_option_set(self, name: str, key: Optional[str] = None, dry_run: bool = False) -> bool:

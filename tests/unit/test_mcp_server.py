@@ -2533,6 +2533,144 @@ def test_mcp_create_data_field_omits_field_key_and_preserves_generated_key(
     assert change["path_array"][-1] == "my_display_field_text"
 
 
+def test_mcp_create_option_attribute_omits_attribute_key_and_preserves_generated_key(
+    tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    export_path = tmp_path / "current.bubble"
+    export_path.write_text(
+        json.dumps(
+            {
+                "option_sets": {
+                    "os_status": {
+                        "%d": "OS:status",
+                        "attributes": {},
+                        "values": {},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="literal-app",
+                    appname="literal-app",
+                    app_version="test",
+                    app_json_path=str(export_path),
+                )
+            },
+        )
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1205,
+            "method": "tools/call",
+            "params": {
+                "name": "create_option_attribute",
+                "arguments": {
+                    "profile": "smoke",
+                    "option_set_ref": "os_status",
+                    "name": "Display Attribute",
+                    "type": "text",
+                    "execute": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = json.loads(response["result"]["content"][0]["text"])
+    assert result["ok"] is True
+    assert result["executed"] is False
+    change = result["results"][0]["payload"]["changes"][0]
+    assert change["path_array"][-1] == "display_attribute"
+
+
+@pytest.mark.parametrize(
+    "tool_name",
+    [
+        "delete_data_type",
+        "delete_data_type_permanently",
+        "delete_data_field",
+        "delete_privacy_rule",
+        "delete_option_set",
+        "delete_option_value",
+        "delete_301_redirect",
+    ],
+)
+def test_family_four_destructive_tools_require_confirmation_only_for_execution(
+    monkeypatch: pytest.MonkeyPatch,
+    tool_name: str,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_dispatch(name: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((name, dict(args)))
+        return {
+            "ok": True,
+            "tool_name": name,
+            "executed": args.get("execute") is True,
+            "compiled": True,
+            "write_count": 1,
+            "results": [],
+            "logs": "",
+        }
+
+    monkeypatch.setattr(tools_module, "dispatch_aria_runtime_tool", fake_dispatch)
+
+    denied = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1301,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {"profile": "smoke", "execute": True, "confirm": False},
+            },
+        }
+    )
+    assert denied is not None
+    assert denied["result"]["isError"] is True
+    assert denied["result"]["structuredContent"]["error"] == (
+        f"{tool_name} requires confirm=true when execute=true."
+    )
+    assert calls == []
+
+    preview = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1302,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {"profile": "smoke", "execute": False, "confirm": False},
+            },
+        }
+    )
+    confirmed = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1303,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {"profile": "smoke", "execute": True, "confirm": True},
+            },
+        }
+    )
+    assert preview is not None and preview["result"]["structuredContent"]["executed"] is False
+    assert confirmed is not None and confirmed["result"]["structuredContent"]["executed"] is True
+    assert [call[0] for call in calls] == [tool_name, tool_name]
+
+
 def test_update_style_all_schema_dispatches_by_contains_to_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     listed = handle_request({"jsonrpc": "2.0", "id": 1201, "method": "tools/list"})
     assert listed is not None

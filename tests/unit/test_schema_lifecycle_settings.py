@@ -321,7 +321,7 @@ def test_settings_and_redirect_success_projects_atomically_without_general_schem
     assert cli.set_project_setting("preview-password", "updated-secret")
     assert cli.create_301_redirect("/new", "/destination", rule_key="redirect_new")
     assert cli.delete_301_redirect("redirect_account")
-    assert cli.discovery.data["settings"]["secure"]["%pw"] == "updated-secret"
+    assert cli.discovery.data["settings"]["secure"]["%pw"] == "old-secret"
     redirects = cli.discovery.data["settings"]["client_safe"]["301_redirects"]
     assert redirects["redirect_new"] == {"%fr": "/new", "to": "/destination"}
     assert "redirect_account" not in redirects and "redirect_docs" in redirects
@@ -475,6 +475,41 @@ def test_sensitive_project_setting_cache_failures_are_sanitized_after_real_trans
     assert secret not in output.out + output.err
     assert not (tmp_path / "bubble-webhook-debug").exists()
     assert captured["json"]["body"]["changes"][0]["body"] == secret  # type: ignore[index]
+
+
+def test_sensitive_setting_success_preserves_remote_payload_without_persisting_plaintext(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    secret = "literal-sensitive-cache-bytes-secret"
+    remote_payloads: list[dict[str, object]] = []
+    monkeypatch.setattr(
+        PayloadBuilder,
+        "send_to_webhook",
+        lambda payload, _url, **kwargs: remote_payloads.append(
+            {"payload": copy.deepcopy(payload.build()), "sensitive": kwargs.get("sensitive")}
+        ),
+    )
+
+    assert cli.set_project_setting("preview-password", secret)
+    assert remote_payloads[0]["sensitive"] is True
+    assert remote_payloads[0]["payload"]["changes"][0]["body"] == secret  # type: ignore[index]
+
+    cli.discovery.persist_disk_cache()
+    cli._save_cli_cache()
+    local_values: list[object] = [cli.discovery.data, cli._cli_cache]
+    for path in [
+        Path(cli.discovery.app_json_path),
+        Path(f"{cli.discovery.app_json_path}.parsed-cache.pkl"),
+        Path(cli._cache_file),
+    ]:
+        if path.exists():
+            local_values.append(path.read_bytes())
+    rendered_local = repr(local_values)
+    output = capsys.readouterr()
+    assert secret not in rendered_local
+    assert secret not in output.out + output.err
 
 
 def test_api_token_private_keys_are_redacted_from_dry_run_and_logs_but_preserved_for_dispatch(

@@ -686,6 +686,12 @@ def test_privacy_rule_tools_emit_bubble_editor_contracts(tmp_path, capsys) -> No
     }
     assert changes[2] == {"type": "id_counter", "value": 20000318}
 
+    cli.discovery.data["user_types"]["testimonial"]["privacy_role"] = {
+        "new_rule_": changes[1]["body"],
+        "new_rule_1": {"%d": "Existing rule", "permissions": {}},
+    }
+    cli._invalidate_schema_reference_index("user_types")
+
     assert cli.set_privacy_rule_name("testimonial", "new_rule_", "public_testimonial", dry_run=True) is True
     payload = payload_from_dry_run_output(capsys.readouterr().out)
     assert payload["changes"][0]["path_array"] == ["user_types", "testimonial", "privacy_role", "new_rule_", "%d"]

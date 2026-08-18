@@ -31,6 +31,8 @@ def test_privacy_create_preserves_golden_payload_order_and_default_rule(cli: Bub
 
 
 def test_privacy_field_writes_resolve_current_field_keys_and_reject_cache_only_before_builder(cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"members": {"permissions": {}}}
+    cli._invalidate_schema_reference_index("user_types")
     cli._schema_user_types_cache()["account"] = copy.deepcopy(cli.discovery.data["user_types"]["account"])
     cli._schema_user_types_cache()["account"]["%f3"]["cached_text"] = {"%d": "Cached", "%v": "text"}
     cli._invalidate_schema_reference_index("user_types")
@@ -47,6 +49,8 @@ def test_privacy_field_writes_resolve_current_field_keys_and_reject_cache_only_b
 
 @pytest.mark.parametrize("value, expected", [(True, True), ("yes", True), (1, True), (False, False), ("off", False), (0, False)])
 def test_privacy_boolean_parser_accepts_public_inputs(cli: BubbleCLI, capsys: pytest.CaptureFixture[str], value: object, expected: bool) -> None:
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"members": {"permissions": {}}}
+    cli._invalidate_schema_reference_index("user_types")
     assert cli.set_privacy_rule_permission("account", "members", "search_for", value, dry_run=True)
     assert _payload(capsys)["changes"][0]["body"] is expected
 
@@ -57,6 +61,8 @@ def test_privacy_boolean_parser_accepts_public_inputs(cli: BubbleCLI, capsys: py
     lambda instance: instance.set_privacy_rule_field_visibility("account", "members", view_fields="[bad", dry_run=True),
 ])
 def test_privacy_rejects_malformed_input_before_payload_construction(cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, operation: object) -> None:
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"members": {"permissions": {}}}
+    cli._invalidate_schema_reference_index("user_types")
     monkeypatch.setattr(
         cli,
         "new_schema_lifecycle_payload",
@@ -126,6 +132,8 @@ def test_create_privacy_rule_uses_next_key_without_default_and_serializes_indexe
 
 
 def test_privacy_setters_and_delete_keep_golden_payload_paths(cli: BubbleCLI, capsys: pytest.CaptureFixture[str]) -> None:
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"members": {"permissions": {}}}
+    cli._invalidate_schema_reference_index("user_types")
     assert cli.set_privacy_rule_name("account", "members", "Members", dry_run=True)
     assert _payload(capsys)["changes"][0]["path_array"][-1] == "%d"
     assert cli.set_privacy_rule_condition("account", "members", '{"%x":"CurrentUser"}', dry_run=True)
@@ -157,6 +165,8 @@ def test_privacy_rejects_invalid_permission_empty_change_and_missing_fresh_schem
 def test_privacy_field_payload_accepts_system_fields_and_rejects_wrong_json_and_field_shapes(
     cli: BubbleCLI, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"members": {"permissions": {}}}
+    cli._invalidate_schema_reference_index("user_types")
     assert cli.set_privacy_rule_field_visibility("account", "members", view_fields=["Created Date", "Email"], dry_run=True)
     assert _payload(capsys)["changes"][0]["body"] == {"0": "Created Date", "1": "email_text"}
     with pytest.raises(ValueError, match="fields must be"):
@@ -208,3 +218,117 @@ def test_privacy_parser_handles_none_and_rejects_non_array_json(monkeypatch: pyt
     monkeypatch.setattr("bubble_mcp.aria_runtime.schema_lifecycle.privacy.json.loads", lambda _value: {"not": "a list"})
     with pytest.raises(ValueError, match="fields JSON must be an array"):
         PrivacyLifecycleService._parse_field_values("[]")
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda instance: instance.create_privacy_rule("account", dry_run=True),
+        lambda instance: instance.delete_privacy_rule("account", "members", dry_run=True),
+        lambda instance: instance.set_privacy_rule_name("account", "members", "Members", dry_run=True),
+        lambda instance: instance.set_privacy_rule_condition("account", "members", {"%x": "CurrentUser"}, dry_run=True),
+        lambda instance: instance.set_privacy_rule_permission("account", "members", "search_for", True, dry_run=True),
+        lambda instance: instance.set_privacy_rule_field_visibility("account", "members", view_all=True, dry_run=True),
+        lambda instance: instance.set_privacy_rule_auto_binding("account", "members", False, dry_run=True),
+    ],
+)
+def test_every_privacy_mutation_rejects_cache_only_type_before_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, operation: object
+) -> None:
+    cached = copy.deepcopy(cli.discovery.data["user_types"]["account"])
+    cached["privacy_role"] = {"members": {"permissions": {}}}
+    cli.discovery._data = {"user_types": {}}  # type: ignore[assignment]
+    cli._schema_user_types_cache()["account"] = cached
+    cli._invalidate_schema_reference_index("user_types")
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload built from cache-only privacy target")),
+    )
+
+    assert operation(cli) is False  # type: ignore[operator]
+
+
+@pytest.mark.parametrize(
+    ("user_types", "reference"),
+    [
+        ("malformed", "account"),
+        ({"account": {"%d": "Account", "%del": True}}, "account"),
+        ({"first": {"%d": "Duplicate"}, "second": {"%d": "Duplicate"}}, "Duplicate"),
+    ],
+)
+def test_privacy_create_rejects_malformed_stale_and_ambiguous_current_types_before_payload(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+    user_types: object,
+    reference: str,
+) -> None:
+    cli.discovery._data = {"user_types": user_types}  # type: ignore[assignment]
+    cli._invalidate_schema_reference_index("user_types")
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload built from invalid current privacy target")),
+    )
+
+    assert cli.create_privacy_rule(reference, dry_run=True) is False
+
+
+def test_privacy_create_rejects_module_only_type_before_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    modules = tmp_path / "bubble_modules"
+    (modules / "user_types").mkdir(parents=True)
+    (modules / "user_types" / "__index.json").write_text(
+        json.dumps({"module_account": "Module Account"}), encoding="utf-8"
+    )
+    cli.discovery._data = {"user_types": {}}  # type: ignore[assignment]
+    monkeypatch.setattr(cli, "_bubble_modules_project_dir", lambda: str(modules))
+    cli._invalidate_schema_reference_index("user_types")
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload built from module-only privacy target")),
+    )
+
+    assert cli.create_privacy_rule("module_account", dry_run=True) is False
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda instance: instance.delete_privacy_rule("account", "missing", dry_run=True),
+        lambda instance: instance.set_privacy_rule_name("account", "missing", "Missing", dry_run=True),
+        lambda instance: instance.set_privacy_rule_condition("account", "missing", {"%x": "CurrentUser"}, dry_run=True),
+        lambda instance: instance.set_privacy_rule_permission("account", "missing", "search_for", True, dry_run=True),
+        lambda instance: instance.set_privacy_rule_field_visibility("account", "missing", view_all=True, dry_run=True),
+        lambda instance: instance.set_privacy_rule_auto_binding("account", "missing", False, dry_run=True),
+    ],
+)
+def test_existing_privacy_rule_mutations_reject_missing_rule_before_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, operation: object
+) -> None:
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {}
+    cli._invalidate_schema_reference_index("user_types")
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload built for missing privacy rule")),
+    )
+
+    assert operation(cli) is False  # type: ignore[operator]
+
+
+@pytest.mark.parametrize("rule", ["malformed", {"%del": True}])
+def test_existing_privacy_rule_mutations_reject_malformed_or_stale_rule_before_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, rule: object
+) -> None:
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"members": rule}
+    cli._invalidate_schema_reference_index("user_types")
+    monkeypatch.setattr(
+        cli,
+        "new_schema_lifecycle_payload",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("payload built for invalid privacy rule")),
+    )
+
+    assert cli.set_privacy_rule_name("account", "members", "Members", dry_run=True) is False

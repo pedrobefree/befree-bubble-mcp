@@ -44,6 +44,46 @@ def test_method_kwargs_maps_public_schema_aliases_to_aria_runtime_args() -> None
     }
 
 
+def test_method_kwargs_scopes_family_four_name_aliases_without_changing_unrelated_defaults() -> None:
+    def create_button(
+        name: str,
+        label: str | None = None,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    def create_option_attribute(
+        option_set_key: str,
+        name: str,
+        value_type: str,
+        attribute_key: str | None = None,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    assert _method_kwargs(
+        create_button,
+        {"profile": "smoke", "name": "Submit", "execute": False},
+        execute=False,
+    ) == {"name": "Submit", "dry_run": True}
+    assert _method_kwargs(
+        create_option_attribute,
+        {
+            "profile": "smoke",
+            "option_set_ref": "os_status",
+            "name": "Display Attribute",
+            "type": "text",
+            "execute": False,
+        },
+        execute=False,
+    ) == {
+        "option_set_key": "os_status",
+        "name": "Display Attribute",
+        "value_type": "text",
+        "dry_run": True,
+    }
+
+
 def test_method_kwargs_maps_email_recipient_alias() -> None:
     def add_event_action(
         context_name: str,
@@ -125,6 +165,77 @@ def test_method_kwargs_maps_permanent_data_type_delete_confirmation() -> None:
         "confirm": True,
         "dry_run": False,
     }
+
+
+def test_sensitive_mcp_dispatch_preserves_remote_request_without_local_secret_egress(
+    tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    secret = "literal-sensitive-mcp-username"
+    export_path = tmp_path / "current.bubble"
+    export_path.write_text(json.dumps({"settings": {"secure": {}}}), encoding="utf-8")
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    monkeypatch.setenv("BUBBLE_CLI_CACHE_PATH", str(tmp_path / "cli-cache.json"))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="literal-app",
+                    appname="literal-app",
+                    app_version="test",
+                    app_json_path=str(export_path),
+                )
+            },
+        )
+    )
+    save_session(
+        "smoke",
+        session_from_payload(
+            {
+                "appId": "literal-app",
+                "appVersion": "test",
+                "headers": {"Cookie": "sid=" + "session-only"},
+            }
+        ),
+    )
+    remote_payloads: list[dict[str, object]] = []
+
+    def fake_write(_self, payload, _session, **_kwargs):  # type: ignore[no-untyped-def]
+        remote_payloads.append(json.loads(json.dumps(payload)))
+        return {
+            "ok": True,
+            "request": {"payload": payload},
+            "response": {"debug": f"remote echoed {secret}"},
+        }
+
+    monkeypatch.setattr("bubble_mcp.aria_dispatch.BubbleEditorClient.write", fake_write)
+    monkeypatch.setattr(
+        "bubble_mcp.aria_dispatch.record_mutation_overlay",
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("sensitive overlay persisted")),
+    )
+
+    result = dispatch_aria_runtime_tool(
+        "set_project_setting",
+        {
+            "profile": "smoke",
+            "name": "preview-username",
+            "value": secret,
+            "execute": True,
+        },
+    )
+
+    assert result is not None
+    assert result["ok"] is True
+    assert remote_payloads[0]["changes"][0]["path_array"] == ["settings", "secure", "username"]  # type: ignore[index]
+    assert remote_payloads[0]["changes"][0]["body"] == secret  # type: ignore[index]
+    assert secret not in json.dumps(result, sort_keys=True)
+    assert not any(
+        secret.encode() in path.read_bytes()
+        for path in tmp_path.rglob("*")
+        if path.is_file()
+    )
 
 
 def test_delete_data_field_requires_calculate_derived_refresh() -> None:

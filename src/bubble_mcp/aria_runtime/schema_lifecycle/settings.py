@@ -269,7 +269,7 @@ class SettingsLifecycleService:
             else:
                 self._host.log_schema_lifecycle_error(f"Failed to send: {exc}")
             return False
-        warning = self._host.project_schema_settings(updates)
+        warning = None if sensitive else self._host.project_schema_settings(updates)
         if warning:
             if sensitive:
                 self._host.log_schema_lifecycle_error("Post-write sensitive setting cache update failed.")

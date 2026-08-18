@@ -47,6 +47,8 @@ class Sample:
     payload_bytes: int = 0
     payload_builds: int = 0
     cache_saves: int = 0
+    cli_cache_saves: int = 0
+    discovery_cache_saves: int = 0
     external_writes: int = 0
     dispatch_attempts: int = 0
 
@@ -55,7 +57,8 @@ class Sample:
 class Metrics:
     payload_bytes: int = 0
     payload_builds: int = 0
-    cache_saves: int = 0
+    cli_cache_saves: int = 0
+    discovery_cache_saves: int = 0
     external_writes: int = 0
     dispatch_attempts: int = 0
 
@@ -114,14 +117,20 @@ def _new_cli(root: Path, snapshot: dict[str, Any]) -> Any:
     return BubbleCLI(app_json_path=str(snapshot_path), appname="schema-lifecycle-benchmark")
 
 
-def _capture_cache_saves(cli: Any, metrics: Metrics) -> None:
-    original_save = cli._save_cli_cache
+def _capture_persistence_saves(cli: Any, metrics: Metrics) -> None:
+    original_cli_save = cli._save_cli_cache
+    original_discovery_save = cli.discovery.persist_disk_cache
 
-    def counted_save() -> None:
-        metrics.cache_saves += 1
-        original_save()
+    def counted_cli_save() -> None:
+        metrics.cli_cache_saves += 1
+        original_cli_save()
 
-    cli._save_cli_cache = counted_save
+    def counted_discovery_save() -> bool:
+        metrics.discovery_cache_saves += 1
+        return bool(original_discovery_save())
+
+    cli._save_cli_cache = counted_cli_save
+    cli.discovery.persist_disk_cache = counted_discovery_save
 
 
 def _resolution_snapshot(count: int) -> dict[str, Any]:
@@ -172,6 +181,8 @@ def _time_samples(samples: int, sample_fn: Callable[[], Sample]) -> dict[str, An
         "payload_bytes": int(median(row.payload_bytes for row in rows)),
         "payload_builds": int(median(row.payload_builds for row in rows)),
         "cache_saves": int(median(row.cache_saves for row in rows)),
+        "cli_cache_saves": int(median(row.cli_cache_saves for row in rows)),
+        "discovery_cache_saves": int(median(row.discovery_cache_saves for row in rows)),
         "external_writes": int(median(row.external_writes for row in rows)),
         "dispatch_attempts": int(median(row.dispatch_attempts for row in rows)),
     }
@@ -197,7 +208,7 @@ def _crud_sample() -> Sample:
     with tempfile.TemporaryDirectory(prefix="schema-crud-") as temp_name:
         cli = _new_cli(Path(temp_name), _schema_snapshot())
         metrics = Metrics()
-        _capture_cache_saves(cli, metrics)
+        _capture_persistence_saves(cli, metrics)
         random.seed(46)
         with _capture_dispatches(metrics):
             started = perf_counter()
@@ -219,7 +230,9 @@ def _crud_sample() -> Sample:
         elapsed_seconds=elapsed,
         payload_bytes=metrics.payload_bytes,
         payload_builds=metrics.payload_builds,
-        cache_saves=metrics.cache_saves,
+        cache_saves=metrics.cli_cache_saves + metrics.discovery_cache_saves,
+        cli_cache_saves=metrics.cli_cache_saves,
+        discovery_cache_saves=metrics.discovery_cache_saves,
         external_writes=metrics.external_writes,
         dispatch_attempts=metrics.dispatch_attempts,
     )
@@ -229,7 +242,7 @@ def _reorder_sample(count: int) -> Sample:
     with tempfile.TemporaryDirectory(prefix="schema-reorder-") as temp_name:
         cli = _new_cli(Path(temp_name), _schema_snapshot(reorder_values=count))
         metrics = Metrics()
-        _capture_cache_saves(cli, metrics)
+        _capture_persistence_saves(cli, metrics)
         assignments = [f"value_{index:04d}:{count - index}" for index in range(count)]
         random.seed(46)
         with _capture_dispatches(metrics):
@@ -242,7 +255,9 @@ def _reorder_sample(count: int) -> Sample:
         elapsed_seconds=elapsed,
         payload_bytes=metrics.payload_bytes,
         payload_builds=metrics.payload_builds,
-        cache_saves=metrics.cache_saves,
+        cache_saves=metrics.cli_cache_saves + metrics.discovery_cache_saves,
+        cli_cache_saves=metrics.cli_cache_saves,
+        discovery_cache_saves=metrics.discovery_cache_saves,
         external_writes=metrics.external_writes,
         dispatch_attempts=metrics.dispatch_attempts,
     )
@@ -264,7 +279,7 @@ def _run_benchmarks(config: BenchmarkConfig) -> dict[str, Any]:
         config.samples, partial(_reorder_sample, config.reorder_values)
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "python": (
             f"{platform.python_implementation()} {platform.python_version()} ({sys.executable})"
         ),
@@ -322,6 +337,14 @@ def compare_reports(before: dict[str, Any], after: dict[str, Any]) -> dict[str, 
             "after_cache_saves": int(after_row["cache_saves"]),
             "cache_saves_delta": int(after_row["cache_saves"])
             - int(before_row["cache_saves"]),
+            "before_cli_cache_saves": int(before_row["cli_cache_saves"]),
+            "after_cli_cache_saves": int(after_row["cli_cache_saves"]),
+            "cli_cache_saves_delta": int(after_row["cli_cache_saves"])
+            - int(before_row["cli_cache_saves"]),
+            "before_discovery_cache_saves": int(before_row["discovery_cache_saves"]),
+            "after_discovery_cache_saves": int(after_row["discovery_cache_saves"]),
+            "discovery_cache_saves_delta": int(after_row["discovery_cache_saves"])
+            - int(before_row["discovery_cache_saves"]),
             "before_external_writes": int(before_row["external_writes"]),
             "after_external_writes": int(after_row["external_writes"]),
             "before_dispatch_attempts": int(before_row.get("dispatch_attempts", 0)),
@@ -330,7 +353,7 @@ def compare_reports(before: dict[str, Any], after: dict[str, Any]) -> dict[str, 
             - int(before_row.get("dispatch_attempts", 0)),
         }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "python": before.get("python"),
         "samples": before.get("samples"),
         "workload": before.get("workload"),

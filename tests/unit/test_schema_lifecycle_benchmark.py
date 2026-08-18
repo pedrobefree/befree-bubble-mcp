@@ -32,17 +32,21 @@ def test_schema_benchmark_reports_resolution_crud_and_reorder_metrics() -> None:
     assert report["benchmarks"]["schema_crud"]["dispatch_attempts"] == 7
     assert report["benchmarks"]["option_reorder_5"]["dispatch_attempts"] == 1
     assert report["benchmarks"]["schema_crud"]["payload_builds"] == 7
-    assert report["benchmarks"]["schema_crud"]["cache_saves"] == 7
+    assert report["benchmarks"]["schema_crud"]["cli_cache_saves"] == 7
+    assert report["benchmarks"]["schema_crud"]["discovery_cache_saves"] == 14
+    assert report["benchmarks"]["schema_crud"]["cache_saves"] == 21
     assert report["benchmarks"]["schema_crud"]["payload_bytes"] > 0
     assert report["benchmarks"]["option_reorder_5"]["payload_builds"] == 1
-    assert report["benchmarks"]["option_reorder_5"]["cache_saves"] == 1
+    assert report["benchmarks"]["option_reorder_5"]["cli_cache_saves"] == 1
+    assert report["benchmarks"]["option_reorder_5"]["discovery_cache_saves"] == 2
+    assert report["benchmarks"]["option_reorder_5"]["cache_saves"] == 3
     assert report["benchmarks"]["option_reorder_5"]["payload_bytes"] > 0
     assert json.loads(json.dumps(report)) == report
 
 
 def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas() -> None:
     before = {
-        "schema_version": 1,
+        "schema_version": 2,
         "python": "3.13.7",
         "samples": 7,
         "workload": {"resolution_counts": [5], "warm_lookups": 3, "reorder_values": 5},
@@ -51,14 +55,16 @@ def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas
                 "elapsed_seconds": 2.0,
                 "payload_bytes": 100,
                 "payload_builds": 7,
-                "cache_saves": 7,
+                "cli_cache_saves": 7,
+                "discovery_cache_saves": 7,
+                "cache_saves": 14,
                 "external_writes": 0,
                 "dispatch_attempts": 7,
             }
         },
     }
     after = {
-        "schema_version": 1,
+        "schema_version": 2,
         "python": "3.13.7",
         "samples": 7,
         "workload": {"resolution_counts": [5], "warm_lookups": 3, "reorder_values": 5},
@@ -67,7 +73,9 @@ def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas
                 "elapsed_seconds": 1.5,
                 "payload_bytes": 96,
                 "payload_builds": 7,
-                "cache_saves": 7,
+                "cli_cache_saves": 7,
+                "discovery_cache_saves": 8,
+                "cache_saves": 15,
                 "external_writes": 0,
                 "dispatch_attempts": 7,
             }
@@ -87,9 +95,15 @@ def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas
         "before_payload_builds": 7,
         "after_payload_builds": 7,
         "payload_builds_delta": 0,
-        "before_cache_saves": 7,
-        "after_cache_saves": 7,
-        "cache_saves_delta": 0,
+        "before_cache_saves": 14,
+        "after_cache_saves": 15,
+        "cache_saves_delta": 1,
+        "before_cli_cache_saves": 7,
+        "after_cli_cache_saves": 7,
+        "cli_cache_saves_delta": 0,
+        "before_discovery_cache_saves": 7,
+        "after_discovery_cache_saves": 8,
+        "discovery_cache_saves_delta": 1,
         "before_external_writes": 0,
         "after_external_writes": 0,
         "before_dispatch_attempts": 7,
@@ -103,7 +117,7 @@ def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas
     [
         ("python", "different-python"),
         ("samples", 8),
-        ("schema_version", 2),
+        ("schema_version", 1),
         ("workload", {"resolution_counts": [6], "warm_lookups": 3, "reorder_values": 5}),
     ],
 )
@@ -111,7 +125,7 @@ def test_schema_benchmark_comparison_rejects_non_equivalent_runs(
     field: str, value: object
 ) -> None:
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "python": "same-python",
         "samples": 7,
         "workload": {"resolution_counts": [5], "warm_lookups": 3, "reorder_values": 5},

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 import inspect
+from pathlib import Path
 from typing import Any
 
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
@@ -39,3 +41,37 @@ def test_privacy_facades_keep_public_signatures_and_delegate_to_composed_service
     assert cli.set_privacy_rule_permission("account", "members", "search_for", 1, True) == ("set_privacy_rule_permission", ("account", "members", "search_for", 1, True), {})
     assert cli.set_privacy_rule_field_visibility("account", "members", False, ["Email"], True) == ("set_privacy_rule_field_visibility", ("account", "members", False, ["Email"], True), {})
     assert cli.set_privacy_rule_auto_binding("account", "members", True, ["Email"], True) == ("set_privacy_rule_auto_binding", ("account", "members", True, ["Email"], True), {})
+
+
+def test_privacy_authority_is_unique_and_bubble_cli_retains_only_delegating_facades() -> None:
+    source_path = inspect.getsourcefile(BubbleCLI)
+    assert source_path is not None
+    module = ast.parse(Path(source_path).read_text(encoding="utf-8"))
+    bubble_cli = next(
+        node for node in module.body if isinstance(node, ast.ClassDef) and node.name == "BubbleCLI"
+    )
+    methods = {
+        node.name: node
+        for node in bubble_cli.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    removed_authoritative_helpers = {
+        "_set_privacy_rule_path",
+        "_privacy_rules_for_type",
+        "_next_privacy_rule_key",
+        "_default_everyone_privacy_rule",
+        "_data_type_field_keys",
+        "_privacy_field_list_payload",
+        "_parse_privacy_json_value",
+        "_update_privacy_rule_cache",
+        "_delete_privacy_rule_cache",
+        "_update_privacy_rule_cache_path",
+    }
+    assert removed_authoritative_helpers.isdisjoint(methods)
+
+    parser_facade = methods["_parse_privacy_bool"]
+    parser_statements = [node for node in parser_facade.body if not isinstance(node, ast.Expr)]
+    assert len(parser_statements) == 1
+    assert isinstance(parser_statements[0], ast.Return)
+    assert isinstance(parser_statements[0].value, ast.Call)
+    assert ast.unparse(parser_statements[0].value.func) == "self._schema_lifecycle.privacy.parse_bool"
