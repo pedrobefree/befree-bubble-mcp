@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from bubble_mcp.knowledge.advisor import knowledge_advice
@@ -1626,7 +1627,12 @@ def task_runbook(
     return result
 
 
-def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
+def search_tool_catalog(
+    query: str,
+    *,
+    limit: int = 8,
+    tool_schemas: Iterable[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Search exposed MCP tools and return compact matching metadata."""
 
     from bubble_mcp.server.schemas import list_tool_schemas
@@ -1638,7 +1644,7 @@ def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
     target_terms = _tool_target_terms(terms)
     project_transfer_query = _looks_like_project_transfer(normalized_query)
     max_results = min(max(int(limit or 8), 1), 25)
-    tools = list_tool_schemas()
+    tools = list_tool_schemas() if tool_schemas is None else [dict(schema) for schema in tool_schemas]
     scored: list[tuple[int, dict[str, Any]]] = []
 
     for tool in tools:
@@ -1664,6 +1670,8 @@ def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
             normalized_name = _normalize_text(name)
             normalized_description = _normalize_text(description)
             normalized_properties = [_normalize_text(property_name) for property_name in property_names]
+            if normalized_query == normalized_name:
+                score += 100
             for term in terms:
                 if term == normalized_name:
                     score += 20

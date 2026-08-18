@@ -11,7 +11,9 @@ import bubble_mcp.server.completion as completion_module
 import bubble_mcp.server.tools as tools_module
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
+from bubble_mcp.server.agent_guide import search_tool_catalog
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
+from bubble_mcp.server.schemas import list_tool_schemas
 from bubble_mcp.sessions.constants import DEFAULT_LOGIN_WAIT_SECONDS
 from bubble_mcp.sessions.store import BubbleSessionData, load_session, save_session, session_from_payload
 from bubble_mcp.aria_dispatch import _method_kwargs
@@ -1344,6 +1346,16 @@ def test_tool_search_returns_compact_relevant_catalog_matches() -> None:
     assert create_from_html["required"] == ["profile", "context", "parent"]
     assert "selector" in create_from_html["properties"]
     assert create_from_html["annotations"]["readOnlyHint"] is False
+
+
+def test_tool_search_exact_name_is_independent_of_catalog_order() -> None:
+    schemas = list_tool_schemas()
+
+    forward = search_tool_catalog("create_text", limit=1, tool_schemas=schemas)
+    reverse = search_tool_catalog("create_text", limit=1, tool_schemas=list(reversed(schemas)))
+
+    assert forward["matches"] == reverse["matches"]
+    assert forward["matches"][0]["name"] == "create_text"
 
 
 def test_tool_search_ignores_generic_action_noise_when_specific_terms_exist() -> None:
