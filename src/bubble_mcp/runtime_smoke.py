@@ -5,11 +5,14 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import json
 from pathlib import Path
 import re
 from typing import Any, cast
 from uuid import uuid4
 
+from bubble_mcp.context.detector import default_bubble_export_path
+from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.runtime_smoke_validation import validate_execute_write_context
 
@@ -24,6 +27,41 @@ RUNTIME_SMOKE_SUITES = {
     "agent-routing",
     "visual-repair",
 }
+
+
+def _profile_option_set_ref(profile: str, app_id: str) -> str | None:
+    """Return one live option-set key from the refreshed local profile export."""
+    if not profile or not app_id:
+        return None
+    try:
+        payload = json.loads(default_bubble_export_path(profile, app_id).read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError):
+        return None
+    option_sets = payload.get("option_sets") if isinstance(payload, dict) else None
+    if not isinstance(option_sets, dict):
+        return None
+    return next(
+        (
+            str(key)
+            for key, entry in sorted(option_sets.items())
+            if str(key).strip()
+            and isinstance(entry, dict)
+            and entry.get("%del") is not True
+            and entry.get("deleted") is not True
+        ),
+        None,
+    )
+
+
+def _profile_app_id(profile: str, app_id: str) -> str:
+    """Resolve the configured app id when the public smoke call only supplies a profile."""
+    if app_id or not profile:
+        return app_id
+    try:
+        configured = resolve_profile(load_settings(), profile)
+    except (OSError, ValueError):
+        return ""
+    return configured.app_id if configured is not None else ""
 
 
 VISUAL_REPAIR_REFERENCE: dict[str, Any] = {
@@ -257,6 +295,7 @@ def _family_preview_cases(
         )
 
     schema_base = {"profile": profile, "app_version": app_version, "execute": False, "dry_run": True}
+    option_set_ref = _profile_option_set_ref(profile, app_id) or "os_status"
     schema_cases: list[tuple[str, dict[str, Any], str]] = [
         ("create_data_type", {"name": f"MCP Family {run_id}", "fields": [{"name": "name", "type": "text"}]}, "schema:data_type"),
         (
@@ -265,7 +304,11 @@ def _family_preview_cases(
             "schema:data_field",
         ),
         ("create_option_set", {"name": f"MCP Family Options {run_id}", "values": ["One", "Two"]}, "schema:option_set"),
-        ("create_option_value", {"option_set_key": "os_status", "label": f"Family {run_id}"}, "schema:option_value"),
+        (
+            "create_option_value",
+            {"option_set_key": option_set_ref, "label": f"Family {run_id}"},
+            "schema:option_value",
+        ),
     ]
     for tool, args, family in schema_cases:
         cases.append(
@@ -596,6 +639,8 @@ def run_runtime_smoke(
         raise ValueError(
             "suite must be one of: coverage, safe-read, preview-write, execute-write, family-preview, agent-routing, visual-repair."
         )
+    if suite == "family-preview":
+        app_id = _profile_app_id(profile, app_id)
     effective_run_id = _safe_run_id(run_id)
     if suite == "agent-routing":
         routing_results = _run_agent_routing_suite(

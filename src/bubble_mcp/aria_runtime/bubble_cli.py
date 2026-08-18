@@ -79,81 +79,10 @@ from context_reference_resolver import ContextReferenceResolver
 from visual_mutations import VisualMutationService
 try:
     from .style_lifecycle import StyleLifecycleService, StyleReferenceResolver
+    from .schema_lifecycle import PROJECT_SETTING_ALIASES, SchemaLifecycleService  # noqa: F401
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
     from style_lifecycle import StyleLifecycleService, StyleReferenceResolver
-
-PROJECT_SETTING_ALIASES: Dict[str, Dict[str, Any]] = {
-    # Application rights
-    "app-rights": {"path": ["settings", "client_safe", "app_rights"], "value_type": "string"},
-
-    # Preview password protection
-    "preview-password-protection": {"path": ["settings", "client_safe", "pw_protection"], "value_type": "bool"},
-    "preview-username": {"path": ["settings", "secure", "username"], "value_type": "string"},
-    "preview-password": {"path": ["settings", "secure", "%pw"], "value_type": "string"},
-    "preview-password-dev-only": {"path": ["settings", "client_safe", "pw_protection_dev_only"], "value_type": "bool"},
-
-    # User password policy
-    "password-policy-enabled": {"path": ["settings", "client_safe", "have_pw_policy"], "value_type": "bool"},
-    "password-min-length": {"path": ["settings", "client_safe", "pw_length"], "value_type": "int"},
-    "password-require-number": {"path": ["settings", "client_safe", "pw_require_number"], "value_type": "bool"},
-    "password-require-capital": {"path": ["settings", "client_safe", "pw_require_capital_letter"], "value_type": "bool"},
-    "password-require-special-char": {"path": ["settings", "client_safe", "pw_require_special_char"], "value_type": "bool"},
-    "temp-password-redirect-page": {"path": ["settings", "client_safe", "temp_pw_page_redirect"], "value_type": "string"},
-
-    # Additional settings
-    "iframe-policy": {"path": ["settings", "client_safe", "allow_iframe"], "value_type": "string"},
-    "cookie-opt-in": {"path": ["settings", "client_safe", "cookie_opt_in"], "value_type": "bool"},
-    "disable-file-upload-api": {"path": ["settings", "client_safe", "is_deprecated_fileupload_disabled"], "value_type": "bool"},
-
-    # General appearance
-    "favicon": {"path": ["favicon"], "value_type": "string"},
-    "status-bar-color": {"path": ["settings", "client_safe", "status_bar_color"], "value_type": "string"},
-    "spinner-color": {"path": ["settings", "client_safe", "spinner_color"], "value_type": "string"},
-    "ios-hide-safari-ui": {"path": ["settings", "client_safe", "ios_meta_tag_hide_safari_ui"], "value_type": "bool"},
-    "ios-prevent-zoom": {"path": ["settings", "client_safe", "ios_meta_tag_prevent_zoom"], "value_type": "bool"},
-
-    # Service/API keys
-    "google-geocode-key": {"path": ["settings", "secure", "general_keys", "google_geocode_key"], "value_type": "string"},
-    "google-map-key": {"path": ["settings", "client_safe", "general_keys", "google_map_key"], "value_type": "string"},
-
-    # Advanced options
-    "advanced-timezone-controls": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls"], "value_type": "bool"},
-    "advanced-timezone-date-time-inputs": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls_date_time_inputs"], "value_type": "bool"},
-    "advanced-timezone-page": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls_page"], "value_type": "bool"},
-    "advanced-timezone-backend-workflows": {"path": ["settings", "client_safe", "advanced_features", "timezone_controls_backend_workflows"], "value_type": "bool"},
-    "advanced-expose-id-option": {"path": ["settings", "client_safe", "advanced_features", "expose_id_option"], "value_type": "bool"},
-    "advanced-show-parens": {"path": ["settings", "client_safe", "advanced_features", "parens"], "value_type": "bool"},
-
-    # Settings > API
-    "api-backend-workflows-enabled": {"path": ["settings", "client_safe", "exposes_wf_api"], "value_type": "bool"},
-    "api-data-enabled": {"path": ["settings", "client_safe", "exposes_get_api"], "value_type": "bool"},
-    "api-data-use-display-fields": {"path": ["settings", "client_safe", "use_captions_for_get"], "value_type": "bool"},
-    "api-hide-swagger-docs": {"path": ["settings", "client_safe", "hide_swagger_api"], "value_type": "bool"},
-
-    # Infinite recursion protection (accepts ints or null)
-    "workflow-max-depth-dev": {"path": ["settings", "client_safe", "max_recursive_workflow_depth_test"], "value_type": "auto"},
-    "workflow-max-depth-live": {"path": ["settings", "client_safe", "max_recursive_workflow_depth_live"], "value_type": "auto"},
-
-    # Settings > SEO and metatags
-    "meta-title": {"path": ["settings", "client_safe", "facebook_meta_tag_title"], "value_type": "string"},
-    "meta-site-name": {"path": ["settings", "client_safe", "facebook_meta_tag_site_name"], "value_type": "string"},
-    "meta-description": {"path": ["settings", "client_safe", "facebook_meta_tag_description"], "value_type": "string"},
-    "meta-thumbnail": {"path": ["settings", "client_safe", "facebook_meta_tag_image"], "value_type": "string"},
-    "seo-expose-text-tags": {"path": ["settings", "client_safe", "expose_text_tags"], "value_type": "bool"},
-    "seo-enable-canonical-url": {"path": ["settings", "client_safe", "enable_canonical_url"], "value_type": "bool"},
-    "seo-customize-robots-txt-enabled": {"path": ["settings", "client_safe", "customize_robots_txt"], "value_type": "bool"},
-    "seo-custom-robots-txt": {"path": ["settings", "client_safe", "custom_robot_txt"], "value_type": "string"},
-    "seo-generate-sitemap": {"path": ["settings", "client_safe", "generate_sitemap"], "value_type": "bool"},
-    "seo-sitemap-pages": {"path": ["settings", "client_safe", "sitemap_pages"], "value_type": "string"},
-    "seo-header-meta-tags": {"path": ["settings", "client_safe", "custom_header_meta_tag_content"], "value_type": "string"},
-    "seo-body-scripts": {"path": ["settings", "client_safe", "custom_header_meta_tag_body_content"], "value_type": "string"},
-    "seo-allow-wildcard-redirects": {"path": ["settings", "client_safe", "allow_wildcards"], "value_type": "bool"},
-
-    # App texts / i18n
-    "app-primary-language": {"path": ["settings", "client_safe", "app_language"], "value_type": "string"},
-    "user-language-field": {"path": ["settings", "client_safe", "language_field"], "value_type": "string"},
-}
-
+    from schema_lifecycle import PROJECT_SETTING_ALIASES, SchemaLifecycleService  # noqa: F401
 
 # ==========================================
 # EVENT MAPPER - CORREÇÃO CRÍTICA
@@ -446,6 +375,7 @@ class BubbleCLI:
         self._cli_cache = self._load_cli_cache()
         self._cli_cache_base = copy.deepcopy(self._cli_cache)
         self._style_reference_revision = 0
+        self._schema_reference_revision = 0
 
         self.profile_name = profile_name
         self.app_version = str(app_version or "test")
@@ -466,6 +396,7 @@ class BubbleCLI:
         self._context_reference_resolver = ContextReferenceResolver(self)
         self._visual_mutations = VisualMutationService(self)
         self._style_lifecycle = StyleLifecycleService(self)
+        self._schema_lifecycle = SchemaLifecycleService(self)
 
         self.color_mapper = ColorMapper(self.discovery.data)
         # Seed with cached colors
@@ -1028,6 +959,63 @@ class BubbleCLI:
         discovery_data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
         cache_data = self._cli_cache if isinstance(self._cli_cache, dict) else {}
         return discovery_data, cache_data
+
+    def schema_reference_snapshots(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Return detached schema snapshots so reference callers cannot mutate live state."""
+        discovery_data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        cache_data = self._cli_cache if isinstance(self._cli_cache, dict) else {}
+        return copy.deepcopy(discovery_data), copy.deepcopy(cache_data)
+
+    def schema_reference_modules_dir(self) -> Optional[str]:
+        """Return the active split-module root, if it belongs to this app."""
+        return self._bubble_modules_project_dir()
+
+    def schema_reference_profile_key(self) -> str:
+        """Return the cache profile from which schema fallback entries may be read."""
+        return self._schema_profile_key()
+
+    def normalize_schema_reference(self, value: Any) -> str:
+        """Normalize a caller-facing schema label without changing its public spelling."""
+        return self._norm_lookup(value)
+
+    def slugify_schema_reference(self, value: str) -> str:
+        """Convert an option-set shorthand into Bubble's canonical key fragment."""
+        try:
+            return self._slugify_identifier(value)
+        except ValueError:
+            return ""
+
+    def schema_reference_revision(self) -> int:
+        """Return the revision used to invalidate detached schema reference indexes."""
+        return self._schema_reference_revision
+
+    def _invalidate_schema_reference_index(self, *families: str) -> None:
+        """Advance schema snapshot state after a successful relevant projected write."""
+        self._schema_reference_revision = getattr(self, "_schema_reference_revision", 0) + 1
+        lifecycle = getattr(self, "_schema_lifecycle", None)
+        references = getattr(lifecycle, "references", None)
+        if references is not None:
+            references.invalidate(*families)
+
+    def _invalidate_schema_reference_indexes_for_changes(self, changes: List[Dict[str, Any]]) -> None:
+        """Invalidate only indexes touched by a completed schema/settings payload."""
+        if getattr(self, "_schema_lifecycle_dispatching", False):
+            return
+        families: set[str] = set()
+        for change in changes:
+            if not isinstance(change, dict):
+                continue
+            path = self._normalize_capture_path(change.get("path_array"))
+            if not path:
+                continue
+            if path[0] == "user_types":
+                families.add("user_types")
+            elif path[0] == "option_sets":
+                families.add("option_sets")
+            elif path[:3] == ["settings", "client_safe", "301_redirects"]:
+                families.add("redirects")
+        if families:
+            self._invalidate_schema_reference_index(*sorted(families))
 
     def new_style_token_payload(self) -> PayloadBuilder:
         """Create token payloads with the SDK identity used by this BubbleCLI mode."""
@@ -1844,17 +1832,21 @@ class BubbleCLI:
             logger.error(f"Failed to send: {e}")
             return False
 
-    def _dispatch_payload(self, pb: PayloadBuilder) -> None:
+    def _dispatch_payload(self, pb: PayloadBuilder, *, sensitive: bool = False) -> None:
         """Send payload and opportunistically sync profile cache from emitted schema changes."""
+        if sensitive:
+            pb.send_to_webhook(self.webhook_url, sensitive=True)
+            return
         pb.send_to_webhook(self.webhook_url)
+        changes = getattr(pb, "changes", None)
+        normalized_changes = changes if isinstance(changes, list) else []
         try:
-            changes = getattr(pb, "changes", None)
-            normalized_changes = changes if isinstance(changes, list) else []
             self._apply_changes_to_discovery_cache(normalized_changes)
             self._sync_profile_cache_from_changes(normalized_changes)
             self.discovery.persist_disk_cache()
         except Exception as e:
             logger.warning(f"Post-write cache sync skipped: {e}")
+        self._invalidate_schema_reference_indexes_for_changes(normalized_changes)
 
     @staticmethod
     def _set_nested_cache_value(target: Dict[str, Any], path: List[str], value: Any) -> None:
@@ -3902,6 +3894,164 @@ class BubbleCLI:
             logger.error(f"Failed to send: {e}")
             return False
 
+    def new_schema_lifecycle_payload(self, *, include_app_version: bool = False) -> PayloadBuilder:
+        """Create a data-schema payload without widening lifecycle services to CLI internals."""
+        if include_app_version:
+            return PayloadBuilder(appname=self.appname, app_version=self.app_version)
+        return PayloadBuilder(appname=self.appname)
+
+    def add_schema_lifecycle_change(
+        self,
+        payload: PayloadBuilder,
+        intent_name: str,
+        path_array: List[str],
+        body: Any,
+        *,
+        intent_id: Optional[int] = None,
+        source_appname: Optional[str] = None,
+    ) -> None:
+        """Keep lifecycle payload wire records byte-compatible with legacy schema writes."""
+        self._add_schema_change(payload, intent_name, path_array, body, intent_id, source_appname)
+
+    def dispatch_schema_lifecycle_payload(self, payload: PayloadBuilder, *, sensitive: bool = False) -> None:
+        """Dispatch a lifecycle payload before its service applies the atomic projection."""
+        self._schema_lifecycle_dispatching = True
+        try:
+            if sensitive:
+                self._dispatch_payload(payload, sensitive=True)
+            else:
+                self._dispatch_payload(payload)
+        finally:
+            self._schema_lifecycle_dispatching = False
+
+    @staticmethod
+    def preview_schema_lifecycle_payload(payload: PayloadBuilder) -> None:
+        print("\n DRY RUN - Payload preview:")
+        print(payload.to_json())
+
+    @staticmethod
+    def log_schema_lifecycle_success(message: str) -> None:
+        logger.success(message)
+
+    @staticmethod
+    def log_schema_lifecycle_info(message: str) -> None:
+        logger.info(message)
+
+    @staticmethod
+    def log_schema_lifecycle_error(message: str) -> None:
+        logger.error(message)
+
+    def project_schema_data_type(self, key: str, entry: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Apply one completed data-type delta to discovery and profile cache before invalidation."""
+        discovery_data = self.discovery.data
+        data = discovery_data if isinstance(discovery_data, dict) else {}
+        if not isinstance(discovery_data, dict):
+            self.discovery._data = data
+        user_types = data.get("user_types")
+        if not isinstance(user_types, dict):
+            user_types = {}
+            data["user_types"] = user_types
+        cached_types = self._schema_user_types_cache()
+        projected = copy.deepcopy(entry) if isinstance(entry, dict) else None
+        if projected is None:
+            user_types.pop(key, None)
+            cached_types.pop(key, None)
+        else:
+            user_types[key] = projected
+            cached_types[key] = copy.deepcopy(projected)
+        warning: Optional[str] = None
+        try:
+            self.discovery.persist_disk_cache()
+            self._save_cli_cache()
+        except Exception as exc:
+            warning = f"Post-write data type cache update failed: {exc}"
+        self._invalidate_schema_reference_index("user_types")
+        return warning
+
+    def project_schema_option_set(self, key: str, entry: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Apply one completed option-set delta before invalidating option references."""
+        discovery_data = self.discovery.data
+        data = discovery_data if isinstance(discovery_data, dict) else {}
+        if not isinstance(discovery_data, dict):
+            self.discovery._data = data
+        option_sets = data.get("option_sets")
+        if not isinstance(option_sets, dict):
+            option_sets = {}
+            data["option_sets"] = option_sets
+        cached_sets = self._schema_option_sets_cache()
+        projected = copy.deepcopy(entry) if isinstance(entry, dict) else None
+        if projected is None:
+            option_sets.pop(key, None)
+            cached_sets.pop(key, None)
+        else:
+            option_sets[key] = projected
+            cached_sets[key] = copy.deepcopy(projected)
+        warning: Optional[str] = None
+        try:
+            self.discovery.persist_disk_cache()
+            self._save_cli_cache()
+        except Exception as exc:
+            warning = f"Post-write option set cache update failed: {exc}"
+        self._invalidate_schema_reference_index("option_sets")
+        return warning
+
+    def next_schema_option_value_key(self) -> str:
+        """Return the Bubble-native ID used for a newly-created option value."""
+        return self.id_gen.element_id()
+
+    def coerce_schema_option_value(self, value: Any, *, parse_json: bool = False) -> Any:
+        """Keep option attribute coercion at BubbleCLI's established boundary."""
+        return self._coerce_schema_value(value, parse_json=parse_json)
+
+    def parse_schema_setting_path(self, value: Any) -> List[str]:
+        """Keep setting-path parsing at BubbleCLI's established public boundary."""
+        if isinstance(value, list):
+            return [str(part) for part in value]
+        text = str(value or "").strip()
+        if text and not text.startswith("["):
+            separator = "." if "." in text else "/"
+            if separator in text:
+                return [part.strip() for part in text.split(separator)]
+        return self._parse_path_array(value)
+
+    def coerce_schema_setting_value(self, value: Any, *, value_type: str = "string") -> Any:
+        """Keep setting value coercion at BubbleCLI's established public boundary."""
+        return self._coerce_setting_value(value, value_type=value_type)
+
+    @staticmethod
+    def next_schema_setting_intent_id() -> int:
+        """Preserve legacy random ChangeAppSetting intent identifiers."""
+        return random.randint(1, 999999)
+
+    def next_schema_redirect_key(self) -> str:
+        """Return the Bubble-native ID used for a newly-created redirect rule."""
+        return self.id_gen.element_id()
+
+    def project_schema_settings(self, updates: List[Tuple[List[str], Any]]) -> Optional[str]:
+        """Project successful setting writes without persisting values into schema cache."""
+        discovery_data = self.discovery.data
+        data = discovery_data if isinstance(discovery_data, dict) else {}
+        if not isinstance(discovery_data, dict):
+            self.discovery._data = data
+        redirect_changed = False
+        for path, value in updates:
+            normalized = [str(token) for token in path if str(token).strip()]
+            if not normalized:
+                continue
+            if value is None:
+                self._delete_nested_cache_value(data, normalized)
+            else:
+                self._set_nested_cache_value(data, normalized, copy.deepcopy(value))
+            redirect_changed = redirect_changed or normalized[:3] == ["settings", "client_safe", "301_redirects"]
+        warning: Optional[str] = None
+        try:
+            self.discovery.persist_disk_cache()
+        except Exception as exc:
+            warning = f"Post-write setting cache update failed: {exc}"
+        if redirect_changed:
+            self._invalidate_schema_reference_index("redirects")
+        return warning
+
     def _lookup_existing_comment(
         self,
         target_type: str,
@@ -3998,32 +4148,8 @@ class BubbleCLI:
         value_type: str = "string",
         dry_run: bool = False
     ) -> bool:
-        """
-        Generic app settings mutation via ChangeAppSetting.
-        Works for both settings paths and root keys like `favicon`.
-        """
-        try:
-            path_array = self._parse_path_array(path)
-            coerced_value = self._coerce_setting_value(value, value_type=value_type)
-        except ValueError as e:
-            logger.error(str(e))
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            path_array,
-            coerced_value,
-            intent_id=random.randint(1, 999999),
-            source_appname=""
-        )
-        joined_path = ".".join(path_array)
-        return self._send_schema_payload(
-            pb,
-            dry_run,
-            f"App setting '{joined_path}' updated."
-        )
+        """Generic app settings mutation via ChangeAppSetting."""
+        return self._schema_lifecycle.settings.set_app_setting(path, value, value_type, dry_run)
 
     def set_project_setting(
         self,
@@ -4032,89 +4158,16 @@ class BubbleCLI:
         value_type: Optional[str] = None,
         dry_run: bool = False
     ) -> bool:
-        """
-        Set a mapped project setting alias.
-        Example alias: `preview-password-protection`.
-        """
-        normalized_key = str(setting_key or "").strip().lower().replace("_", "-")
-        spec = PROJECT_SETTING_ALIASES.get(normalized_key)
-        if not spec:
-            logger.error(
-                f"Unknown project setting '{setting_key}'. "
-                "Use 'list-project-settings' to inspect available aliases."
-            )
-            return False
-
-        resolved_value_type = (value_type or spec.get("value_type", "string")).strip().lower()
-        return self.set_app_setting(
-            spec["path"],
-            value,
-            value_type=resolved_value_type,
-            dry_run=dry_run
-        )
+        """Set a mapped project setting alias."""
+        return self._schema_lifecycle.settings.set_project_setting(setting_key, value, value_type, dry_run)
 
     def list_project_settings(self, as_json: bool = False) -> bool:
         """List mapped project-setting aliases and target paths."""
-        rows: List[Dict[str, Any]] = []
-        for alias in sorted(PROJECT_SETTING_ALIASES.keys()):
-            spec = PROJECT_SETTING_ALIASES[alias]
-            rows.append({
-                "alias": alias,
-                "path": ".".join(spec.get("path", [])),
-                "value_type": spec.get("value_type", "string")
-            })
-
-        if as_json:
-            print(json.dumps(rows, indent=2, ensure_ascii=False))
-            return True
-
-        print(f"📋 Project setting aliases ({len(rows)}):")
-        for row in rows:
-            print(f"- {row['alias']} ({row['value_type']}): {row['path']}")
-        return True
+        return self._schema_lifecycle.settings.list_project_settings(as_json)
 
     def _get_user_types(self, include_cache: bool = True) -> Dict[str, Any]:
         """Get user_types map from discovery, optionally merging cache fallback."""
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        source = data.get("user_types")
-        merged: Dict[str, Any] = {}
-        if isinstance(source, dict):
-            merged.update(source)
-        if include_cache:
-            cache_types = self._schema_user_types_cache()
-            if isinstance(cache_types, dict):
-                for key, value in cache_types.items():
-                    if key not in merged and isinstance(value, dict):
-                        merged[key] = value
-
-        # Fallback to bubble_modules user_types index to preserve renamed display labels.
-        project_dir = self._bubble_modules_project_dir()
-        if project_dir:
-            index_path = os.path.join(project_dir, "user_types", "__index.json")
-            try:
-                with open(index_path, "r", encoding="utf-8") as f:
-                    index_payload = json.load(f)
-                if isinstance(index_payload, dict):
-                    for key, display in index_payload.items():
-                        key_str = str(key)
-                        display_str = str(display) if isinstance(display, str) else key_str
-                        if key_str in merged:
-                            entry = merged.get(key_str)
-                            if isinstance(entry, dict):
-                                if not entry.get("%d"):
-                                    entry["%d"] = display_str
-                                if not entry.get("display"):
-                                    entry["display"] = display_str
-                                merged[key_str] = entry
-                            continue
-                        merged[key_str] = {
-                            "%d": display_str,
-                            "display": display_str,
-                            "%f3": {},
-                        }
-            except Exception:
-                pass
-        return merged
+        return self._schema_lifecycle.references.user_types(include_cache=include_cache)
 
     def _resolve_data_type_key(
         self,
@@ -4122,71 +4175,11 @@ class BubbleCLI:
         ref_kind: str = "key",
         include_cache: bool = True
     ) -> Optional[str]:
-        user_types = self._get_user_types(include_cache=include_cache)
-        if not user_types:
-            return None
-
-        kind = (ref_kind or "key").strip().lower()
-        raw_ref = str(data_type_ref or "").strip()
-        if not raw_ref:
-            return None
-        if raw_ref.lower().startswith("custom."):
-            raw_ref = raw_ref.split(".", 1)[1].strip()
-        if raw_ref.lower() in {"user", "current user", "current_user"}:
-            return "user"
-        needle = self._norm_lookup(raw_ref)
-        needle_slug = self._slugify_identifier(raw_ref)
-
-        def _match_by_display() -> Optional[str]:
-            for key, data in user_types.items():
-                if not isinstance(data, dict):
-                    continue
-                display = str(data.get("%d") or "").strip()
-                if not display:
-                    continue
-                if self._norm_lookup(display) == needle:
-                    return key
-                if needle_slug and self._slugify_identifier(display) == needle_slug:
-                    return key
-            return None
-
-        def _match_by_key_like() -> Optional[str]:
-            for key in user_types.keys():
-                key_str = str(key or "").strip()
-                if not key_str:
-                    continue
-                if self._norm_lookup(key_str) == needle:
-                    return key_str
-                if needle_slug and self._slugify_identifier(key_str) == needle_slug:
-                    return key_str
-            return None
-
-        if kind == "key":
-            if raw_ref in user_types:
-                return raw_ref
-            # Convenience fallback: try display name.
-            matched = _match_by_display()
-            if matched:
-                return matched
-            matched = _match_by_key_like()
-            if matched:
-                return matched
-            return None
-
-        if kind in {"label", "name", "display"}:
-            matched = _match_by_display()
-            if matched:
-                return matched
-            return None
-
-        if kind == "auto":
-            if raw_ref in user_types:
-                return raw_ref
-            for resolver in (_match_by_display, _match_by_key_like):
-                matched = resolver()
-                if matched:
-                    return matched
-        return None
+        return self._schema_lifecycle.references.resolve_data_type(
+            data_type_ref,
+            ref_kind=ref_kind,
+            include_cache=include_cache,
+        )
 
     def set_data_type_api_exposure(
         self,
@@ -4196,45 +4189,9 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Enable/disable Data API exposure for a specific data type (key or display name)."""
-        # Safety first: do not use cache fallback here to avoid recreating ghost data types.
-        resolved_key = self._resolve_data_type_key(
-            data_type_ref,
-            ref_kind=ref_kind,
-            include_cache=False
+        return self._schema_lifecycle.data_types.set_data_type_api_exposure(
+            data_type_ref, enabled, ref_kind, dry_run
         )
-        if not resolved_key:
-            known = sorted(self._get_user_types(include_cache=False).keys())
-            if known:
-                logger.error(
-                    f"Could not resolve data type '{data_type_ref}' by {ref_kind}. "
-                    f"Known keys: {', '.join(known[:12])}" + ("..." if len(known) > 12 else "")
-                )
-            else:
-                logger.error(
-                    f"Could not resolve data type '{data_type_ref}': no user_types metadata available. "
-                    "Run scan-types first or use a known key."
-                )
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustom",
-            ["user_types", resolved_key, "exposed_api"],
-            bool(enabled)
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Data API exposure for data type '{resolved_key}' set to {bool(enabled)}."
-        )
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(resolved_key, {}) if isinstance(user_types.get(resolved_key), dict) else {}
-            entry["exposed_api"] = bool(enabled)
-            user_types[resolved_key] = entry
-            self._save_cli_cache()
-        return ok
 
     def list_data_types(self, as_json: bool = False, include_cache: bool = False) -> bool:
         """List data type keys and labels."""
@@ -4294,75 +4251,92 @@ class BubbleCLI:
                 source_appname=""
             )
 
-        ok = self._send_schema_payload(pb, dry_run, f"API token '{resolved_token_id}' created.")
+        ok = self._send_api_token_payload(pb, dry_run, f"API token '{resolved_token_id}' created.")
         if ok:
             logger.info(f"Token id: {resolved_token_id}")
-            logger.info(f"Private key: {resolved_private_key}")
+            logger.info("Private key: [REDACTED]")
         return ok
+
+    @staticmethod
+    def _redact_api_token_payload(payload: PayloadBuilder) -> PayloadBuilder:
+        """Copy a token payload for display without exposing its private-key material."""
+        preview = copy.deepcopy(payload)
+        for change in preview.changes:
+            if not isinstance(change, dict):
+                continue
+            path = change.get("path_array")
+            if not isinstance(path, list) or path[:3] != ["settings", "secure", "api_tokens"]:
+                continue
+            body = change.get("body")
+            if path[-1:] == ["private_key"]:
+                change["body"] = "[REDACTED]"
+            elif isinstance(body, dict) and "private_key" in body:
+                body["private_key"] = "[REDACTED]"
+        return preview
+
+    def _send_api_token_payload(self, pb: PayloadBuilder, dry_run: bool, success_message: str) -> bool:
+        """Send API-token writes while keeping previews local and redacted."""
+        if dry_run:
+            print("\n DRY RUN - Payload preview:")
+            print(self._redact_api_token_payload(pb).to_json())
+            return True
+        try:
+            self._dispatch_payload(pb, sensitive=True)
+            logger.success(success_message)
+            return True
+        except Exception:
+            logger.error("Failed to send: API token write failed.")
+            return False
+
+    def _mutate_api_token_setting(self, path: List[str], value: Any, dry_run: bool, success_message: str) -> bool:
+        """Keep API-token CRUD on BubbleCLI's dedicated, non-settings-service path."""
+        pb = PayloadBuilder(appname=self.appname)
+        self._add_schema_change(
+            pb,
+            "ChangeAppSetting",
+            path,
+            value,
+            intent_id=random.randint(1, 999999),
+            source_appname="",
+        )
+        return self._send_api_token_payload(pb, dry_run, success_message)
 
     def rename_api_token(self, token_id: str, new_label: str, dry_run: bool = False) -> bool:
         """Rename API token label (%nm)."""
-        return self.set_app_setting(
+        return self._mutate_api_token_setting(
             ["settings", "secure", "api_tokens", token_id, "%nm"],
             new_label,
-            value_type="string",
-            dry_run=dry_run
+            dry_run,
+            f"App setting 'settings.secure.api_tokens.{token_id}.%nm' updated.",
         )
 
     def regenerate_api_token_private_key(self, token_id: str, private_key: Optional[str] = None, dry_run: bool = False) -> bool:
         """Regenerate/set API token private key."""
         resolved_private_key = private_key or self._generate_token_hex()
-        ok = self.set_app_setting(
+        ok = self._mutate_api_token_setting(
             ["settings", "secure", "api_tokens", token_id, "private_key"],
             resolved_private_key,
-            value_type="string",
-            dry_run=dry_run
+            dry_run,
+            f"App setting 'settings.secure.api_tokens.{token_id}.private_key' updated.",
         )
         if ok:
-            logger.info(f"New private key: {resolved_private_key}")
+            logger.info("New private key: [REDACTED]")
         return ok
 
     def delete_api_token(self, token_id: str, dry_run: bool = False) -> bool:
         """Delete API token by writing null at token object path."""
-        return self.set_app_setting(
+        return self._mutate_api_token_setting(
             ["settings", "secure", "api_tokens", token_id],
-            "null",
-            value_type="auto",
-            dry_run=dry_run
+            None,
+            dry_run,
+            f"App setting 'settings.secure.api_tokens.{token_id}' updated.",
         )
 
     def _get_301_redirects(self) -> Dict[str, Any]:
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        settings = data.get("settings")
-        if not isinstance(settings, dict):
-            return {}
-        client_safe = settings.get("client_safe")
-        if not isinstance(client_safe, dict):
-            return {}
-        redirects = client_safe.get("301_redirects")
-        return redirects if isinstance(redirects, dict) else {}
+        return self._schema_lifecycle.references.redirects()
 
     def list_301_redirects(self, as_json: bool = False) -> bool:
-        redirects = self._get_301_redirects()
-        rows: List[Dict[str, Any]] = []
-        for key in sorted(redirects.keys()):
-            rule = redirects.get(key, {})
-            if not isinstance(rule, dict):
-                continue
-            rows.append({
-                "key": key,
-                "from": rule.get("%fr"),
-                "to": rule.get("to")
-            })
-
-        if as_json:
-            print(json.dumps(rows, indent=2, ensure_ascii=False))
-            return True
-
-        print(f"📋 301 redirects ({len(rows)}):")
-        for row in rows:
-            print(f"- {row['key']}: {row.get('from')} -> {row.get('to')}")
-        return True
+        return self._schema_lifecycle.settings.list_301_redirects(as_json)
 
     def create_301_redirect(
         self,
@@ -4373,37 +4347,11 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Create a 301 redirect rule."""
-        resolved_rule_key = rule_key or self.id_gen.element_id()
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            ["settings", "client_safe", "301_redirects", resolved_rule_key],
-            {
-                "%fr": from_url,
-                "to": to_url
-            },
-            intent_id=random.randint(1, 999999),
-            source_appname=""
-        )
-        if id_counter is not None:
-            pb.add_change_raw({
-                "type": "id_counter",
-                "value": int(id_counter)
-            })
-        ok = self._send_schema_payload(pb, dry_run, f"301 redirect created ({resolved_rule_key}).")
-        if ok:
-            logger.info(f"Redirect key: {resolved_rule_key}")
-        return ok
+        return self._schema_lifecycle.settings.create_301_redirect(from_url, to_url, rule_key, id_counter, dry_run)
 
     def delete_301_redirect(self, rule_key: str, dry_run: bool = False) -> bool:
         """Delete a 301 redirect rule by key."""
-        return self.set_app_setting(
-            ["settings", "client_safe", "301_redirects", rule_key],
-            "null",
-            value_type="auto",
-            dry_run=dry_run
-        )
+        return self._schema_lifecycle.settings.delete_301_redirect(rule_key, dry_run)
 
     def _settings_client_safe(self) -> Dict[str, Any]:
         data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
@@ -6509,87 +6457,11 @@ class BubbleCLI:
         return tuple(sorted(tokens))
 
     def _get_option_set_values(self, option_set_key: str) -> Optional[Dict[str, Any]]:
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        option_sets = data.get("option_sets")
-        if isinstance(option_sets, dict):
-            option_set = option_sets.get(option_set_key)
-            if isinstance(option_set, dict):
-                values = option_set.get("values", {})
-                if isinstance(values, dict):
-                    return values
-
-        # Fallback to per-profile schema cache
-        cached_option_set = self._schema_option_sets_cache().get(option_set_key, {})
-        if isinstance(cached_option_set, dict):
-            values = cached_option_set.get("values", {})
-            if isinstance(values, dict):
-                return values
-
-        # Fallback to bubble_modules option set payload.
-        project_dir = self._bubble_modules_project_dir()
-        if project_dir:
-            candidate = os.path.join(project_dir, "option_sets", f"{option_set_key}.json")
-            if os.path.isfile(candidate):
-                try:
-                    with open(candidate, "r", encoding="utf-8") as f:
-                        payload = json.load(f)
-                    raw_values = payload.get("values", {}) if isinstance(payload, dict) else {}
-                    if isinstance(raw_values, dict):
-                        normalized_values: Dict[str, Any] = {}
-                        for value_key, value_data in raw_values.items():
-                            if not isinstance(value_data, dict):
-                                continue
-                            entry = dict(value_data)
-                            if "%d" not in entry and isinstance(entry.get("display"), str):
-                                entry["%d"] = entry.get("display")
-                            normalized_values[str(value_key)] = entry
-                        if normalized_values:
-                            return normalized_values
-                except Exception:
-                    pass
-        return None
+        return self._schema_lifecycle.references.option_values(option_set_key)
 
     def _get_option_sets(self, include_cache: bool = True) -> Dict[str, Any]:
         """Get option_sets map from discovery, optionally merging cache fallback."""
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        source = data.get("option_sets")
-        merged: Dict[str, Any] = {}
-        if isinstance(source, dict):
-            merged.update(source)
-        if include_cache:
-            cache_sets = self._schema_option_sets_cache()
-            if isinstance(cache_sets, dict):
-                for key, value in cache_sets.items():
-                    if key not in merged and isinstance(value, dict):
-                        merged[key] = value
-
-        # Fallback to bubble_modules index to preserve renamed display labels.
-        project_dir = self._bubble_modules_project_dir()
-        if project_dir:
-            index_path = os.path.join(project_dir, "option_sets", "__index.json")
-            try:
-                with open(index_path, "r", encoding="utf-8") as f:
-                    index_payload = json.load(f)
-                if isinstance(index_payload, dict):
-                    for key, display in index_payload.items():
-                        key_str = str(key)
-                        if key_str in merged:
-                            entry = merged.get(key_str)
-                            if isinstance(entry, dict):
-                                if not entry.get("%d") and isinstance(display, str):
-                                    entry["%d"] = display
-                                if not entry.get("display") and isinstance(display, str):
-                                    entry["display"] = display
-                                merged[key_str] = entry
-                            continue
-                        merged[key_str] = {
-                            "%d": display if isinstance(display, str) else key_str,
-                            "display": display if isinstance(display, str) else key_str,
-                            "values": self._get_option_set_values(key_str) or {},
-                        }
-            except Exception:
-                pass
-        return merged
+        return self._schema_lifecycle.references.option_sets(include_cache=include_cache)
 
     def _resolve_option_set_key(
         self,
@@ -6597,56 +6469,11 @@ class BubbleCLI:
         ref_kind: str = "key",
         include_cache: bool = True
     ) -> Optional[str]:
-        option_sets = self._get_option_sets(include_cache=include_cache)
-        if not option_sets:
-            return None
-
-        raw_ref = str(option_set_ref or "").strip()
-        if not raw_ref:
-            return None
-        needle = self._norm_lookup(raw_ref)
-        needle_trimmed = needle[3:] if needle.startswith("os:") else needle
-        needle_slug = self._slugify_identifier(needle_trimmed)
-        kind = (ref_kind or "key").strip().lower()
-
-        if kind in {"key", "auto"}:
-            if raw_ref in option_sets:
-                return raw_ref
-            if raw_ref.startswith("option."):
-                key = raw_ref.split(".", 1)[1]
-                if key in option_sets:
-                    return key
-            if raw_ref.lower().startswith("option."):
-                key = raw_ref.split(".", 1)[1]
-                if key in option_sets:
-                    return key
-            if raw_ref.lower().startswith("os:"):
-                slug = self._slugify_identifier(raw_ref.split(":", 1)[1])
-                key = f"os_{slug}" if slug else ""
-                if key in option_sets:
-                    return key
-            if raw_ref.lower().startswith("os_"):
-                normalized_key = f"os_{self._slugify_identifier(raw_ref[3:])}"
-                if normalized_key in option_sets:
-                    return normalized_key
-
-        if kind in {"label", "name", "display", "auto"}:
-            for key, data in option_sets.items():
-                if not isinstance(data, dict):
-                    continue
-                for candidate in (data.get("%d"), data.get("display"), data.get("name")):
-                    candidate_norm = self._norm_lookup(candidate)
-                    if not candidate_norm:
-                        continue
-                    if candidate_norm == needle:
-                        return key
-                    candidate_trimmed = candidate_norm[3:] if candidate_norm.startswith("os:") else candidate_norm
-                    if candidate_trimmed == needle_trimmed:
-                        return key
-                    if needle_slug and self._slugify_identifier(candidate_trimmed) == needle_slug:
-                        return key
-
-        return None
+        return self._schema_lifecycle.references.resolve_option_set(
+            option_set_ref,
+            ref_kind=ref_kind,
+            include_cache=include_cache,
+        )
 
     def _normalize_custom_state_type(self, state_type: str) -> str:
         """
@@ -10071,48 +9898,11 @@ class BubbleCLI:
         return raw
 
     def _resolve_option_value_key(self, option_set_key: str, value_ref: str, ref_kind: str = "key") -> Optional[str]:
-        values = self._get_option_set_values(option_set_key)
-        if values is None:
-            return None
-
-        kind = (ref_kind or "key").strip().lower()
-        needle = self._norm_lookup(value_ref)
-        needle_compact = re.sub(r"[\s_\-]+", "", needle)
-
-        def _matches(candidate_raw: Any) -> bool:
-            candidate = self._norm_lookup(candidate_raw)
-            if candidate == needle:
-                return True
-            candidate_compact = re.sub(r"[\s_\-]+", "", candidate)
-            return bool(candidate_compact) and candidate_compact == needle_compact
-
-        if kind == "key":
-            if value_ref in values:
-                return value_ref
-            # Convenience fallback when key is not found:
-            # try db_value first, then display label.
-            for key, data in values.items():
-                if not isinstance(data, dict):
-                    continue
-                if _matches(data.get("db_value")):
-                    return key
-            for key, data in values.items():
-                if not isinstance(data, dict):
-                    continue
-                if _matches(data.get("%d")) or _matches(data.get("display")):
-                    return key
-            return None
-
-        for key, data in values.items():
-            if not isinstance(data, dict):
-                continue
-            if kind in {"db", "db_value", "db-value"}:
-                if _matches(data.get("db_value")):
-                    return key
-            elif kind == "label":
-                if _matches(data.get("%d")) or _matches(data.get("display")):
-                    return key
-        return None
+        return self._schema_lifecycle.references.resolve_option_value(
+            option_set_key,
+            value_ref,
+            ref_kind=ref_kind,
+        )
 
     def _find_option_sets_with_value_ref(self, value_ref: str, exclude: Optional[str] = None, limit: int = 5) -> List[str]:
         needle = str(value_ref or "").strip()
@@ -54795,133 +54585,15 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Create a Bubble Data Type (user_types)."""
-        data_type_key = key or self._slugify_identifier(name)
-        pb = PayloadBuilder(appname=self.appname)
-
-        privacy_role = None
-        if private:
-            everyone_role = {
-                "%d": "everyone",
-                "permissions": {
-                    "view_all": False,
-                    "view_attachments": False,
-                    "search_for": False,
-                    "auto_binding": False
-                }
-            }
-            creator_rule = {
-                "%x": "InjectedValue",
-                "%n": {
-                    "%x": "Message",
-                    "%nm": "Created By",
-                    "%n": {
-                        "%x": "Message",
-                        "%nm": "equals",
-                        "%a": {
-                            "%x": "CurrentUser"
-                        }
-                    }
-                }
-            }
-            creator_role = {
-                "%d": "Visible to creator",
-                "permissions": {
-                    "view_all": True,
-                    "view_attachments": True,
-                    "search_for": True,
-                    "auto_binding": False
-                },
-                "%c": creator_rule
-            }
-            privacy_role = {
-                "everyone": everyone_role,
-                "visible_to_creator_": creator_role
-            }
-
-            self._add_schema_change(
-                pb,
-                "WriteCustom",
-                ["user_types", data_type_key],
-                {
-                    "%d": name,
-                    "privacy_role": privacy_role
-                }
-            )
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", "everyone"],
-                everyone_role,
-                intent_id=random.randint(1, 999999),
-                source_appname=""
-            )
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", "visible_to_creator_"],
-                creator_role,
-                intent_id=random.randint(1, 999999),
-                source_appname=""
-            )
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", "visible_to_creator_", "%c"],
-                creator_rule,
-                intent_id=random.randint(1, 999999),
-                source_appname=""
-            )
-        else:
-            self._add_schema_change(
-                pb,
-                "WriteCustom",
-                ["user_types", data_type_key],
-                {"%d": name}
-            )
-
-        ok = self._send_schema_payload(pb, dry_run, f"Data type '{name}' created ({data_type_key}).")
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            entry["%d"] = name
-            if privacy_role is not None:
-                entry["privacy_role"] = privacy_role
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.create_data_type(name, key, private, dry_run)
 
     def rename_data_type(self, data_type_key: str, new_name: str, dry_run: bool = False) -> bool:
         """Rename a Bubble Data Type."""
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustom",
-            [ "user_types", data_type_key, "%d" ],
-            new_name
-        )
-        ok = self._send_schema_payload(pb, dry_run, f"Data type '{data_type_key}' renamed to '{new_name}'.")
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            entry["%d"] = new_name
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.rename_data_type(data_type_key, new_name, dry_run)
 
     def delete_data_type(self, data_type_key: str, dry_run: bool = False) -> bool:
         """Delete a Bubble Data Type."""
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustom",
-            ["user_types", data_type_key, "%del"],
-            True
-        )
-        ok = self._send_schema_payload(pb, dry_run, f"Data type '{data_type_key}' deleted.")
-        if ok and not dry_run:
-            self._schema_user_types_cache().pop(data_type_key, None)
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.delete_data_type(data_type_key, dry_run)
 
     def _data_type_is_soft_deleted(self, data_type_key: str, require_fresh_schema: bool = False) -> bool:
         overlay_path = getattr(self.discovery, "mutation_overlay_path", None)
@@ -55016,41 +54688,9 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Permanently remove a Bubble Data Type through the CleanApp contract."""
-        ref_kind = (data_type_ref_kind or "auto").strip().lower()
-        if ref_kind not in {"auto", "id", "key"}:
-            logger.error("Permanent data type deletion requires the exact internal data type key.")
-            return False
-        resolved_key = str(data_type_key or "").strip()
-        if resolved_key.lower().startswith("custom."):
-            resolved_key = resolved_key.split(".", 1)[1].strip()
-        if not resolved_key:
-            logger.error("Permanent data type deletion requires the exact internal data type key.")
-            return False
-        if not self._data_type_is_soft_deleted(resolved_key, require_fresh_schema=not dry_run):
-            logger.error(
-                f"Data type '{resolved_key}' must be soft-deleted with delete_data_type before permanent deletion."
-            )
-            return False
-        if not dry_run and confirm is not True:
-            logger.error("Permanent data type deletion requires confirm=true.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname, app_version=self.app_version)
-        self._add_schema_change(
-            pb,
-            "CleanApp",
-            ["user_types", resolved_key],
-            None
+        return self._schema_lifecycle.data_types.delete_data_type_permanently(
+            data_type_key, data_type_ref_kind, confirm, dry_run
         )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Data type '{resolved_key}' permanently deleted."
-        )
-        if ok and not dry_run:
-            self._schema_user_types_cache().pop(resolved_key, None)
-            self._save_cli_cache()
-        return ok
 
     def create_data_field(
         self,
@@ -55061,33 +54701,9 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Create a field on a Bubble Data Type."""
-        type_slug = self._slugify_identifier(field_type.replace(".", "_"))
-        resolved_field_key = field_key or f"{self._slugify_identifier(field_name)}_{type_slug}"
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustomField",
-            ["user_types", data_type_key, "%f3", resolved_field_key],
-            {
-                "%d": field_name,
-                "%v": field_type
-            }
+        return self._schema_lifecycle.data_types.create_data_field(
+            data_type_key, field_name, field_type, field_key, dry_run
         )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Field '{field_name}' created on '{data_type_key}' ({resolved_field_key})."
-        )
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-            fields[resolved_field_key] = {"%d": field_name, "%v": field_type}
-            entry["%f3"] = fields
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
 
     def rename_data_field(
         self,
@@ -55097,29 +54713,7 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Rename a field in a Bubble Data Type."""
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustomField",
-            ["user_types", data_type_key, "%f3", field_key, "%d"],
-            new_name
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Field '{field_key}' on '{data_type_key}' renamed to '{new_name}'."
-        )
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-            field_entry = fields.get(field_key, {}) if isinstance(fields.get(field_key), dict) else {}
-            field_entry["%d"] = new_name
-            fields[field_key] = field_entry
-            entry["%f3"] = fields
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.rename_data_field(data_type_key, field_key, new_name, dry_run)
 
     def delete_data_field(
         self,
@@ -55128,38 +54722,7 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Delete a field in a Bubble Data Type."""
-        resolved_field_key = self._resolve_type_field_key(data_type_key, field_key)
-        deleted_label = f"{self._data_field_display_name(data_type_key, resolved_field_key)} - deleted"
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustomField",
-            ["user_types", data_type_key, "%f3", resolved_field_key, "%del"],
-            True
-        )
-        self._add_schema_change(
-            pb,
-            "WriteCustomField",
-            ["user_types", data_type_key, "%f3", resolved_field_key, "%d"],
-            deleted_label
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Field '{resolved_field_key}' on '{data_type_key}' deleted."
-        )
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-            field_entry = fields.get(resolved_field_key, {}) if isinstance(fields.get(resolved_field_key), dict) else {}
-            field_entry["%del"] = True
-            field_entry["%d"] = deleted_label
-            fields[resolved_field_key] = field_entry
-            entry["%f3"] = fields
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.delete_data_field(data_type_key, field_key, dry_run)
 
     def _data_field_display_name(self, data_type_key: str, field_key: str) -> str:
         user_types = self._get_user_types(include_cache=True)
@@ -55171,25 +54734,7 @@ class BubbleCLI:
 
     def list_privacy_rules(self, data_type_key: str, dry_run: bool = False) -> List[Dict[str, Any]]:
         """List privacy rules for a Bubble Data Type from the loaded context/cache."""
-        user_types = self._get_user_types(include_cache=True)
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        privacy_role = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        rows: List[Dict[str, Any]] = []
-        for rule_key, rule_payload in sorted(privacy_role.items()):
-            payload = rule_payload if isinstance(rule_payload, dict) else {}
-            permissions = payload.get("permissions", {}) if isinstance(payload.get("permissions"), dict) else {}
-            rows.append(
-                {
-                    "data_type_key": data_type_key,
-                    "rule_key": rule_key,
-                    "name": payload.get("%d") or rule_key,
-                    "has_condition": "%c" in payload,
-                    "permissions": permissions,
-                }
-            )
-        if dry_run:
-            print(json.dumps({"ok": True, "data_type_key": data_type_key, "privacy_rules": rows}, indent=2))
-        return rows
+        return self._schema_lifecycle.privacy.list_privacy_rules(data_type_key, dry_run)
 
     def create_privacy_rule(
         self,
@@ -55208,69 +54753,14 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Create a privacy rule under a Bubble Data Type."""
-        resolved_rule_key = rule_key or self._next_privacy_rule_key(data_type_key)
-        permissions: Dict[str, Any] = {
-            "view_all": self._parse_privacy_bool(view_all, "view_all"),
-            "view_attachments": self._parse_privacy_bool(view_attachments, "view_attachments"),
-            "search_for": self._parse_privacy_bool(search_for, "search_for"),
-            "auto_binding": self._parse_privacy_bool(auto_binding, "auto_binding"),
-        }
-        if view_fields is not None:
-            permissions["view_fields"] = self._privacy_field_list_payload(view_fields)
-        if auto_binding:
-            permissions["binding_fields"] = self._privacy_field_list_payload(binding_fields or [])
-        elif binding_fields is not None:
-            permissions["binding_fields"] = self._privacy_field_list_payload(binding_fields)
-
-        rule_payload: Dict[str, Any] = {"%d": rule_name, "permissions": permissions}
-        if condition_json is not None:
-            rule_payload["%c"] = self._parse_privacy_json_value(condition_json, "condition_json")
-
-        pb = PayloadBuilder(appname=self.appname)
-        if self._parse_privacy_bool(include_everyone_default, "include_everyone_default") and not self._privacy_rules_for_type(data_type_key):
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", "everyone"],
-                self._default_everyone_privacy_rule(data_type_key),
-            )
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            ["user_types", data_type_key, "privacy_role", resolved_rule_key],
-            rule_payload,
+        return self._schema_lifecycle.privacy.create_privacy_rule(
+            data_type_key, rule_name, rule_key, view_all, view_attachments, search_for, auto_binding,
+            view_fields, binding_fields, condition_json, include_everyone_default, id_counter, dry_run,
         )
-        if id_counter is not None:
-            pb.add_change_raw({"type": "id_counter", "value": int(id_counter)})
-
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Privacy rule '{resolved_rule_key}' created on '{data_type_key}'."
-        )
-        if ok and not dry_run:
-            self._update_privacy_rule_cache(data_type_key, resolved_rule_key, rule_payload)
-            self._save_cli_cache()
-        return ok
 
     def delete_privacy_rule(self, data_type_key: str, rule_key: str, dry_run: bool = False) -> bool:
         """Delete a privacy rule from a Bubble Data Type."""
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            ["user_types", data_type_key, "privacy_role", rule_key],
-            None,
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Privacy rule '{rule_key}' deleted from '{data_type_key}'."
-        )
-        if ok and not dry_run:
-            self._delete_privacy_rule_cache(data_type_key, rule_key)
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.privacy.delete_privacy_rule(data_type_key, rule_key, dry_run)
 
     def set_privacy_rule_name(
         self,
@@ -55280,14 +54770,7 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Rename a privacy rule."""
-        return self._set_privacy_rule_path(
-            data_type_key,
-            rule_key,
-            ["%d"],
-            new_name,
-            dry_run=dry_run,
-            success_message=f"Privacy rule '{rule_key}' renamed to '{new_name}'.",
-        )
+        return self._schema_lifecycle.privacy.set_privacy_rule_name(data_type_key, rule_key, new_name, dry_run)
 
     def set_privacy_rule_condition(
         self,
@@ -55297,15 +54780,7 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Set a privacy rule condition expression."""
-        condition_payload = self._parse_privacy_json_value(condition_json, "condition_json")
-        return self._set_privacy_rule_path(
-            data_type_key,
-            rule_key,
-            ["%c"],
-            condition_payload,
-            dry_run=dry_run,
-            success_message=f"Privacy rule '{rule_key}' condition updated.",
-        )
+        return self._schema_lifecycle.privacy.set_privacy_rule_condition(data_type_key, rule_key, condition_json, dry_run)
 
     def set_privacy_rule_permission(
         self,
@@ -55316,18 +54791,7 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Set a boolean privacy rule permission such as search_for or view_attachments."""
-        allowed = {"view_all", "view_attachments", "search_for", "auto_binding"}
-        if permission not in allowed:
-            print(f"❌ Unsupported privacy permission '{permission}'. Expected one of: {', '.join(sorted(allowed))}")
-            return False
-        return self._set_privacy_rule_path(
-            data_type_key,
-            rule_key,
-            ["permissions", permission],
-            self._parse_privacy_bool(value, "value"),
-            dry_run=dry_run,
-            success_message=f"Privacy rule '{rule_key}' permission '{permission}' set to {self._parse_privacy_bool(value, 'value')}.",
-        )
+        return self._schema_lifecycle.privacy.set_privacy_rule_permission(data_type_key, rule_key, permission, value, dry_run)
 
     def set_privacy_rule_field_visibility(
         self,
@@ -55338,36 +54802,9 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Set visible fields for a privacy rule and optionally update view_all."""
-        pb = PayloadBuilder(appname=self.appname)
-        if view_all is not None:
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", rule_key, "permissions", "view_all"],
-                self._parse_privacy_bool(view_all, "view_all"),
-            )
-        if view_fields is not None:
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", rule_key, "permissions", "view_fields"],
-                self._privacy_field_list_payload(view_fields),
-            )
-        if view_all is None and view_fields is None:
-            print("❌ Missing privacy field visibility change: pass view_all and/or view_fields.")
-            return False
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Privacy rule '{rule_key}' field visibility updated."
+        return self._schema_lifecycle.privacy.set_privacy_rule_field_visibility(
+            data_type_key, rule_key, view_all, view_fields, dry_run
         )
-        if ok and not dry_run:
-            if view_all is not None:
-                self._update_privacy_rule_cache_path(data_type_key, rule_key, ["permissions", "view_all"], self._parse_privacy_bool(view_all, "view_all"))
-            if view_fields is not None:
-                self._update_privacy_rule_cache_path(data_type_key, rule_key, ["permissions", "view_fields"], self._privacy_field_list_payload(view_fields))
-            self._save_cli_cache()
-        return ok
 
     def set_privacy_rule_auto_binding(
         self,
@@ -55378,612 +54815,59 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Set auto-binding for a privacy rule and its binding fields."""
-        parsed_auto_binding = self._parse_privacy_bool(auto_binding, "auto_binding")
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            ["user_types", data_type_key, "privacy_role", rule_key, "permissions", "auto_binding"],
-            parsed_auto_binding,
+        return self._schema_lifecycle.privacy.set_privacy_rule_auto_binding(
+            data_type_key, rule_key, auto_binding, binding_fields, dry_run
         )
-        binding_body = self._privacy_field_list_payload(binding_fields or []) if parsed_auto_binding else None
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            ["user_types", data_type_key, "privacy_role", rule_key, "permissions", "binding_fields"],
-            binding_body,
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Privacy rule '{rule_key}' auto-binding updated."
-        )
-        if ok and not dry_run:
-            self._update_privacy_rule_cache_path(data_type_key, rule_key, ["permissions", "auto_binding"], parsed_auto_binding)
-            self._update_privacy_rule_cache_path(data_type_key, rule_key, ["permissions", "binding_fields"], binding_body)
-            self._save_cli_cache()
-        return ok
-
-    def _set_privacy_rule_path(
-        self,
-        data_type_key: str,
-        rule_key: str,
-        path_suffix: List[str],
-        body: Any,
-        *,
-        dry_run: bool,
-        success_message: str,
-    ) -> bool:
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "ChangeAppSetting",
-            ["user_types", data_type_key, "privacy_role", rule_key, *path_suffix],
-            body,
-        )
-        ok = self._send_schema_payload(pb, dry_run, success_message)
-        if ok and not dry_run:
-            self._update_privacy_rule_cache_path(data_type_key, rule_key, path_suffix, body)
-            self._save_cli_cache()
-        return ok
-
-    def _privacy_rules_for_type(self, data_type_key: str) -> Dict[str, Any]:
-        user_types = self._get_user_types(include_cache=True)
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        return rules
-
-    def _next_privacy_rule_key(self, data_type_key: str) -> str:
-        rules = self._privacy_rules_for_type(data_type_key)
-        if "new_rule_" not in rules:
-            return "new_rule_"
-        index = 1
-        while f"new_rule_{index}" in rules:
-            index += 1
-        return f"new_rule_{index}"
-
-    def _default_everyone_privacy_rule(self, data_type_key: str) -> Dict[str, Any]:
-        fields = self._data_type_field_keys(data_type_key, include_system_fields=True)
-        return {
-            "%d": "everyone",
-            "permissions": {
-                "view_all": False,
-                "view_attachments": False,
-                "search_for": False,
-                "auto_binding": False,
-                "non_filterable_fields": {field: True for field in fields},
-            },
-        }
-
-    def _data_type_field_keys(self, data_type_key: str, *, include_system_fields: bool = False) -> List[str]:
-        user_types = self._get_user_types(include_cache=True)
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-        result = [str(key) for key in fields.keys()]
-        if include_system_fields:
-            for system_field in ("Created Date", "Modified Date", "Slug", "Created By"):
-                if system_field not in result:
-                    result.append(system_field)
-        return result
-
-    def _privacy_field_list_payload(self, fields: Any) -> Optional[Dict[str, str]]:
-        if fields is None:
-            return None
-        values: List[str]
-        if isinstance(fields, str):
-            stripped = fields.strip()
-            if not stripped:
-                values = []
-            elif stripped.startswith("["):
-                parsed = self._parse_json_arg(stripped, "fields")
-                if not isinstance(parsed, list):
-                    raise ValueError("fields JSON must be an array.")
-                values = [str(item) for item in parsed]
-            else:
-                values = [part.strip() for part in stripped.split(",") if part.strip()]
-        elif isinstance(fields, dict):
-            values = [
-                str(fields[key])
-                for key in sorted(
-                    fields,
-                    key=lambda item: (0, int(str(item))) if str(item).isdigit() else (1, str(item)),
-                )
-            ]
-        elif isinstance(fields, list):
-            values = [str(item) for item in fields]
-        else:
-            raise ValueError("fields must be a comma-separated string, JSON array, or object.")
-        return {str(index): field for index, field in enumerate(values)}
 
     def _parse_privacy_bool(self, value: Any, label: str) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)) and value in {0, 1}:
-            return bool(value)
-        normalized = str(value).strip().lower()
-        if normalized in {"1", "true", "yes", "on", "enable", "enabled"}:
-            return True
-        if normalized in {"0", "false", "no", "off", "disable", "disabled"}:
-            return False
-        raise ValueError(f"Invalid boolean value for {label}: {value!r}")
+        return self._schema_lifecycle.privacy.parse_bool(value, label)
 
-    def _parse_privacy_json_value(self, value: Any, label: str) -> Any:
-        if isinstance(value, str):
-            parsed = self._parse_json_arg(value, label)
-            if parsed is None:
-                raise ValueError(f"Invalid {label}.")
-            return parsed
-        return value
-
-    def _update_privacy_rule_cache(self, data_type_key: str, rule_key: str, rule_payload: Dict[str, Any]) -> None:
-        user_types = self._schema_user_types_cache()
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        rules[rule_key] = copy.deepcopy(rule_payload)
-        entry["privacy_role"] = rules
-        user_types[data_type_key] = entry
-
-    def _delete_privacy_rule_cache(self, data_type_key: str, rule_key: str) -> None:
-        user_types = self._schema_user_types_cache()
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        rules.pop(rule_key, None)
-        entry["privacy_role"] = rules
-        user_types[data_type_key] = entry
-
-    def _update_privacy_rule_cache_path(self, data_type_key: str, rule_key: str, path_suffix: List[str], body: Any) -> None:
-        user_types = self._schema_user_types_cache()
-        entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-        rules = entry.get("privacy_role", {}) if isinstance(entry.get("privacy_role"), dict) else {}
-        rule_payload = rules.get(rule_key, {}) if isinstance(rules.get(rule_key), dict) else {}
-        cursor = rule_payload
-        for token in path_suffix[:-1]:
-            current = cursor.get(token)
-            if not isinstance(current, dict):
-                current = {}
-                cursor[token] = current
-            cursor = current
-        cursor[path_suffix[-1]] = copy.deepcopy(body)
-        rules[rule_key] = rule_payload
-        entry["privacy_role"] = rules
-        user_types[data_type_key] = entry
-
-    def create_option_set(
-        self,
-        name: str,
-        key: Optional[str] = None,
-        dry_run: bool = False
-    ) -> bool:
-        """Create a Bubble Option Set."""
-        normalized_name = name[3:] if str(name).startswith("OS:") else name
-        option_set_key = key or f"os_{self._slugify_identifier(normalized_name)}"
-        display_name = f"OS:{self._slugify_identifier(normalized_name)}"
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteOptionSet",
-            ["option_sets", option_set_key],
-            {
-                "%d": display_name,
-                "creation_source": "editor"
-            }
-        )
-        ok = self._send_schema_payload(pb, dry_run, f"Option set '{display_name}' created ({option_set_key}).")
-        if ok and not dry_run:
-            option_sets = self._schema_option_sets_cache()
-            entry = option_sets.get(option_set_key, {}) if isinstance(option_sets.get(option_set_key), dict) else {}
-            entry["%d"] = display_name
-            entry.setdefault("attributes", {})
-            entry.setdefault("values", {})
-            entry["creation_source"] = "editor"
-            option_sets[option_set_key] = entry
-            self._save_cli_cache()
-        return ok
+    # Option lifecycle facades deliberately remain explicit public CLI entry points.
+    def create_option_set(self, name: str, key: Optional[str] = None, dry_run: bool = False) -> bool:
+        return self._schema_lifecycle.options.create_option_set(name, key, dry_run)
 
     def rename_option_set(self, option_set_key: str, new_name: str, dry_run: bool = False) -> bool:
-        """Rename a Bubble Option Set."""
-        normalized_name = new_name[3:] if str(new_name).startswith("OS:") else new_name
-        display_name = f"OS:{self._slugify_identifier(normalized_name)}"
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteOptionSet",
-            ["option_sets", option_set_key, "%d"],
-            display_name
-        )
-        ok = self._send_schema_payload(pb, dry_run, f"Option set '{option_set_key}' renamed to '{display_name}'.")
-        if ok and not dry_run:
-            option_sets = self._schema_option_sets_cache()
-            entry = option_sets.get(option_set_key, {}) if isinstance(option_sets.get(option_set_key), dict) else {}
-            entry["%d"] = display_name
-            option_sets[option_set_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.options.rename_option_set(option_set_key, new_name, dry_run)
 
     def delete_option_set(self, option_set_key: str, dry_run: bool = False) -> bool:
-        """Delete a Bubble Option Set."""
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteOptionSet",
-            ["option_sets", option_set_key, "%del"],
-            True
-        )
-        ok = self._send_schema_payload(pb, dry_run, f"Option set '{option_set_key}' deleted.")
-        if ok and not dry_run:
-            self._schema_option_sets_cache().pop(option_set_key, None)
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.options.delete_option_set(option_set_key, dry_run)
 
     def create_option_attribute(
-        self,
-        option_set_key: str,
-        name: str,
-        value_type: str,
-        attribute_key: Optional[str] = None,
-        dry_run: bool = False
+        self, option_set_key: str, name: str, value_type: str, attribute_key: Optional[str] = None, dry_run: bool = False
     ) -> bool:
-        """Create an attribute on a Bubble Option Set."""
-        resolved_attribute_key = attribute_key or self._slugify_identifier(name)
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteOptionAttribute",
-            ["option_sets", option_set_key, "attributes", resolved_attribute_key],
-            {
-                "%d": name,
-                "%v": value_type,
-                "creation_source": "editor"
-            }
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Attribute '{name}' created on option set '{option_set_key}' ({resolved_attribute_key})."
-        )
-        if ok and not dry_run:
-            option_sets = self._schema_option_sets_cache()
-            os_entry = option_sets.get(option_set_key, {}) if isinstance(option_sets.get(option_set_key), dict) else {}
-            attrs = os_entry.get("attributes", {}) if isinstance(os_entry.get("attributes"), dict) else {}
-            attrs[resolved_attribute_key] = {"%d": name, "%v": value_type, "creation_source": "editor"}
-            os_entry["attributes"] = attrs
-            os_entry.setdefault("values", {})
-            option_sets[option_set_key] = os_entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.options.create_option_attribute(option_set_key, name, value_type, attribute_key, dry_run)
 
     def create_option_value(
-        self,
-        option_set_key: str,
-        label: str,
-        value_key: Optional[str] = None,
-        db_value: Optional[str] = None,
-        sort_factor: Optional[int] = None,
-        id_counter: Optional[int] = None,
-        dry_run: bool = False
+        self, option_set_key: str, label: str, value_key: Optional[str] = None, db_value: Optional[str] = None,
+        sort_factor: Optional[int] = None, id_counter: Optional[int] = None, dry_run: bool = False,
     ) -> bool:
-        """Create an option value inside an option set."""
-        resolved_value_key = value_key or self.id_gen.element_id()
-
-        existing_values = self._get_option_set_values(option_set_key) or {}
-        existing_entry = existing_values.get(resolved_value_key)
-        existing_db_value = existing_entry.get("db_value") if isinstance(existing_entry, dict) else None
-        existing_sort_factor = existing_entry.get("sort_factor") if isinstance(existing_entry, dict) else None
-
-        resolved_db_value = (
-            db_value
-            if db_value is not None
-            else (existing_db_value if existing_db_value is not None else self._slugify_identifier(label))
-        )
-        resolved_sort_factor = (
-            sort_factor
-            if sort_factor is not None
-            else (existing_sort_factor if isinstance(existing_sort_factor, int) else 1)
+        return self._schema_lifecycle.options.create_option_value(
+            option_set_key, label, value_key, db_value, sort_factor, id_counter, dry_run
         )
 
-        merged_body = dict(existing_entry) if isinstance(existing_entry, dict) else {}
-        merged_body.update({
-            "sort_factor": resolved_sort_factor,
-            "%d": label,
-            "db_value": resolved_db_value
-        })
-
-        pb = PayloadBuilder(appname=self.appname)
-        # Safety path: explicit key but unknown entry -> patch fields only (avoid wiping unknown attributes)
-        safe_patch_existing = value_key is not None and not isinstance(existing_entry, dict)
-        if safe_patch_existing:
-            self._add_schema_change(
-                pb,
-                "WriteOptionValue",
-                ["option_sets", option_set_key, "values", resolved_value_key, "%d"],
-                label
-            )
-            if db_value is not None:
-                self._add_schema_change(
-                    pb,
-                    "WriteOptionValue",
-                    ["option_sets", option_set_key, "values", resolved_value_key, "db_value"],
-                    resolved_db_value
-                )
-            if sort_factor is not None:
-                self._add_schema_change(
-                    pb,
-                    "WriteOptionValue",
-                    ["option_sets", option_set_key, "values", resolved_value_key, "sort_factor"],
-                    resolved_sort_factor
-                )
-        else:
-            self._add_schema_change(
-                pb,
-                "WriteOptionValue",
-                ["option_sets", option_set_key, "values", resolved_value_key],
-                merged_body
-            )
-        if id_counter is not None:
-            pb.add_change_raw({
-                "type": "id_counter",
-                "value": int(id_counter)
-            })
-
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Option '{label}' created in '{option_set_key}' ({resolved_value_key})."
-        )
-        if ok and not dry_run:
-            cached_value = dict(existing_entry) if isinstance(existing_entry, dict) else {}
-            cached_value["%d"] = label
-            if not safe_patch_existing or db_value is not None:
-                cached_value["db_value"] = resolved_db_value
-            if not safe_patch_existing or sort_factor is not None:
-                cached_value["sort_factor"] = resolved_sort_factor
-
-            option_sets = self._schema_option_sets_cache()
-            os_entry = option_sets.get(option_set_key, {}) if isinstance(option_sets.get(option_set_key), dict) else {}
-            values = os_entry.get("values", {}) if isinstance(os_entry.get("values"), dict) else {}
-            values[resolved_value_key] = cached_value
-            os_entry["values"] = values
-            os_entry.setdefault("attributes", {})
-            option_sets[option_set_key] = os_entry
-            self._save_cli_cache()
-        if ok:
-            logger.info(f"Option key: {resolved_value_key}")
-        return ok
-
-    def delete_option_value(
-        self,
-        option_set_key: str,
-        value_ref: str,
-        ref_kind: str = "key",
-        dry_run: bool = False
-    ) -> bool:
-        """Delete a single option value from an option set."""
-        value_key = self._resolve_option_value_key(option_set_key, value_ref, ref_kind=ref_kind)
-        if not value_key:
-            logger.error(
-                f"Could not resolve option value '{value_ref}' in '{option_set_key}' by {ref_kind}. "
-                "Try --ref-kind db_value or --ref-kind label."
-            )
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteOptionValue",
-            ["option_sets", option_set_key, "values", value_key, "%del"],
-            True
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Option '{value_key}' deleted from '{option_set_key}'."
-        )
-        if ok and not dry_run:
-            option_sets = self._schema_option_sets_cache()
-            os_entry = option_sets.get(option_set_key, {}) if isinstance(option_sets.get(option_set_key), dict) else {}
-            values = os_entry.get("values", {}) if isinstance(os_entry.get("values"), dict) else {}
-            values.pop(value_key, None)
-            os_entry["values"] = values
-            option_sets[option_set_key] = os_entry
-            self._save_cli_cache()
-        return ok
+    def delete_option_value(self, option_set_key: str, value_ref: str, ref_kind: str = "key", dry_run: bool = False) -> bool:
+        return self._schema_lifecycle.options.delete_option_value(option_set_key, value_ref, ref_kind, dry_run)
 
     def rename_option_value(
-        self,
-        option_set_key: str,
-        value_ref: str,
-        new_label: str,
-        ref_kind: str = "key",
-        dry_run: bool = False
+        self, option_set_key: str, value_ref: str, new_label: str, ref_kind: str = "key", dry_run: bool = False
     ) -> bool:
-        """Rename a single option value."""
-        value_key = self._resolve_option_value_key(option_set_key, value_ref, ref_kind=ref_kind)
-        if not value_key:
-            logger.error(
-                f"Could not resolve option value '{value_ref}' in '{option_set_key}' by {ref_kind}. "
-                "Try --ref-kind db_value or --ref-kind label."
-            )
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteOptionValue",
-            ["option_sets", option_set_key, "values", value_key, "%d"],
-            new_label
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Option '{value_key}' in '{option_set_key}' renamed to '{new_label}'."
-        )
-        if ok and not dry_run:
-            option_sets = self._schema_option_sets_cache()
-            os_entry = option_sets.get(option_set_key, {}) if isinstance(option_sets.get(option_set_key), dict) else {}
-            values = os_entry.get("values", {}) if isinstance(os_entry.get("values"), dict) else {}
-            value_entry = values.get(value_key, {}) if isinstance(values.get(value_key), dict) else {}
-            value_entry["%d"] = new_label
-            values[value_key] = value_entry
-            os_entry["values"] = values
-            option_sets[option_set_key] = os_entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.options.rename_option_value(option_set_key, value_ref, new_label, ref_kind, dry_run)
 
     def set_option_value_attribute(
-        self,
-        option_set_key: str,
-        value_ref: str,
-        attribute_key: str,
-        value: Any,
-        ref_kind: str = "key",
-        parse_json: bool = False,
-        dry_run: bool = False
+        self, option_set_key: str, value_ref: str, attribute_key: str, value: Any, ref_kind: str = "key",
+        parse_json: bool = False, dry_run: bool = False,
     ) -> bool:
-        """Set an attribute value for a specific option value."""
-        value_key = self._resolve_option_value_key(option_set_key, value_ref, ref_kind=ref_kind)
-        if not value_key:
-            logger.error(
-                f"Could not resolve option value '{value_ref}' in '{option_set_key}' by {ref_kind}."
-            )
-            return False
-
-        coerced_value = self._coerce_schema_value(value, parse_json=parse_json)
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteOptionValue",
-            ["option_sets", option_set_key, "values", value_key, attribute_key],
-            coerced_value
+        return self._schema_lifecycle.options.set_option_value_attribute(
+            option_set_key, value_ref, attribute_key, value, ref_kind, parse_json, dry_run
         )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Attribute '{attribute_key}' updated for option '{value_key}' in '{option_set_key}'."
-        )
-        if ok and not dry_run:
-            option_sets = self._schema_option_sets_cache()
-            os_entry = option_sets.get(option_set_key, {}) if isinstance(option_sets.get(option_set_key), dict) else {}
-            values = os_entry.get("values", {}) if isinstance(os_entry.get("values"), dict) else {}
-            value_entry = values.get(value_key, {}) if isinstance(values.get(value_key), dict) else {}
-            value_entry[attribute_key] = coerced_value
-            values[value_key] = value_entry
-            os_entry["values"] = values
-            option_sets[option_set_key] = os_entry
-            self._save_cli_cache()
-        return ok
 
     def reorder_option_values(
-        self,
-        option_set_key: str,
-        assignments: List[str],
-        ref_kind: str = "key",
-        dry_run: bool = False
+        self, option_set_key: str, assignments: List[str], ref_kind: str = "key", dry_run: bool = False
     ) -> bool:
-        """
-        Reorder option values by updating sort_factor.
-        assignments format: ["bTGMA:2", "bTGMB:1"] or ["bTGMA=2", "bTGMB=1"].
-        """
-        pb = PayloadBuilder(appname=self.appname)
-
-        if not assignments:
-            logger.error("No assignments provided. Use value_key:sort_factor pairs.")
-            return False
-
-        resolved_assignments: List[Tuple[str, int]] = []
-        for raw in assignments:
-            token = str(raw).strip()
-            if ":" in token:
-                value_ref, sort_raw = token.rsplit(":", 1)
-            elif "=" in token:
-                value_ref, sort_raw = token.rsplit("=", 1)
-            else:
-                logger.error(f"Invalid assignment '{token}'. Expected value_key:sort_factor.")
-                return False
-
-            value_ref = value_ref.strip()
-            sort_raw = sort_raw.strip()
-            if not value_ref or not re.fullmatch(r"-?\d+", sort_raw):
-                logger.error(f"Invalid assignment '{token}'.")
-                return False
-
-            value_key = self._resolve_option_value_key(option_set_key, value_ref, ref_kind=ref_kind)
-            if not value_key:
-                logger.error(
-                    f"Could not resolve option value '{value_ref}' in '{option_set_key}' by {ref_kind}."
-                )
-                return False
-
-            self._add_schema_change(
-                pb,
-                "WriteOptionValue",
-                ["option_sets", option_set_key, "values", value_key, "sort_factor"],
-                int(sort_raw)
-            )
-            resolved_assignments.append((value_key, int(sort_raw)))
-
-        ok = self._send_schema_payload(pb, dry_run, f"Option values reordered in '{option_set_key}'.")
-        if ok and not dry_run:
-            option_sets = self._schema_option_sets_cache()
-            os_entry = option_sets.get(option_set_key, {}) if isinstance(option_sets.get(option_set_key), dict) else {}
-            values = os_entry.get("values", {}) if isinstance(os_entry.get("values"), dict) else {}
-            for value_key, sort_factor in resolved_assignments:
-                value_entry = values.get(value_key, {}) if isinstance(values.get(value_key), dict) else {}
-                value_entry["sort_factor"] = sort_factor
-                values[value_key] = value_entry
-            os_entry["values"] = values
-            option_sets[option_set_key] = os_entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.options.reorder_option_values(option_set_key, assignments, ref_kind, dry_run)
 
     def list_option_values(self, option_set_key: str, as_json: bool = False) -> bool:
-        """List option value keys for an option set (key, label, db_value, sort_factor)."""
-        values = self._get_option_set_values(option_set_key)
-        if values is None:
-            logger.error(
-                f"Option set '{option_set_key}' not found in discovery data or schema cache."
-            )
-            return False
-
-        rows: List[Dict[str, Any]] = []
-        for key, data in values.items():
-            if not isinstance(data, dict):
-                continue
-            sort_factor = data.get("sort_factor", "")
-            rows.append({
-                "key": key,
-                "label": data.get("%d", data.get("display", "")),
-                "db_value": data.get("db_value", ""),
-                "sort_factor": sort_factor
-            })
-
-        def _sort_weight(raw: Any) -> int:
-            if isinstance(raw, int):
-                return raw
-            if isinstance(raw, str) and re.fullmatch(r"-?\d+", raw.strip()):
-                return int(raw.strip())
-            return 10**9
-
-        rows.sort(key=lambda r: (_sort_weight(r.get("sort_factor")), str(r.get("label", "")).lower()))
-
-        if as_json:
-            print(json.dumps(rows, indent=2, ensure_ascii=False))
-            return True
-
-        if not rows:
-            logger.info(f"No values found for option set '{option_set_key}'.")
-            return True
-
-        print(f"✅ Option values for '{option_set_key}':")
-        print(f"{'KEY':<10} | {'SORT':<5} | {'DB VALUE':<24} | LABEL")
-        print("-" * 90)
-        for row in rows:
-            print(
-                f"{str(row['key']):<10} | {str(row['sort_factor']):<5} | "
-                f"{str(row['db_value']):<24} | {str(row['label'])}"
-            )
-        return True
+        return self._schema_lifecycle.options.list_option_values(option_set_key, as_json)
 
     def _resolve_custom_state_target_path(
         self,

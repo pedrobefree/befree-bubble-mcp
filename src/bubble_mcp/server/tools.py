@@ -147,6 +147,16 @@ _DESTRUCTIVE_STYLE_TOKEN_TOOLS = {
     "delete_font",
 }
 
+_DESTRUCTIVE_FAMILY_FOUR_TOOLS = {
+    "delete_data_type",
+    "delete_data_type_permanently",
+    "delete_data_field",
+    "delete_privacy_rule",
+    "delete_option_set",
+    "delete_option_value",
+    "delete_301_redirect",
+}
+
 
 def _ensure_scheduled_deploys_rearmed() -> None:
     global _scheduled_deploys_rearmed
@@ -1949,7 +1959,8 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     if name == "sync_figma_tokens" and args.get("list_options") is True:
         args = {**args, "execute": False, "dry_run": True}
     executing = args.get("execute") is True and args.get("dry_run") is not True
-    if name in _DESTRUCTIVE_STYLE_TOKEN_TOOLS and executing and args.get("confirm") is not True:
+    confirmation_gated_tools = _DESTRUCTIVE_STYLE_TOKEN_TOOLS | _DESTRUCTIVE_FAMILY_FOUR_TOOLS
+    if name in confirmation_gated_tools and executing and args.get("confirm") is not True:
         raise ValueError(f"{name} requires confirm=true when execute=true.")
 
     if name == "create_from_html":

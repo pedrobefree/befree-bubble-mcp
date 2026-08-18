@@ -15,6 +15,7 @@ from typing import Any, cast
 from bubble_mcp.context.detector import default_bubble_export_path, detect_project_context, refresh_bubble_export
 from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mutation_overlay
 from bubble_mcp.core.config import load_settings, resolve_config_artifact_path, resolve_profile
+from bubble_mcp.core.redaction import SENSITIVE_KEY_PATTERN, redact_sensitive
 from bubble_mcp.execution.client import BubbleEditorClient
 from bubble_mcp.sessions.store import load_session
 from bubble_mcp.visual_defaults import (
@@ -65,10 +66,23 @@ ARG_ALIASES = {
     "field_name": ("name",),
     "field_type": ("type",),
     "option_set_key": ("option_set_ref",),
+    "value_type": ("type",),
+    "value_ref": ("option_value_ref",),
+    "new_label": ("new_name",),
+    "assignments": ("order",),
     "rgba": ("value", "color"),
     "event_type": ("event",),
     "action_param": ("param",),
     "to_email": ("to",),
+}
+
+OPERATION_ARG_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
+    "set_app_setting": {"path": ("name",)},
+    "set_project_setting": {"setting_key": ("name",)},
+    "set_data_type_api_exposure": {"enabled": ("value",)},
+    "create_option_value": {"label": ("name",)},
+    "set_option_value_attribute": {"attribute_key": ("name",)},
+    "delete_301_redirect": {"rule_key": ("name",)},
 }
 
 RUNTIME_TOOL_ALIASES = {
@@ -378,7 +392,7 @@ def _method_kwargs(method: Any, args: dict[str, Any], *, execute: bool) -> dict[
         if name in args:
             kwargs[name] = args[name]
             continue
-        aliases = ARG_ALIASES.get(name, ())
+        aliases = OPERATION_ARG_ALIASES.get(method.__name__, {}).get(name, ARG_ALIASES.get(name, ()))
         for alias in aliases:
             if alias in args:
                 kwargs[name] = args[alias]
@@ -396,7 +410,7 @@ def _method_kwargs(method: Any, args: dict[str, Any], *, execute: bool) -> dict[
 
     if method.__name__ == "add_event_go_to_page_action" and args.get("same_tab") is True:
         kwargs["open_in_new_tab"] = False
-    if method.__name__ == "delete_data_field" and "field_key" not in kwargs:
+    if method.__name__ in {"rename_data_field", "delete_data_field"} and "field_key" not in kwargs:
         raw_field_ref = args.get("name") or args.get("field_name")
         if raw_field_ref is not None:
             kwargs["field_key"] = raw_field_ref
@@ -404,6 +418,93 @@ def _method_kwargs(method: Any, args: dict[str, Any], *, execute: bool) -> dict[
     if "dry_run" in signature.parameters:
         kwargs["dry_run"] = not execute
     return kwargs
+
+
+def _sensitive_payload_copy(payload: dict[str, Any]) -> dict[str, Any]:
+    safe_payload = deepcopy(payload)
+    changes = safe_payload.get("changes")
+    if isinstance(changes, list):
+        for change in changes:
+            if isinstance(change, dict) and "body" in change:
+                change["body"] = "[REDACTED]"
+    return safe_payload
+
+
+def _sensitive_string_literals(payload: dict[str, Any]) -> set[str]:
+    literals: set[str] = set()
+
+    def collect(value: Any) -> None:
+        if isinstance(value, dict):
+            for child in value.values():
+                collect(child)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                collect(child)
+        elif isinstance(value, str) and value:
+            literals.add(value)
+
+    changes = payload.get("changes")
+    if isinstance(changes, list):
+        for change in changes:
+            if isinstance(change, dict) and "body" in change:
+                collect(change["body"])
+    return literals
+
+
+def _scrub_sensitive_literals(value: Any, literals: set[str]) -> Any:
+    redacted = redact_sensitive(value)
+    ordered = sorted(literals, key=len, reverse=True)
+
+    def scrub(candidate: Any) -> Any:
+        if isinstance(candidate, dict):
+            return {key: scrub(child) for key, child in candidate.items()}
+        if isinstance(candidate, list):
+            return [scrub(child) for child in candidate]
+        if isinstance(candidate, tuple):
+            return tuple(scrub(child) for child in candidate)
+        if isinstance(candidate, str):
+            for literal in ordered:
+                candidate = candidate.replace(literal, "[REDACTED]")
+        return candidate
+
+    return scrub(redacted)
+
+
+def _sanitize_sensitive_editor_result(
+    result: dict[str, Any], literals: set[str]
+) -> dict[str, Any]:
+    sensitive_text_branches = {
+        "debug",
+        "error",
+        "local_state_warning",
+        "message",
+        "reason",
+        "response",
+        "warning",
+        "warnings",
+    }
+
+    def sanitize(candidate: Any) -> Any:
+        if isinstance(candidate, dict):
+            output: dict[str, Any] = {}
+            for key, child in candidate.items():
+                key_text = str(key)
+                if SENSITIVE_KEY_PATTERN.search(key_text):
+                    output[key_text] = "[REDACTED]"
+                elif key_text == "payload" and isinstance(child, dict):
+                    output[key_text] = _sensitive_payload_copy(child)
+                elif key_text.lower() in sensitive_text_branches:
+                    output[key_text] = _scrub_sensitive_literals(child, literals)
+                else:
+                    output[key_text] = sanitize(child)
+            return output
+        if isinstance(candidate, list):
+            return [sanitize(child) for child in candidate]
+        if isinstance(candidate, tuple):
+            return tuple(sanitize(child) for child in candidate)
+        return candidate
+
+    return cast(dict[str, Any], sanitize(deepcopy(result)))
 
 
 def _list_element_ref_maps(cli: Any, args: dict[str, Any]) -> dict[str, Any]:
@@ -477,6 +578,7 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
     captured_payloads: list[dict[str, Any]] = []
     captured_results: list[dict[str, Any]] = []
     captured_builder_ids: set[int] = set()
+    sensitive_literals: set[str] = set()
     original_builder_init = bubble_sdk.PayloadBuilder.__init__
     builder_init_signature = inspect.signature(original_builder_init)
     builder_accepts_app_version = "app_version" in builder_init_signature.parameters or any(
@@ -495,21 +597,26 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
             init_kwargs["app_version"] = env.app_version
         original_builder_init(builder, *init_args, **init_kwargs)
 
-    def capture_payload(builder: Any) -> dict[str, Any]:
+    def capture_payload(builder: Any, *, sensitive: bool = False) -> dict[str, Any]:
         builder_id = id(builder)
         write_payload = cast("dict[str, Any]", builder.build())
         write_payload["app_version"] = env.app_version
         _normalize_fixed_size_create_payload(write_payload, style_metadata=style_metadata)
         if builder_id not in captured_builder_ids:
             captured_builder_ids.add(builder_id)
-            captured_payloads.append(write_payload)
+            if sensitive:
+                sensitive_literals.update(_sensitive_string_literals(write_payload))
+                captured_payloads.append(_sensitive_payload_copy(write_payload))
+            else:
+                captured_payloads.append(write_payload)
         return write_payload
 
-    def send_to_local_bubble(builder: Any, _url: str = "") -> Any:
-        write_payload = capture_payload(builder)
+    def send_to_local_bubble(builder: Any, _url: str = "", *, sensitive: bool = False) -> Any:
+        write_payload = capture_payload(builder, sensitive=sensitive)
+        safe_payload = _sensitive_payload_copy(write_payload) if sensitive else write_payload
         if not execute:
-            result = {"ok": True, "dry_run": True, "payload": write_payload}
-            captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": write_payload})
+            result = {"ok": True, "dry_run": True, "payload": safe_payload}
+            captured_results.append({"ok": True, "executed": False, "dry_run": True, "payload": safe_payload})
             return result
         assert session is not None
         result = BubbleEditorClient().write(
@@ -518,24 +625,32 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
             dry_run=False,
             calculate_derived=_requires_calculate_derived(name),
         )
-        captured_results.append({"ok": bool(result.get("ok")), "executed": True, "result": result})
+        safe_result = (
+            _sanitize_sensitive_editor_result(result, sensitive_literals)
+            if sensitive
+            else result
+        )
+        captured_results.append({"ok": bool(result.get("ok")), "executed": True, "result": safe_result})
         if result.get("ok"):
-            request = result.get("request")
-            request_payload = request.get("payload") if isinstance(request, dict) else None
-            overlay_payload = request_payload if isinstance(request_payload, dict) else write_payload
-            try:
-                record_mutation_overlay(
-                    profile=profile,
-                    app_id=str(overlay_payload.get("appname") or env.app_id),
-                    payload=overlay_payload,
-                    source=name,
-                    response=result.get("response"),
-                )
-            except Exception as exc:
-                warning = f"Remote write succeeded, but the local mutation overlay could not be persisted: {exc}"
-                captured_results[-1]["local_state_warning"] = warning
-                result["local_state_warning"] = warning
-            return result
+            if not sensitive:
+                request = result.get("request")
+                request_payload = request.get("payload") if isinstance(request, dict) else None
+                overlay_payload = request_payload if isinstance(request_payload, dict) else write_payload
+                try:
+                    record_mutation_overlay(
+                        profile=profile,
+                        app_id=str(overlay_payload.get("appname") or env.app_id),
+                        payload=overlay_payload,
+                        source=name,
+                        response=result.get("response"),
+                    )
+                except Exception as exc:
+                    warning = f"Remote write succeeded, but the local mutation overlay could not be persisted: {exc}"
+                    captured_results[-1]["local_state_warning"] = warning
+                    result["local_state_warning"] = warning
+            return safe_result
+        if sensitive:
+            raise RuntimeError("Sensitive Bubble write failed")
         raise RuntimeError(str(result.get("error") or result.get("reason") or "Bubble write failed"))
 
     def to_json_with_capture(builder: Any) -> str:
@@ -588,6 +703,8 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         bubble_sdk.PayloadBuilder.to_json = original_to_json
 
     logs = "\n".join(part for part in (stdout.getvalue().strip(), stderr.getvalue().strip()) if part)
+    if sensitive_literals:
+        logs = cast(str, _scrub_sensitive_literals(logs, sensitive_literals))
     ok = bool(return_value) if captured_results else return_value is not False
     if captured_results:
         ok = all(bool(item.get("ok")) for item in captured_results)
