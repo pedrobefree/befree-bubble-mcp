@@ -2473,6 +2473,66 @@ def test_legacy_catalog_tool_dispatches_to_aria_runtime(monkeypatch) -> None:  #
     assert calls[1] == ("create_page", {"name": "mcp-03", "dry_run": True})
 
 
+def test_mcp_create_data_field_omits_field_key_and_preserves_generated_key(
+    tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    export_path = tmp_path / "current.bubble"
+    export_path.write_text(
+        json.dumps(
+            {
+                "user_types": {
+                    "account": {
+                        "%d": "Account",
+                        "%f3": {},
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="literal-app",
+                    appname="literal-app",
+                    app_version="test",
+                    app_json_path=str(export_path),
+                )
+            },
+        )
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1204,
+            "method": "tools/call",
+            "params": {
+                "name": "create_data_field",
+                "arguments": {
+                    "profile": "smoke",
+                    "data_type_ref": "account",
+                    "name": "My Display Field",
+                    "type": "text",
+                    "execute": False,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    result = json.loads(response["result"]["content"][0]["text"])
+    assert result["ok"] is True
+    assert result["executed"] is False
+    change = first_change(result["results"][0]["payload"], "WriteCustomField")
+    assert change["path_array"][-1] == "my_display_field_text"
+
+
 def test_update_style_all_schema_dispatches_by_contains_to_runtime(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     listed = handle_request({"jsonrpc": "2.0", "id": 1201, "method": "tools/list"})
     assert listed is not None

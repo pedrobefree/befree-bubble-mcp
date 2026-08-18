@@ -10,6 +10,7 @@ from bubble_mcp.runtime_smoke import (
     build_runtime_smoke_cases,
     run_runtime_smoke,
 )
+from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 
 
 def _write_execute_context(context_file: Path, run_id: str) -> None:
@@ -212,6 +213,49 @@ def test_family_preview_uses_current_profile_option_set_instead_of_fixture_only_
 
     option_value = next(case for case in cases if case.tool == "create_option_value")
     assert option_value.arguments["option_set_key"] == "os_current"
+
+
+def test_family_preview_resolves_app_id_from_profile_when_cli_omits_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    export_path = tmp_path / "current.bubble"
+    export_path.write_text(
+        json.dumps({"option_sets": {"os_profile_current": {"values": {}}}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="profile-app",
+                    appname="profile-app",
+                )
+            },
+        )
+    )
+    monkeypatch.setattr(
+        runtime_smoke_module,
+        "default_bubble_export_path",
+        lambda profile, app_id: export_path
+        if (profile, app_id) == ("smoke", "profile-app")
+        else tmp_path / "missing.bubble",
+    )
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_tool(tool: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((tool, args))
+        return {"ok": True, "ready": True, "executed": False, "write_count": 0}
+
+    report = run_runtime_smoke(fake_tool, suite="family-preview", profile="smoke")
+
+    option_value_args = next(args for tool, args in calls if tool == "create_option_value")
+    assert option_value_args["app_id"] == "profile-app"
+    assert option_value_args["option_set_key"] == "os_profile_current"
+    assert report["app_id"] == "profile-app"
 
 
 def test_family_preview_runs_call_sequence() -> None:

@@ -48,6 +48,7 @@ class Sample:
     payload_builds: int = 0
     cache_saves: int = 0
     external_writes: int = 0
+    dispatch_attempts: int = 0
 
 
 @dataclass
@@ -56,6 +57,7 @@ class Metrics:
     payload_builds: int = 0
     cache_saves: int = 0
     external_writes: int = 0
+    dispatch_attempts: int = 0
 
     def capture_payload(self, payload: Any) -> None:
         built = payload.build()
@@ -95,6 +97,7 @@ def _capture_dispatches(metrics: Metrics) -> Iterator[None]:
     original_send = PayloadBuilder.send_to_webhook
 
     def capture(payload: Any, _url: str = "local://bubble-mcp", **_kwargs: Any) -> None:
+        metrics.dispatch_attempts += 1
         metrics.capture_payload(payload)
 
     PayloadBuilder.send_to_webhook = capture
@@ -170,6 +173,7 @@ def _time_samples(samples: int, sample_fn: Callable[[], Sample]) -> dict[str, An
         "payload_builds": int(median(row.payload_builds for row in rows)),
         "cache_saves": int(median(row.cache_saves for row in rows)),
         "external_writes": int(median(row.external_writes for row in rows)),
+        "dispatch_attempts": int(median(row.dispatch_attempts for row in rows)),
     }
 
 
@@ -217,6 +221,7 @@ def _crud_sample() -> Sample:
         payload_builds=metrics.payload_builds,
         cache_saves=metrics.cache_saves,
         external_writes=metrics.external_writes,
+        dispatch_attempts=metrics.dispatch_attempts,
     )
 
 
@@ -239,6 +244,7 @@ def _reorder_sample(count: int) -> Sample:
         payload_builds=metrics.payload_builds,
         cache_saves=metrics.cache_saves,
         external_writes=metrics.external_writes,
+        dispatch_attempts=metrics.dispatch_attempts,
     )
 
 
@@ -279,11 +285,14 @@ def run_benchmarks(config: BenchmarkConfig = BenchmarkConfig()) -> dict[str, Any
 
 
 def compare_reports(before: dict[str, Any], after: dict[str, Any]) -> dict[str, Any]:
-    """Compare reports only when Python, workload and benchmark cases are equivalent."""
-    if before.get("python") != after.get("python") or before.get("workload") != after.get(
-        "workload"
+    """Compare reports only when schema, Python, sample count, workload and cases match."""
+    if any(
+        before.get(field) != after.get(field)
+        for field in ("schema_version", "python", "samples", "workload")
     ):
-        raise ValueError("benchmark reports must use the same Python and workload")
+        raise ValueError(
+            "benchmark reports must use the same schema version, Python, samples and workload"
+        )
     before_rows = before.get("benchmarks", {})
     after_rows = after.get("benchmarks", {})
     if set(before_rows) != set(after_rows):
@@ -315,10 +324,15 @@ def compare_reports(before: dict[str, Any], after: dict[str, Any]) -> dict[str, 
             - int(before_row["cache_saves"]),
             "before_external_writes": int(before_row["external_writes"]),
             "after_external_writes": int(after_row["external_writes"]),
+            "before_dispatch_attempts": int(before_row.get("dispatch_attempts", 0)),
+            "after_dispatch_attempts": int(after_row.get("dispatch_attempts", 0)),
+            "dispatch_attempts_delta": int(after_row.get("dispatch_attempts", 0))
+            - int(before_row.get("dispatch_attempts", 0)),
         }
     return {
         "schema_version": 1,
         "python": before.get("python"),
+        "samples": before.get("samples"),
         "workload": before.get("workload"),
         "benchmarks": comparison,
     }

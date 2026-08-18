@@ -66,7 +66,6 @@ ARG_ALIASES = {
     "data_type_key": ("data_type_ref", "data_type"),
     "enabled": ("value",),
     "field_name": ("name",),
-    "field_key": ("name", "field_name"),
     "field_type": ("type",),
     "option_set_key": ("option_set_ref",),
     "value_type": ("type",),
@@ -407,7 +406,7 @@ def _method_kwargs(method: Any, args: dict[str, Any], *, execute: bool) -> dict[
 
     if method.__name__ == "add_event_go_to_page_action" and args.get("same_tab") is True:
         kwargs["open_in_new_tab"] = False
-    if method.__name__ == "delete_data_field" and "field_key" not in kwargs:
+    if method.__name__ in {"rename_data_field", "delete_data_field"} and "field_key" not in kwargs:
         raw_field_ref = args.get("name") or args.get("field_name")
         if raw_field_ref is not None:
             kwargs["field_key"] = raw_field_ref

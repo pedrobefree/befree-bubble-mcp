@@ -12,6 +12,7 @@ from typing import Any, cast
 from uuid import uuid4
 
 from bubble_mcp.context.detector import default_bubble_export_path
+from bubble_mcp.core.config import load_settings, resolve_profile
 from bubble_mcp.core.redaction import redact_sensitive
 from bubble_mcp.runtime_smoke_validation import validate_execute_write_context
 
@@ -50,6 +51,17 @@ def _profile_option_set_ref(profile: str, app_id: str) -> str | None:
         ),
         None,
     )
+
+
+def _profile_app_id(profile: str, app_id: str) -> str:
+    """Resolve the configured app id when the public smoke call only supplies a profile."""
+    if app_id or not profile:
+        return app_id
+    try:
+        configured = resolve_profile(load_settings(), profile)
+    except (OSError, ValueError):
+        return ""
+    return configured.app_id if configured is not None else ""
 
 
 VISUAL_REPAIR_REFERENCE: dict[str, Any] = {
@@ -627,6 +639,8 @@ def run_runtime_smoke(
         raise ValueError(
             "suite must be one of: coverage, safe-read, preview-write, execute-write, family-preview, agent-routing, visual-repair."
         )
+    if suite == "family-preview":
+        app_id = _profile_app_id(profile, app_id)
     effective_run_id = _safe_run_id(run_id)
     if suite == "agent-routing":
         routing_results = _run_agent_routing_suite(

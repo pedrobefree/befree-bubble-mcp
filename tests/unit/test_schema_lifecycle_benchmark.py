@@ -29,6 +29,8 @@ def test_schema_benchmark_reports_resolution_crud_and_reorder_metrics() -> None:
     }
     assert all(row["elapsed_seconds"] > 0 for row in report["benchmarks"].values())
     assert all(row["external_writes"] == 0 for row in report["benchmarks"].values())
+    assert report["benchmarks"]["schema_crud"]["dispatch_attempts"] == 7
+    assert report["benchmarks"]["option_reorder_5"]["dispatch_attempts"] == 1
     assert report["benchmarks"]["schema_crud"]["payload_builds"] == 7
     assert report["benchmarks"]["schema_crud"]["cache_saves"] == 7
     assert report["benchmarks"]["schema_crud"]["payload_bytes"] > 0
@@ -40,7 +42,9 @@ def test_schema_benchmark_reports_resolution_crud_and_reorder_metrics() -> None:
 
 def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas() -> None:
     before = {
+        "schema_version": 1,
         "python": "3.13.7",
+        "samples": 7,
         "workload": {"resolution_counts": [5], "warm_lookups": 3, "reorder_values": 5},
         "benchmarks": {
             "schema_crud": {
@@ -49,11 +53,14 @@ def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas
                 "payload_builds": 7,
                 "cache_saves": 7,
                 "external_writes": 0,
+                "dispatch_attempts": 7,
             }
         },
     }
     after = {
+        "schema_version": 1,
         "python": "3.13.7",
+        "samples": 7,
         "workload": {"resolution_counts": [5], "warm_lookups": 3, "reorder_values": 5},
         "benchmarks": {
             "schema_crud": {
@@ -62,6 +69,7 @@ def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas
                 "payload_builds": 7,
                 "cache_saves": 7,
                 "external_writes": 0,
+                "dispatch_attempts": 7,
             }
         },
     }
@@ -84,6 +92,9 @@ def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas
         "cache_saves_delta": 0,
         "before_external_writes": 0,
         "after_external_writes": 0,
+        "before_dispatch_attempts": 7,
+        "after_dispatch_attempts": 7,
+        "dispatch_attempts_delta": 0,
     }
 
 
@@ -91,6 +102,8 @@ def test_schema_benchmark_comparison_records_absolute_percent_and_payload_deltas
     ("field", "value"),
     [
         ("python", "different-python"),
+        ("samples", 8),
+        ("schema_version", 2),
         ("workload", {"resolution_counts": [6], "warm_lookups": 3, "reorder_values": 5}),
     ],
 )
@@ -98,14 +111,16 @@ def test_schema_benchmark_comparison_rejects_non_equivalent_runs(
     field: str, value: object
 ) -> None:
     report = {
+        "schema_version": 1,
         "python": "same-python",
+        "samples": 7,
         "workload": {"resolution_counts": [5], "warm_lookups": 3, "reorder_values": 5},
         "benchmarks": {},
     }
     changed = json.loads(json.dumps(report))
     changed[field] = value
 
-    with pytest.raises(ValueError, match="same Python and workload"):
+    with pytest.raises(ValueError, match="same schema version, Python, samples and workload"):
         compare_reports(report, changed)
 
 
