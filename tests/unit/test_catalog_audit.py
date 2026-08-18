@@ -38,6 +38,16 @@ def test_packaged_cli_has_no_unmapped_bubble_operation_commands() -> None:
     ]
 
 
+def test_parity_report_is_derived_from_complete_inventory() -> None:
+    report = cli_catalog_parity_report(tool["name"] for tool in list_tool_schemas())
+
+    assert report["mcp_tool_count"] == 327
+    assert report["direct_match_count"] == 205
+    assert report["alias_count"] == 1
+    assert report["excluded_count"] == 1
+    assert report["mcp_only_count"] == 122
+
+
 def test_audit_script_runs_from_checkout_without_pythonpath() -> None:
     root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
