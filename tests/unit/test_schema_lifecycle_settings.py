@@ -5,8 +5,10 @@ import json
 from pathlib import Path
 
 import pytest
+import requests
 
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI, PayloadBuilder
+from bubble_mcp.aria_runtime import bubble_sdk
 from bubble_mcp.aria_runtime.schema_lifecycle.settings import PROJECT_SETTING_ALIASES, SettingsLifecycleService
 from bubble_mcp.server.schemas import list_tool_schemas
 
@@ -347,7 +349,7 @@ def test_api_token_private_keys_are_redacted_from_dry_run_and_logs_but_preserved
     assert all(secret not in message for message in infos)
 
     dispatched: list[dict[str, object]] = []
-    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda payload, _url: dispatched.append(json.loads(payload.to_json())))
+    monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda payload, _url, **_kwargs: dispatched.append(json.loads(payload.to_json())))
     assert cli.create_api_token(token_id="token-id-live", private_key=secret)
     assert cli.regenerate_api_token_private_key("token-id-live", private_key=secret)
     assert dispatched[0]["changes"][0]["body"]["private_key"] == secret  # type: ignore[index]
@@ -362,18 +364,84 @@ def test_api_token_private_keys_are_redacted_from_dry_run_and_logs_but_preserved
         lambda instance, secret: instance.regenerate_api_token_private_key("token-id", private_key=secret),
     ],
 )
-def test_api_token_dispatch_failures_redact_private_keys_but_keep_generic_failures_useful(
+def test_api_token_dispatch_failures_always_use_the_explicit_sensitive_failure_boundary(
     cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], operation: object
 ) -> None:
     secret = "private-key-in-dispatch-error"
     errors: list[str] = []
-    monkeypatch.setattr(cli, "_dispatch_payload", lambda _payload: (_ for _ in ()).throw(RuntimeError(f"webhook rejected {secret}")))
+    monkeypatch.setattr(cli, "_dispatch_payload", lambda _payload, **_kwargs: (_ for _ in ()).throw(RuntimeError(f"webhook rejected {secret}")))
     monkeypatch.setattr("bubble_mcp.aria_runtime.bubble_cli.logger.error", errors.append)
     assert operation(cli, secret) is False  # type: ignore[operator]
     assert secret not in capsys.readouterr().out
     assert errors == ["Failed to send: API token write failed."]
 
     errors.clear()
-    monkeypatch.setattr(cli, "_dispatch_payload", lambda _payload: (_ for _ in ()).throw(RuntimeError("offline")))
+    monkeypatch.setattr(cli, "_dispatch_payload", lambda _payload, **_kwargs: (_ for _ in ()).throw(RuntimeError("offline")))
     assert operation(cli, secret) is False  # type: ignore[operator]
-    assert errors == ["Failed to send: offline"]
+    assert errors == ["Failed to send: API token write failed."]
+
+
+@pytest.mark.parametrize(
+    "operation",
+    [
+        lambda instance, secret: instance.create_api_token(token_id="token-id", private_key=secret),
+        lambda instance, secret: instance.regenerate_api_token_private_key("token-id", private_key=secret),
+    ],
+)
+def test_real_sensitive_token_transport_keeps_remote_secret_but_redacts_response_logs_and_debug_artifacts(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path, operation: object
+) -> None:
+    secret = "short-key"
+    captured: dict[str, object] = {}
+
+    class FailingResponse:
+        text = f"response includes {secret}"
+
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError(f"transport includes {secret}", response=self)
+
+    monkeypatch.setattr(bubble_sdk.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(bubble_sdk.requests, "post", lambda _url, **kwargs: captured.update(kwargs) or FailingResponse())
+    assert operation(cli, secret) is False  # type: ignore[operator]
+    output = capsys.readouterr().out
+    assert secret not in output
+    assert not (tmp_path / "bubble-webhook-debug").exists()
+    envelope = captured["json"]  # type: ignore[index]
+    assert envelope["body"]["changes"][0]["body"] == (secret if "private_key" in envelope["body"]["changes"][0]["path_array"] else {"private_key": secret})  # type: ignore[index]
+
+
+def test_real_sensitive_token_cache_sync_failure_is_sanitized_without_changing_remote_payload(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    secret = "cache-secret"
+    captured: dict[str, object] = {}
+
+    class SuccessResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+    monkeypatch.setattr(bubble_sdk.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(bubble_sdk.requests, "post", lambda _url, **kwargs: captured.update(kwargs) or SuccessResponse())
+    monkeypatch.setattr(cli, "_apply_changes_to_discovery_cache", lambda _changes: (_ for _ in ()).throw(RuntimeError(secret)))
+    assert cli.create_api_token(token_id="token-id", private_key=secret)
+    assert secret not in capsys.readouterr().out
+    assert captured["json"]["body"]["changes"][0]["body"]["private_key"] == secret  # type: ignore[index]
+    assert not (tmp_path / "bubble-webhook-debug").exists()
+
+
+def test_normal_non_sensitive_transport_errors_keep_legacy_detail(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    class FailingResponse:
+        text = "ordinary response detail"
+
+        def raise_for_status(self) -> None:
+            raise requests.HTTPError("ordinary transport detail", response=self)
+
+    monkeypatch.setattr(bubble_sdk.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(bubble_sdk.requests, "post", lambda *_args, **_kwargs: FailingResponse())
+    with pytest.raises(requests.HTTPError):
+        bubble_sdk.WebhookClient("https://example.test/hook", "app").send({"changes": []})
+    output = capsys.readouterr().out
+    assert "ordinary transport detail" in output and "ordinary response detail" in output
+    assert (tmp_path / "bubble-webhook-debug" / "last_payload.json").exists()

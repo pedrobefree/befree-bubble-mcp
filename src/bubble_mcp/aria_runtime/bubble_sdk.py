@@ -6435,10 +6435,13 @@ class PayloadBuilder:
             json.dump(self.build(), f, indent=2)
         logger.success(f"Payload salvo em {filename}")
 
-    def send_to_webhook(self, url: str = "local://bubble-mcp"):
+    def send_to_webhook(self, url: str = "local://bubble-mcp", *, sensitive: bool = False):
         """Envia para o webhook do editor"""
         payload = self.build()
-        client = WebhookClient(url=url, app_name=self.appname)
+        if sensitive:
+            client = WebhookClient(url=url, app_name=self.appname, sensitive=True)
+        else:
+            client = WebhookClient(url=url, app_name=self.appname)
         return client.send(payload)
 
 
@@ -7710,9 +7713,10 @@ class BubbleClient:
 class WebhookClient:
     """Cliente para enviar requisições ao gateway do editor (Webhook)"""
 
-    def __init__(self, url: str = "local://bubble-mcp", app_name: str = "synthetic-page"):
+    def __init__(self, url: str = "local://bubble-mcp", app_name: str = "synthetic-page", *, sensitive: bool = False):
         self.url = url
         self.app_name = app_name
+        self.sensitive = sensitive
         try:
             self.timeout_seconds = int(str(os.getenv("BUBBLE_CLI_WEBHOOK_TIMEOUT_SEC", "15")).strip())
         except Exception:
@@ -7746,20 +7750,21 @@ class WebhookClient:
                 **(payload if isinstance(payload, dict) else {})
             }
 
-        try:
-            debug_dir = os.path.join(tempfile.gettempdir(), "bubble-webhook-debug")
-            os.makedirs(debug_dir, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            with open(os.path.join(debug_dir, "last_payload.json"), "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
-            with open(os.path.join(debug_dir, "last_envelope.json"), "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            with open(os.path.join(debug_dir, f"payload_{timestamp}.json"), "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=2)
-            with open(os.path.join(debug_dir, f"envelope_{timestamp}.json"), "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        if not self.sensitive:
+            try:
+                debug_dir = os.path.join(tempfile.gettempdir(), "bubble-webhook-debug")
+                os.makedirs(debug_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+                with open(os.path.join(debug_dir, "last_payload.json"), "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False, indent=2)
+                with open(os.path.join(debug_dir, "last_envelope.json"), "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                with open(os.path.join(debug_dir, f"payload_{timestamp}.json"), "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False, indent=2)
+                with open(os.path.join(debug_dir, f"envelope_{timestamp}.json"), "w", encoding="utf-8") as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+            except Exception:
+                pass
 
         logger.info(f" Enviando para Webhook: {self.url}...")
 
@@ -7769,8 +7774,11 @@ class WebhookClient:
             logger.success("Webhook enviado com sucesso!")
             return response
         except Exception as e:
-            logger.error(f"Erro ao enviar para Webhook: {e}")
-            if getattr(e, "response", None) is not None:
+            if self.sensitive:
+                logger.error("Erro ao enviar para Webhook: sensitive payload failed")
+            else:
+                logger.error(f"Erro ao enviar para Webhook: {e}")
+            if not self.sensitive and getattr(e, "response", None) is not None:
                 print(f"Response: {e.response.text}")
             raise
 

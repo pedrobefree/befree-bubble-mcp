@@ -1832,9 +1832,12 @@ class BubbleCLI:
             logger.error(f"Failed to send: {e}")
             return False
 
-    def _dispatch_payload(self, pb: PayloadBuilder) -> None:
+    def _dispatch_payload(self, pb: PayloadBuilder, *, sensitive: bool = False) -> None:
         """Send payload and opportunistically sync profile cache from emitted schema changes."""
-        pb.send_to_webhook(self.webhook_url)
+        if sensitive:
+            pb.send_to_webhook(self.webhook_url, sensitive=True)
+        else:
+            pb.send_to_webhook(self.webhook_url)
         changes = getattr(pb, "changes", None)
         normalized_changes = changes if isinstance(changes, list) else []
         try:
@@ -1842,7 +1845,10 @@ class BubbleCLI:
             self._sync_profile_cache_from_changes(normalized_changes)
             self.discovery.persist_disk_cache()
         except Exception as e:
-            logger.warning(f"Post-write cache sync skipped: {e}")
+            if sensitive:
+                logger.warning("Post-write cache sync skipped for sensitive payload.")
+            else:
+                logger.warning(f"Post-write cache sync skipped: {e}")
         self._invalidate_schema_reference_indexes_for_changes(normalized_changes)
 
     @staticmethod
@@ -4268,23 +4274,6 @@ class BubbleCLI:
                 body["private_key"] = "[REDACTED]"
         return preview
 
-    @staticmethod
-    def _api_token_private_values(payload: PayloadBuilder) -> set[str]:
-        """Collect private-key strings solely for error-message redaction."""
-        values: set[str] = set()
-        for change in payload.changes:
-            if not isinstance(change, dict):
-                continue
-            path = change.get("path_array")
-            if not isinstance(path, list) or path[:3] != ["settings", "secure", "api_tokens"]:
-                continue
-            body = change.get("body")
-            if path[-1:] == ["private_key"] and isinstance(body, str) and body:
-                values.add(body)
-            elif isinstance(body, dict) and isinstance(body.get("private_key"), str) and body["private_key"]:
-                values.add(body["private_key"])
-        return values
-
     def _send_api_token_payload(self, pb: PayloadBuilder, dry_run: bool, success_message: str) -> bool:
         """Send API-token writes while keeping previews local and redacted."""
         if dry_run:
@@ -4292,14 +4281,11 @@ class BubbleCLI:
             print(self._redact_api_token_payload(pb).to_json())
             return True
         try:
-            self._dispatch_payload(pb)
+            self._dispatch_payload(pb, sensitive=True)
             logger.success(success_message)
             return True
-        except Exception as exc:
-            if any(value in str(exc) for value in self._api_token_private_values(pb)):
-                logger.error("Failed to send: API token write failed.")
-            else:
-                logger.error(f"Failed to send: {exc}")
+        except Exception:
+            logger.error("Failed to send: API token write failed.")
             return False
 
     def _mutate_api_token_setting(self, path: List[str], value: Any, dry_run: bool, success_message: str) -> bool:
