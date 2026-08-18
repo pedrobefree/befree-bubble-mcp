@@ -422,6 +422,27 @@ natural-language ambiguity evaluations for related tool families. Round A.2
 owns the explicit modern nested CLI leaf-command map; it is not part of this
 stage.
 
+Round A.1 closing evidence (2026-08-18):
+
+- the complete Python suite passed 1,816 tests in 29.08 seconds; `npm test`
+  passed 11 Node tests (0 failed, 0 skipped, 0 cancelled);
+- the authoritative inventory contains 328 MCP-bearing relationship records
+  for 327 unique MCP names, alongside 207 CLI commands: 205 direct mappings,
+  1 alias, 1 exclusion, 122 MCP-only tools, and 0 missing mappings;
+- `scripts/audit_catalog_selection.py` reported `ok: true` with 327 tools and
+  cases, 327 canonical, reordered, and order-independent results, and 0
+  missing or failed cases;
+- Ruff reported `All checks passed!`; MyPy reported no issues in 143 source
+  files; and the sensitive public-source audit passed;
+- runtime smoke coverage passed 2/2 cases (run
+  `20260818143654_7e8d30`) and agent-routing passed 9/9 cases (run
+  `20260818143659_4275ff`), both with zero failed or skipped cases.
+
+All listed local gates executed; no infrastructure-only gate was substituted
+for executable evidence. The runtime smokes intentionally ran with
+`profile: null` and `execute: false`, so they validate catalog/route contracts
+but do not represent an external Bubble-editor connectivity run.
+
 The modern nested `bubble-mcp` CLI is an orchestration and administration
 surface, so words such as `list`, `run`, and `status` are not one-to-one MCP
 capabilities. A later catalog round should add an explicit leaf-command map

@@ -13,6 +13,8 @@
 ## Global Constraints
 
 - Cover all 327 public MCP tools and all 207 packaged legacy CLI operation commands.
+- The inventory has 328 MCP-bearing relationship records for 327 unique MCP
+  names.
 - Preserve 205 direct mappings, `create-reusable-type` to `create_reusable`, and the intentional `reset-tmp` exclusion.
 - Derive catalog and command names from authoritative registries; do not add a second handwritten name list.
 - Produce stable ordering and byte-stable JSON independent of registry or parser iteration order.
@@ -54,12 +56,12 @@ def test_current_catalog_inventory_is_complete_and_explicit() -> None:
     records = build_catalog_inventory(list_tool_schemas())
     mcp_records = [record for record in records if record.mcp_tool is not None]
 
-    assert len(mcp_records) == 327
+    assert len(mcp_records) == 328
     assert len({record.mcp_tool for record in mcp_records}) == 327
     assert sum(record.relationship == "direct" for record in records) == 205
     assert sum(record.relationship == "alias" for record in records) == 1
     assert sum(record.relationship == "excluded" for record in records) == 1
-    assert sum(record.relationship == "mcp_only" for record in records) == 121
+    assert sum(record.relationship == "mcp_only" for record in records) == 122
     assert next(record for record in records if record.legacy_command == "create-reusable-type").mcp_tool == "create_reusable"
     assert next(record for record in records if record.legacy_command == "reset-tmp").mcp_tool is None
     assert all(record.selection_case_id for record in mcp_records)
@@ -86,7 +88,7 @@ def test_parity_report_is_derived_from_complete_inventory() -> None:
     assert report["direct_match_count"] == 205
     assert report["alias_count"] == 1
     assert report["excluded_count"] == 1
-    assert report["mcp_only_count"] == 121
+    assert report["mcp_only_count"] == 122
 ```
 
 - [ ] **Step 2: Run the tests and verify RED**
@@ -422,7 +424,11 @@ PYTHONPATH=src ./.venv/bin/python scripts/audit_catalog_selection.py
 rtk git diff --check
 ```
 
-Expected: all tests and static checks pass; CLI audit reports 327 MCP tools, 207 CLI commands, 205 direct mappings, one alias, one exclusion, 121 MCP-only tools, and zero missing mappings; selection audit reports 327/327 canonical and reordered cases passing.
+Expected: all tests and static checks pass; CLI audit reports 328 MCP-bearing
+relationship records for 327 unique MCP names, 207 CLI commands, 205 direct
+mappings, one alias, one exclusion, 122 MCP-only tools, and zero missing
+mappings; selection audit reports 327/327 canonical and reordered cases
+passing.
 
 - [ ] **Step 6: Commit the executable gate and documentation**
 
