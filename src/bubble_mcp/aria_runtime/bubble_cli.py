@@ -55703,8 +55703,6 @@ class BubbleCLI:
         Reorder option values by updating sort_factor.
         assignments format: ["bTGMA:2", "bTGMB:1"] or ["bTGMA=2", "bTGMB=1"].
         """
-        pb = PayloadBuilder(appname=self.appname)
-
         if not assignments:
             logger.error("No assignments provided. Use value_key:sort_factor pairs.")
             return False
@@ -55738,13 +55736,16 @@ class BubbleCLI:
                 )
                 return False
 
+            resolved_assignments.append((value_key, int(sort_raw)))
+
+        pb = PayloadBuilder(appname=self.appname)
+        for value_key, sort_factor in resolved_assignments:
             self._add_schema_change(
                 pb,
                 "WriteOptionValue",
                 ["option_sets", option_set_key, "values", value_key, "sort_factor"],
-                int(sort_raw)
+                sort_factor,
             )
-            resolved_assignments.append((value_key, int(sort_raw)))
 
         ok = self._send_schema_payload(pb, dry_run, f"Option values reordered in '{option_set_key}'.")
         if ok and not dry_run:

@@ -302,3 +302,27 @@ def test_family_invalidation_retains_unaffected_option_snapshot_until_that_famil
 
     resolver.invalidate("option_sets")
     assert resolver.resolve_option_set("Fresh label", ref_kind="label") == "os_status"
+
+
+def test_option_set_invalidation_discards_nested_value_indexes_but_keeps_user_type_indexes() -> None:
+    host = ReferenceHost(
+        discovery={
+            "user_types": {"account": {"%d": "Account"}},
+            "option_sets": {"os_status": {"%d": "Status", "values": {"active": {"%d": "Active"}}}},
+        }
+    )
+    resolver = SchemaReferenceResolver(host)
+
+    assert resolver.resolve_data_type("Account", ref_kind="label", include_cache=False) == "account"
+    assert resolver.resolve_option_value("os_status", "Active", ref_kind="label") == "active"
+    user_type_index_ids = {key for key in resolver._entry_indexes if key[0] == id(resolver._current.user_types)}
+    assert user_type_index_ids
+
+    for value_key, label in (("paused", "Paused"), ("archived", "Archived")):
+        old_values = resolver._current.option_sets["os_status"]["values"]
+        host.discovery["option_sets"]["os_status"]["values"] = {value_key: {"%d": label}}
+        resolver.invalidate("option_sets")
+
+        assert resolver.resolve_option_value("os_status", label, ref_kind="label") == value_key
+        assert all(key[0] != id(old_values) for key in resolver._entry_indexes)
+        assert {key for key in resolver._entry_indexes if key[0] == id(resolver._current.user_types)} == user_type_index_ids

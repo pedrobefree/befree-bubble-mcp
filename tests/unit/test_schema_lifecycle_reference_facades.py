@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+import bubble_mcp.aria_runtime.bubble_cli as bubble_cli_module
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI, PayloadBuilder
 
 
@@ -120,3 +121,22 @@ def test_option_value_mutations_reject_cache_only_values_before_payload_construc
 
     assert mutation(cli) is False
     assert "DRY RUN - Payload preview:" not in capsys.readouterr().out
+
+
+def test_reorder_option_values_resolves_before_constructing_a_payload(
+    cli: BubbleCLI,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cli.discovery.data["option_sets"]["os_status"] = {"%d": "OS:Status", "values": {}}
+    cli._schema_option_sets_cache()["os_status"] = {
+        "%d": "OS:Status",
+        "values": {"stale": {"%d": "Stale", "db_value": "stale"}},
+    }
+    cli._invalidate_schema_reference_index("option_sets")
+
+    def unexpected_builder(*args: Any, **kwargs: Any) -> None:
+        raise AssertionError("PayloadBuilder constructed before current-only resolution")
+
+    monkeypatch.setattr(bubble_cli_module, "PayloadBuilder", unexpected_builder)
+
+    assert cli.reorder_option_values("os_status", ["stale:1"], dry_run=True) is False

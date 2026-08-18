@@ -294,7 +294,20 @@ class SchemaReferenceResolver:
         return result
 
     def _discard_indexes(self, *entries: dict[str, dict[str, Any]]) -> None:
-        ids = {id(entry) for entry in entries}
+        ids: set[int] = set()
+
+        def collect(value: Any) -> None:
+            if not isinstance(value, dict):
+                return
+            value_id = id(value)
+            if value_id in ids:
+                return
+            ids.add(value_id)
+            for child in value.values():
+                collect(child)
+
+        for entry in entries:
+            collect(entry)
         self._entry_indexes = {
             key: index for key, index in self._entry_indexes.items() if key[0] not in ids
         }
