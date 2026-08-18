@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from bubble_mcp.knowledge.advisor import knowledge_advice
@@ -1514,6 +1515,67 @@ def _tool_target_terms(terms: list[str]) -> set[str]:
     return targets
 
 
+def _score_tool_catalog_match(
+    tool: dict[str, Any],
+    *,
+    raw_query: str,
+    terms: list[str],
+    action_prefixes: set[str],
+    target_terms: set[str],
+    project_transfer_query: bool,
+) -> tuple[int, dict[str, Any]] | None:
+    name = str(tool.get("name") or "")
+    description = str(tool.get("description") or "")
+    input_schema = tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {}
+    properties = input_schema.get("properties") if isinstance(input_schema, dict) else {}
+    property_names = list(properties.keys()) if isinstance(properties, dict) else []
+    docs = input_schema.get("x-bubble-docs") if isinstance(input_schema, dict) else None
+    doc_terms: list[str] = []
+    if isinstance(docs, dict):
+        doc_terms = [
+            str(docs.get("family") or ""),
+            str(docs.get("schema_effect") or ""),
+            str(docs.get("validation_effect") or ""),
+            *[str(query) for query in docs.get("recommended_queries") or []],
+        ]
+    haystack = _normalize_text(" ".join([name, description, *property_names, *doc_terms]))
+    if not terms:
+        score = 1
+        normalized_name = ""
+    else:
+        score = 0
+        normalized_name = _normalize_text(name)
+        normalized_description = _normalize_text(description)
+        normalized_properties = [_normalize_text(property_name) for property_name in property_names]
+        if raw_query == name:
+            score += 100
+        for term in terms:
+            if term == normalized_name:
+                score += 20
+            if term in normalized_name:
+                score += 10
+            if term in normalized_description:
+                score += 4
+            if term in normalized_properties:
+                score += 3
+            if term in haystack:
+                score += 1
+    if score <= 0:
+        return None
+    if project_transfer_query and name.startswith("bubble_transfer_"):
+        score += 50
+    for prefix in action_prefixes:
+        if normalized_name.startswith(f"{prefix} "):
+            score += 6
+        for target in target_terms:
+            normalized_target = target.replace("_", " ")
+            if normalized_name == f"{prefix} {normalized_target}":
+                score += 24
+            elif normalized_name.startswith(f"{prefix} {normalized_target} "):
+                score += 16
+    return score, _compact_tool_schema(tool)
+
+
 def _runbook_tool_search(recipe: dict[str, Any], query: str, *, limit: int) -> dict[str, Any]:
     from bubble_mcp.server.schemas import list_tool_schemas
 
@@ -1626,70 +1688,60 @@ def task_runbook(
     return result
 
 
-def search_tool_catalog(query: str, *, limit: int = 8) -> dict[str, Any]:
+def search_tool_catalog(
+    query: str,
+    *,
+    limit: int = 8,
+    tool_schemas: Iterable[Mapping[str, Any]] | None = None,
+) -> dict[str, Any]:
     """Search exposed MCP tools and return compact matching metadata."""
 
     from bubble_mcp.server.schemas import list_tool_schemas
 
-    normalized_query = _normalize_text(str(query or "").strip())
+    raw_query = str(query or "").strip()
+    normalized_query = _normalize_text(raw_query)
     raw_terms = _query_terms(normalized_query, prune_generic_actions=False)
     terms = _query_terms(normalized_query)
     action_prefixes = _action_prefixes(raw_terms)
     target_terms = _tool_target_terms(terms)
     project_transfer_query = _looks_like_project_transfer(normalized_query)
     max_results = min(max(int(limit or 8), 1), 25)
-    tools = list_tool_schemas()
+    tools = list_tool_schemas() if tool_schemas is None else [dict(schema) for schema in tool_schemas]
+    exact_tools = [tool for tool in tools if raw_query == str(tool.get("name") or "")]
+    if max_results == 1 and len(exact_tools) == 1:
+        exact_tool = exact_tools[0]
+        exact_match = _score_tool_catalog_match(
+            exact_tool,
+            raw_query=raw_query,
+            terms=terms,
+            action_prefixes=action_prefixes,
+            target_terms=target_terms,
+            project_transfer_query=project_transfer_query,
+        )
+        if exact_match is not None:
+            score, compact = exact_match
+            return {
+                "ok": True,
+                "query": query,
+                "limit": max_results,
+                "match_count": 1,
+                "matches": [{"score": score, **compact}],
+                "usage": "Use this read-only search when a client needs a compact subset of the MCP catalog before choosing a tool.",
+            }
     scored: list[tuple[int, dict[str, Any]]] = []
 
     for tool in tools:
-        name = str(tool.get("name") or "")
-        description = str(tool.get("description") or "")
-        input_schema = tool.get("inputSchema") if isinstance(tool.get("inputSchema"), dict) else {}
-        properties = input_schema.get("properties") if isinstance(input_schema, dict) else {}
-        property_names = list(properties.keys()) if isinstance(properties, dict) else []
-        docs = input_schema.get("x-bubble-docs") if isinstance(input_schema, dict) else None
-        doc_terms: list[str] = []
-        if isinstance(docs, dict):
-            doc_terms = [
-                str(docs.get("family") or ""),
-                str(docs.get("schema_effect") or ""),
-                str(docs.get("validation_effect") or ""),
-                *[str(query) for query in docs.get("recommended_queries") or []],
-            ]
-        haystack = _normalize_text(" ".join([name, description, *property_names, *doc_terms]))
-        if not terms:
-            score = 1
-        else:
-            score = 0
-            normalized_name = _normalize_text(name)
-            normalized_description = _normalize_text(description)
-            normalized_properties = [_normalize_text(property_name) for property_name in property_names]
-            for term in terms:
-                if term == normalized_name:
-                    score += 20
-                if term in normalized_name:
-                    score += 10
-                if term in normalized_description:
-                    score += 4
-                if term in normalized_properties:
-                    score += 3
-                if term in haystack:
-                    score += 1
-        if score <= 0:
+        scored_match = _score_tool_catalog_match(
+            tool,
+            raw_query=raw_query,
+            terms=terms,
+            action_prefixes=action_prefixes,
+            target_terms=target_terms,
+            project_transfer_query=project_transfer_query,
+        )
+        if scored_match is None:
             continue
-        if project_transfer_query and name.startswith("bubble_transfer_"):
-            score += 50
-        for prefix in action_prefixes:
-            if normalized_name.startswith(f"{prefix} "):
-                score += 6
-            for target in target_terms:
-                normalized_target = target.replace("_", " ")
-                if normalized_name == f"{prefix} {normalized_target}":
-                    score += 24
-                elif normalized_name.startswith(f"{prefix} {normalized_target} "):
-                    score += 16
-        compact = _compact_tool_schema(tool)
-        scored.append((score, compact))
+        scored.append(scored_match)
 
     scored.sort(key=lambda item: (-item[0], item[1]["name"]))
     matches = [{"score": score, **tool} for score, tool in scored[:max_results]]
