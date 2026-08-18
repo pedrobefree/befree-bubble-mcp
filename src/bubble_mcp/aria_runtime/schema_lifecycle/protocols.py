@@ -23,3 +23,29 @@ class SchemaReferenceHost(Protocol):
 
 class SchemaLifecycleHost(SchemaReferenceHost, Protocol):
     """Composition-root boundary for the schema lifecycle service."""
+
+    appname: str
+    app_version: str
+
+    def new_schema_lifecycle_payload(self, *, include_app_version: bool = False) -> Any: ...
+
+    def add_schema_lifecycle_change(
+        self,
+        payload: Any,
+        intent_name: str,
+        path_array: list[str],
+        body: Any,
+        *,
+        intent_id: int | None = None,
+        source_appname: str | None = None,
+    ) -> None: ...
+
+    def dispatch_schema_lifecycle_payload(self, payload: Any) -> None: ...
+
+    def preview_schema_lifecycle_payload(self, payload: Any) -> None: ...
+
+    def project_schema_data_type(self, key: str, entry: dict[str, Any] | None) -> str | None: ...
+
+    def log_schema_lifecycle_success(self, message: str) -> None: ...
+
+    def log_schema_lifecycle_error(self, message: str) -> None: ...

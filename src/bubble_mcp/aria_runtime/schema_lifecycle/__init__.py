@@ -2,5 +2,6 @@
 
 from .references import SchemaReferenceResolver
 from .service import SchemaLifecycleService
+from .data_types import DataTypeLifecycleService
 
-__all__ = ["SchemaLifecycleService", "SchemaReferenceResolver"]
+__all__ = ["DataTypeLifecycleService", "SchemaLifecycleService", "SchemaReferenceResolver"]

@@ -1072,6 +1072,8 @@ class BubbleCLI:
 
     def _invalidate_schema_reference_indexes_for_changes(self, changes: List[Dict[str, Any]]) -> None:
         """Invalidate only indexes touched by a completed schema/settings payload."""
+        if getattr(self, "_schema_lifecycle_dispatching", False):
+            return
         families: set[str] = set()
         for change in changes:
             if not isinstance(change, dict):
@@ -3962,6 +3964,72 @@ class BubbleCLI:
             logger.error(f"Failed to send: {e}")
             return False
 
+    def new_schema_lifecycle_payload(self, *, include_app_version: bool = False) -> PayloadBuilder:
+        """Create a data-schema payload without widening lifecycle services to CLI internals."""
+        if include_app_version:
+            return PayloadBuilder(appname=self.appname, app_version=self.app_version)
+        return PayloadBuilder(appname=self.appname)
+
+    def add_schema_lifecycle_change(
+        self,
+        payload: PayloadBuilder,
+        intent_name: str,
+        path_array: List[str],
+        body: Any,
+        *,
+        intent_id: Optional[int] = None,
+        source_appname: Optional[str] = None,
+    ) -> None:
+        """Keep lifecycle payload wire records byte-compatible with legacy schema writes."""
+        self._add_schema_change(payload, intent_name, path_array, body, intent_id, source_appname)
+
+    def dispatch_schema_lifecycle_payload(self, payload: PayloadBuilder) -> None:
+        """Dispatch a lifecycle payload before its service applies the atomic projection."""
+        self._schema_lifecycle_dispatching = True
+        try:
+            self._dispatch_payload(payload)
+        finally:
+            self._schema_lifecycle_dispatching = False
+
+    @staticmethod
+    def preview_schema_lifecycle_payload(payload: PayloadBuilder) -> None:
+        print("\n DRY RUN - Payload preview:")
+        print(payload.to_json())
+
+    @staticmethod
+    def log_schema_lifecycle_success(message: str) -> None:
+        logger.success(message)
+
+    @staticmethod
+    def log_schema_lifecycle_error(message: str) -> None:
+        logger.error(message)
+
+    def project_schema_data_type(self, key: str, entry: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Apply one completed data-type delta to discovery and profile cache before invalidation."""
+        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        if not isinstance(data, dict):
+            return "Post-write data type projection skipped: malformed discovery data."
+        user_types = data.get("user_types")
+        if not isinstance(user_types, dict):
+            user_types = {}
+            data["user_types"] = user_types
+        cached_types = self._schema_user_types_cache()
+        projected = copy.deepcopy(entry) if isinstance(entry, dict) else None
+        if projected is None:
+            user_types.pop(key, None)
+            cached_types.pop(key, None)
+        else:
+            user_types[key] = projected
+            cached_types[key] = copy.deepcopy(projected)
+        warning: Optional[str] = None
+        try:
+            self.discovery.persist_disk_cache()
+            self._save_cli_cache()
+        except Exception as exc:
+            warning = f"Post-write data type cache update failed: {exc}"
+        self._invalidate_schema_reference_index("user_types")
+        return warning
+
     def _lookup_existing_comment(
         self,
         target_type: str,
@@ -4157,45 +4225,9 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Enable/disable Data API exposure for a specific data type (key or display name)."""
-        # Safety first: do not use cache fallback here to avoid recreating ghost data types.
-        resolved_key = self._resolve_data_type_key(
-            data_type_ref,
-            ref_kind=ref_kind,
-            include_cache=False
+        return self._schema_lifecycle.data_types.set_data_type_api_exposure(
+            data_type_ref, enabled, ref_kind, dry_run
         )
-        if not resolved_key:
-            known = sorted(self._get_user_types(include_cache=False).keys())
-            if known:
-                logger.error(
-                    f"Could not resolve data type '{data_type_ref}' by {ref_kind}. "
-                    f"Known keys: {', '.join(known[:12])}" + ("..." if len(known) > 12 else "")
-                )
-            else:
-                logger.error(
-                    f"Could not resolve data type '{data_type_ref}': no user_types metadata available. "
-                    "Run scan-types first or use a known key."
-                )
-            return False
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustom",
-            ["user_types", resolved_key, "exposed_api"],
-            bool(enabled)
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Data API exposure for data type '{resolved_key}' set to {bool(enabled)}."
-        )
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(resolved_key, {}) if isinstance(user_types.get(resolved_key), dict) else {}
-            entry["exposed_api"] = bool(enabled)
-            user_types[resolved_key] = entry
-            self._save_cli_cache()
-        return ok
 
     def list_data_types(self, as_json: bool = False, include_cache: bool = False) -> bool:
         """List data type keys and labels."""
@@ -54598,133 +54630,15 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Create a Bubble Data Type (user_types)."""
-        data_type_key = key or self._slugify_identifier(name)
-        pb = PayloadBuilder(appname=self.appname)
-
-        privacy_role = None
-        if private:
-            everyone_role = {
-                "%d": "everyone",
-                "permissions": {
-                    "view_all": False,
-                    "view_attachments": False,
-                    "search_for": False,
-                    "auto_binding": False
-                }
-            }
-            creator_rule = {
-                "%x": "InjectedValue",
-                "%n": {
-                    "%x": "Message",
-                    "%nm": "Created By",
-                    "%n": {
-                        "%x": "Message",
-                        "%nm": "equals",
-                        "%a": {
-                            "%x": "CurrentUser"
-                        }
-                    }
-                }
-            }
-            creator_role = {
-                "%d": "Visible to creator",
-                "permissions": {
-                    "view_all": True,
-                    "view_attachments": True,
-                    "search_for": True,
-                    "auto_binding": False
-                },
-                "%c": creator_rule
-            }
-            privacy_role = {
-                "everyone": everyone_role,
-                "visible_to_creator_": creator_role
-            }
-
-            self._add_schema_change(
-                pb,
-                "WriteCustom",
-                ["user_types", data_type_key],
-                {
-                    "%d": name,
-                    "privacy_role": privacy_role
-                }
-            )
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", "everyone"],
-                everyone_role,
-                intent_id=random.randint(1, 999999),
-                source_appname=""
-            )
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", "visible_to_creator_"],
-                creator_role,
-                intent_id=random.randint(1, 999999),
-                source_appname=""
-            )
-            self._add_schema_change(
-                pb,
-                "ChangeAppSetting",
-                ["user_types", data_type_key, "privacy_role", "visible_to_creator_", "%c"],
-                creator_rule,
-                intent_id=random.randint(1, 999999),
-                source_appname=""
-            )
-        else:
-            self._add_schema_change(
-                pb,
-                "WriteCustom",
-                ["user_types", data_type_key],
-                {"%d": name}
-            )
-
-        ok = self._send_schema_payload(pb, dry_run, f"Data type '{name}' created ({data_type_key}).")
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            entry["%d"] = name
-            if privacy_role is not None:
-                entry["privacy_role"] = privacy_role
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.create_data_type(name, key, private, dry_run)
 
     def rename_data_type(self, data_type_key: str, new_name: str, dry_run: bool = False) -> bool:
         """Rename a Bubble Data Type."""
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustom",
-            [ "user_types", data_type_key, "%d" ],
-            new_name
-        )
-        ok = self._send_schema_payload(pb, dry_run, f"Data type '{data_type_key}' renamed to '{new_name}'.")
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            entry["%d"] = new_name
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.rename_data_type(data_type_key, new_name, dry_run)
 
     def delete_data_type(self, data_type_key: str, dry_run: bool = False) -> bool:
         """Delete a Bubble Data Type."""
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustom",
-            ["user_types", data_type_key, "%del"],
-            True
-        )
-        ok = self._send_schema_payload(pb, dry_run, f"Data type '{data_type_key}' deleted.")
-        if ok and not dry_run:
-            self._schema_user_types_cache().pop(data_type_key, None)
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.delete_data_type(data_type_key, dry_run)
 
     def _data_type_is_soft_deleted(self, data_type_key: str, require_fresh_schema: bool = False) -> bool:
         overlay_path = getattr(self.discovery, "mutation_overlay_path", None)
@@ -54819,41 +54733,9 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Permanently remove a Bubble Data Type through the CleanApp contract."""
-        ref_kind = (data_type_ref_kind or "auto").strip().lower()
-        if ref_kind not in {"auto", "id", "key"}:
-            logger.error("Permanent data type deletion requires the exact internal data type key.")
-            return False
-        resolved_key = str(data_type_key or "").strip()
-        if resolved_key.lower().startswith("custom."):
-            resolved_key = resolved_key.split(".", 1)[1].strip()
-        if not resolved_key:
-            logger.error("Permanent data type deletion requires the exact internal data type key.")
-            return False
-        if not self._data_type_is_soft_deleted(resolved_key, require_fresh_schema=not dry_run):
-            logger.error(
-                f"Data type '{resolved_key}' must be soft-deleted with delete_data_type before permanent deletion."
-            )
-            return False
-        if not dry_run and confirm is not True:
-            logger.error("Permanent data type deletion requires confirm=true.")
-            return False
-
-        pb = PayloadBuilder(appname=self.appname, app_version=self.app_version)
-        self._add_schema_change(
-            pb,
-            "CleanApp",
-            ["user_types", resolved_key],
-            None
+        return self._schema_lifecycle.data_types.delete_data_type_permanently(
+            data_type_key, data_type_ref_kind, confirm, dry_run
         )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Data type '{resolved_key}' permanently deleted."
-        )
-        if ok and not dry_run:
-            self._schema_user_types_cache().pop(resolved_key, None)
-            self._save_cli_cache()
-        return ok
 
     def create_data_field(
         self,
@@ -54864,33 +54746,9 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Create a field on a Bubble Data Type."""
-        type_slug = self._slugify_identifier(field_type.replace(".", "_"))
-        resolved_field_key = field_key or f"{self._slugify_identifier(field_name)}_{type_slug}"
-
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustomField",
-            ["user_types", data_type_key, "%f3", resolved_field_key],
-            {
-                "%d": field_name,
-                "%v": field_type
-            }
+        return self._schema_lifecycle.data_types.create_data_field(
+            data_type_key, field_name, field_type, field_key, dry_run
         )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Field '{field_name}' created on '{data_type_key}' ({resolved_field_key})."
-        )
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-            fields[resolved_field_key] = {"%d": field_name, "%v": field_type}
-            entry["%f3"] = fields
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
 
     def rename_data_field(
         self,
@@ -54900,29 +54758,7 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Rename a field in a Bubble Data Type."""
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustomField",
-            ["user_types", data_type_key, "%f3", field_key, "%d"],
-            new_name
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Field '{field_key}' on '{data_type_key}' renamed to '{new_name}'."
-        )
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-            field_entry = fields.get(field_key, {}) if isinstance(fields.get(field_key), dict) else {}
-            field_entry["%d"] = new_name
-            fields[field_key] = field_entry
-            entry["%f3"] = fields
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.rename_data_field(data_type_key, field_key, new_name, dry_run)
 
     def delete_data_field(
         self,
@@ -54931,38 +54767,7 @@ class BubbleCLI:
         dry_run: bool = False
     ) -> bool:
         """Delete a field in a Bubble Data Type."""
-        resolved_field_key = self._resolve_type_field_key(data_type_key, field_key)
-        deleted_label = f"{self._data_field_display_name(data_type_key, resolved_field_key)} - deleted"
-        pb = PayloadBuilder(appname=self.appname)
-        self._add_schema_change(
-            pb,
-            "WriteCustomField",
-            ["user_types", data_type_key, "%f3", resolved_field_key, "%del"],
-            True
-        )
-        self._add_schema_change(
-            pb,
-            "WriteCustomField",
-            ["user_types", data_type_key, "%f3", resolved_field_key, "%d"],
-            deleted_label
-        )
-        ok = self._send_schema_payload(
-            pb,
-            dry_run,
-            f"Field '{resolved_field_key}' on '{data_type_key}' deleted."
-        )
-        if ok and not dry_run:
-            user_types = self._schema_user_types_cache()
-            entry = user_types.get(data_type_key, {}) if isinstance(user_types.get(data_type_key), dict) else {}
-            fields = entry.get("%f3", {}) if isinstance(entry.get("%f3"), dict) else {}
-            field_entry = fields.get(resolved_field_key, {}) if isinstance(fields.get(resolved_field_key), dict) else {}
-            field_entry["%del"] = True
-            field_entry["%d"] = deleted_label
-            fields[resolved_field_key] = field_entry
-            entry["%f3"] = fields
-            user_types[data_type_key] = entry
-            self._save_cli_cache()
-        return ok
+        return self._schema_lifecycle.data_types.delete_data_field(data_type_key, field_key, dry_run)
 
     def _data_field_display_name(self, data_type_key: str, field_key: str) -> str:
         user_types = self._get_user_types(include_cache=True)
