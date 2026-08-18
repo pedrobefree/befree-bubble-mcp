@@ -48,6 +48,8 @@ def test_selection_report_rejects_a_missing_candidate_schema() -> None:
         "case_id": "catalog.schema.missing.create_text",
         "failure_type": "missing_schema",
         "expected_tool": "create_text",
+        "legacy_command": "create-text",
+        "relationship": "direct",
     }.items() <= failure.items()
 
 
@@ -95,6 +97,48 @@ def test_selection_failure_names_case_expected_and_actual_tool(monkeypatch) -> N
         {"case_id", "expected_tool", "actual_tool", "essential_args"} <= failure.keys()
         for failure in report["failures"]
     )
+
+
+def test_selection_report_rejects_reordered_required_argument_drift(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import bubble_mcp.harness.catalog_selection as selection
+
+    real_search = selection.search_tool_catalog
+
+    def corrupt_reordered_create_text(query, **kwargs):  # type: ignore[no-untyped-def]
+        result = real_search(query, **kwargs)
+        schemas = kwargs["tool_schemas"]
+        if query == "create_text" and schemas[0]["name"] > schemas[-1]["name"]:
+            return {
+                **result,
+                "matches": [{**result["matches"][0], "required": []}],
+            }
+        return result
+
+    monkeypatch.setattr(selection, "search_tool_catalog", corrupt_reordered_create_text)
+
+    report = catalog_selection_report()
+
+    assert report["ok"] is False
+    failure = next(
+        failure
+        for failure in report["failures"]
+        if failure["case_id"] == "catalog.exact.create_text"
+    )
+    assert failure["reordered_actual_required"] == []
+    assert failure["canonical_ok"] is True
+    assert failure["reordered_ok"] is False
+    assert failure["order_independent"] is False
+
+
+def test_selection_results_preserve_canonical_inventory_source() -> None:
+    results = {result["expected_tool"]: result for result in catalog_selection_report()["results"]}
+
+    assert results["create_text"]["legacy_command"] == "create-text"
+    assert results["create_text"]["relationship"] == "direct"
+    assert results["create_reusable"]["legacy_command"] == "create-reusable"
+    assert results["create_reusable"]["relationship"] == "direct"
+    assert results["bubble_agent_guide"]["legacy_command"] is None
+    assert results["bubble_agent_guide"]["relationship"] == "mcp_only"
 
 
 def test_selection_audit_runs_from_checkout_without_pythonpath() -> None:

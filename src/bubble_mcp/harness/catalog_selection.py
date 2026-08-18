@@ -65,6 +65,7 @@ def _schema_failure(
     actual_tool: str,
     essential_args: list[str],
     actual_required: list[str],
+    record: CatalogInventoryRecord | None,
 ) -> dict[str, Any]:
     return {
         "case_id": case_id,
@@ -74,10 +75,13 @@ def _schema_failure(
         "reordered_actual_tool": actual_tool,
         "essential_args": essential_args,
         "actual_required": actual_required,
+        "reordered_actual_required": actual_required,
         "canonical_ok": False,
         "reordered_ok": False,
         "order_independent": False,
         "failure_type": failure_type,
+        "legacy_command": record.legacy_command if record else None,
+        "relationship": record.relationship if record else None,
     }
 
 
@@ -94,6 +98,7 @@ def catalog_selection_report(
     )
     records = _canonical_records(build_catalog_inventory(authoritative_schemas))
     inventory_tools = {record.mcp_tool for record in records if record.mcp_tool is not None}
+    records_by_tool = {record.mcp_tool: record for record in records if record.mcp_tool is not None}
     essential_args_by_tool = {
         record.mcp_tool: list(record.essential_args)
         for record in records
@@ -116,6 +121,7 @@ def catalog_selection_report(
                 actual_tool="",
                 essential_args=essential_args_by_tool[name],
                 actual_required=[],
+                record=records_by_tool[name],
             )
         )
     for name in sorted(candidate_by_tool.keys() - inventory_tools):
@@ -127,6 +133,7 @@ def catalog_selection_report(
                 actual_tool=name,
                 essential_args=[],
                 actual_required=_schema_required_names(candidate_by_tool[name]),
+                record=None,
             )
         )
     for name in sorted(inventory_tools & candidate_by_tool.keys()):
@@ -140,6 +147,7 @@ def catalog_selection_report(
                     actual_tool=name,
                     essential_args=essential_args_by_tool[name],
                     actual_required=actual_required,
+                    record=records_by_tool[name],
                 )
             )
     for name in sorted(name for name, count in candidate_counts.items() if count > 1):
@@ -151,6 +159,7 @@ def catalog_selection_report(
                 actual_tool=name,
                 essential_args=essential_args_by_tool.get(name, []),
                 actual_required=_schema_required_names(candidate_by_tool[name]),
+                record=records_by_tool.get(name),
             )
         )
     results: list[dict[str, Any]] = []
@@ -170,9 +179,13 @@ def catalog_selection_report(
         reordered_actual_tool = str(reordered_match.get("name") or "")
         essential_args = list(record.essential_args)
         actual_required = _required_names(canonical_match)
+        reordered_actual_required = _required_names(reordered_match)
         canonical_ok = actual_tool == expected_tool and actual_required == essential_args
-        reordered_ok = reordered_actual_tool == expected_tool
-        order_independent = actual_tool == reordered_actual_tool
+        reordered_ok = reordered_actual_tool == expected_tool and reordered_actual_required == essential_args
+        order_independent = (
+            actual_tool == reordered_actual_tool
+            and actual_required == reordered_actual_required
+        )
         results.append(
             {
                 "case_id": record.selection_case_id,
@@ -182,9 +195,12 @@ def catalog_selection_report(
                 "reordered_actual_tool": reordered_actual_tool,
                 "essential_args": essential_args,
                 "actual_required": actual_required,
+                "reordered_actual_required": reordered_actual_required,
                 "canonical_ok": canonical_ok,
                 "reordered_ok": reordered_ok,
                 "order_independent": order_independent,
+                "legacy_command": record.legacy_command,
+                "relationship": record.relationship,
             }
         )
 
