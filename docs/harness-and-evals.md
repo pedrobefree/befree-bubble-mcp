@@ -21,6 +21,20 @@ Implemented metrics:
 - optional structured visual snapshot comparison
 - structural validation status when plans are inspected through planning/execution tools
 
+## Deterministic Catalog Selection
+
+Run the checkout-runnable deterministic catalog selection audit:
+
+```bash
+PYTHONPATH=src python scripts/audit_catalog_selection.py
+```
+
+The report covers exact-name deterministic selection for every exposed MCP tool,
+including required-argument metadata and stability when the catalog order is
+reversed. It uses no network access or Bubble profile. This is the structural
+baseline for catalog coverage, not the natural-language ambiguity matrix; use
+the eval datasets below for ambiguous prompts and family-routing behavior.
+
 Dataset cases accept either standalone snake_case keys or Aria-style camelCase
 keys:
 

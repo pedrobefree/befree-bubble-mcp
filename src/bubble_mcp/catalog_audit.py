@@ -7,6 +7,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 
+from bubble_mcp.catalog_inventory import build_catalog_inventory
+
 
 # CLI-only housekeeping must not become a remotely callable MCP capability.
 LEGACY_CLI_EXCLUSIONS: dict[str, str] = {
@@ -48,34 +50,52 @@ def legacy_cli_commands() -> tuple[str, ...]:
 def cli_catalog_parity_report(catalog_names: Iterable[str]) -> dict[str, object]:
     """Compare Bubble-operation CLI commands with canonical or aliased MCP tools."""
 
-    catalog = {str(name) for name in catalog_names}
-    direct: list[dict[str, str]] = []
-    aliases: list[dict[str, str]] = []
-    excluded: list[dict[str, str]] = []
-    missing: list[dict[str, str]] = []
-
-    for command in legacy_cli_commands():
-        normalized = command.replace("-", "_")
-        if normalized in catalog:
-            direct.append({"command": command, "tool": normalized})
-            continue
-        alias_target = LEGACY_CLI_ALIASES.get(command)
-        if alias_target and alias_target in catalog:
-            aliases.append({"command": command, "tool": alias_target})
-            continue
-        reason = LEGACY_CLI_EXCLUSIONS.get(command)
-        if reason:
-            excluded.append({"command": command, "reason": reason})
-            continue
-        missing.append({"command": command, "candidate_tool": normalized})
+    records = build_catalog_inventory(
+        ({"name": str(name), "inputSchema": {}} for name in catalog_names),
+        strict=False,
+    )
+    direct = [
+        {"command": record.legacy_command, "tool": record.mcp_tool}
+        for record in records
+        if record.relationship == "direct"
+        and record.legacy_command is not None
+        and record.mcp_tool is not None
+    ]
+    aliases = [
+        {"command": record.legacy_command, "tool": record.canonical_mcp_tool}
+        for record in records
+        if record.relationship == "alias"
+        and record.legacy_command is not None
+        and record.canonical_mcp_tool is not None
+    ]
+    excluded = [
+        {"command": record.legacy_command, "reason": record.reason}
+        for record in records
+        if record.relationship == "excluded"
+        and record.legacy_command is not None
+        and record.reason is not None
+    ]
+    mapped_commands = {
+        record.legacy_command for record in records if record.legacy_command is not None
+    }
+    missing = [
+        {"command": command, "candidate_tool": command.replace("-", "_")}
+        for command in legacy_cli_commands()
+        if command not in mapped_commands
+    ]
+    mcp_only_count = sum(record.relationship == "mcp_only" for record in records)
+    mcp_tool_count = len({record.mcp_tool for record in records if record.mcp_tool is not None})
 
     return {
         "ok": not missing,
-        "cli_command_count": len(legacy_cli_commands()),
+        "cli_command_count": sum(record.legacy_command is not None for record in records)
+        + len(missing),
         "direct_match_count": len(direct),
         "alias_count": len(aliases),
         "excluded_count": len(excluded),
         "missing_count": len(missing),
+        "mcp_tool_count": mcp_tool_count,
+        "mcp_only_count": mcp_only_count,
         "aliases": aliases,
         "excluded": excluded,
         "missing": missing,
