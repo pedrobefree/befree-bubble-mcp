@@ -83,8 +83,10 @@ class OptionLifecycleService:
         option_key, entry = self._option_set_for_write(option_set_ref)
         if not option_key:
             return False
-        resolved_value_key = value_key or self._host.next_schema_option_value_key()
         values = self._values(entry)
+        resolved_value_key = value_key or (
+            self._preview_value_key(values) if dry_run else self._host.next_schema_option_value_key()
+        )
         existing_entry = values.get(resolved_value_key)
         existing = copy.deepcopy(existing_entry) if isinstance(existing_entry, dict) else None
         existing_db_value = existing.get("db_value") if existing else None
@@ -114,15 +116,15 @@ class OptionLifecycleService:
         if id_counter is not None:
             payload.add_change_raw({"type": "id_counter", "value": int(id_counter)})
         ok = self._commit(payload, dry_run, f"Option '{label}' created in '{option_key}' ({resolved_value_key}).", option_key, entry)
-        if ok and not dry_run:
-            self._host.log_schema_lifecycle_success(f"Option key: {resolved_value_key}")
+        if ok:
+            self._host.log_schema_lifecycle_info(f"Option key: {resolved_value_key}")
         return ok
 
     def delete_option_value(self, option_set_ref: str, value_ref: str, ref_kind: str = "key", dry_run: bool = False) -> bool:
         option_key, entry = self._option_set_for_write(option_set_ref)
         if not option_key:
             return False
-        value_key = self._resolve_value_for_write(option_key, value_ref, ref_kind)
+        value_key = self._resolve_value_for_write(option_key, value_ref, ref_kind, include_hint=True)
         if not value_key:
             return False
         values = self._values(entry)
@@ -138,7 +140,7 @@ class OptionLifecycleService:
         option_key, entry = self._option_set_for_write(option_set_ref)
         if not option_key:
             return False
-        value_key = self._resolve_value_for_write(option_key, value_ref, ref_kind)
+        value_key = self._resolve_value_for_write(option_key, value_ref, ref_kind, include_hint=True)
         if not value_key:
             return False
         values = self._values(entry)
@@ -259,13 +261,16 @@ class OptionLifecycleService:
             return None, {}
         return key, copy.deepcopy(entry)
 
-    def _resolve_value_for_write(self, option_key: str, value: str, ref_kind: str) -> str | None:
+    def _resolve_value_for_write(
+        self, option_key: str, value: str, ref_kind: str, *, include_hint: bool = False
+    ) -> str | None:
         key = self._references.resolve_option_value(option_key, value, ref_kind=ref_kind, include_cache=False)
         if key:
             return key
-        self._host.log_schema_lifecycle_error(
-            f"Could not resolve option value '{value}' in '{option_key}' by {ref_kind}. Try --ref-kind db_value or --ref-kind label."
-        )
+        message = f"Could not resolve option value '{value}' in '{option_key}' by {ref_kind}."
+        if include_hint:
+            message += " Try --ref-kind db_value or --ref-kind label."
+        self._host.log_schema_lifecycle_error(message)
         return None
 
     def _commit(self, payload: PayloadBuilder, dry_run: bool, message: str, key: str, entry: dict[str, Any] | None) -> bool:
@@ -306,6 +311,17 @@ class OptionLifecycleService:
     def _values(entry: dict[str, Any]) -> dict[str, Any]:
         value = entry.get("values")
         return copy.deepcopy(value) if isinstance(value, dict) else {}
+
+    @staticmethod
+    def _preview_value_key(values: dict[str, Any]) -> str:
+        """Return a stable preview-only key that cannot collide with existing values."""
+        base = "bpreview"
+        if base not in values:
+            return base
+        index = 2
+        while f"{base}_{index}" in values:
+            index += 1
+        return f"{base}_{index}"
 
     @staticmethod
     def _sort_weight(value: Any) -> int:

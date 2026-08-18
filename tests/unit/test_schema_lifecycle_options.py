@@ -41,7 +41,8 @@ def cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> BubbleCLI:
 
 
 def _payload(capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
-    return json.loads(capsys.readouterr().out.split("Payload preview:\n", 1)[1])
+    preview = capsys.readouterr().out.split("Payload preview:\n", 1)[1]
+    return json.JSONDecoder().raw_decode(preview)[0]
 
 
 @pytest.mark.parametrize(
@@ -263,3 +264,37 @@ def test_option_dispatch_warning_logs_after_successful_atomic_projection(cli: Bu
     monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url: None)
     monkeypatch.setattr(cli, "project_schema_option_set", lambda _key, _entry: "cache warning")
     assert cli.rename_option_set("os_status", "Status")
+
+
+def test_option_value_default_dry_run_preview_is_byte_stable_and_collision_safe(
+    cli: BubbleCLI, capsys: pytest.CaptureFixture[str]
+) -> None:
+    cli.discovery.data["option_sets"]["os_status"]["values"]["bpreview"] = {"%d": "Reserved"}
+    cli._invalidate_schema_reference_index("option_sets")
+    assert cli.create_option_value("os_status", "Pending", dry_run=True)
+    first = capsys.readouterr().out
+    assert cli.create_option_value("os_status", "Pending", dry_run=True)
+    second = capsys.readouterr().out
+    assert second == first
+    assert '"bpreview_2"' in first
+
+
+@pytest.mark.parametrize("dry_run", [True, False])
+def test_option_value_logs_legacy_option_key_at_info_level_after_every_success(
+    cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch, dry_run: bool
+) -> None:
+    infos: list[str] = []
+    monkeypatch.setattr("bubble_mcp.aria_runtime.bubble_cli.logger.info", infos.append)
+    if not dry_run:
+        monkeypatch.setattr(PayloadBuilder, "send_to_webhook", lambda _payload, _url: None)
+    assert cli.create_option_value("os_status", "Pending", value_key="pending", dry_run=dry_run)
+    assert infos == ["Option key: pending"]
+
+
+def test_option_attribute_and_reorder_keep_literal_legacy_resolution_errors(
+    cli: BubbleCLI, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert cli.set_option_value_attribute("os_status", "missing", "color", "blue", ref_kind="label", dry_run=True) is False
+    assert capsys.readouterr().out == "❌ Could not resolve option value 'missing' in 'os_status' by label.\n"
+    assert cli.reorder_option_values("os_status", ["missing:1", "open:2", "closed:3"], ref_kind="label", dry_run=True) is False
+    assert capsys.readouterr().out == "❌ Could not resolve option value 'missing' in 'os_status' by label.\n"

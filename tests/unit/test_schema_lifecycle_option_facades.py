@@ -1,9 +1,27 @@
 from __future__ import annotations
 
+import ast
 import inspect
+from pathlib import Path
 from typing import Any
 
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
+
+
+def test_option_public_methods_have_exactly_one_ast_definition() -> None:
+    names = {
+        "create_option_set", "rename_option_set", "delete_option_set", "create_option_attribute", "create_option_value",
+        "delete_option_value", "rename_option_value", "set_option_value_attribute", "reorder_option_values", "list_option_values",
+    }
+    source_path = inspect.getsourcefile(BubbleCLI)
+    assert source_path is not None
+    module = ast.parse(Path(source_path).read_text(encoding="utf-8"))
+    bubble_cli = next(node for node in module.body if isinstance(node, ast.ClassDef) and node.name == "BubbleCLI")
+    counts = {name: 0 for name in names}
+    for node in bubble_cli.body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in counts:
+            counts[node.name] += 1
+    assert counts == {name: 1 for name in names}
 
 
 def test_option_facades_keep_public_signatures_and_delegate_to_composed_service() -> None:
