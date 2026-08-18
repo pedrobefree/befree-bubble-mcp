@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from .protocols import SchemaLifecycleHost
 from .data_types import DataTypeLifecycleService
+from .options import OptionLifecycleService
 from .privacy import PrivacyLifecycleService
 from .references import SchemaReferenceResolver
 
@@ -14,4 +15,5 @@ class SchemaLifecycleService:
     def __init__(self, host: SchemaLifecycleHost) -> None:
         self.references = SchemaReferenceResolver(host)
         self.data_types = DataTypeLifecycleService(host, self.references)
+        self.options = OptionLifecycleService(host, self.references)
         self.privacy = PrivacyLifecycleService(host, self.references)

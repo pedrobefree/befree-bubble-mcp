@@ -1596,12 +1596,12 @@ def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
         return _color_schema_fields(name)
     if name in {"list_fonts", "create_font", "update_font", "delete_font"}:
         return _font_schema_fields(name)
+    if name.startswith(("create_option_", "rename_option_", "delete_option_", "list_option_", "set_option_", "reorder_option_")):
+        return _option_schema_fields(name)
     if name.startswith(("delete_", "clear_", "regenerate_")):
         return (("profile",), ("dry_run", "settings_path", "name", "confirm"))
     if name.startswith(("list_", "inspect_", "scan_", "resolve_", "verify_")):
         return (("profile",), ("dry_run", "settings_path", "context", "query", "limit", "json"))
-    if name.startswith(("create_option_", "rename_option_", "delete_option_", "list_option_", "set_option_", "reorder_option_")):
-        return _option_schema_fields(name)
     if name.startswith(("set_app_setting", "set_project_setting", "list_project_settings")):
         return (("profile",), ("dry_run", "settings_path", "name", "value", "json"))
     if name.startswith(("create_api_token", "rename_api_token", "regenerate_api_token", "delete_api_token")):
@@ -1714,12 +1714,26 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 
 def _option_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    if name in {"create_option_set", "rename_option_set", "delete_option_set"}:
-        required = ("profile", "name") if name == "create_option_set" else ("profile", "option_set_ref")
-        return (required, ("dry_run", "settings_path", "new_name", "confirm", "values", "attributes"))
-    if name in {"create_option_attribute", "create_option_value", "rename_option_value", "delete_option_value", "set_option_value_attribute"}:
-        return (("profile", "option_set_ref", "name"), ("dry_run", "settings_path", "type", "value", "new_name", "option_value_ref", "confirm"))
-    return (("profile", "option_set_ref"), ("dry_run", "settings_path", "order", "json"))
+    common = ("dry_run", "settings_path", "ref_kind", "confirm")
+    if name == "create_option_set":
+        return (("profile", "name"), (*common, "key", "values", "attributes"))
+    if name == "rename_option_set":
+        return (("profile", "option_set_ref", "new_name"), common)
+    if name == "delete_option_set":
+        return (("profile", "option_set_ref"), common)
+    if name == "create_option_attribute":
+        return (("profile", "option_set_ref", "name", "type"), (*common, "attribute_key"))
+    if name == "create_option_value":
+        return (("profile", "option_set_ref", "name"), (*common, "value_key", "db_value", "sort_factor", "id_counter"))
+    if name == "delete_option_value":
+        return (("profile", "option_set_ref", "option_value_ref"), common)
+    if name == "rename_option_value":
+        return (("profile", "option_set_ref", "option_value_ref", "new_name"), common)
+    if name == "set_option_value_attribute":
+        return (("profile", "option_set_ref", "option_value_ref", "name", "value"), (*common, "parse_json"))
+    if name == "reorder_option_values":
+        return (("profile", "option_set_ref", "order"), common)
+    return (("profile", "option_set_ref"), ("dry_run", "settings_path", "json"))
 
 
 def _color_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:

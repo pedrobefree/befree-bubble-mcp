@@ -4031,6 +4031,41 @@ class BubbleCLI:
         self._invalidate_schema_reference_index("user_types")
         return warning
 
+    def project_schema_option_set(self, key: str, entry: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Apply one completed option-set delta before invalidating option references."""
+        discovery_data = self.discovery.data
+        data = discovery_data if isinstance(discovery_data, dict) else {}
+        if not isinstance(discovery_data, dict):
+            self.discovery._data = data
+        option_sets = data.get("option_sets")
+        if not isinstance(option_sets, dict):
+            option_sets = {}
+            data["option_sets"] = option_sets
+        cached_sets = self._schema_option_sets_cache()
+        projected = copy.deepcopy(entry) if isinstance(entry, dict) else None
+        if projected is None:
+            option_sets.pop(key, None)
+            cached_sets.pop(key, None)
+        else:
+            option_sets[key] = projected
+            cached_sets[key] = copy.deepcopy(projected)
+        warning: Optional[str] = None
+        try:
+            self.discovery.persist_disk_cache()
+            self._save_cli_cache()
+        except Exception as exc:
+            warning = f"Post-write option set cache update failed: {exc}"
+        self._invalidate_schema_reference_index("option_sets")
+        return warning
+
+    def next_schema_option_value_key(self) -> str:
+        """Return the Bubble-native ID used for a newly-created option value."""
+        return self.id_gen.element_id()
+
+    def coerce_schema_option_value(self, value: Any, *, parse_json: bool = False) -> Any:
+        """Keep option attribute coercion at BubbleCLI's established boundary."""
+        return self._coerce_schema_value(value, parse_json=parse_json)
+
     def _lookup_existing_comment(
         self,
         target_type: str,
@@ -55466,6 +55501,53 @@ class BubbleCLI:
                 f"{str(row['db_value']):<24} | {str(row['label'])}"
             )
         return True
+
+    # Option lifecycle facades deliberately remain explicit public CLI entry points.
+    def create_option_set(self, name: str, key: Optional[str] = None, dry_run: bool = False) -> bool:
+        return self._schema_lifecycle.options.create_option_set(name, key, dry_run)
+
+    def rename_option_set(self, option_set_key: str, new_name: str, dry_run: bool = False) -> bool:
+        return self._schema_lifecycle.options.rename_option_set(option_set_key, new_name, dry_run)
+
+    def delete_option_set(self, option_set_key: str, dry_run: bool = False) -> bool:
+        return self._schema_lifecycle.options.delete_option_set(option_set_key, dry_run)
+
+    def create_option_attribute(
+        self, option_set_key: str, name: str, value_type: str, attribute_key: Optional[str] = None, dry_run: bool = False
+    ) -> bool:
+        return self._schema_lifecycle.options.create_option_attribute(option_set_key, name, value_type, attribute_key, dry_run)
+
+    def create_option_value(
+        self, option_set_key: str, label: str, value_key: Optional[str] = None, db_value: Optional[str] = None,
+        sort_factor: Optional[int] = None, id_counter: Optional[int] = None, dry_run: bool = False,
+    ) -> bool:
+        return self._schema_lifecycle.options.create_option_value(
+            option_set_key, label, value_key, db_value, sort_factor, id_counter, dry_run
+        )
+
+    def delete_option_value(self, option_set_key: str, value_ref: str, ref_kind: str = "key", dry_run: bool = False) -> bool:
+        return self._schema_lifecycle.options.delete_option_value(option_set_key, value_ref, ref_kind, dry_run)
+
+    def rename_option_value(
+        self, option_set_key: str, value_ref: str, new_label: str, ref_kind: str = "key", dry_run: bool = False
+    ) -> bool:
+        return self._schema_lifecycle.options.rename_option_value(option_set_key, value_ref, new_label, ref_kind, dry_run)
+
+    def set_option_value_attribute(
+        self, option_set_key: str, value_ref: str, attribute_key: str, value: Any, ref_kind: str = "key",
+        parse_json: bool = False, dry_run: bool = False,
+    ) -> bool:
+        return self._schema_lifecycle.options.set_option_value_attribute(
+            option_set_key, value_ref, attribute_key, value, ref_kind, parse_json, dry_run
+        )
+
+    def reorder_option_values(
+        self, option_set_key: str, assignments: List[str], ref_kind: str = "key", dry_run: bool = False
+    ) -> bool:
+        return self._schema_lifecycle.options.reorder_option_values(option_set_key, assignments, ref_kind, dry_run)
+
+    def list_option_values(self, option_set_key: str, as_json: bool = False) -> bool:
+        return self._schema_lifecycle.options.list_option_values(option_set_key, as_json)
 
     def _resolve_custom_state_target_path(
         self,
