@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -15,6 +16,7 @@ from typing import Any
 import requests
 
 from bubble_mcp.context.composition import COMPLETE, PARTIAL, merge_project_contexts, with_provenance
+from bubble_mcp.context.hydration import hydrate_bubble_export_file
 from bubble_mcp.context.importers import (
     context_from_bubble_export,
     context_from_bubble_payload,
@@ -57,6 +59,22 @@ class DetectionResult:
             "summary": self.summary,
             "attempts": self.attempts,
         }
+
+
+def _resolve_app_version(
+    requested: str,
+    configured_profile: BubbleProfile | None,
+    session: BubbleSessionData | None,
+) -> str:
+    """Resolve the export/crawl app version: explicit arg > profile > session > test."""
+    requested = str(requested or "").strip()
+    if requested:
+        return requested
+    if configured_profile and str(configured_profile.app_version or "").strip():
+        return str(configured_profile.app_version).strip()
+    if session and str(session.app_version or "").strip():
+        return str(session.app_version).strip()
+    return "test"
 
 
 def context_cache_dir() -> Path:
@@ -112,6 +130,13 @@ def refresh_bubble_export(*, profile: str, app_id: str, app_version: str) -> Pat
             "A fresh .bubble export is required for permanent data type deletion; "
             "the authenticated export download failed."
         )
+    _hydrate_sparse_export(
+        downloaded,
+        session=session,
+        app_id=app_id,
+        app_version=app_version,
+        attempts=attempts,
+    )
     _split_bubble_export(
         downloaded,
         app_id=app_id,
@@ -130,7 +155,7 @@ def detect_project_context(
     *,
     profile: str,
     app_id: str | None = None,
-    app_version: str = "test",
+    app_version: str = "",
     force: bool = False,
     output: Path | None = None,
     bubble_file: Path | None = None,
@@ -150,6 +175,17 @@ def detect_project_context(
     ).strip()
     if not resolved_app_id:
         raise ValueError("Context detection requires --app-id or a profile/session with app_id.")
+
+    requested_app_version = str(app_version or "").strip()
+    app_version = _resolve_app_version(requested_app_version, configured_profile, session)
+    attempts.append(
+        {
+            "source": "app_version_resolution",
+            "ok": True,
+            "app_version": app_version,
+            "requested": requested_app_version or None,
+        }
+    )
 
     canonical_context_path = default_context_path(profile, resolved_app_id)
     if canonical_context_path.exists() and not force:
@@ -173,13 +209,16 @@ def detect_project_context(
         app_id=resolved_app_id,
     )
     if force and session and bubble_file is None:
+        # A forced refresh must never be satisfied by the previously downloaded
+        # export cache, no matter which candidate slot it entered through
+        # (profile_app_json_path or local_bubble_candidate) — otherwise a stale
+        # cache silently wins and the fresh download never happens.
         default_export = default_bubble_export_path(profile, resolved_app_id).expanduser().resolve()
         bubble_candidates = [
             candidate
             for candidate in bubble_candidates
             if not (
-                candidate.get("source") == "profile_app_json_path"
-                and isinstance(candidate.get("path"), Path)
+                isinstance(candidate.get("path"), Path)
                 and candidate["path"].expanduser().resolve() == default_export
             )
         ]
@@ -194,8 +233,23 @@ def detect_project_context(
             }
         )
         if candidate["path"].exists():
+            candidate_path = candidate["path"]
+            default_export = default_bubble_export_path(profile, resolved_app_id).expanduser().resolve()
+            if candidate_path.expanduser().resolve() == default_export and _hydrate_sparse_export(
+                candidate_path,
+                session=session,
+                app_id=resolved_app_id,
+                app_version=app_version,
+                attempts=attempts,
+            ):
+                _split_bubble_export(
+                    candidate_path,
+                    app_id=resolved_app_id,
+                    modules_dir=default_bubble_modules_dir(profile, resolved_app_id),
+                    attempts=attempts,
+                )
             try:
-                bubble_context = context_from_bubble_export(candidate["path"])
+                bubble_context = context_from_bubble_export(candidate_path)
             except Exception as exc:
                 attempts.append({"source": candidate["source"], "ok": False, "reason": str(exc)})
                 continue
@@ -211,6 +265,13 @@ def detect_project_context(
             attempts=attempts,
         )
         if downloaded is not None:
+            _hydrate_sparse_export(
+                downloaded,
+                session=session,
+                app_id=resolved_app_id,
+                app_version=app_version,
+                attempts=attempts,
+            )
             _split_bubble_export(
                 downloaded,
                 app_id=resolved_app_id,
@@ -908,16 +969,57 @@ def _try_download_bubble_export(
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
     target_path.write_text(json.dumps(parsed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _write_bubble_export_meta(
+        target_path,
+        url=export_url,
+        app_id=app_id,
+        app_version=version,
+        profile=profile,
+        raw_bytes=content,
+    )
     attempts.append(
         {
             "source": "downloaded_bubble",
             "ok": True,
             "url": export_url,
+            "app_version": version,
             "path": str(target_path),
             "bytes": len(content),
         }
     )
     return target_path
+
+
+def bubble_export_meta_path(export_path: Path) -> Path:
+    return export_path.with_name(export_path.name + ".meta.json")
+
+
+def _write_bubble_export_meta(
+    export_path: Path,
+    *,
+    url: str,
+    app_id: str,
+    app_version: str,
+    profile: str,
+    raw_bytes: bytes,
+) -> None:
+    """Record which branch/version produced the cached export, for later audit."""
+    meta = {
+        "url": url,
+        "app_id": app_id,
+        "app_version": app_version,
+        "profile": profile,
+        "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "bytes": len(raw_bytes),
+        "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+        "source": "https://bubble.io/appeditor/export",
+    }
+    try:
+        bubble_export_meta_path(export_path).write_text(
+            json.dumps(meta, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+    except OSError:
+        pass
 
 
 def _export_headers(session: BubbleSessionData) -> dict[str, str]:
@@ -956,6 +1058,109 @@ def _relative_to_config_dir(path: Path, config_dir: Path) -> str:
         return str(path.relative_to(config_dir))
     except ValueError:
         return str(path)
+
+
+def _hydrate_sparse_export(
+    path: Path,
+    *,
+    session: BubbleSessionData | None,
+    app_id: str,
+    app_version: str,
+    attempts: list[dict[str, Any]],
+) -> bool:
+    """Deterministically fill missing reusable definitions via the editor path API.
+
+    Bubble's export endpoint may omit reusable definition payloads for large
+    apps (only _index.id_to_path knows the ids). When a session is available,
+    fetch each missing definition from /appeditor/load_multiple_paths and merge
+    it into the export file. Returns True when the file gained definitions.
+    """
+    if session is None:
+        return False
+    try:
+        report = hydrate_bubble_export_file(
+            path,
+            session=session,
+            app_id=app_id,
+            app_version=app_version,
+        )
+    except Exception as exc:
+        attempts.append({"source": "reusable_hydration", "ok": False, "reason": str(exc)})
+        return False
+    if not report["requested"]:
+        return False
+    attempts.append(
+        {
+            "source": "reusable_hydration",
+            "ok": not report["failed"],
+            "requested": report["requested"],
+            "hydrated": report["hydrated"],
+            "failed": len(report["failed"]),
+            "remaining_index_only": report["remaining_index_only"],
+            "duration_ms": report["duration_ms"],
+        }
+    )
+    return bool(report["hydrated"])
+
+
+def hydrate_profile_reusables(
+    *,
+    profile: str,
+    app_id: str | None = None,
+    app_version: str = "",
+    ids: list[str] | None = None,
+    batch_size: int = 10,
+    bubble_file: Path | None = None,
+) -> dict[str, Any]:
+    """Hydrate the profile's cached .bubble export, re-split modules, refresh context."""
+    session = load_session(profile)
+    if session is None:
+        raise ValueError(f"No Bubble session stored for profile '{profile}'. Run session login first.")
+    settings = load_settings()
+    configured_profile = settings.profiles.get(profile)
+    resolved_app_id = str(
+        app_id
+        or (session.app_id if session else "")
+        or (configured_profile.app_id if configured_profile else "")
+    ).strip()
+    if not resolved_app_id:
+        raise ValueError("Reusable hydration requires --app-id or a profile/session with app_id.")
+    resolved_version = _resolve_app_version(app_version, configured_profile, session)
+
+    target = (bubble_file or default_bubble_export_path(profile, resolved_app_id)).expanduser()
+    if not target.exists():
+        raise ValueError(f"No .bubble export found at {target}. Run context detect --force first.")
+
+    report = hydrate_bubble_export_file(
+        target,
+        session=session,
+        app_id=resolved_app_id,
+        app_version=resolved_version,
+        ids=ids,
+        batch_size=batch_size,
+    )
+    attempts: list[dict[str, Any]] = []
+    if report["hydrated"]:
+        _split_bubble_export(
+            target,
+            app_id=resolved_app_id,
+            modules_dir=default_bubble_modules_dir(profile, resolved_app_id),
+            attempts=attempts,
+        )
+        context = context_from_bubble_export(target)
+        context = with_provenance(
+            context,
+            primary_source="hydrated_bubble",
+            sources=["downloaded_bubble", "editor_path_api"],
+            completeness=COMPLETE,
+            bubble_export_available=True,
+        )
+        save_context(context, default_context_path(profile, resolved_app_id))
+    report["app_id"] = resolved_app_id
+    report["app_version"] = resolved_version
+    report["attempts"] = attempts
+    report["context_path"] = str(default_context_path(profile, resolved_app_id))
+    return report
 
 
 def _split_bubble_export(

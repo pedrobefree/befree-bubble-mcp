@@ -23,6 +23,42 @@ PATH_TOKEN_MAP = {
     "%cd": "CustomDefinition",
 }
 
+# Crockford base32 alphabet used by the Bubble editor (lib-browser/shared/base32.js).
+# load_single_path encodes each raw path segment with this before joining them into
+# the URL: /appeditor/load_single_path/{app}/{version}/{hash}/{encode5(seg)/...}.
+_BASE32_ALPHABET = "0123456789abcdefghjkmnpqrtuvwxyz"
+
+
+def _encode_path_segment(segment: str) -> str:
+    """Port of the editor's base32 ``encode5`` for one load_single_path segment.
+
+    Faithful to lib-browser/shared/base32.js: ``readByte`` returns 1 to advance
+    to the next input char and 0 to re-process the current one, so a Python
+    ``for`` loop cannot model it — the input index is driven manually.
+    """
+    text = str(segment)
+    skip = 0
+    bits = 0
+    output = ""
+    i = 0
+    while i < len(text):
+        byte = ord(text[i])
+        if skip < 0:
+            bits |= byte >> (-skip)
+        else:
+            bits = (byte << skip) & 248
+        if skip > 3:
+            skip -= 8
+            i += 1  # readByte returned 1: consume this char
+            continue
+        if skip < 4:
+            output += _BASE32_ALPHABET[bits >> 3]
+            skip += 5
+        # readByte returned 0: re-read the same char on the next iteration
+    if skip < 0:
+        output += _BASE32_ALPHABET[bits >> 3]
+    return output
+
 
 @dataclass(frozen=True)
 class PathResult:
@@ -71,7 +107,12 @@ class BubblePathApiClient:
         )
 
     def load_single_path(self, path_hash: str, *segments: str) -> PathResult:
-        suffix = "/".join(parse.quote(str(part), safe="") for part in (path_hash, *segments))
+        # The editor encodes each raw path segment with base32 encode5 and joins
+        # them after the hash (lib-browser/editor/*: load_chunked_data). The hash
+        # itself is passed verbatim.
+        encoded = [parse.quote(str(path_hash), safe="")]
+        encoded.extend(_encode_path_segment(str(part)) for part in segments)
+        suffix = "/".join(encoded)
         url = (
             f"{BUBBLE_BASE_URL}/appeditor/load_single_path/"
             f"{self.app_id}/{self.app_version}/{suffix}"
@@ -82,11 +123,17 @@ class BubblePathApiClient:
     def resolve_path(self, path_array: list[str]) -> PathResult:
         response = self.load_multiple_paths([path_array])
         first = response.results[0] if response.results else PathResult(type="error", message="empty response")
-        return self.auto_resolve(first)
+        return self.auto_resolve(first, *path_array)
 
     def resolve_multiple(self, path_arrays: list[list[str]]) -> tuple[int, list[PathResult]]:
         response = self.load_multiple_paths(path_arrays)
-        return response.last_change, [self.auto_resolve(result) for result in response.results]
+        resolved = [
+            self.auto_resolve(result, *path_arrays[index])
+            if index < len(path_arrays)
+            else self.auto_resolve(result)
+            for index, result in enumerate(response.results)
+        ]
+        return response.last_change, resolved
 
     def auto_resolve(self, result: PathResult, *extra_segments: str, max_depth: int = 8) -> PathResult:
         if result.type != "hash":

@@ -1321,7 +1321,7 @@ def call_tool(
         detection_result = detect_project_context(
             profile=profile,
             app_id=str(args.get("app_id") or "") or None,
-            app_version=str(args.get("app_version") or "test"),
+            app_version=str(args.get("app_version") or ""),
             force=bool(args.get("force")),
             output=Path(str(args.get("output"))) if str(args.get("output") or "").strip() else None,
             bubble_file=Path(str(args.get("bubble_file"))) if str(args.get("bubble_file") or "").strip() else None,

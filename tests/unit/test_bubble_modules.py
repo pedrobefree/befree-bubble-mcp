@@ -176,6 +176,86 @@ def test_split_preserves_material_data_from_reusable_aliases(tmp_path, source_ke
     assert json.loads(merged.read_text(encoding="utf-8")) == payload
 
 
+def test_split_names_index_only_reusables_from_custom_name_index(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    payload = {
+        "_id": "sparse-app",
+        "_index": {
+            "id_to_path": {
+                "rootCard": "%ed.reCard",
+                "childCard": "%ed.reCard.%el.childCard",
+            },
+            "custom_name_to_id": {
+                "Card Header": {"custom_id": "reCard", "display": "Card Header"},
+            },
+        },
+    }
+    modules = _split(tmp_path, payload)
+
+    definition = json.loads(
+        (
+            modules / "element_definitions" / "CustomDefinition" / "reCard.json"
+        ).read_text(encoding="utf-8")
+    )
+    index = json.loads(
+        (modules / "element_definitions" / "__index.json").read_text(encoding="utf-8")
+    )
+
+    assert definition["_inferred_from_index"] is True
+    assert definition["name"] == "Card Header"
+    assert index == {"reCard": "CustomDefinition:Card Header"}
+
+    merged = tmp_path / "named-round-trip.bubble"
+    merge_app(modules, merged, pretty=True, strict=True)
+    assert json.loads(merged.read_text(encoding="utf-8")) == payload
+
+
+def test_split_reports_sparse_reusable_counts(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
+    _split(
+        tmp_path,
+        {
+            "_id": "sparse-app",
+            "element_definitions": {
+                "reMaterial": {"%x": "CustomDefinition", "%p": {"%nm": "Material"}}
+            },
+            "_index": {
+                "id_to_path": {
+                    "rootMaterial": "%ed.reMaterial",
+                    "rootGhostA": "%ed.reGhostA",
+                    "rootGhostB": "%ed.reGhostB",
+                }
+            },
+        },
+    )
+
+    output = capsys.readouterr().out
+    assert "Reusable definitions: 1 material, 2 index-only" in output
+    assert "WARNING: most reusable definitions were inferred" in output
+
+
+def test_split_skips_orphan_deep_only_reusable_references(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # reGhost appears only inside a deep %ed path with no length-2 root entry:
+    # it is a stale reference the editor cannot resolve, so no skeleton file.
+    modules = _split(
+        tmp_path,
+        {
+            "_id": "sparse-app",
+            "_index": {
+                "id_to_path": {
+                    "rootReal": "%ed.reReal",
+                    "ghostAction": "%ed.reGhost.%wf.wfX.actions.0",
+                }
+            },
+        },
+    )
+    definitions = modules / "element_definitions" / "CustomDefinition"
+    assert (definitions / "reReal.json").exists()
+    assert not (definitions / "reGhost.json").exists()
+    index = json.loads(
+        (modules / "element_definitions" / "__index.json").read_text(encoding="utf-8")
+    )
+    assert set(index) == {"reReal"}
+
+
 def test_split_force_removes_stale_index_only_reusable_modules(tmp_path) -> None:  # type: ignore[no-untyped-def]
     modules = _split(
         tmp_path,

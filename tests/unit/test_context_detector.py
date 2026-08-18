@@ -169,6 +169,66 @@ def test_detect_context_downloads_bubble_export_before_crawler(tmp_path, monkeyp
     assert any(node.id == "element:elDownloaded" for node in context.nodes)
 
 
+def test_detect_context_uses_profile_app_version_for_export_download(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
+    settings = BubbleMcpSettings(config_dir=config_dir, default_profile=None, profiles={})
+    save_settings(
+        with_profile(
+            settings,
+            BubbleProfile(
+                name="smoke",
+                app_id="bovichain-g3",
+                appname="bovichain-g3",
+                app_version="23347",
+            ),
+        )
+    )
+    save_session(
+        "smoke",
+        session_from_payload({"appId": "bovichain-g3", "headers": {"Cookie": "sid=secret"}}),
+    )
+    payload = {
+        "appname": "bovichain-g3",
+        "pages": {
+            "pgStaging": {
+                "id": "rootStaging",
+                "%p": {"%nm": "index"},
+                "%el": {"elStaging": {"%x": "Text", "%p": {"%nm": "Staging"}}},
+            }
+        },
+    }
+    calls = []
+
+    class Response:
+        status_code = 200
+        content = json.dumps(payload).encode("utf-8")
+        encoding = "utf-8"
+
+    def fake_get(url, *, headers, timeout):  # type: ignore[no-untyped-def]
+        calls.append({"url": url})
+        return Response()
+
+    monkeypatch.setattr("bubble_mcp.context.detector.requests.get", fake_get)
+
+    result = detect_project_context(profile="smoke", app_id="bovichain-g3", force=True)
+
+    assert result.source == "downloaded_bubble"
+    assert calls[0]["url"] == "https://bubble.io/appeditor/export/23347/bovichain-g3.bubble"
+    resolution = next(item for item in result.attempts if item["source"] == "app_version_resolution")
+    assert resolution["app_version"] == "23347"
+    assert resolution["requested"] is None
+
+    export_path = default_bubble_export_path("smoke", "bovichain-g3")
+    meta = json.loads(
+        export_path.with_name(export_path.name + ".meta.json").read_text(encoding="utf-8")
+    )
+    assert meta["app_version"] == "23347"
+    assert meta["url"] == "https://bubble.io/appeditor/export/23347/bovichain-g3.bubble"
+    assert meta["app_id"] == "bovichain-g3"
+    assert meta["bytes"] == len(Response.content)
+
+
 def test_refresh_bubble_export_uses_authenticated_download_without_browser_fallback(tmp_path, monkeypatch) -> None:
     config_dir = tmp_path / "config"
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
@@ -311,6 +371,80 @@ def test_detect_context_force_refreshes_default_profile_bubble_cache(
     assert result.source == "downloaded_bubble"
     assert any(node.id == "element:elDownloaded" for node in context.nodes)
     assert not any(node.id == "element:elCached" for node in context.nodes)
+
+
+def test_detect_context_force_refreshes_cache_even_without_profile_app_json_path(
+    tmp_path,
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    # Regression: with a profile that has no app_json_path configured, the
+    # stale download cache re-enters candidate selection as a plain
+    # local_bubble_candidate; force must still discard it and re-download.
+    config_dir = tmp_path / "config"
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(config_dir))
+    cached = default_bubble_export_path("smoke", "bovichain-g3")
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    cached.write_text(
+        json.dumps(
+            {
+                "appname": "bovichain-g3",
+                "app_version": "test",
+                "pages": {
+                    "pgStale": {
+                        "%p": {"%nm": "index"},
+                        "%el": {"elStale": {"%x": "Text", "%p": {"%nm": "Stale"}}},
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    save_settings(
+        with_profile(
+            BubbleMcpSettings(config_dir=config_dir, default_profile=None, profiles={}),
+            BubbleProfile(
+                name="smoke",
+                app_id="bovichain-g3",
+                appname="bovichain-g3",
+                app_version="23347",
+            ),
+        )
+    )
+    save_session(
+        "smoke",
+        session_from_payload({"appId": "bovichain-g3", "headers": {"Cookie": "sid=secret"}}),
+    )
+    calls = []
+
+    class Response:
+        status_code = 200
+        content = json.dumps(
+            {
+                "appname": "bovichain-g3",
+                "app_version": "23347",
+                "pages": {
+                    "pgFresh": {
+                        "%p": {"%nm": "index"},
+                        "%el": {"elFresh": {"%x": "Text", "%p": {"%nm": "Fresh"}}},
+                    }
+                },
+            }
+        ).encode("utf-8")
+        encoding = "utf-8"
+
+    def fake_get(url, *, headers, timeout):  # type: ignore[no-untyped-def]
+        calls.append(url)
+        return Response()
+
+    monkeypatch.setattr("bubble_mcp.context.detector.requests.get", fake_get)
+
+    result = detect_project_context(profile="smoke", app_id="bovichain-g3", force=True)
+    context = load_context(result.context_path)
+
+    assert result.source == "downloaded_bubble"
+    assert calls == ["https://bubble.io/appeditor/export/23347/bovichain-g3.bubble"]
+    assert any(node.id == "element:elFresh" for node in context.nodes)
+    assert not any(node.id == "element:elStale" for node in context.nodes)
 
 
 def test_detect_context_uses_cached_compact_context(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
