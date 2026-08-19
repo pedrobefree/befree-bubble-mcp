@@ -32,8 +32,25 @@ PYTHONPATH=src python scripts/audit_catalog_selection.py
 The report covers exact-name deterministic selection for every exposed MCP tool,
 including required-argument metadata and stability when the catalog order is
 reversed. It uses no network access or Bubble profile. This is the structural
-baseline for catalog coverage, not the natural-language ambiguity matrix; use
-the eval datasets below for ambiguous prompts and family-routing behavior.
+baseline for catalog coverage.
+
+Run the Round A.1 natural-language ambiguity audit with:
+
+```bash
+PYTHONPATH=src python scripts/audit_catalog_ambiguity.py
+```
+
+The ambiguity report evaluates 27 curated requests across eight closely
+related tool families. Every case names its expected tool and nearby contrast
+tools, derives required arguments from the authoritative schema registry, and
+must return identical top-five names, scores, and required fields for canonical,
+reversed, and rotated catalog order. The audit is local and deterministic: it
+uses no LLM, network access, Bubble profile, authentication, or editor state.
+
+The packaged corpus is
+`src/bubble_mcp/harness/data/catalog_ambiguity.json`. The general eval datasets below
+remain useful for planner, argument, compilation, and visual behavior beyond
+catalog search.
 
 Dataset cases accept either standalone snake_case keys or Aria-style camelCase
 keys:

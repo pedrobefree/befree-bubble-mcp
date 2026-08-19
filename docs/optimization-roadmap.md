@@ -417,12 +417,12 @@ Aria-compatible tools declare explicit agent-required fields.
 Stage 1 owns the structural baseline for all 327 MCP tools and 207 legacy CLI
 commands. It verifies exact-name deterministic selection, required-argument
 metadata, and reversed-order stability without consolidating tools or migrating
-aliases. Stage 2 starts only after this baseline closes and adds
-natural-language ambiguity evaluations for related tool families. Round A.2
-owns the explicit modern nested CLI leaf-command map; it is not part of this
-stage.
+aliases. Stage 2 adds 27 curated natural-language cases across eight related
+tool families and verifies canonical, reversed, and rotated catalog-order
+stability. Round A.2 owns the explicit modern nested CLI leaf-command map; it
+is not part of Round A.1.
 
-Round A.1 closing evidence (2026-08-18):
+Round A.1 stage 1 evidence (2026-08-18):
 
 - the complete Python suite passed 1,816 tests in 29.08 seconds; `npm test`
   passed 11 Node tests (0 failed, 0 skipped, 0 cancelled);
@@ -442,6 +442,40 @@ All listed local gates executed; no infrastructure-only gate was substituted
 for executable evidence. The runtime smokes intentionally ran with
 `profile: null` and `execute: false`, so they validate catalog/route contracts
 but do not represent an external Bubble-editor connectivity run.
+
+Round A.1 stage 2 closing evidence (2026-08-19):
+
+- `src/bubble_mcp/harness/data/catalog_ambiguity.json` contains 27 reviewable cases
+  across cache routing, source builders, Figma sync, visual updates, reusable
+  definitions/instances, deletion, workflows, and HTML import, and ships in the
+  installed wheel;
+- the complete Python suite passed 1,871 tests in 71.94 seconds; `npm test`
+  passed 11 Node tests (0 failed, 0 skipped, 0 cancelled);
+- `scripts/audit_catalog_ambiguity.py` requires the expected tool, authoritative
+  required arguments, and identical top-five ranking for canonical, reversed,
+  and rotated catalog orders; it passed 27/27 cases across all eight families;
+- `scripts/audit_catalog_selection.py` remained green with 327/327 canonical,
+  reordered, and order-independent exact-name cases, and the legacy CLI audit
+  remained at 205 direct mappings, 1 alias, 1 exclusion, 122 MCP-only tools,
+  and 0 missing mappings;
+- `bubble_catalog_quality` enforces the matrix through the separate
+  `deterministic_ambiguity_matrix` check while retaining the 327-tool exact-name
+  gate;
+- Ruff reported `All checks passed!`; MyPy reported no issues in 146 source
+  files; the sensitive public-source audit passed; and `git diff --check`
+  reported no whitespace errors;
+- the clean installed-wheel smoke passed on Python 3.11 and ran catalog quality
+  plus all 27 packaged ambiguity cases without source-checkout imports;
+- runtime smoke coverage passed 2/2 cases (run
+  `20260819145811_9deb27`) and agent-routing passed 9/9 cases (run
+  `20260819145822_9f3b02`), both with zero failed or skipped cases;
+- the corpus and audit use no LLM, network, Bubble profile, authentication, or
+  editor state.
+
+All listed local gates executed against the stage-2 branch. The runtime smokes
+used `profile: null` and `execute: false`, so they validate catalog and routing
+contracts without claiming external Bubble-editor connectivity. With both
+stages green, Round A.1 is closed; Round A.2 owns the modern nested CLI map.
 
 The modern nested `bubble-mcp` CLI is an orchestration and administration
 surface, so words such as `list`, `run`, and `status` are not one-to-one MCP
