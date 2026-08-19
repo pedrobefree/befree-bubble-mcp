@@ -1455,6 +1455,37 @@ def test_tool_search_space_separated_query_retains_pre_bonus_ranking() -> None:
     assert result["matches"][0]["name"] == "bubble_branch_contributors"
 
 
+@pytest.mark.parametrize(
+    ("query", "expected"),
+    [
+        (
+            "rebuild only the cached element references from a capture_file json",
+            "sync_element_ref_cache",
+        ),
+        (
+            "synchronize the runtime cache using the requested mode and skip_clear_cache options",
+            "sync_cache",
+        ),
+        ("delete multiple bubble color variables matching a pattern", "delete_colors"),
+        ("delete multiple reusable styles in one confirmed operation", "delete_styles"),
+        ("soft delete a recoverable data type before permanent deletion", "delete_data_type"),
+        ("sync a generic component payload from the local design bridge", "sync_component"),
+        ("sync one figma style definition from the local bridge", "sync_figma_style"),
+        ("replace the image source url using new_source", "update_image"),
+        ("replace text using search_text and new_text", "update_text"),
+        ("create an empty workflow event placeholder with no actions", "create_empty_event"),
+        (
+            "create a button click workflow event with event_type and element_ref",
+            "create_event",
+        ),
+    ],
+)
+def test_tool_search_disambiguates_related_capabilities(query: str, expected: str) -> None:
+    result = search_tool_catalog(query, limit=1)
+
+    assert result["matches"][0]["name"] == expected
+
+
 def test_tool_search_ignores_generic_action_noise_when_specific_terms_exist() -> None:
     response = handle_request(
         {

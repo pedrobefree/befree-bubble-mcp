@@ -1515,6 +1515,130 @@ def _tool_target_terms(terms: list[str]) -> set[str]:
     return targets
 
 
+def _semantic_tool_bonus(name: str, raw_query: str) -> int:
+    """Return small outcome-based bonuses for closely related catalog tools."""
+
+    normalized_query = _normalize_text(raw_query)
+    terms = set(_query_terms(normalized_query, prune_generic_actions=False))
+
+    def has_any(*values: str) -> bool:
+        return bool(terms.intersection(values))
+
+    if has_any("cache", "cached"):
+        if name == "sync_element_ref_cache" and has_any("element") and has_any(
+            "ref", "reference", "references"
+        ) and _has_keyword(normalized_query, "capture_file"):
+            return 80
+        if name == "sync_cache" and has_any("mode"):
+            return 60
+        if name == "refresh_profile_cache" and has_any("legacy", "pipeline") and has_any("skip"):
+            return 50
+        if name == "bubble_profile_cache_refresh" and has_any("profile") and has_any(
+            "redownload", "routine"
+        ):
+            return 40
+
+    if name == "build_source_query_json" and (
+        _has_keyword(normalized_query, "source query")
+        or _has_keyword(normalized_query, "query_source_type")
+    ):
+        return 50
+    if name == "build_data_source_json" and _has_keyword(normalized_query, "data source") and has_any(
+        "normalize", "existing"
+    ):
+        return 50
+
+    if has_any("component") and name in {"sync_figma_component", "sync_component"}:
+        if has_any("figma") and name == "sync_figma_component":
+            return 60
+        if not has_any("figma") and name == "sync_component":
+            return 40
+    if has_any("figma") and has_any("style", "styles") and name == "sync_figma_style":
+        return 60
+    if (
+        has_any("figma")
+        and (has_any("token", "tokens") or _has_keyword(normalized_query, "tokens_path"))
+        and name == "sync_figma_tokens"
+    ):
+        return 60
+
+    if has_any("text"):
+        if name == "update_text" and (
+            has_any("replace")
+            or _has_keyword(normalized_query, "search_text")
+            or _has_keyword(normalized_query, "new_text")
+        ):
+            return 70
+        if name == "update_text_element" and has_any(
+            "padding", "opacity", "layout", "properties"
+        ):
+            return 50
+    if has_any("image"):
+        if name == "update_image" and (
+            has_any("replace") or _has_keyword(normalized_query, "new_source")
+        ):
+            return 70
+        if name == "update_image_element" and has_any(
+            "border", "opacity", "padding", "layout", "properties"
+        ):
+            return 50
+
+    if has_any("reusable"):
+        if name == "create_reusable_instance" and has_any("instance"):
+            return 60
+        if name == "create_reusable" and has_any("definition") and not has_any("instance"):
+            return 50
+
+    permanent_delete = _has_keyword(normalized_query, "permanently delete") or has_any(
+        "irreversible"
+    )
+    if has_any("data") and has_any("type"):
+        if name == "delete_data_type" and has_any("soft", "recoverable") and not permanent_delete:
+            return 80
+        if (
+            name == "delete_data_type_permanently"
+            and (
+                permanent_delete
+                or (has_any("permanent") and not has_any("soft", "recoverable"))
+            )
+        ):
+            return 90
+    if has_any("multiple", "bulk", "pattern"):
+        if name == "delete_colors" and has_any("color", "colors"):
+            return 80
+        if name == "delete_styles" and has_any("style", "styles"):
+            return 80
+    if has_any("one", "single", "named"):
+        if name == "delete_color" and has_any("color", "colors"):
+            return 40
+        if name == "delete_style" and has_any("style", "styles"):
+            return 40
+
+    if has_any("event"):
+        if name == "create_empty_event" and has_any("empty", "placeholder"):
+            return 90
+        if name == "create_event" and (
+            _has_keyword(normalized_query, "event_type")
+            or _has_keyword(normalized_query, "element_ref")
+        ):
+            return 80
+        if name == "create_workflow" and has_any("workflow") and has_any("actions"):
+            return 50
+
+    if has_any("html"):
+        style_import = _has_keyword(normalized_query, "style definitions") or (
+            has_any("style", "styles") and has_any("without")
+        )
+        if name == "create_styles_from_html" and style_import:
+            return 80
+        if name == "create_from_html" and has_any("import", "section", "selector", "url"):
+            return 70
+        if name == "create_html" and has_any("snippet") and has_any("element"):
+            return 70
+
+    return 0
+
+
 def _score_tool_catalog_match(
     tool: dict[str, Any],
     *,
@@ -1573,6 +1697,7 @@ def _score_tool_catalog_match(
                 score += 24
             elif normalized_name.startswith(f"{prefix} {normalized_target} "):
                 score += 16
+    score += _semantic_tool_bonus(name, raw_query)
     return score, _compact_tool_schema(tool)
 
 

@@ -180,7 +180,7 @@ def catalog_ambiguity_report(
         essential_args = _required_names(authoritative_by_name[expected_tool])
         missing_contrasts = sorted(set(contrasts) - candidate_name_set)
         if expected_tool not in candidate_name_set or missing_contrasts:
-            failure_type = (
+            schema_failure_type = (
                 "missing_schema" if expected_tool not in candidate_name_set else "missing_contrast_schema"
             )
             results.append(
@@ -201,7 +201,7 @@ def catalog_ambiguity_report(
                     "reversed_ok": False,
                     "rotated_ok": False,
                     "order_independent": False,
-                    "failure_type": failure_type,
+                    "failure_type": schema_failure_type,
                 }
             )
             continue
