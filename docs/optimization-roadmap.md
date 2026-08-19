@@ -449,7 +449,7 @@ Round A.1 stage 2 closing evidence (2026-08-19):
   across cache routing, source builders, Figma sync, visual updates, reusable
   definitions/instances, deletion, workflows, and HTML import, and ships in the
   installed wheel;
-- the complete Python suite passed 1,866 tests in 79.45 seconds; `npm test`
+- the complete Python suite passed 1,871 tests in 71.94 seconds; `npm test`
   passed 11 Node tests (0 failed, 0 skipped, 0 cancelled);
 - `scripts/audit_catalog_ambiguity.py` requires the expected tool, authoritative
   required arguments, and identical top-five ranking for canonical, reversed,
@@ -467,8 +467,8 @@ Round A.1 stage 2 closing evidence (2026-08-19):
 - the clean installed-wheel smoke passed on Python 3.11 and ran catalog quality
   plus all 27 packaged ambiguity cases without source-checkout imports;
 - runtime smoke coverage passed 2/2 cases (run
-  `20260819145254_7395db`) and agent-routing passed 9/9 cases (run
-  `20260819145304_a26b30`), both with zero failed or skipped cases;
+  `20260819145811_9deb27`) and agent-routing passed 9/9 cases (run
+  `20260819145822_9f3b02`), both with zero failed or skipped cases;
 - the corpus and audit use no LLM, network, Bubble profile, authentication, or
   editor state.
 
