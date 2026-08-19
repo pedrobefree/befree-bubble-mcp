@@ -1518,7 +1518,8 @@ def _tool_target_terms(terms: list[str]) -> set[str]:
 def _semantic_tool_bonus(name: str, raw_query: str) -> int:
     """Return small outcome-based bonuses for closely related catalog tools."""
 
-    normalized_query = _normalize_text(raw_query)
+    expanded_query = re.sub(r"\bdon['’]?t\b", "do not", raw_query, flags=re.IGNORECASE)
+    normalized_query = _normalize_text(expanded_query)
     terms = set(_query_terms(normalized_query, prune_generic_actions=False))
 
     def has_any(*values: str) -> bool:
@@ -1595,15 +1596,9 @@ def _semantic_tool_bonus(name: str, raw_query: str) -> int:
         return f" {_normalize_text(value)} " in padded_query
 
     explicit_soft_delete = has_phrase("soft delete")
-    permanent_negated = any(
-        has_phrase(phrase)
-        for phrase in (
-            "do not permanently delete",
-            "not permanently delete",
-            "never permanently delete",
-            "rather than permanently delete",
-            "without permanently deleting",
-        )
+    permanent_mentioned = has_any("permanent", "permanently", "irreversible")
+    permanent_negated = permanent_mentioned and (
+        has_any("not", "never", "without") or has_phrase("rather than")
     )
     permanent_delete = (
         (has_phrase("permanently delete") or has_any("irreversible"))
