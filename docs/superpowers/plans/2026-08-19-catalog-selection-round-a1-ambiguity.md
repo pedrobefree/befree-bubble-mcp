@@ -285,8 +285,8 @@ PYTHONPATH=src ../../.venv/bin/python scripts/audit_sensitive_paths.py .
 PYTHONPATH=src ../../.venv/bin/python scripts/audit_cli_catalog.py
 PYTHONPATH=src ../../.venv/bin/python scripts/audit_catalog_selection.py
 PYTHONPATH=src ../../.venv/bin/python scripts/audit_catalog_ambiguity.py
-PYTHONPATH=src ../../.venv/bin/python scripts/run_runtime_smoke.py --suite coverage
-PYTHONPATH=src ../../.venv/bin/python scripts/run_runtime_smoke.py --suite agent-routing
+PYTHONPATH=src ../../.venv/bin/python -m bubble_mcp.cli.main smoke runtime --suite coverage
+PYTHONPATH=src ../../.venv/bin/python -m bubble_mcp.cli.main smoke runtime --suite agent-routing
 git diff --check
 ```
 

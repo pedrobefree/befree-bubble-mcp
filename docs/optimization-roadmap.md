@@ -443,22 +443,36 @@ for executable evidence. The runtime smokes intentionally ran with
 `profile: null` and `execute: false`, so they validate catalog/route contracts
 but do not represent an external Bubble-editor connectivity run.
 
-Round A.1 stage 2 implementation evidence (2026-08-19):
+Round A.1 stage 2 closing evidence (2026-08-19):
 
 - `tests/fixtures/evals/catalog-ambiguity.json` contains 27 reviewable cases
   across cache routing, source builders, Figma sync, visual updates, reusable
   definitions/instances, deletion, workflows, and HTML import;
+- the complete Python suite passed 1,861 tests in 71.91 seconds; `npm test`
+  passed 11 Node tests (0 failed, 0 skipped, 0 cancelled);
 - `scripts/audit_catalog_ambiguity.py` requires the expected tool, authoritative
   required arguments, and identical top-five ranking for canonical, reversed,
-  and rotated catalog orders;
+  and rotated catalog orders; it passed 27/27 cases across all eight families;
+- `scripts/audit_catalog_selection.py` remained green with 327/327 canonical,
+  reordered, and order-independent exact-name cases, and the legacy CLI audit
+  remained at 205 direct mappings, 1 alias, 1 exclusion, 122 MCP-only tools,
+  and 0 missing mappings;
 - `bubble_catalog_quality` enforces the matrix through the separate
   `deterministic_ambiguity_matrix` check while retaining the 327-tool exact-name
   gate;
+- Ruff reported `All checks passed!`; MyPy reported no issues in 146 source
+  files; the sensitive public-source audit passed; and `git diff --check`
+  reported no whitespace errors;
+- runtime smoke coverage passed 2/2 cases (run
+  `20260819144216_b4f3a1`) and agent-routing passed 9/9 cases (run
+  `20260819144227_5d3826`), both with zero failed or skipped cases;
 - the corpus and audit use no LLM, network, Bubble profile, authentication, or
   editor state.
 
-Fresh complete-suite, static-analysis, audit, and runtime-smoke totals are
-recorded below after the final Round A.1 verification pass.
+All listed local gates executed against the stage-2 branch. The runtime smokes
+used `profile: null` and `execute: false`, so they validate catalog and routing
+contracts without claiming external Bubble-editor connectivity. With both
+stages green, Round A.1 is closed; Round A.2 owns the modern nested CLI map.
 
 The modern nested `bubble-mcp` CLI is an orchestration and administration
 surface, so words such as `list`, `run`, and `status` are not one-to-one MCP
