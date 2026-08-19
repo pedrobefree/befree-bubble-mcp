@@ -417,12 +417,12 @@ Aria-compatible tools declare explicit agent-required fields.
 Stage 1 owns the structural baseline for all 327 MCP tools and 207 legacy CLI
 commands. It verifies exact-name deterministic selection, required-argument
 metadata, and reversed-order stability without consolidating tools or migrating
-aliases. Stage 2 starts only after this baseline closes and adds
-natural-language ambiguity evaluations for related tool families. Round A.2
-owns the explicit modern nested CLI leaf-command map; it is not part of this
-stage.
+aliases. Stage 2 adds 27 curated natural-language cases across eight related
+tool families and verifies canonical, reversed, and rotated catalog-order
+stability. Round A.2 owns the explicit modern nested CLI leaf-command map; it
+is not part of Round A.1.
 
-Round A.1 closing evidence (2026-08-18):
+Round A.1 stage 1 evidence (2026-08-18):
 
 - the complete Python suite passed 1,816 tests in 29.08 seconds; `npm test`
   passed 11 Node tests (0 failed, 0 skipped, 0 cancelled);
@@ -442,6 +442,23 @@ All listed local gates executed; no infrastructure-only gate was substituted
 for executable evidence. The runtime smokes intentionally ran with
 `profile: null` and `execute: false`, so they validate catalog/route contracts
 but do not represent an external Bubble-editor connectivity run.
+
+Round A.1 stage 2 implementation evidence (2026-08-19):
+
+- `tests/fixtures/evals/catalog-ambiguity.json` contains 27 reviewable cases
+  across cache routing, source builders, Figma sync, visual updates, reusable
+  definitions/instances, deletion, workflows, and HTML import;
+- `scripts/audit_catalog_ambiguity.py` requires the expected tool, authoritative
+  required arguments, and identical top-five ranking for canonical, reversed,
+  and rotated catalog orders;
+- `bubble_catalog_quality` enforces the matrix through the separate
+  `deterministic_ambiguity_matrix` check while retaining the 327-tool exact-name
+  gate;
+- the corpus and audit use no LLM, network, Bubble profile, authentication, or
+  editor state.
+
+Fresh complete-suite, static-analysis, audit, and runtime-smoke totals are
+recorded below after the final Round A.1 verification pass.
 
 The modern nested `bubble-mcp` CLI is an orchestration and administration
 surface, so words such as `list`, `run`, and `status` are not one-to-one MCP

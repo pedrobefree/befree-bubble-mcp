@@ -6,6 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from bubble_mcp.catalog_audit import cli_catalog_parity_report
+from bubble_mcp.harness.catalog_ambiguity import catalog_ambiguity_report
 from bubble_mcp.harness.catalog_selection import catalog_selection_report
 from bubble_mcp.runtime_coverage import catalog_coverage_report
 from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
@@ -455,6 +456,53 @@ def _deterministic_selection_check() -> tuple[dict[str, Any], list[Issue]]:
     }, issues
 
 
+def _deterministic_ambiguity_check() -> tuple[dict[str, Any], list[Issue]]:
+    report = catalog_ambiguity_report()
+    issues: list[Issue] = []
+    failures = report.get("failures")
+    if not isinstance(failures, list):
+        failures = []
+    for failure in failures:
+        if not isinstance(failure, dict):
+            continue
+        case_id = str(failure.get("case_id") or "<unknown>")
+        failure_type = str(failure.get("failure_type") or "selection_mismatch")
+        expected_tool = str(failure.get("expected_tool") or "")
+        actual_tool = str(failure.get("actual_tool") or "")
+        name = expected_tool or actual_tool or "<catalog>"
+        _add_issue(
+            issues,
+            check="deterministic_ambiguity_matrix",
+            scope="tool",
+            name=name,
+            field="selection",
+            message=(
+                f"{case_id}: expected {expected_tool or '<missing>'}, "
+                f"got {actual_tool or '<missing>'} ({failure_type})."
+            ),
+        )
+    report_ok = report.get("ok") is True
+    if not report_ok and not issues:
+        _add_issue(
+            issues,
+            check="deterministic_ambiguity_matrix",
+            scope="catalog",
+            name="catalog_ambiguity",
+            field="selection",
+            message="Catalog ambiguity report was not ok without convertible failures.",
+        )
+    summary = report.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    return {
+        "name": "deterministic_ambiguity_matrix",
+        "ok": report_ok and not issues,
+        "issue_count": len(issues),
+        "case_count": int(summary.get("case_count") or 0),
+        "family_count": int(summary.get("family_count") or 0),
+    }, issues
+
+
 def catalog_quality_report() -> dict[str, Any]:
     """Return a compact machine-readable quality report for MCP clients and CI."""
 
@@ -490,6 +538,10 @@ def catalog_quality_report() -> dict[str, Any]:
     checks.append(deterministic_selection_check)
     issues.extend(deterministic_selection_issues)
 
+    deterministic_ambiguity_check, deterministic_ambiguity_issues = _deterministic_ambiguity_check()
+    checks.append(deterministic_ambiguity_check)
+    issues.extend(deterministic_ambiguity_issues)
+
     by_scope: dict[str, int] = {}
     for issue in issues:
         scope = str(issue.get("scope") or "unknown")
@@ -515,5 +567,6 @@ def catalog_quality_report() -> dict[str, Any]:
             "coverage": "No uncovered exposed tools; no uncovered Aria-compatible runtime tools.",
             "cli_catalog_parity": "Every packaged Bubble-operation CLI command maps to a canonical MCP tool, an explicit alias, or an explained CLI-only exclusion.",
             "deterministic_selection_coverage": "Every exposed MCP tool must win its exact-name selection case with required-argument metadata and reversed-order stability.",
+            "deterministic_ambiguity_matrix": "Closely related MCP tools must win curated natural-language cases with required-argument metadata and canonical, reversed, and rotated-order stability.",
         },
     }

@@ -1,5 +1,8 @@
 import json
+import os
 from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -136,6 +139,66 @@ def test_ambiguity_report_rejects_unknown_expected_and_contrast_tools() -> None:
                 }
             ]
         )
+
+
+def test_ambiguity_report_names_missing_expected_schema() -> None:
+    schemas = [schema for schema in list_tool_schemas() if schema["name"] != "create_event"]
+
+    report = catalog_ambiguity_report(schemas)
+
+    assert report["ok"] is False
+    failure = next(
+        failure
+        for failure in report["failures"]
+        if failure["case_id"] == "workflow.create_event"
+    )
+    assert {
+        "failure_type": "missing_schema",
+        "family": "workflow",
+        "expected_tool": "create_event",
+        "actual_tool": "",
+    }.items() <= failure.items()
+
+
+def test_ambiguity_report_names_required_argument_contract_drift() -> None:
+    schemas = [dict(schema) for schema in list_tool_schemas()]
+    create_event = next(schema for schema in schemas if schema["name"] == "create_event")
+    input_schema = dict(create_event["inputSchema"])
+    input_schema["required"] = ["profile"]
+    create_event["inputSchema"] = input_schema
+
+    report = catalog_ambiguity_report(schemas)
+
+    failure = next(
+        failure
+        for failure in report["failures"]
+        if failure["case_id"] == "workflow.create_event"
+    )
+    assert {
+        "failure_type": "contract_mismatch",
+        "expected_tool": "create_event",
+        "essential_args": ["context", "event_type", "profile"],
+        "actual_required": ["profile"],
+    }.items() <= failure.items()
+
+
+def test_ambiguity_audit_runs_from_checkout_without_pythonpath() -> None:
+    root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [sys.executable, "scripts/audit_catalog_ambiguity.py"],
+        cwd=root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    report = json.loads(result.stdout)
+    assert report["ok"] is True
+    assert report["summary"]["case_count"] == 27
+    assert report["summary"]["family_count"] == 8
 
     with pytest.raises(ValueError, match="contrast-tools: unknown contrast tools missing_tool"):
         catalog_ambiguity_report(
