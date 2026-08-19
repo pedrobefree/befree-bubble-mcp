@@ -1,0 +1,191 @@
+[
+  {
+    "id": "cache.routine_profile_refresh",
+    "family": "cache_routing",
+    "query": "refresh the configured profile cache and redownload its bubble context",
+    "expected_tool": "bubble_profile_cache_refresh",
+    "contrast_tools": ["refresh_profile_cache", "sync_cache"]
+  },
+  {
+    "id": "cache.legacy_refresh_pipeline",
+    "family": "cache_routing",
+    "query": "run the legacy profile cache refresh pipeline with skip_split and skip_sync_events",
+    "expected_tool": "refresh_profile_cache",
+    "contrast_tools": ["bubble_profile_cache_refresh", "sync_cache"]
+  },
+  {
+    "id": "cache.mode_sync",
+    "family": "cache_routing",
+    "query": "synchronize the runtime cache using the requested mode and skip_clear_cache options",
+    "expected_tool": "sync_cache",
+    "contrast_tools": ["bubble_profile_cache_refresh", "refresh_profile_cache"]
+  },
+  {
+    "id": "cache.element_reference_sync",
+    "family": "cache_routing",
+    "query": "rebuild only the cached element references from a capture_file json",
+    "expected_tool": "sync_element_ref_cache",
+    "contrast_tools": ["refresh_profile_cache", "sync_cache"]
+  },
+  {
+    "id": "source.build_query",
+    "family": "source_builders",
+    "query": "build source query json from query_source_type constraints and sort fields",
+    "expected_tool": "build_source_query_json",
+    "contrast_tools": ["build_data_source_json"]
+  },
+  {
+    "id": "source.normalize_data_source",
+    "family": "source_builders",
+    "query": "normalize an existing data_source and query_json into bubble data source json",
+    "expected_tool": "build_data_source_json",
+    "contrast_tools": ["build_source_query_json"]
+  },
+  {
+    "id": "figma.component",
+    "family": "figma_sync",
+    "query": "sync a figma component definition into bubble",
+    "expected_tool": "sync_figma_component",
+    "contrast_tools": ["sync_component", "sync_figma_style", "sync_figma_tokens"]
+  },
+  {
+    "id": "figma.generic_component",
+    "family": "figma_sync",
+    "query": "sync a generic component payload from the local design bridge",
+    "expected_tool": "sync_component",
+    "contrast_tools": ["sync_figma_component", "sync_figma_style", "sync_figma_tokens"]
+  },
+  {
+    "id": "figma.style",
+    "family": "figma_sync",
+    "query": "sync one figma style definition from the local bridge",
+    "expected_tool": "sync_figma_style",
+    "contrast_tools": ["sync_figma_component", "sync_component", "sync_figma_tokens"]
+  },
+  {
+    "id": "figma.tokens",
+    "family": "figma_sync",
+    "query": "sync figma color and font tokens from a tokens_path",
+    "expected_tool": "sync_figma_tokens",
+    "contrast_tools": ["sync_figma_component", "sync_component", "sync_figma_style"]
+  },
+  {
+    "id": "visual.replace_text_content",
+    "family": "visual_updates",
+    "query": "replace the text Old with New in a text element using search_text and new_text",
+    "expected_tool": "update_text",
+    "contrast_tools": ["update_text_element"]
+  },
+  {
+    "id": "visual.update_text_properties",
+    "family": "visual_updates",
+    "query": "change padding opacity and content properties on an existing text element",
+    "expected_tool": "update_text_element",
+    "contrast_tools": ["update_text"]
+  },
+  {
+    "id": "visual.replace_image_source",
+    "family": "visual_updates",
+    "query": "replace the image source url on an existing image using new_source",
+    "expected_tool": "update_image",
+    "contrast_tools": ["update_image_element"]
+  },
+  {
+    "id": "visual.update_image_properties",
+    "family": "visual_updates",
+    "query": "change border opacity padding and source properties on an image element",
+    "expected_tool": "update_image_element",
+    "contrast_tools": ["update_image"]
+  },
+  {
+    "id": "reusable.create_definition",
+    "family": "reusable",
+    "query": "create a new reusable element definition for a header",
+    "expected_tool": "create_reusable",
+    "contrast_tools": ["create_reusable_instance"]
+  },
+  {
+    "id": "reusable.place_instance",
+    "family": "reusable",
+    "query": "place an instance of an existing reusable element inside a page parent",
+    "expected_tool": "create_reusable_instance",
+    "contrast_tools": ["create_reusable"]
+  },
+  {
+    "id": "delete.soft_data_type",
+    "family": "deletion",
+    "query": "soft delete a recoverable data type before asking about permanent deletion",
+    "expected_tool": "delete_data_type",
+    "contrast_tools": ["delete_data_type_permanently"]
+  },
+  {
+    "id": "delete.permanent_data_type",
+    "family": "deletion",
+    "query": "permanently delete an already soft deleted data type after a new confirmation",
+    "expected_tool": "delete_data_type_permanently",
+    "contrast_tools": ["delete_data_type"]
+  },
+  {
+    "id": "delete.single_color",
+    "family": "deletion",
+    "query": "delete one named bubble color variable",
+    "expected_tool": "delete_color",
+    "contrast_tools": ["delete_colors"]
+  },
+  {
+    "id": "delete.bulk_colors",
+    "family": "deletion",
+    "query": "delete multiple bubble color variables matching a pattern",
+    "expected_tool": "delete_colors",
+    "contrast_tools": ["delete_color"]
+  },
+  {
+    "id": "delete.bulk_styles",
+    "family": "deletion",
+    "query": "delete multiple reusable styles in one confirmed operation",
+    "expected_tool": "delete_styles",
+    "contrast_tools": ["delete_style"]
+  },
+  {
+    "id": "workflow.create_workflow",
+    "family": "workflow",
+    "query": "create a complete workflow for an element with an event and actions",
+    "expected_tool": "create_workflow",
+    "contrast_tools": ["create_event", "create_empty_event"]
+  },
+  {
+    "id": "workflow.create_event",
+    "family": "workflow",
+    "query": "create a button click workflow event with an event_type and element_ref",
+    "expected_tool": "create_event",
+    "contrast_tools": ["create_workflow", "create_empty_event"]
+  },
+  {
+    "id": "workflow.create_empty_event",
+    "family": "workflow",
+    "query": "create an empty workflow event placeholder with no actions",
+    "expected_tool": "create_empty_event",
+    "contrast_tools": ["create_workflow", "create_event"]
+  },
+  {
+    "id": "html.import_elements",
+    "family": "html_import",
+    "query": "import visual elements from an html section url and css selector into bubble",
+    "expected_tool": "create_from_html",
+    "contrast_tools": ["create_html", "create_styles_from_html"]
+  },
+  {
+    "id": "html.import_styles",
+    "family": "html_import",
+    "query": "create reusable bubble style definitions from html css without creating page elements",
+    "expected_tool": "create_styles_from_html",
+    "contrast_tools": ["create_from_html", "create_html"]
+  },
+  {
+    "id": "html.create_element",
+    "family": "html_import",
+    "query": "create one html visual element containing an html snippet on a bubble page",
+    "expected_tool": "create_html",
+    "contrast_tools": ["create_from_html", "create_styles_from_html"]
+  }
+]
