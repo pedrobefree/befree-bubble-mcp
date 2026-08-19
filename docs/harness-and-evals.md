@@ -47,8 +47,8 @@ must return identical top-five names, scores, and required fields for canonical,
 reversed, and rotated catalog order. The audit is local and deterministic: it
 uses no LLM, network access, Bubble profile, authentication, or editor state.
 
-The checked-in corpus is
-`tests/fixtures/evals/catalog-ambiguity.json`. The general eval datasets below
+The packaged corpus is
+`src/bubble_mcp/harness/data/catalog_ambiguity.json`. The general eval datasets below
 remain useful for planner, argument, compilation, and visual behavior beyond
 catalog search.
 

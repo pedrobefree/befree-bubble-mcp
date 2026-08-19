@@ -1469,6 +1469,8 @@ def test_tool_search_space_separated_query_retains_pre_bonus_ranking() -> None:
         ("delete multiple bubble color variables matching a pattern", "delete_colors"),
         ("delete multiple reusable styles in one confirmed operation", "delete_styles"),
         ("soft delete a recoverable data type before permanent deletion", "delete_data_type"),
+        ("soft delete a data type rather than permanently delete it", "delete_data_type"),
+        ("do not permanently delete this data type; soft delete it", "delete_data_type"),
         ("sync a generic component payload from the local design bridge", "sync_component"),
         ("sync one figma style definition from the local bridge", "sync_figma_style"),
         ("replace the image source url using new_source", "update_image"),

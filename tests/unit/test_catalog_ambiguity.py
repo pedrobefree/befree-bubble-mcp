@@ -127,18 +127,37 @@ def test_ambiguity_loader_rejects_invalid_cases(
 
 
 def test_ambiguity_report_rejects_unknown_expected_and_contrast_tools() -> None:
+    cases = load_ambiguity_cases()
+    missing_expected = [dict(case) for case in cases]
+    missing_expected[0]["id"] = "missing-tools"
+    missing_expected[0]["expected_tool"] = "missing_tool"
     with pytest.raises(ValueError, match="missing-tools: unknown expected tool missing_tool"):
-        catalog_ambiguity_report(
-            cases=[
-                {
-                    "id": "missing-tools",
-                    "family": "workflow",
-                    "query": "create an event",
-                    "expected_tool": "missing_tool",
-                    "contrast_tools": ["also_missing"],
-                }
-            ]
-        )
+        catalog_ambiguity_report(cases=missing_expected)
+
+    missing_contrast = [dict(case) for case in cases]
+    missing_contrast[0]["id"] = "contrast-tools"
+    missing_contrast[0]["contrast_tools"] = ["missing_tool"]
+    with pytest.raises(ValueError, match="contrast-tools: unknown contrast tools missing_tool"):
+        catalog_ambiguity_report(cases=missing_contrast)
+
+
+def test_ambiguity_report_rejects_empty_or_reduced_corpus() -> None:
+    with pytest.raises(ValueError, match="must contain exactly 27 cases; got 0"):
+        catalog_ambiguity_report(cases=[])
+
+    reduced = load_ambiguity_cases()[:-1]
+    with pytest.raises(ValueError, match="must contain exactly 27 cases; got 26"):
+        catalog_ambiguity_report(cases=reduced)
+
+
+def test_ambiguity_report_rejects_missing_family_at_full_case_count() -> None:
+    cases = [dict(case) for case in load_ambiguity_cases()]
+    for case in cases:
+        if case["family"] == "html_import":
+            case["family"] = "workflow"
+
+    with pytest.raises(ValueError, match=r"missing=\['html_import'\], extra=\[\]"):
+        catalog_ambiguity_report(cases=cases)
 
 
 def test_ambiguity_report_names_missing_expected_schema() -> None:
@@ -199,16 +218,3 @@ def test_ambiguity_audit_runs_from_checkout_without_pythonpath() -> None:
     assert report["ok"] is True
     assert report["summary"]["case_count"] == 27
     assert report["summary"]["family_count"] == 8
-
-    with pytest.raises(ValueError, match="contrast-tools: unknown contrast tools missing_tool"):
-        catalog_ambiguity_report(
-            cases=[
-                {
-                    "id": "contrast-tools",
-                    "family": "workflow",
-                    "query": "create an event",
-                    "expected_tool": "create_event",
-                    "contrast_tools": ["missing_tool"],
-                }
-            ]
-        )

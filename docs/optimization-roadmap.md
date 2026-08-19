@@ -445,9 +445,10 @@ but do not represent an external Bubble-editor connectivity run.
 
 Round A.1 stage 2 closing evidence (2026-08-19):
 
-- `tests/fixtures/evals/catalog-ambiguity.json` contains 27 reviewable cases
+- `src/bubble_mcp/harness/data/catalog_ambiguity.json` contains 27 reviewable cases
   across cache routing, source builders, Figma sync, visual updates, reusable
-  definitions/instances, deletion, workflows, and HTML import;
+  definitions/instances, deletion, workflows, and HTML import, and ships in the
+  installed wheel;
 - the complete Python suite passed 1,861 tests in 71.91 seconds; `npm test`
   passed 11 Node tests (0 failed, 0 skipped, 0 cancelled);
 - `scripts/audit_catalog_ambiguity.py` requires the expected tool, authoritative

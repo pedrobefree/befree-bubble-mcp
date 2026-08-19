@@ -54,10 +54,12 @@ mutation requests and would broaden A.1 into planning and payload behavior.
 
 ### Curated corpus
 
-`tests/fixtures/evals/catalog-ambiguity.json` is the reviewable source of
+`src/bubble_mcp/harness/data/catalog_ambiguity.json` is the reviewable source of
 natural-language intent. The loader fails closed on malformed records,
 duplicate IDs, duplicate queries, missing tools, an expected tool repeated as a
-contrast tool, empty contrast sets, or unknown families.
+contrast tool, empty contrast sets, unknown families, any count other than 27,
+or incomplete eight-family coverage. The corpus ships as package data so the
+same gate works from source checkouts and installed wheels.
 
 The corpus uses distinguishing outcome language rather than internal tool names
 where possible. Cases that intentionally distinguish legacy compatibility
@@ -88,7 +90,9 @@ case count.
 RED cases may expose lexical ties or incorrect generic matches. Fixes stay in
 the catalog search scorer and use small, declarative semantic signals shared by
 all queries. They must not special-case complete fixture sentences or change
-the exact-name fast path. Existing search, runbook, exact-name, and catalog
+the exact-name fast path. Destructive routing must interpret negated or
+conflicting permanent-delete language conservatively and favor the recoverable
+soft-delete operation. Existing search, runbook, exact-name, and catalog
 coverage tests remain green.
 
 ### Audit and quality gate
@@ -103,6 +107,7 @@ in the normal quality gate. The stage-1 exact-name check remains separate.
 Diagnostics distinguish:
 
 - invalid or duplicate corpus records;
+- corpus count or family-coverage shrinkage;
 - missing expected or contrast schemas;
 - wrong top-ranked tool;
 - required-argument contract mismatch;
@@ -124,8 +129,8 @@ Implementation follows RED/GREEN:
 5. add order, schema-contract, diagnostic, checkout-script, and catalog-quality
    regressions;
 6. run focused tests, the complete Python and Node suites, Ruff, MyPy, both A.1
-   audits, runtime coverage, agent routing, the sensitive-path audit, and
-   `git diff --check`.
+   audits, runtime coverage, agent routing, the installed-wheel package smoke,
+   the sensitive-path audit, and `git diff --check`.
 
 ## Completion
 

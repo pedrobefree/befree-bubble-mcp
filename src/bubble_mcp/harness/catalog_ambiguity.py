@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterable, Mapping
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -11,9 +12,10 @@ from bubble_mcp.server.agent_guide import search_tool_catalog
 from bubble_mcp.server.schemas import list_tool_schemas
 
 
-DEFAULT_AMBIGUITY_DATASET = (
-    Path(__file__).resolve().parents[3] / "tests" / "fixtures" / "evals" / "catalog-ambiguity.json"
+DEFAULT_AMBIGUITY_RESOURCE = files("bubble_mcp.harness").joinpath(
+    "data/catalog_ambiguity.json"
 )
+EXPECTED_AMBIGUITY_CASE_COUNT = 27
 
 AMBIGUITY_FAMILIES = frozenset(
     {
@@ -98,11 +100,31 @@ def _normalize_cases(payload: Iterable[Mapping[str, Any]]) -> list[dict[str, Any
     return sorted(cases, key=lambda case: str(case["id"]))
 
 
+def _validate_corpus_coverage(cases: list[dict[str, Any]]) -> None:
+    if len(cases) != EXPECTED_AMBIGUITY_CASE_COUNT:
+        raise ValueError(
+            "ambiguity corpus must contain exactly "
+            f"{EXPECTED_AMBIGUITY_CASE_COUNT} cases; got {len(cases)}"
+        )
+    actual_families = {str(case["family"]) for case in cases}
+    if actual_families != AMBIGUITY_FAMILIES:
+        missing = sorted(AMBIGUITY_FAMILIES - actual_families)
+        extra = sorted(actual_families - AMBIGUITY_FAMILIES)
+        raise ValueError(
+            "ambiguity corpus family coverage mismatch: "
+            f"missing={missing}, extra={extra}"
+        )
+
+
 def load_ambiguity_cases(path: Path | None = None) -> list[dict[str, Any]]:
     """Load and validate the checked-in natural-language ambiguity corpus."""
 
-    dataset_path = DEFAULT_AMBIGUITY_DATASET if path is None else path
-    payload = json.loads(dataset_path.read_text(encoding="utf-8"))
+    raw_payload = (
+        DEFAULT_AMBIGUITY_RESOURCE.read_text(encoding="utf-8")
+        if path is None
+        else path.read_text(encoding="utf-8")
+    )
+    payload = json.loads(raw_payload)
     if not isinstance(payload, list):
         raise ValueError("ambiguity dataset must be a JSON array")
     mappings: list[Mapping[str, Any]] = []
@@ -110,7 +132,9 @@ def load_ambiguity_cases(path: Path | None = None) -> list[dict[str, Any]]:
         if not isinstance(item, Mapping):
             raise ValueError(f"case at index {index} must be an object")
         mappings.append(item)
-    return _normalize_cases(mappings)
+    cases = _normalize_cases(mappings)
+    _validate_corpus_coverage(cases)
+    return cases
 
 
 def _match_evidence(search: Mapping[str, Any]) -> list[dict[str, Any]]:
@@ -144,6 +168,7 @@ def catalog_ambiguity_report(
     authoritative_schemas = sorted((dict(schema) for schema in list_tool_schemas()), key=_schema_name)
     authoritative_by_name = {_schema_name(schema): schema for schema in authoritative_schemas}
     normalized_cases = load_ambiguity_cases() if cases is None else _normalize_cases(cases)
+    _validate_corpus_coverage(normalized_cases)
     for case in normalized_cases:
         case_id = str(case["id"])
         expected_tool = str(case["expected_tool"])

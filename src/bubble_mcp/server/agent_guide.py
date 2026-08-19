@@ -1589,17 +1589,36 @@ def _semantic_tool_bonus(name: str, raw_query: str) -> int:
         if name == "create_reusable" and has_any("definition") and not has_any("instance"):
             return 50
 
-    permanent_delete = _has_keyword(normalized_query, "permanently delete") or has_any(
-        "irreversible"
+    padded_query = f" {normalized_query} "
+
+    def has_phrase(value: str) -> bool:
+        return f" {_normalize_text(value)} " in padded_query
+
+    explicit_soft_delete = has_phrase("soft delete")
+    permanent_negated = any(
+        has_phrase(phrase)
+        for phrase in (
+            "do not permanently delete",
+            "not permanently delete",
+            "never permanently delete",
+            "rather than permanently delete",
+            "without permanently deleting",
+        )
     )
+    permanent_delete = (
+        (has_phrase("permanently delete") or has_any("irreversible"))
+        and not permanent_negated
+        and not explicit_soft_delete
+    )
+    safe_delete = explicit_soft_delete or has_any("recoverable") or permanent_negated
     if has_any("data") and has_any("type"):
-        if name == "delete_data_type" and has_any("soft", "recoverable") and not permanent_delete:
+        if name == "delete_data_type" and safe_delete:
             return 80
         if (
             name == "delete_data_type_permanently"
             and (
                 permanent_delete
-                or (has_any("permanent") and not has_any("soft", "recoverable"))
+                or (has_any("permanent") and not safe_delete)
             )
         ):
             return 90

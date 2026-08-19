@@ -15,6 +15,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
+INSTALLED_CATALOG_QUALITY_CHECK = (
+    "import json; "
+    "from bubble_mcp.catalog_quality import catalog_quality_report; "
+    "from bubble_mcp.harness.catalog_ambiguity import catalog_ambiguity_report; "
+    "quality=catalog_quality_report(); ambiguity=catalog_ambiguity_report(); "
+    "assert quality['ok'] is True; assert ambiguity['ok'] is True; "
+    "print(json.dumps({'quality_ok': quality['ok'], "
+    "'ambiguity_ok': ambiguity['ok'], 'case_count': ambiguity['summary']['case_count']}))"
+)
+
 
 def _subprocess_env() -> dict[str, str]:
     """Return an environment that cannot import the source checkout accidentally."""
@@ -86,6 +96,10 @@ def run_package_smoke(*, python: str, keep_artifacts: bool) -> dict[str, object]
                 ),
             ]
         )
+        quality_result = _run(
+            [str(venv_python), "-c", INSTALLED_CATALOG_QUALITY_CHECK]
+        )
+        installed_quality = json.loads(quality_result.stdout)
 
         _run([str(_venv_script(venv, "bubble-mcp")), "--help"])
         server_result = _run(
@@ -103,6 +117,7 @@ def run_package_smoke(*, python: str, keep_artifacts: bool) -> dict[str, object]
             "version": import_result.stdout.strip(),
             "server": server_payload["result"]["serverInfo"],
             "has_instructions": True,
+            "catalog_quality": installed_quality,
             "artifacts": str(artifact_root) if keep_artifacts else None,
         }
     finally:

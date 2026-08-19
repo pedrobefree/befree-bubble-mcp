@@ -18,15 +18,20 @@
 - Use no LLM, network, Bubble profile, authentication, or editor state.
 - Preserve exact-name fast-path behavior, preview defaults, confirmation gates, dispatch, and result contracts.
 - Reject corpus and schema drift explicitly; do not silently skip malformed or missing cases.
+- Ship the complete 27-case/eight-family corpus in installed wheels.
+- Negated or conflicting permanent-delete language must prefer recoverable soft deletion.
 
 ---
 
 ### Task 1: Add the curated ambiguity corpus and RED runner contract
 
 **Files:**
-- Create: `tests/fixtures/evals/catalog-ambiguity.json`
+- Create: `src/bubble_mcp/harness/data/catalog_ambiguity.json`
 - Create: `tests/unit/test_catalog_ambiguity.py`
 - Create: `src/bubble_mcp/harness/catalog_ambiguity.py`
+- Modify: `pyproject.toml`
+- Modify: `scripts/package_smoke.py`
+- Modify: `tests/unit/test_package_smoke.py`
 
 **Interfaces:**
 - Consumes: `list_tool_schemas()` and `search_tool_catalog(query, limit, tool_schemas)`.
@@ -70,8 +75,10 @@ def test_ambiguity_report_is_identical_for_reversed_schema_input() -> None:
 ```
 
 Also test duplicate IDs, duplicate queries, missing contrast tools, missing
-expected tools, expected tools repeated in `contrast_tools`, and malformed
-records. Each must raise `ValueError` naming the offending case.
+expected tools, expected tools repeated in `contrast_tools`, malformed records,
+empty/reduced corpora, and missing families. Each must raise `ValueError` naming
+the offending case or coverage defect. Extend the installed-wheel package smoke
+to execute both catalog quality and ambiguity reports.
 
 - [ ] **Step 3: Run RED**
 
@@ -117,7 +124,7 @@ not fixture-loader errors.
 - [ ] **Step 6: Commit the RED boundary**
 
 ```bash
-git add tests/fixtures/evals/catalog-ambiguity.json tests/unit/test_catalog_ambiguity.py src/bubble_mcp/harness/catalog_ambiguity.py
+git add src/bubble_mcp/harness/data/catalog_ambiguity.json tests/unit/test_catalog_ambiguity.py src/bubble_mcp/harness/catalog_ambiguity.py pyproject.toml scripts/package_smoke.py tests/unit/test_package_smoke.py
 git commit -m "test: add Round A.1 ambiguity matrix"
 ```
 
@@ -165,7 +172,9 @@ Use composable term/phrase signals for contract distinctions (`soft` versus
 `permanently`, `instance`, `tokens`, `style`, `source query`, `data source`,
 `replace source/content`, general layout/property changes, and HTML import
 outcomes). Do not match full fixture strings. Apply the bonus inside the normal
-scoring path and retain final alphabetical tie-breaking.
+scoring path and retain final alphabetical tie-breaking. Negated or conflicting
+permanent-delete phrases must route to `delete_data_type`, including “rather
+than permanently delete” and “do not permanently delete; soft delete”.
 
 - [ ] **Step 3: Run GREEN focused tests**
 
@@ -256,6 +265,7 @@ network/profile was used, and leave the modern nested CLI explicitly in A.2.
 PYTHONPATH=src ../../.venv/bin/python -m pytest tests/unit/test_catalog_ambiguity.py tests/unit/test_catalog_quality.py tests/unit/test_catalog_selection.py tests/unit/test_mcp_server.py -q
 PYTHONPATH=src ../../.venv/bin/python scripts/audit_catalog_selection.py
 PYTHONPATH=src ../../.venv/bin/python scripts/audit_catalog_ambiguity.py
+PYTHONPATH=src ../../.venv/bin/python scripts/package_smoke.py --python python3.11
 ../../.venv/bin/ruff check scripts/audit_catalog_ambiguity.py src/bubble_mcp/catalog_quality.py src/bubble_mcp/harness/catalog_ambiguity.py tests/unit/test_catalog_ambiguity.py tests/unit/test_catalog_quality.py
 ../../.venv/bin/mypy src/bubble_mcp/catalog_quality.py src/bubble_mcp/harness/catalog_ambiguity.py
 git diff --check
@@ -290,7 +300,7 @@ PYTHONPATH=src ../../.venv/bin/python -m bubble_mcp.cli.main smoke runtime --sui
 git diff --check
 ```
 
-Expected: all tests and static checks pass; CLI parity remains 205 direct, 1
+Expected: all tests, static checks, and the installed-wheel smoke pass; CLI parity remains 205 direct, 1
 alias, 1 exclusion, 122 MCP-only, and 0 missing; exact selection remains
 327/327; every ambiguity case passes all three orderings; both runtime suites
 report zero failures.

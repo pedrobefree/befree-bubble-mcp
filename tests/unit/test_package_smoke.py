@@ -14,3 +14,8 @@ def test_package_smoke_subprocess_environment_excludes_source_path(monkeypatch) 
     assert "PYTHONHOME" not in env
     assert env["PACKAGE_SMOKE_SENTINEL"] == "preserved"
     assert os.environ["PYTHONPATH"] == "src"
+
+
+def test_package_smoke_checks_catalog_quality_from_installed_wheel() -> None:
+    assert "catalog_quality_report" in package_smoke.INSTALLED_CATALOG_QUALITY_CHECK
+    assert "catalog_ambiguity_report" in package_smoke.INSTALLED_CATALOG_QUALITY_CHECK
