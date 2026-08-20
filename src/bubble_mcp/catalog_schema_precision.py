@@ -60,6 +60,7 @@ FailureCode = Literal[
     "duplicate_alias",
     "extra_property",
     "missing_handler",
+    "missing_expected_property",
     "missing_required_runtime_parameter",
     "missing_tool",
     "required_list_mismatch",
@@ -371,6 +372,10 @@ def catalog_schema_precision_report(
                 control_property_count += 1
             else:
                 failures.append(_failure(tool_name, property_name, "extra_property", "Published property has no runtime, alias, or control consumer."))
+
+        expected_properties = set(spec.runtime) | set(alias_by_public) | set(spec.controls)
+        for property_name in sorted(expected_properties - set(properties)):
+            failures.append(_failure(tool_name, property_name, "missing_expected_property", "Expected public runtime, alias, or control property is absent from the schema."))
 
         expected_required = tuple(sorted(spec.required))
         actual_required = _schema_required(schema)

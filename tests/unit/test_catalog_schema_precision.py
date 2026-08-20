@@ -102,6 +102,49 @@ def test_precision_report_classifies_direct_alias_and_control_properties() -> No
     }
 
 
+def test_precision_report_detects_missing_optional_direct_alias_and_control_properties() -> None:
+    class OptionalRuntime:
+        def mutate(
+            self,
+            target: str,
+            enabled: bool,
+            verbose: bool = False,
+            note: str | None = None,
+            dry_run: bool = False,
+        ) -> bool:
+            return True
+
+    properties = _sample_schema()["inputSchema"]["properties"]  # type: ignore[index]
+    schema = _sample_schema(
+        properties={
+            name: value
+            for name, value in properties.items()
+            if name not in {"execute", "verbose", "note_ref"}
+        }
+    )
+    specs = {
+        "sample": ToolSchemaPrecisionSpec(
+            handler="mutate",
+            required=("profile", "target_ref", "enabled"),
+            runtime=("enabled", "verbose"),
+            aliases=(ArgumentAlias("target_ref", "target"), ArgumentAlias("note_ref", "note")),
+            controls=("profile", "execute", "dry_run"),
+        )
+    }
+
+    report = catalog_schema_precision_report(
+        tool_schemas=[schema], runtime_type=OptionalRuntime, specs=specs
+    )
+
+    assert report["ok"] is False
+    assert [failure["field"] for failure in report["failures"]] == [
+        "execute",
+        "note_ref",
+        "verbose",
+    ]
+    assert {failure["code"] for failure in report["failures"]} == {"missing_expected_property"}
+
+
 @pytest.mark.parametrize(
     ("schemas", "runtime_type", "specs", "code"),
     [
