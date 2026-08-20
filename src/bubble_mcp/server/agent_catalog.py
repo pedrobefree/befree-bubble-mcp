@@ -1028,8 +1028,8 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "resolve_refs": (("profile",), ("dry_run", "settings_path", "context", "parent_ref", "parent_match_index", "element_ref", "element_ref_kind", "match_index", "event_ref", "event_ref_kind", "style_ref", "style_element_type", "data_type_ref", "data_type_ref_kind", "option_set_ref", "option_set_ref_kind", "option_value_ref", "json")),
     "verify_write": (("profile",), ("dry_run", "settings_path", "path", "context", "entity", "ref", "property_path", "ref_kind", "element_ref_kind", "match_index", "expected", "value_type", "json")),
     "sync_element_ref_cache": (("profile", "capture_file"), ("dry_run", "settings_path", "json")),
-    "scan_types": (("profile",), ("dry_run", "settings_path", "json")),
-    "list_data_types": (("profile",), ("dry_run", "settings_path", "include_cache", "json")),
+    "scan_types": (("profile",), ("app_id", "app_version", "context_file", "execute", "dry_run", "settings_path", "write_payload", "payload", "include_cache", "json")),
+    "list_data_types": (("profile",), ("app_id", "app_version", "context_file", "execute", "dry_run", "settings_path", "write_payload", "payload", "include_cache", "json")),
     "create_page": (("profile", "name"), ("dry_run", "settings_path", "title", "layout", "default_builder_width", "min_width", "min_height", "row_gap", "column_gap", "container_alignment", "style", "keep_overrides", "type_of_content", "url_backup_field", "meta_title", "meta_description", "html_header", *BACKGROUND_FIELDS)),
     "delete_page": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
     "clone_page": (("profile", "source", "name"), ("dry_run", "settings_path", "title")),
@@ -1117,7 +1117,7 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "clear": {"type": "boolean"},
     "all_tokens": {"type": "boolean", "default": False},
     "list_options": {"type": "boolean", "default": False},
-    "json": {"type": "boolean"},
+    "json": {"type": "boolean", "default": False},
     "include_elements": {"type": "boolean"},
     "include_workflows": {"type": "boolean"},
     "include_styles": {"type": "boolean"},
@@ -1164,6 +1164,8 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "parent_match_index": {"type": "integer"},
     "action_index": {"type": "integer"},
     "action_id": {"type": "string"},
+    "key": {"type": "string", "minLength": 1},
+    "field_key": {"type": "string", "minLength": 1},
     "email_input_ref": {"type": "string"},
     "password_input_ref": {"type": "string"},
     "password_confirmation_input_ref": {"type": "string"},
@@ -1187,6 +1189,8 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "view_attachments": {"type": "boolean"},
     "search_for": {"type": "boolean"},
     "auto_binding": {"type": "boolean"},
+    "private": {"type": "boolean", "default": False},
+    "enabled": {"type": "boolean"},
     "include_everyone_default": {"type": "boolean", "default": True},
     "id_counter": {"type": "integer"},
     "updated_at_ms": {"type": "integer", "minimum": 0},
@@ -1358,6 +1362,24 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
         field_schema = properties.setdefault(field, _property_schema(field))
         if field in defaults and isinstance(field_schema, dict):
             field_schema.setdefault("default", deepcopy(defaults[field]))
+    if name == "set_data_type_api_exposure":
+        properties["value"] = {
+            "type": "boolean",
+            "deprecated": True,
+            "description": "Compatibility alias for enabled; new calls must use enabled.",
+        }
+    if name in {
+        "create_data_type",
+        "rename_data_type",
+        "delete_data_type",
+        "delete_data_type_permanently",
+        "create_data_field",
+        "rename_data_field",
+        "delete_data_field",
+        "set_data_type_api_exposure",
+    }:
+        for field in {"data_type_ref", "name", "type", "new_name"} & set(properties):
+            properties[field].setdefault("minLength", 1)
     if name == "add_event_action":
         input_schema["anyOf"] = [
             {"required": ["event_ref"]},
@@ -1515,6 +1537,7 @@ def _documentation_family_for_name(name: str) -> str | None:
             "create_data_field",
             "rename_data_field",
             "delete_data_field",
+            "set_data_type_api_exposure",
             "list_privacy_rules",
             "create_privacy_rule",
             "delete_privacy_rule",
@@ -1664,19 +1687,21 @@ def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
 
 def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if name == "create_data_type":
-        return (("profile", "name"), ("dry_run", "settings_path", "fields", "exposed_api", "confirm"))
+        return (("profile", "name"), ("dry_run", "settings_path", "key", "private"))
     if name == "rename_data_type":
-        return (("profile", "data_type_ref", "new_name"), ("dry_run", "settings_path", "data_type_ref_kind"))
+        return (("profile", "data_type_ref", "new_name"), ("dry_run", "settings_path"))
     if name == "delete_data_type":
-        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "data_type_ref_kind", "confirm"))
+        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "confirm"))
     if name == "delete_data_type_permanently":
         return (("profile", "data_type_ref"), ("dry_run", "settings_path", "data_type_ref_kind", "confirm"))
     if name == "create_data_field":
-        return (("profile", "data_type_ref", "name", "type"), ("dry_run", "settings_path", "is_list", "optional"))
+        return (("profile", "data_type_ref", "name", "type"), ("dry_run", "settings_path", "field_key"))
     if name == "rename_data_field":
         return (("profile", "data_type_ref", "name", "new_name"), ("dry_run", "settings_path"))
     if name == "delete_data_field":
         return (("profile", "data_type_ref", "name"), ("dry_run", "settings_path", "confirm"))
+    if name == "set_data_type_api_exposure":
+        return (("profile", "data_type_ref", "enabled"), ("dry_run", "settings_path", "ref_kind"))
     if name == "list_privacy_rules":
         return (("profile", "data_type_ref"), ("dry_run", "settings_path", "json"))
     if name == "create_privacy_rule":

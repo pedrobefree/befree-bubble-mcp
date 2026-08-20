@@ -5018,6 +5018,38 @@ def test_high_potential_tools_include_docs_enrichment_metadata() -> None:
         assert f"Docs-enrichment family: {family}." in tools[tool_name]["description"]
 
 
+def test_data_schema_tools_publish_precise_data_type_field_and_api_exposure_contracts() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 113, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool["inputSchema"] for tool in response["result"]["tools"]}
+    expected = {
+        "create_data_type": (["profile", "name"], {"key", "private"}, {"fields", "exposed_api", "confirm"}),
+        "rename_data_type": (["profile", "data_type_ref", "new_name"], set(), {"data_type_ref_kind"}),
+        "delete_data_type": (["profile", "data_type_ref"], {"confirm"}, {"data_type_ref_kind"}),
+        "create_data_field": (["profile", "data_type_ref", "name", "type"], {"field_key"}, {"is_list", "optional"}),
+        "rename_data_field": (["profile", "data_type_ref", "name", "new_name"], set(), set()),
+        "delete_data_field": (["profile", "data_type_ref", "name"], {"confirm"}, set()),
+        "set_data_type_api_exposure": (["profile", "data_type_ref", "enabled"], {"ref_kind", "value"}, {"confirm"}),
+    }
+
+    for name, (required, present, absent) in expected.items():
+        schema = tools[name]
+        properties = schema["properties"]
+        assert schema["required"] == required
+        assert present <= set(properties)
+        assert not absent & set(properties)
+
+    create_type_properties = tools["create_data_type"]["properties"]
+    create_field_properties = tools["create_data_field"]["properties"]
+    exposure_properties = tools["set_data_type_api_exposure"]["properties"]
+    assert create_type_properties["private"]["type"] == "boolean"
+    assert exposure_properties["enabled"]["type"] == "boolean"
+    assert create_field_properties["field_key"]["type"] == "string"
+    assert create_field_properties["field_key"]["minLength"] == 1
+    assert exposure_properties["value"]["deprecated"] is True
+
+
 def test_tool_search_returns_docs_enrichment_hints() -> None:
     response = handle_request(
         {

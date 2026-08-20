@@ -101,11 +101,11 @@ def _boolean(name: str, default: Any = _UNSET) -> PropertyConstraint:
 
 DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
     "scan_types": ToolSchemaPrecisionSpec(
-        "list_data_types", ("profile",), (), (_alias("json", "as_json"),), _SHARED_CONTROLS,
+        "list_data_types", ("profile",), ("include_cache",), (_alias("json", "as_json"),), _SHARED_CONTROLS,
         (_boolean("json", False),),
     ),
     "list_data_types": ToolSchemaPrecisionSpec(
-        "list_data_types", ("profile",), (), (_alias("json", "as_json"),), _SHARED_CONTROLS,
+        "list_data_types", ("profile",), ("include_cache",), (_alias("json", "as_json"),), _SHARED_CONTROLS,
         (_boolean("json", False),),
     ),
     "create_data_type": ToolSchemaPrecisionSpec(
@@ -123,8 +123,8 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
         (_string("data_type_ref"),),
     ),
     "delete_data_type_permanently": ToolSchemaPrecisionSpec(
-        "delete_data_type_permanently", ("profile", "data_type_ref"), (),
-        (_alias("data_type_ref", "data_type_key"),), _DESTRUCTIVE_CONTROLS,
+        "delete_data_type_permanently", ("profile", "data_type_ref"), ("data_type_ref_kind",),
+        (_alias("data_type_ref", "data_type_key"),), ("profile", "app_id", "app_version", "context_file", "execute", "dry_run", "settings_path", "confirm"),
         (_string("data_type_ref"),),
     ),
     "create_data_field": ToolSchemaPrecisionSpec(
@@ -143,7 +143,7 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
         (_string("data_type_ref"), _string("name")),
     ),
     "set_data_type_api_exposure": ToolSchemaPrecisionSpec(
-        "set_data_type_api_exposure", ("profile", "data_type_ref", "enabled"), ("data_type_ref", "enabled"),
+        "set_data_type_api_exposure", ("profile", "data_type_ref", "enabled"), ("data_type_ref", "enabled", "ref_kind"),
         (_alias("value", "enabled"),), _SHARED_CONTROLS,
         (_string("data_type_ref"), _boolean("enabled")),
     ),

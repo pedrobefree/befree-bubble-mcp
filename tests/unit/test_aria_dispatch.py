@@ -44,6 +44,31 @@ def test_method_kwargs_maps_public_schema_aliases_to_aria_runtime_args() -> None
     }
 
 
+@pytest.mark.parametrize("arguments", [{"enabled": True}, {"value": True}])
+def test_method_kwargs_maps_canonical_and_legacy_api_exposure_flags_to_enabled(
+    arguments: dict[str, bool],
+) -> None:
+    def set_data_type_api_exposure(
+        data_type_ref: str,
+        enabled: bool,
+        ref_kind: str = "key",
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    kwargs = _method_kwargs(
+        set_data_type_api_exposure,
+        {"profile": "smoke", "data_type_ref": "user", **arguments, "execute": False},
+        execute=False,
+    )
+
+    assert kwargs == {
+        "data_type_ref": "user",
+        "enabled": True,
+        "dry_run": True,
+    }
+
+
 def test_method_kwargs_scopes_family_four_name_aliases_without_changing_unrelated_defaults() -> None:
     def create_button(
         name: str,

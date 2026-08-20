@@ -12,6 +12,7 @@ from bubble_mcp.catalog_schema_precision import (
     catalog_schema_precision_report,
     normalize_catalog_schema_precision_args,
 )
+from bubble_mcp.server.schemas import list_tool_schemas
 
 
 EXPECTED_TARGETS = {
@@ -239,3 +240,26 @@ def test_normalize_catalog_schema_precision_args_is_a_copying_pass_through() -> 
 
     assert normalized == args
     assert normalized is not args
+
+
+def test_data_type_tools_match_the_first_ten_live_precision_report() -> None:
+    names = (
+        "scan_types",
+        "list_data_types",
+        "create_data_type",
+        "rename_data_type",
+        "delete_data_type",
+        "delete_data_type_permanently",
+        "create_data_field",
+        "rename_data_field",
+        "delete_data_field",
+        "set_data_type_api_exposure",
+    )
+    report = catalog_schema_precision_report(
+        tool_schemas=list_tool_schemas(),
+        specs={name: DATA_SCHEMA_PRECISION_SPECS[name] for name in names},
+    )
+
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 10
+    assert report["failures"] == []
