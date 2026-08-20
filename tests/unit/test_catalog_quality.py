@@ -51,6 +51,63 @@ def test_catalog_quality_includes_deterministic_ambiguity_matrix() -> None:
     }
 
 
+def test_catalog_quality_includes_complete_modern_cli_leaf_map() -> None:
+    report = catalog_quality_report()
+    checks = {check["name"]: check for check in report["checks"]}
+
+    assert checks["modern_cli_leaf_map"] == {
+        "name": "modern_cli_leaf_map",
+        "ok": True,
+        "issue_count": 0,
+        "leaf_count": 105,
+        "classified_count": 105,
+        "catalog_gap_count": 0,
+    }
+
+
+def test_modern_cli_leaf_map_check_converts_report_failure(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        quality,
+        "cli_leaf_map_report",
+        lambda: {
+            "ok": False,
+            "summary": {
+                "leaf_count": 1,
+                "classified_count": 0,
+                "catalog_gap_count": 0,
+                "issue_count": 1,
+            },
+            "issues": [
+                {
+                    "scope": "modern_cli",
+                    "name": "cli_leaf_map",
+                    "message": "Unclassified modern CLI command: new-command",
+                }
+            ],
+        },
+    )
+
+    check, issues = quality._modern_cli_leaf_map_check()
+
+    assert check == {
+        "name": "modern_cli_leaf_map",
+        "ok": False,
+        "issue_count": 1,
+        "leaf_count": 1,
+        "classified_count": 0,
+        "catalog_gap_count": 0,
+    }
+    assert issues == [
+        {
+            "check": "modern_cli_leaf_map",
+            "scope": "modern_cli",
+            "name": "cli_leaf_map",
+            "field": "classification",
+            "message": "Unclassified modern CLI command: new-command",
+        }
+    ]
+
+
 def test_ambiguity_check_converts_wrong_tool_failure(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(
         quality,
