@@ -60,6 +60,20 @@ Expected:
   instructions.
 - Catalog quality and all 27 packaged ambiguity cases pass from the clean wheel
   installation without access to the source checkout.
+- The packaged data-schema precision audit reports `schema_precision_ok: true`
+  and `schema_precision_tool_count: 28`.
+
+## Data-Schema Precision Gate
+
+```bash
+PYTHONPATH=src python scripts/audit_catalog_schema_precision.py
+```
+
+Expected:
+
+- `ok: true`
+- `tool_count: 28`
+- `failure_count: 0`
 
 ## Local Setup Smoke
 

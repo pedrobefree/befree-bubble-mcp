@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import FrozenInstanceError
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 
 import pytest
 
@@ -274,6 +279,26 @@ def test_live_data_schema_precision_report_is_complete_and_green() -> None:
     assert report["summary"]["tool_count"] == 28
     assert report["summary"]["failure_count"] == 0
     assert report["failures"] == []
+
+
+def test_schema_precision_audit_runs_from_checkout_without_pythonpath() -> None:
+    root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [sys.executable, "scripts/audit_catalog_schema_precision.py"],
+        cwd=root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    report = json.loads(result.stdout)
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 28
 
 
 def test_targeted_argument_normalization_rejects_unknown_operational_fields() -> None:

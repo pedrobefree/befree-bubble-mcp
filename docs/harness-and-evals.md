@@ -66,6 +66,20 @@ source command is unclassified, a classification becomes stale, a named MCP
 capability does not exist, or any catalog gap remains. It uses no network,
 Bubble profile, authentication, or editor state.
 
+## Deterministic Data-Schema Precision
+
+Run the Round A.3 data-schema precision audit with:
+
+```bash
+PYTHONPATH=src python scripts/audit_catalog_schema_precision.py
+```
+
+The audit verifies the exact 28 data-schema, privacy, and option-set MCP tool
+schemas against their field-role policy: required identifiers and operation
+inputs, optional mutation controls, accepted compatibility aliases, and
+forbidden operational fields. It is deterministic and uses no network, Bubble
+profile, authentication, editor state, or other external state.
+
 Dataset cases accept either standalone snake_case keys or Aria-style camelCase
 keys:
 
