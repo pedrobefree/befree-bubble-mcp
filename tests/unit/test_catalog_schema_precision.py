@@ -309,3 +309,26 @@ def test_privacy_tools_match_the_live_precision_report() -> None:
     assert report["ok"] is True
     assert report["summary"]["tool_count"] == 8
     assert report["failures"] == []
+
+
+def test_option_tools_match_the_live_precision_report() -> None:
+    names = (
+        "create_option_set",
+        "rename_option_set",
+        "delete_option_set",
+        "create_option_attribute",
+        "create_option_value",
+        "delete_option_value",
+        "list_option_values",
+        "rename_option_value",
+        "set_option_value_attribute",
+        "reorder_option_values",
+    )
+    report = catalog_schema_precision_report(
+        tool_schemas=list_tool_schemas(),
+        specs={name: DATA_SCHEMA_PRECISION_SPECS[name] for name in names},
+    )
+
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 10
+    assert report["failures"] == []

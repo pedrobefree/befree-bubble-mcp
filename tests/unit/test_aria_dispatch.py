@@ -86,6 +86,22 @@ def test_method_kwargs_scopes_family_four_name_aliases_without_changing_unrelate
     ) -> bool:
         return True
 
+    def create_option_value(
+        option_set_key: str,
+        label: str,
+        value_key: str | None = None,
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
+    def reorder_option_values(
+        option_set_key: str,
+        assignments: list[str],
+        ref_kind: str = "key",
+        dry_run: bool = False,
+    ) -> bool:
+        return True
+
     assert _method_kwargs(
         create_button,
         {"profile": "smoke", "name": "Submit", "execute": False},
@@ -105,6 +121,38 @@ def test_method_kwargs_scopes_family_four_name_aliases_without_changing_unrelate
         "option_set_key": "os_status",
         "name": "Display Attribute",
         "value_type": "text",
+        "dry_run": True,
+    }
+    assert _method_kwargs(
+        create_option_value,
+        {
+            "profile": "smoke",
+            "option_set_ref": "os_status",
+            "name": "Pending",
+            "value_key": "pending",
+            "execute": False,
+        },
+        execute=False,
+    ) == {
+        "option_set_key": "os_status",
+        "label": "Pending",
+        "value_key": "pending",
+        "dry_run": True,
+    }
+    assert _method_kwargs(
+        reorder_option_values,
+        {
+            "profile": "smoke",
+            "option_set_ref": "os_status",
+            "order": ["pending:1"],
+            "ref_kind": "auto",
+            "execute": False,
+        },
+        execute=False,
+    ) == {
+        "option_set_key": "os_status",
+        "assignments": ["pending:1"],
+        "ref_kind": "auto",
         "dry_run": True,
     }
 

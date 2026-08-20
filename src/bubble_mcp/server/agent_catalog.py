@@ -1152,6 +1152,7 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "limit_image_size_before_upload": {"type": "boolean"},
     "prefer_last": {"type": "boolean"},
     "include_cache": {"type": "boolean"},
+    "parse_json": {"type": "boolean", "default": False},
     "is_visible": {"type": "boolean"},
     "collapse_when_hidden": {"type": "boolean"},
     "append": {"type": "boolean", "default": True},
@@ -1165,6 +1166,9 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "action_index": {"type": "integer"},
     "action_id": {"type": "string"},
     "key": {"type": "string", "minLength": 1},
+    "attribute_key": {"type": "string", "minLength": 1},
+    "value_key": {"type": "string", "minLength": 1},
+    "db_value": {"type": "string", "minLength": 1},
     "field_key": {"type": "string", "minLength": 1},
     "email_input_ref": {"type": "string"},
     "password_input_ref": {"type": "string"},
@@ -1193,6 +1197,13 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "enabled": {"type": "boolean"},
     "include_everyone_default": {"type": "boolean", "default": True},
     "id_counter": {"type": "integer"},
+    "sort_factor": {"type": "integer"},
+    "order": {
+        "type": "array",
+        "items": {"type": "string", "minLength": 3},
+        "minItems": 1,
+        "description": "Complete value_key:sort_factor assignments; each active value must appear exactly once.",
+    },
     "updated_at_ms": {"type": "integer", "minimum": 0},
     "duration_ms": {"type": "integer", "minimum": 0},
     "offset": {"type": "integer"},
@@ -1392,6 +1403,25 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
     }:
         for field in {"data_type_ref", "rule_key", "rule_name", "new_name"} & set(properties):
             properties[field].setdefault("minLength", 1)
+    if name.startswith((
+        "create_option_",
+        "rename_option_",
+        "delete_option_",
+        "list_option_",
+        "set_option_",
+        "reorder_option_",
+    )):
+        for field in {
+            "name",
+            "type",
+            "new_name",
+            "option_set_ref",
+            "option_value_ref",
+            "attribute_key",
+            "value_key",
+            "db_value",
+        } & set(properties):
+            properties[field].setdefault("minLength", 1)
     if name == "create_privacy_rule":
         for field, default in {
             "view_all": True,
@@ -1408,6 +1438,24 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
             {"required": ["view_all"]},
             {"required": ["view_fields"]},
         ]
+    if name in {
+        "delete_option_value",
+        "rename_option_value",
+        "set_option_value_attribute",
+        "reorder_option_values",
+    }:
+        properties["ref_kind"] = {
+            "type": "string",
+            "enum": ["auto", "key", "label", "db_value"],
+            "default": "key",
+        }
+    if name == "reorder_option_values":
+        properties["order"] = {
+            "type": "array",
+            "items": {"type": "string", "minLength": 3},
+            "minItems": 1,
+            "description": "Complete value_key:sort_factor assignments; each active value must appear exactly once.",
+        }
     if name == "add_event_action":
         input_schema["anyOf"] = [
             {"required": ["event_ref"]},
@@ -1767,25 +1815,26 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
 
 
 def _option_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    common = ("dry_run", "settings_path", "ref_kind", "confirm")
+    controls = ("dry_run", "settings_path")
+    value_reference = (*controls, "ref_kind")
     if name == "create_option_set":
-        return (("profile", "name"), (*common, "key", "values", "attributes"))
+        return (("profile", "name"), (*controls, "key"))
     if name == "rename_option_set":
-        return (("profile", "option_set_ref", "new_name"), common)
+        return (("profile", "option_set_ref", "new_name"), controls)
     if name == "delete_option_set":
-        return (("profile", "option_set_ref"), common)
+        return (("profile", "option_set_ref"), controls)
     if name == "create_option_attribute":
-        return (("profile", "option_set_ref", "name", "type"), (*common, "attribute_key"))
+        return (("profile", "option_set_ref", "name", "type"), (*controls, "attribute_key"))
     if name == "create_option_value":
-        return (("profile", "option_set_ref", "name"), (*common, "value_key", "db_value", "sort_factor", "id_counter"))
+        return (("profile", "option_set_ref", "name"), (*controls, "value_key", "db_value", "sort_factor", "id_counter"))
     if name == "delete_option_value":
-        return (("profile", "option_set_ref", "option_value_ref"), common)
+        return (("profile", "option_set_ref", "option_value_ref"), value_reference)
     if name == "rename_option_value":
-        return (("profile", "option_set_ref", "option_value_ref", "new_name"), common)
+        return (("profile", "option_set_ref", "option_value_ref", "new_name"), value_reference)
     if name == "set_option_value_attribute":
-        return (("profile", "option_set_ref", "option_value_ref", "name", "value"), (*common, "parse_json"))
+        return (("profile", "option_set_ref", "option_value_ref", "name", "value"), (*value_reference, "parse_json"))
     if name == "reorder_option_values":
-        return (("profile", "option_set_ref", "order"), common)
+        return (("profile", "option_set_ref", "order"), value_reference)
     return (("profile", "option_set_ref"), ("dry_run", "settings_path", "json"))
 
 

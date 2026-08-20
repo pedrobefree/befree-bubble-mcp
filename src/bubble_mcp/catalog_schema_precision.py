@@ -213,27 +213,27 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
     "delete_option_value": ToolSchemaPrecisionSpec(
         "delete_option_value", ("profile", "option_set_ref", "option_value_ref"), ("ref_kind",),
         (_alias("option_set_ref", "option_set_key"), _alias("option_value_ref", "value_ref")), _DESTRUCTIVE_CONTROLS,
-        (_string("option_set_ref"), _string("option_value_ref"), _constraint("ref_kind", enum=("key", "db_value", "db-value", "label"), default="key")),
+        (_string("option_set_ref"), _string("option_value_ref"), _constraint("ref_kind", enum=("auto", "key", "label", "db_value"), default="key")),
     ),
     "list_option_values": ToolSchemaPrecisionSpec(
         "list_option_values", ("profile", "option_set_ref"), (),
-        (_alias("option_set_ref", "option_set_key"), _alias("json", "as_json")), _SHARED_CONTROLS,
+        (_alias("option_set_ref", "option_set_key"), _alias("json", "as_json")), ("profile", "dry_run", "settings_path"),
         (_string("option_set_ref"), _boolean("json", False)),
     ),
     "rename_option_value": ToolSchemaPrecisionSpec(
         "rename_option_value", ("profile", "option_set_ref", "option_value_ref", "new_name"), ("ref_kind",),
         (_alias("option_set_ref", "option_set_key"), _alias("option_value_ref", "value_ref"), _alias("new_name", "new_label")), _SHARED_CONTROLS,
-        (_string("option_set_ref"), _string("option_value_ref"), _string("new_name"), _constraint("ref_kind", enum=("key", "db_value", "db-value", "label"), default="key")),
+        (_string("option_set_ref"), _string("option_value_ref"), _string("new_name"), _constraint("ref_kind", enum=("auto", "key", "label", "db_value"), default="key")),
     ),
     "set_option_value_attribute": ToolSchemaPrecisionSpec(
         "set_option_value_attribute", ("profile", "option_set_ref", "option_value_ref", "name", "value"), ("value", "ref_kind", "parse_json"),
         (_alias("option_set_ref", "option_set_key"), _alias("option_value_ref", "value_ref"), _alias("name", "attribute_key")), _SHARED_CONTROLS,
-        (_string("option_set_ref"), _string("option_value_ref"), _string("name"), _constraint("ref_kind", enum=("key", "db_value", "db-value", "label"), default="key"), _boolean("parse_json", False)),
+        (_string("option_set_ref"), _string("option_value_ref"), _string("name"), _constraint("ref_kind", enum=("auto", "key", "label", "db_value"), default="key"), _boolean("parse_json", False)),
     ),
     "reorder_option_values": ToolSchemaPrecisionSpec(
         "reorder_option_values", ("profile", "option_set_ref", "order"), ("ref_kind",),
         (_alias("option_set_ref", "option_set_key"), _alias("order", "assignments")), _SHARED_CONTROLS,
-        (_string("option_set_ref"), _constraint("order", type_name="array", min_items=1), _constraint("ref_kind", enum=("key", "db_value", "db-value", "label"), default="key")),
+        (_string("option_set_ref"), _constraint("order", type_name="array", min_items=1), _constraint("ref_kind", enum=("auto", "key", "label", "db_value"), default="key")),
     ),
 }
 

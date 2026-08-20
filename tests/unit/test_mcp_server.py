@@ -5060,6 +5060,48 @@ def test_data_schema_tools_publish_precise_data_type_field_and_api_exposure_cont
     assert exposure_properties["value"]["deprecated"] is True
 
 
+def test_data_schema_tools_publish_precise_option_set_and_value_contracts() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 114, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    create_set = tools["create_option_set"]["inputSchema"]
+    assert create_set["required"] == ["profile", "name"]
+    assert "key" in create_set["properties"]
+    assert {"values", "attributes", "ref_kind", "confirm"}.isdisjoint(create_set["properties"])
+
+    create_attribute = tools["create_option_attribute"]["inputSchema"]
+    assert create_attribute["required"] == ["profile", "option_set_ref", "name", "type"]
+    assert "attribute_key" in create_attribute["properties"]
+    assert {"ref_kind", "confirm"}.isdisjoint(create_attribute["properties"])
+
+    for name in ["delete_option_value", "rename_option_value", "set_option_value_attribute", "reorder_option_values"]:
+        assert tools[name]["inputSchema"]["properties"]["ref_kind"]["enum"] == [
+            "auto", "key", "label", "db_value"
+        ]
+
+    order = tools["reorder_option_values"]["inputSchema"]["properties"]["order"]
+    assert order == {
+        "type": "array",
+        "items": {"type": "string", "minLength": 3},
+        "minItems": 1,
+        "description": "Complete value_key:sort_factor assignments; each active value must appear exactly once.",
+    }
+    create_value = tools["create_option_value"]["inputSchema"]["properties"]
+    set_attribute = tools["set_option_value_attribute"]["inputSchema"]["properties"]
+    assert create_value["sort_factor"]["type"] == "integer"
+    assert create_value["id_counter"]["type"] == "integer"
+    assert set_attribute["parse_json"]["type"] == "boolean"
+
+    option_tools = {
+        "create_option_set", "rename_option_set", "delete_option_set", "create_option_attribute",
+        "create_option_value", "delete_option_value", "list_option_values", "rename_option_value",
+        "set_option_value_attribute", "reorder_option_values",
+    }
+    confirm_tools = {name for name in option_tools if "confirm" in tools[name]["inputSchema"]["properties"]}
+    assert confirm_tools == {"delete_option_set", "delete_option_value"}
+
+
 def test_tool_search_returns_docs_enrichment_hints() -> None:
     response = handle_request(
         {
