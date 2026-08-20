@@ -56,7 +56,7 @@ class ToolSchemaPrecisionSpec:
 
 
 FailureCode = Literal[
-    "any_of_mismatch",
+    "conditional_contract_mismatch",
     "duplicate_alias",
     "extra_property",
     "missing_handler",
@@ -149,7 +149,7 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
     ),
     "list_privacy_rules": ToolSchemaPrecisionSpec(
         "list_privacy_rules", ("profile", "data_type_ref"), (),
-        (_alias("data_type_ref", "data_type_key"),), _SHARED_CONTROLS, (_string("data_type_ref"),),
+        (_alias("data_type_ref", "data_type_key"),), ("profile", "dry_run", "settings_path"), (_string("data_type_ref"),),
     ),
     "create_privacy_rule": ToolSchemaPrecisionSpec(
         "create_privacy_rule", ("profile", "data_type_ref"),
@@ -385,7 +385,7 @@ def catalog_schema_precision_report(
         expected_any_of = tuple(sorted(tuple(sorted(group)) for group in spec.any_of_required))
         actual_any_of = _schema_any_of_required(schema)
         if actual_any_of != expected_any_of:
-            failures.append(_failure(tool_name, "anyOf", "any_of_mismatch", f"Expected anyOf required groups {list(expected_any_of)!r}, found {list(actual_any_of)!r}."))
+            failures.append(_failure(tool_name, "anyOf", "conditional_contract_mismatch", f"Expected anyOf required groups {list(expected_any_of)!r}, found {list(actual_any_of)!r}."))
 
         public_runtime_names = set(spec.runtime) | set(alias_by_public.values()) | set(spec.controls)
         for parameter_name, parameter in parameters.items():

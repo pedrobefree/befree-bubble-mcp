@@ -1380,6 +1380,34 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
     }:
         for field in {"data_type_ref", "name", "type", "new_name"} & set(properties):
             properties[field].setdefault("minLength", 1)
+    if name in {
+        "list_privacy_rules",
+        "create_privacy_rule",
+        "delete_privacy_rule",
+        "set_privacy_rule_name",
+        "set_privacy_rule_condition",
+        "set_privacy_rule_permission",
+        "set_privacy_rule_field_visibility",
+        "set_privacy_rule_auto_binding",
+    }:
+        for field in {"data_type_ref", "rule_key", "rule_name", "new_name"} & set(properties):
+            properties[field].setdefault("minLength", 1)
+    if name == "create_privacy_rule":
+        for field, default in {
+            "view_all": True,
+            "view_attachments": True,
+            "search_for": True,
+            "auto_binding": False,
+            "include_everyone_default": True,
+        }.items():
+            properties[field].setdefault("default", default)
+    if name == "set_privacy_rule_permission":
+        properties["value"] = {"type": "boolean"}
+    if name == "set_privacy_rule_field_visibility":
+        input_schema["anyOf"] = [
+            {"required": ["view_all"]},
+            {"required": ["view_fields"]},
+        ]
     if name == "add_event_action":
         input_schema["anyOf"] = [
             {"required": ["event_ref"]},
@@ -1703,7 +1731,7 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if name == "set_data_type_api_exposure":
         return (("profile", "data_type_ref", "enabled"), ("dry_run", "settings_path", "ref_kind"))
     if name == "list_privacy_rules":
-        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "json"))
+        return (("profile", "data_type_ref"), ("dry_run", "settings_path"))
     if name == "create_privacy_rule":
         return (
             ("profile", "data_type_ref"),

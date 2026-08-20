@@ -224,7 +224,32 @@ def test_precision_report_detects_any_of_and_duplicate_alias_drift() -> None:
 
     report = catalog_schema_precision_report(tool_schemas=[_sample_schema()], runtime_type=Runtime, specs=specs)
 
-    assert {failure["code"] for failure in report["failures"]} == {"any_of_mismatch", "duplicate_alias"}
+    assert {failure["code"] for failure in report["failures"]} == {"conditional_contract_mismatch", "duplicate_alias"}
+
+
+def test_precision_report_reports_changed_any_of_as_conditional_contract_mismatch() -> None:
+    specs = {
+        "sample": ToolSchemaPrecisionSpec(
+            handler="mutate",
+            required=("profile", "target_ref", "enabled"),
+            runtime=("enabled",),
+            aliases=(ArgumentAlias("target_ref", "target"),),
+            controls=("profile", "execute", "dry_run"),
+            constraints=(PropertyConstraint("enabled", type_name="boolean"),),
+            any_of_required=(("enabled",),),
+        )
+    }
+
+    report = catalog_schema_precision_report(tool_schemas=[_sample_schema()], runtime_type=Runtime, specs=specs)
+
+    assert report["failures"] == [
+        {
+            "tool": "sample",
+            "field": "anyOf",
+            "code": "conditional_contract_mismatch",
+            "message": "Expected anyOf required groups [('enabled',)], found [].",
+        }
+    ]
 
 
 def test_precision_report_never_returns_non_ok_without_actionable_failures() -> None:
@@ -262,4 +287,25 @@ def test_data_type_tools_match_the_first_ten_live_precision_report() -> None:
 
     assert report["ok"] is True
     assert report["summary"]["tool_count"] == 10
+    assert report["failures"] == []
+
+
+def test_privacy_tools_match_the_live_precision_report() -> None:
+    names = (
+        "list_privacy_rules",
+        "create_privacy_rule",
+        "delete_privacy_rule",
+        "set_privacy_rule_name",
+        "set_privacy_rule_condition",
+        "set_privacy_rule_permission",
+        "set_privacy_rule_field_visibility",
+        "set_privacy_rule_auto_binding",
+    )
+    report = catalog_schema_precision_report(
+        tool_schemas=list_tool_schemas(),
+        specs={name: DATA_SCHEMA_PRECISION_SPECS[name] for name in names},
+    )
+
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 8
     assert report["failures"] == []

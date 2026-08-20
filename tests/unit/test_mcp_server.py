@@ -3875,6 +3875,16 @@ def test_privacy_tool_schemas_preserve_required_selectors_preview_defaults_and_d
     assert "field_name_text" in visibility["view_fields"]["description"]
     assert "field_name_text" in binding["binding_fields"]["description"]
 
+    assert "json" not in tools["list_privacy_rules"]["inputSchema"]["properties"]
+    visibility_schema = tools["set_privacy_rule_field_visibility"]["inputSchema"]
+    assert visibility_schema["anyOf"] == [
+        {"required": ["view_all"]},
+        {"required": ["view_fields"]},
+    ]
+    assert visibility["view_fields"]["type"] == ["string", "array", "object", "null"]
+    assert tools["set_privacy_rule_permission"]["inputSchema"]["properties"]["value"]["type"] == "boolean"
+    assert tools["delete_privacy_rule"]["inputSchema"]["properties"]["confirm"]["default"] is False
+
     list_styles = tools["list_styles"]["inputSchema"]
     assert "execute" not in list_styles["properties"]
     assert "payload" not in list_styles["properties"]
