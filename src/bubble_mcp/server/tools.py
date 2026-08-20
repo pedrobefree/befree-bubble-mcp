@@ -17,6 +17,7 @@ from bubble_mcp.browser_automation import (
     schedule_deploy,
 )
 from bubble_mcp.catalog_quality import catalog_quality_report
+from bubble_mcp.catalog_schema_precision import normalize_catalog_schema_precision_args
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import (
@@ -1958,6 +1959,7 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
     if name == "sync_figma_tokens" and args.get("list_options") is True:
         args = {**args, "execute": False, "dry_run": True}
+    args = normalize_catalog_schema_precision_args(name, args)
     executing = args.get("execute") is True and args.get("dry_run") is not True
     confirmation_gated_tools = _DESTRUCTIVE_STYLE_TOKEN_TOOLS | _DESTRUCTIVE_FAMILY_FOUR_TOOLS
     if name in confirmation_gated_tools and executing and args.get("confirm") is not True:

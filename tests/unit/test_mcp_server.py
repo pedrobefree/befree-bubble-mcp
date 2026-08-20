@@ -5060,6 +5060,64 @@ def test_data_schema_tools_publish_precise_data_type_field_and_api_exposure_cont
     assert exposure_properties["value"]["deprecated"] is True
 
 
+def test_targeted_data_schema_tools_reject_unsupported_operational_fields_at_mcp_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("unsupported arguments reached dispatch")),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 115,
+            "method": "tools/call",
+            "params": {
+                "name": "create_data_type",
+                "arguments": {"profile": "smoke", "name": "Order", "fields": []},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    assert response["result"]["structuredContent"]["error"] == (
+        "create_data_type does not accept operational argument: fields"
+    )
+
+
+def test_api_exposure_legacy_value_alias_normalizes_before_mcp_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_dispatch(name: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((name, dict(args)))
+        return {"ok": True, "tool_name": name}
+
+    monkeypatch.setattr(tools_module, "dispatch_aria_runtime_tool", fake_dispatch)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 116,
+            "method": "tools/call",
+            "params": {
+                "name": "set_data_type_api_exposure",
+                "arguments": {"profile": "smoke", "data_type_ref": "order", "value": True},
+            },
+        }
+    )
+
+    assert response is not None
+    assert len(calls) == 1
+    assert calls[0][0] == "set_data_type_api_exposure"
+    assert calls[0][1]["value"] is True
+    assert calls[0][1]["enabled"] is True
+
+
 def test_data_schema_tools_publish_precise_option_set_and_value_contracts() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 114, "method": "tools/list"})
 

@@ -267,6 +267,32 @@ def test_normalize_catalog_schema_precision_args_is_a_copying_pass_through() -> 
     assert normalized is not args
 
 
+def test_live_data_schema_precision_report_is_complete_and_green() -> None:
+    report = catalog_schema_precision_report()
+
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 28
+    assert report["summary"]["failure_count"] == 0
+    assert report["failures"] == []
+
+
+def test_targeted_argument_normalization_rejects_unknown_operational_fields() -> None:
+    with pytest.raises(ValueError, match="create_data_type does not accept operational argument: fields"):
+        normalize_catalog_schema_precision_args(
+            "create_data_type", {"profile": "smoke", "name": "Order", "fields": []}
+        )
+
+
+def test_api_exposure_legacy_value_alias_normalizes_to_enabled() -> None:
+    normalized = normalize_catalog_schema_precision_args(
+        "set_data_type_api_exposure",
+        {"profile": "smoke", "data_type_ref": "order", "value": True},
+    )
+
+    assert normalized["enabled"] is True
+    assert normalized["value"] is True
+
+
 def test_data_type_tools_match_the_first_ten_live_precision_report() -> None:
     names = (
         "scan_types",
