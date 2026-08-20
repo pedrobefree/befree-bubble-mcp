@@ -122,6 +122,39 @@ def build_parser():
     )
 
 
+def test_discover_cli_leaves_propagates_handler_to_optional_child() -> None:
+    source = '''
+def build_parser():
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    parent = roots.add_parser("parent")
+    parent.set_defaults(func=command_parent)
+    children = parent.add_subparsers(dest="child")
+    child = children.add_parser("child")
+'''
+
+    assert discover_cli_leaves(source) == (
+        DiscoveredCliLeaf(("parent",), "command_parent", 6),
+        DiscoveredCliLeaf(("parent", "child"), "command_parent", 6),
+    )
+
+
+def test_discover_cli_leaves_excludes_parent_with_required_children() -> None:
+    source = '''
+def build_parser():
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    parent = roots.add_parser("parent")
+    parent.set_defaults(func=command_parent)
+    children = parent.add_subparsers(dest="child", required=True)
+    child = children.add_parser("child")
+'''
+
+    assert discover_cli_leaves(source) == (
+        DiscoveredCliLeaf(("parent", "child"), "command_parent", 6),
+    )
+
+
 @pytest.mark.parametrize(
     ("source", "message"),
     [
@@ -520,6 +553,43 @@ def test_runtime_cli_leaves_rejects_terminal_without_handler(monkeypatch) -> Non
 
     with pytest.raises(ValueError, match="Runtime terminal CLI command has no func handler: missing"):
         inventory.runtime_cli_leaves()
+
+
+def test_runtime_cli_leaves_models_inherited_defaults_and_required_children(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import argparse
+    from bubble_mcp.cli import main as cli_main
+
+    def optional_handler(_args):  # type: ignore[no-untyped-def]
+        return 0
+
+    def required_handler(_args):  # type: ignore[no-untyped-def]
+        return 0
+
+    optional_handler.__name__ = "command_optional"
+    required_handler.__name__ = "command_required"
+    monkeypatch.setattr(cli_main, "command_optional", optional_handler, raising=False)
+    monkeypatch.setattr(cli_main, "command_required", required_handler, raising=False)
+
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    optional = roots.add_parser("optional")
+    optional.set_defaults(func=optional_handler)
+    optional_children = optional.add_subparsers(dest="child")
+    optional_children.add_parser("child")
+    required = roots.add_parser("required")
+    required.set_defaults(func=required_handler)
+    required_children = required.add_subparsers(dest="child", required=True)
+    required_children.add_parser("child")
+    monkeypatch.setattr(cli_main, "build_parser", lambda: parser)
+    inventory.runtime_cli_leaves.cache_clear()
+
+    leaves = inventory.runtime_cli_leaves()
+
+    assert [(leaf.command_path, leaf.handler) for leaf in leaves] == [
+        (("optional",), "command_optional"),
+        (("optional", "child"), "command_optional"),
+        (("required", "child"), "command_required"),
+    ]
 
 
 def test_cli_leaf_map_audit_script_runs_from_checkout() -> None:

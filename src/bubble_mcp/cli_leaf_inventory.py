@@ -280,9 +280,10 @@ def discover_cli_leaves(source: str) -> tuple[DiscoveredCliLeaf, ...]:
     ]
     consumed_calls: set[int] = set()
     parser_paths: dict[str, tuple[str, ...]] = {}
-    container_paths: dict[str, tuple[str, ...]] = {}
+    container_paths: dict[str, tuple[tuple[str, ...], bool]] = {}
     declared_paths: dict[tuple[str, ...], int] = {}
     parents: set[tuple[str, ...]] = set()
+    required_parents: set[tuple[str, ...]] = set()
     handlers: dict[tuple[str, ...], tuple[str, int]] = {}
 
     for statement in _build_parser_statements(function):
@@ -312,8 +313,24 @@ def discover_cli_leaves(source: str) -> tuple[DiscoveredCliLeaf, ...]:
             if parent_parser is not None and parent_parser.id in parser_paths:
                 consumed_calls.add(id(call))
                 parent_path = parser_paths[parent_parser.id]
-                container_paths[target] = parent_path
+                required_keywords = [
+                    keyword for keyword in call.keywords if keyword.arg == "required"
+                ]
+                required_node = required_keywords[-1].value if required_keywords else None
+                if required_node is None:
+                    required = False
+                elif isinstance(required_node, ast.Constant) and isinstance(
+                    required_node.value, bool
+                ):
+                    required = required_node.value
+                else:
+                    raise ValueError(
+                        f"CLI add_subparsers required must be a literal boolean at line {statement.lineno}"
+                    )
+                container_paths[target] = (parent_path, required)
                 parents.add(parent_path)
+                if required:
+                    required_parents.add(parent_path)
                 continue
             container = _method_call(call, "add_parser")
             if container is not None and container.id in container_paths:
@@ -324,7 +341,8 @@ def discover_cli_leaves(source: str) -> tuple[DiscoveredCliLeaf, ...]:
                     )
                 if not call.args or not isinstance(call.args[0], ast.Constant) or not isinstance(call.args[0].value, str):
                     raise ValueError(f"CLI add_parser name must be a literal string at line {statement.lineno}")
-                command_path = (*container_paths[container.id], call.args[0].value)
+                parent_path, _ = container_paths[container.id]
+                command_path = (*parent_path, call.args[0].value)
                 if command_path in declared_paths:
                     raise ValueError(f"Duplicate CLI command path: {' '.join(command_path)}")
                 declared_paths[command_path] = statement.lineno
@@ -360,7 +378,14 @@ def discover_cli_leaves(source: str) -> tuple[DiscoveredCliLeaf, ...]:
 
     leaves: list[DiscoveredCliLeaf] = []
     for command_path in sorted(declared_paths):
+        if command_path in required_parents:
+            continue
         binding = handlers.get(command_path)
+        if binding is None:
+            for length in range(len(command_path) - 1, 0, -1):
+                binding = handlers.get(command_path[:length])
+                if binding is not None:
+                    break
         if binding is None:
             if command_path in parents:
                 continue
@@ -390,10 +415,20 @@ def runtime_cli_leaves() -> tuple[DiscoveredCliLeaf, ...]:
 
     leaves: list[DiscoveredCliLeaf] = []
 
-    def visit(parser: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
+    def visit(
+        parser: argparse.ArgumentParser,
+        path: tuple[str, ...],
+        inherited_handler: object | None = None,
+    ) -> None:
         defaults = getattr(parser, "_defaults", {})
-        handler = defaults.get("func") if isinstance(defaults, dict) else None
-        if path and handler is not None:
+        handler = defaults.get("func", inherited_handler) if isinstance(defaults, dict) else inherited_handler
+        subparser_actions = [
+            action
+            for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        ]
+        requires_child = any(bool(action.required) for action in subparser_actions)
+        if path and handler is not None and not requires_child:
             handler_name = getattr(handler, "__name__", "")
             if not handler_name or getattr(cli_main, handler_name, None) is not handler:
                 raise ValueError(
@@ -404,14 +439,9 @@ def runtime_cli_leaves() -> tuple[DiscoveredCliLeaf, ...]:
                 DiscoveredCliLeaf(path, handler_name, int(getattr(code, "co_firstlineno", 0)))
             )
 
-        subparser_actions = [
-            action
-            for action in parser._actions
-            if isinstance(action, argparse._SubParsersAction)
-        ]
         for action in subparser_actions:
             for command_name, child in action.choices.items():
-                visit(child, (*path, command_name))
+                visit(child, (*path, command_name), handler)
         if path and not subparser_actions and handler is None:
             raise ValueError(f"Runtime terminal CLI command has no func handler: {' '.join(path)}")
 
