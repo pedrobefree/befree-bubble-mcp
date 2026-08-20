@@ -508,18 +508,18 @@ family benefits from consolidation rather than merely having similar names.
 
 Round A.2 validation evidence (2026-08-20):
 
-- the complete Python suite passed 1,894 tests and `npm test` passed all 11
+- the complete Python suite passed 1,909 tests and `npm test` passed all 11
   Node tests;
-- the full branch-coverage run passed all 1,894 tests and measured 46.1965%
+- the full branch-coverage run passed all 1,909 tests and measured 46.2641%
   combined coverage, above the 45.3% repository ratchet; the new inventory
-  boundary measured 95.7% focused branch coverage;
+  boundary measured 96.8% focused combined branch coverage;
 - Ruff passed across `src`, `tests`, and `scripts`; MyPy passed all 147 checked
   source files; the sensitive public-source audit and `git diff --check` passed;
 - the installed-wheel smoke passed on Python 3.11 and independently reported
   `cli_leaf_map_ok: true` with 105 leaves;
 - runtime smoke coverage passed 2/2 cases (run
-  `20260820125552_c69a6c`) and agent-routing passed 9/9 cases (run
-  `20260820125552_c8557b`), both with `profile: null` and `execute: false`;
+  `20260820132655_6f5b50`) and agent-routing passed 9/9 cases (run
+  `20260820132655_dbf549`), both with `profile: null` and `execute: false`;
 - catalog counts remained unchanged at 327 MCP tools and 207 legacy CLI
   operation commands, with 205 direct matches, one alias, one explained
   exclusion, and zero missing mappings.
