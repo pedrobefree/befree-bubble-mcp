@@ -477,11 +477,52 @@ used `profile: null` and `execute: false`, so they validate catalog and routing
 contracts without claiming external Bubble-editor connectivity. With both
 stages green, Round A.1 is closed; Round A.2 owns the modern nested CLI map.
 
-The modern nested `bubble-mcp` CLI is an orchestration and administration
-surface, so words such as `list`, `run`, and `status` are not one-to-one MCP
-capabilities. A later catalog round should add an explicit leaf-command map
-(`profile add`, `tools quality`, and so on) to its handler and corresponding MCP
-tool where applicable.
+### Round A.2: Modern nested CLI leaf map
+
+Round A.2 derives terminal command paths from the authoritative modern
+`build_parser()` AST and joins every leaf to its handler plus an explicit MCP
+relationship. This avoids the false assumption that generic words such as
+`list`, `run`, or `status` are one-to-one project capabilities on an
+orchestration and administration surface.
+
+The checked map contains 105 terminal command paths and 105 unique handlers:
+
+- 99 map directly to one existing MCP capability;
+- `import html` composes three existing capabilities according to its CLI
+  arguments;
+- four are bounded administrative or diagnostic operations;
+- `init` is checkout-local housekeeping;
+- zero project-operation catalog gaps remain.
+
+`scripts/audit_cli_leaf_map.py` is deterministic and checkout-runnable. It
+fails if the parser adds or removes a leaf without updating the explicit map,
+if a mapped MCP capability no longer exists, if a classification contract is
+invalid, or if a catalog gap is declared. The release and installed-wheel gates
+run this audit separately, preserving the successful `bubble_catalog_quality`
+response exactly. This round changes no tool name, alias, schema, dispatch
+route, preview, confirmation, or result contract.
+
+Round A.3 remains the separate targeted schema-precision pass. Broad catalog
+consolidation stays deferred until A.3 supplies evidence that a specific tool
+family benefits from consolidation rather than merely having similar names.
+
+Round A.2 validation evidence (2026-08-20):
+
+- the complete Python suite passed 1,909 tests and `npm test` passed all 11
+  Node tests;
+- the full branch-coverage run passed all 1,909 tests and measured 46.2641%
+  combined coverage, above the 45.3% repository ratchet; the new inventory
+  boundary measured 96.8% focused combined branch coverage;
+- Ruff passed across `src`, `tests`, and `scripts`; MyPy passed all 147 checked
+  source files; the sensitive public-source audit and `git diff --check` passed;
+- the installed-wheel smoke passed on Python 3.11 and independently reported
+  `cli_leaf_map_ok: true` with 105 leaves;
+- runtime smoke coverage passed 2/2 cases (run
+  `20260820132655_6f5b50`) and agent-routing passed 9/9 cases (run
+  `20260820132655_dbf549`), both with `profile: null` and `execute: false`;
+- catalog counts remained unchanged at 327 MCP tools and 207 legacy CLI
+  operation commands, with 205 direct matches, one alias, one explained
+  exclusion, and zero missing mappings.
 
 ## Consolidation and Alias Policy
 

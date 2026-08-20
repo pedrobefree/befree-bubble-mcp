@@ -52,6 +52,20 @@ The packaged corpus is
 remain useful for planner, argument, compilation, and visual behavior beyond
 catalog search.
 
+Run the Round A.2 modern nested CLI leaf-map audit with:
+
+```bash
+PYTHONPATH=src python scripts/audit_cli_leaf_map.py
+```
+
+The report derives every terminal command path and bound handler from the
+authoritative `build_parser()` AST, then joins it to an explicit relationship:
+one MCP capability, a composition of capabilities, an administrative-only
+operation, local housekeeping, or a catalog gap. The audit fails closed when a
+source command is unclassified, a classification becomes stale, a named MCP
+capability does not exist, or any catalog gap remains. It uses no network,
+Bubble profile, authentication, or editor state.
+
 Dataset cases accept either standalone snake_case keys or Aria-style camelCase
 keys:
 

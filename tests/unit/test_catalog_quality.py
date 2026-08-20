@@ -51,6 +51,14 @@ def test_catalog_quality_includes_deterministic_ambiguity_matrix() -> None:
     }
 
 
+def test_catalog_quality_success_contract_does_not_expose_modern_cli_leaf_map() -> None:
+    report = catalog_quality_report()
+    check_names = {check["name"] for check in report["checks"]}
+
+    assert "modern_cli_leaf_map" not in check_names
+    assert "modern_cli_leaf_map" not in report["policy"]
+
+
 def test_ambiguity_check_converts_wrong_tool_failure(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(
         quality,
