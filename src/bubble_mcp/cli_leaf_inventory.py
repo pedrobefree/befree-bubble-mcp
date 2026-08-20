@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import argparse
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -36,6 +37,7 @@ class CliLeafSpec:
     catalog_class: str
     mcp_capabilities: tuple[str, ...]
     reason: str
+    expected_handler: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,10 +204,22 @@ CLI_LEAF_CLASSIFICATIONS: dict[tuple[str, ...], CliLeafSpec] = {
 }
 
 
-def _named_target(node: ast.Assign) -> str | None:
+def _assignment_parts(
+    node: ast.Assign | ast.AnnAssign,
+) -> tuple[str | None, ast.expr | None]:
+    if isinstance(node, ast.AnnAssign):
+        target = node.target.id if isinstance(node.target, ast.Name) else None
+        return target, node.value
     if len(node.targets) != 1 or not isinstance(node.targets[0], ast.Name):
+        return None, node.value
+    return node.targets[0].id, node.value
+
+
+def _named_target(node: ast.Assign | ast.AnnAssign) -> str | None:
+    target, _ = _assignment_parts(node)
+    if target is None:
         return None
-    return node.targets[0].id
+    return target
 
 
 def _method_call(call: ast.Call, method: str) -> ast.Name | None:
@@ -215,7 +229,7 @@ def _method_call(call: ast.Call, method: str) -> ast.Name | None:
     return function.value if isinstance(function.value, ast.Name) else None
 
 
-def _build_parser_statements(tree: ast.Module) -> list[ast.Assign | ast.Expr]:
+def _build_parser_function(tree: ast.Module) -> ast.FunctionDef | ast.AsyncFunctionDef:
     functions = [
         node
         for node in tree.body
@@ -223,11 +237,16 @@ def _build_parser_statements(tree: ast.Module) -> list[ast.Assign | ast.Expr]:
     ]
     if len(functions) != 1:
         raise ValueError("CLI source must define exactly one build_parser function")
-    function = functions[0]
+    return functions[0]
+
+
+def _build_parser_statements(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[ast.Assign | ast.AnnAssign | ast.Expr]:
     statements = [
         node
         for node in ast.walk(function)
-        if isinstance(node, (ast.Assign, ast.Expr))
+        if isinstance(node, (ast.Assign, ast.AnnAssign, ast.Expr))
     ]
     return sorted(statements, key=lambda node: (node.lineno, node.col_offset))
 
@@ -236,34 +255,73 @@ def discover_cli_leaves(source: str) -> tuple[DiscoveredCliLeaf, ...]:
     """Return terminal command paths derived from a ``build_parser`` source."""
 
     tree = ast.parse(source)
+    function = _build_parser_function(tree)
+    module_helpers = {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name != "build_parser"
+    }
+    for node in ast.walk(function):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in module_helpers
+        ):
+            raise ValueError(f"Unsupported CLI parser helper: {node.func.id} at line {node.lineno}")
+
+    relevant_methods = {"add_parser", "add_subparsers", "set_defaults"}
+    relevant_calls = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in relevant_methods
+    ]
+    consumed_calls: set[int] = set()
     parser_paths: dict[str, tuple[str, ...]] = {}
     container_paths: dict[str, tuple[str, ...]] = {}
     declared_paths: dict[tuple[str, ...], int] = {}
     parents: set[tuple[str, ...]] = set()
     handlers: dict[tuple[str, ...], tuple[str, int]] = {}
 
-    for statement in _build_parser_statements(tree):
+    for statement in _build_parser_statements(function):
         call: ast.Call | None = None
-        if isinstance(statement, ast.Assign) and isinstance(statement.value, ast.Call):
-            call = statement.value
+        if isinstance(statement, (ast.Assign, ast.AnnAssign)):
+            target, value = _assignment_parts(statement)
+            if isinstance(value, ast.Name) and target is not None:
+                if value.id in parser_paths:
+                    parser_paths[target] = parser_paths[value.id]
+                elif value.id in container_paths:
+                    container_paths[target] = container_paths[value.id]
+                continue
+            if not isinstance(value, ast.Call):
+                continue
+            call = value
             target = _named_target(statement)
             if target is None:
                 continue
-            function = call.func
+            call_function = call.func
             if (
-                isinstance(function, ast.Attribute)
-                and function.attr == "ArgumentParser"
+                isinstance(call_function, ast.Attribute)
+                and call_function.attr == "ArgumentParser"
             ):
                 parser_paths[target] = ()
                 continue
             parent_parser = _method_call(call, "add_subparsers")
             if parent_parser is not None and parent_parser.id in parser_paths:
+                consumed_calls.add(id(call))
                 parent_path = parser_paths[parent_parser.id]
                 container_paths[target] = parent_path
                 parents.add(parent_path)
                 continue
             container = _method_call(call, "add_parser")
             if container is not None and container.id in container_paths:
+                consumed_calls.add(id(call))
+                if any(keyword.arg == "aliases" for keyword in call.keywords):
+                    raise ValueError(
+                        f"CLI add_parser aliases are unsupported at line {statement.lineno}"
+                    )
                 if not call.args or not isinstance(call.args[0], ast.Constant) or not isinstance(call.args[0].value, str):
                     raise ValueError(f"CLI add_parser name must be a literal string at line {statement.lineno}")
                 command_path = (*container_paths[container.id], call.args[0].value)
@@ -280,6 +338,7 @@ def discover_cli_leaves(source: str) -> tuple[DiscoveredCliLeaf, ...]:
         parser = _method_call(call, "set_defaults")
         if parser is None or parser.id not in parser_paths:
             continue
+        consumed_calls.add(id(call))
         func_keywords = [keyword for keyword in call.keywords if keyword.arg == "func"]
         if not func_keywords:
             continue
@@ -288,12 +347,23 @@ def discover_cli_leaves(source: str) -> tuple[DiscoveredCliLeaf, ...]:
             raise ValueError(f"CLI func handler must be a named function at line {statement.lineno}")
         handlers[parser_paths[parser.id]] = (handler_node.id, statement.lineno)
 
+    unconsumed = sorted(
+        (call for call in relevant_calls if id(call) not in consumed_calls),
+        key=lambda call: (call.lineno, call.col_offset),
+    )
+    if unconsumed:
+        call = unconsumed[0]
+        method = call.func.attr if isinstance(call.func, ast.Attribute) else "parser"
+        if isinstance(call.func, ast.Attribute) and isinstance(call.func.value, ast.Call):
+            raise ValueError(f"Unsupported nested CLI parser call at line {call.lineno}")
+        raise ValueError(f"Unresolved CLI parser call {method} at line {call.lineno}")
+
     leaves: list[DiscoveredCliLeaf] = []
     for command_path in sorted(declared_paths):
-        if command_path in parents:
-            continue
         binding = handlers.get(command_path)
         if binding is None:
+            if command_path in parents:
+                continue
             raise ValueError(f"Terminal CLI command has no func handler: {' '.join(command_path)}")
         leaves.append(DiscoveredCliLeaf(command_path, binding[0], binding[1]))
     return tuple(leaves)
@@ -310,6 +380,43 @@ def modern_cli_leaves() -> tuple[DiscoveredCliLeaf, ...]:
     """Discover terminal commands from the installed package source."""
 
     return discover_cli_leaves(modern_cli_source().read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=1)
+def runtime_cli_leaves() -> tuple[DiscoveredCliLeaf, ...]:
+    """Inspect the instantiated parser to cross-check reachable command paths."""
+
+    from bubble_mcp.cli import main as cli_main
+
+    leaves: list[DiscoveredCliLeaf] = []
+
+    def visit(parser: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
+        defaults = getattr(parser, "_defaults", {})
+        handler = defaults.get("func") if isinstance(defaults, dict) else None
+        if path and handler is not None:
+            handler_name = getattr(handler, "__name__", "")
+            if not handler_name or getattr(cli_main, handler_name, None) is not handler:
+                raise ValueError(
+                    f"Modern CLI handler is not a named cli.main function: {' '.join(path)}"
+                )
+            code = getattr(handler, "__code__", None)
+            leaves.append(
+                DiscoveredCliLeaf(path, handler_name, int(getattr(code, "co_firstlineno", 0)))
+            )
+
+        subparser_actions = [
+            action
+            for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        ]
+        for action in subparser_actions:
+            for command_name, child in action.choices.items():
+                visit(child, (*path, command_name))
+        if path and not subparser_actions and handler is None:
+            raise ValueError(f"Runtime terminal CLI command has no func handler: {' '.join(path)}")
+
+    visit(cli_main.build_parser(), ())
+    return tuple(sorted(leaves, key=lambda leaf: leaf.command_path))
 
 
 def classify_cli_leaves(
@@ -336,6 +443,12 @@ def classify_cli_leaves(
     for leaf in ordered_leaves:
         spec = resolved_registry[leaf.command_path]
         path_text = " ".join(leaf.command_path)
+        expected_handler = spec.expected_handler or f"command_{'_'.join(leaf.command_path).replace('-', '_')}"
+        if leaf.handler != expected_handler:
+            raise ValueError(
+                f"Modern CLI handler mismatch for {path_text}: "
+                f"expected {expected_handler}, got {leaf.handler}"
+            )
         if spec.catalog_class not in CLI_CATALOG_CLASSES:
             raise ValueError(f"Invalid modern CLI catalog class {spec.catalog_class}: {path_text}")
         if not spec.reason.strip():
@@ -387,6 +500,22 @@ def cli_leaf_map_report(
     issues: list[dict[str, str]] = []
     try:
         leaves = modern_cli_leaves() if source is None else discover_cli_leaves(source)
+        if source is None:
+            runtime_leaves = runtime_cli_leaves()
+            ast_bindings = {(leaf.command_path, leaf.handler) for leaf in leaves}
+            runtime_bindings = {(leaf.command_path, leaf.handler) for leaf in runtime_leaves}
+            runtime_only = sorted(runtime_bindings - ast_bindings)
+            ast_only = sorted(ast_bindings - runtime_bindings)
+            if runtime_only or ast_only:
+                direction, binding = (
+                    ("runtime-only", runtime_only[0])
+                    if runtime_only
+                    else ("AST-only", ast_only[0])
+                )
+                raise ValueError(
+                    f"Modern CLI AST/runtime inventory mismatch: {direction} "
+                    f"{' '.join(binding[0])}"
+                )
         if catalog_names is None:
             from bubble_mcp.server.schemas import list_tool_schemas
 

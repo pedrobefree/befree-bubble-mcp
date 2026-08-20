@@ -6,7 +6,6 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from bubble_mcp.catalog_audit import cli_catalog_parity_report
-from bubble_mcp.cli_leaf_inventory import cli_leaf_map_report
 from bubble_mcp.harness.catalog_ambiguity import catalog_ambiguity_report
 from bubble_mcp.harness.catalog_selection import catalog_selection_report
 from bubble_mcp.runtime_coverage import catalog_coverage_report
@@ -504,47 +503,6 @@ def _deterministic_ambiguity_check() -> tuple[dict[str, Any], list[Issue]]:
     }, issues
 
 
-def _modern_cli_leaf_map_check() -> tuple[dict[str, Any], list[Issue]]:
-    report = cli_leaf_map_report()
-    summary = report.get("summary")
-    if not isinstance(summary, dict):
-        summary = {}
-    report_issues = report.get("issues")
-    if not isinstance(report_issues, list):
-        report_issues = []
-
-    issues: list[Issue] = []
-    for report_issue in report_issues:
-        if not isinstance(report_issue, dict):
-            continue
-        _add_issue(
-            issues,
-            check="modern_cli_leaf_map",
-            scope=str(report_issue.get("scope") or "modern_cli"),
-            name=str(report_issue.get("name") or "cli_leaf_map"),
-            field="classification",
-            message=str(report_issue.get("message") or "Modern CLI leaf map failed."),
-        )
-    report_ok = report.get("ok") is True
-    if not report_ok and not issues:
-        _add_issue(
-            issues,
-            check="modern_cli_leaf_map",
-            scope="modern_cli",
-            name="cli_leaf_map",
-            field="classification",
-            message="Modern CLI leaf map was not ok without convertible issues.",
-        )
-    return {
-        "name": "modern_cli_leaf_map",
-        "ok": report_ok and not issues,
-        "issue_count": len(issues),
-        "leaf_count": int(summary.get("leaf_count") or 0),
-        "classified_count": int(summary.get("classified_count") or 0),
-        "catalog_gap_count": int(summary.get("catalog_gap_count") or 0),
-    }, issues
-
-
 def catalog_quality_report() -> dict[str, Any]:
     """Return a compact machine-readable quality report for MCP clients and CI."""
 
@@ -575,10 +533,6 @@ def catalog_quality_report() -> dict[str, Any]:
     cli_catalog_check, cli_catalog_issues = _cli_catalog_check(tools)
     checks.append(cli_catalog_check)
     issues.extend(cli_catalog_issues)
-
-    modern_cli_leaf_map_check, modern_cli_leaf_map_issues = _modern_cli_leaf_map_check()
-    checks.append(modern_cli_leaf_map_check)
-    issues.extend(modern_cli_leaf_map_issues)
 
     deterministic_selection_check, deterministic_selection_issues = _deterministic_selection_check()
     checks.append(deterministic_selection_check)
@@ -612,7 +566,6 @@ def catalog_quality_report() -> dict[str, Any]:
             "required_annotations": list(REQUIRED_ANNOTATIONS),
             "coverage": "No uncovered exposed tools; no uncovered Aria-compatible runtime tools.",
             "cli_catalog_parity": "Every packaged Bubble-operation CLI command maps to a canonical MCP tool, an explicit alias, or an explained CLI-only exclusion.",
-            "modern_cli_leaf_map": "Every terminal modern CLI path must have an explicit MCP capability relationship or an explained CLI-only classification.",
             "deterministic_selection_coverage": "Every exposed MCP tool must win its exact-name selection case with required-argument metadata and reversed-order stability.",
             "deterministic_ambiguity_matrix": "Closely related MCP tools must win curated natural-language cases with required-argument metadata and canonical, reversed, and rotated-order stability.",
         },

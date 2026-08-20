@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import bubble_mcp.cli_leaf_inventory as inventory
 from bubble_mcp.cli_leaf_inventory import (
     CLI_LEAF_CLASSIFICATIONS,
     CliLeafClassification,
@@ -65,6 +66,124 @@ def build_parser():
         ("a-first",),
         ("z-last",),
     ]
+
+
+def test_discover_cli_leaves_supports_annotated_parser_assignments() -> None:
+    source = '''
+def build_parser():
+    parser: argparse.ArgumentParser = argparse.ArgumentParser()
+    roots: argparse._SubParsersAction = parser.add_subparsers(dest="command", required=True)
+    leaf: argparse.ArgumentParser = roots.add_parser("annotated")
+    leaf.set_defaults(func=command_annotated)
+'''
+
+    assert discover_cli_leaves(source) == (
+        DiscoveredCliLeaf(("annotated",), "command_annotated", 6),
+    )
+
+
+def test_discover_cli_leaves_tracks_parser_and_container_aliases() -> None:
+    source = '''
+def build_parser():
+    parser = argparse.ArgumentParser()
+    parser_alias = parser
+    roots = parser_alias.add_subparsers(dest="command", required=True)
+    roots_alias = roots
+    ignored = 1
+    42
+    leaf = roots_alias.add_parser("aliased-container")
+    leaf.set_defaults(func=command_aliased_container)
+'''
+
+    assert discover_cli_leaves(source) == (
+        DiscoveredCliLeaf(
+            ("aliased-container",),
+            "command_aliased_container",
+            10,
+        ),
+    )
+
+
+def test_discover_cli_leaves_includes_parent_with_default_handler() -> None:
+    source = '''
+def build_parser():
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    parent = roots.add_parser("parent")
+    parent.set_defaults(func=command_parent)
+    children = parent.add_subparsers(dest="child")
+    child = children.add_parser("child")
+    child.set_defaults(func=command_child)
+'''
+
+    assert discover_cli_leaves(source) == (
+        DiscoveredCliLeaf(("parent",), "command_parent", 6),
+        DiscoveredCliLeaf(("parent", "child"), "command_child", 9),
+    )
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        (
+            '''
+def build_parser():
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    roots.add_parser("chained").set_defaults(func=command_chained)
+''',
+            "Unsupported nested CLI parser call",
+        ),
+        (
+            '''
+def add_hidden(roots):
+    leaf = roots.add_parser("hidden")
+    leaf.set_defaults(func=command_hidden)
+
+def build_parser():
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    add_hidden(roots)
+''',
+            "Unsupported CLI parser helper: add_hidden",
+        ),
+        (
+            '''
+def build_parser():
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    leaf = roots.add_parser("primary", aliases=["alias"])
+    leaf.set_defaults(func=command_primary)
+''',
+            "CLI add_parser aliases are unsupported",
+        ),
+    ],
+)
+def test_discover_cli_leaves_rejects_unaccounted_parser_shapes(
+    source: str,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        discover_cli_leaves(source)
+
+
+def test_discover_cli_leaves_rejects_unresolved_parser_receiver() -> None:
+    source = '''
+def build_parser():
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    leaf = unknown_roots.add_parser("hidden")
+    leaf.set_defaults(func=command_hidden)
+'''
+
+    with pytest.raises(ValueError, match="Unresolved CLI parser call add_parser"):
+        discover_cli_leaves(source)
+
+
+@pytest.mark.parametrize("source", ["", "def build_parser(): pass\ndef build_parser(): pass"])
+def test_discover_cli_leaves_requires_one_build_parser(source: str) -> None:
+    with pytest.raises(ValueError, match="exactly one build_parser"):
+        discover_cli_leaves(source)
 
 
 @pytest.mark.parametrize(
@@ -162,6 +281,27 @@ def test_classify_cli_leaves_joins_valid_registry_to_existing_capability() -> No
             "Lists profiles through the matching MCP capability.",
         ),
     )
+
+
+def test_classify_cli_leaves_rejects_handler_rewire() -> None:
+    leaves = (DiscoveredCliLeaf(("profile", "list"), "command_profile_status", 10),)
+    registry = {
+        ("profile", "list"): CliLeafSpec(
+            "direct_mcp",
+            ("bubble_profile_list",),
+            "Lists profiles through the matching MCP capability.",
+        )
+    }
+
+    with pytest.raises(
+        ValueError,
+        match="Modern CLI handler mismatch for profile list: expected command_profile_list, got command_profile_status",
+    ):
+        classify_cli_leaves(
+            leaves,
+            catalog_names={"bubble_profile_list"},
+            registry=registry,
+        )
 
 
 @pytest.mark.parametrize(
@@ -321,6 +461,65 @@ def build_parser():
             "message": "Modern CLI project operation has no MCP capability: unexposed",
         }
     ]
+
+
+def test_cli_leaf_map_report_rejects_ast_runtime_inventory_drift(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    ast_leaf = DiscoveredCliLeaf(("visible",), "command_visible", 10)
+    runtime_leaf = DiscoveredCliLeaf(("hidden",), "command_hidden", 20)
+    monkeypatch.setattr(inventory, "modern_cli_leaves", lambda: (ast_leaf,))
+    monkeypatch.setattr(inventory, "runtime_cli_leaves", lambda: (ast_leaf, runtime_leaf))
+
+    report = cli_leaf_map_report(
+        registry={
+            ("visible",): CliLeafSpec(
+                "local_housekeeping",
+                (),
+                "Visible local command.",
+            )
+        },
+        catalog_names=set(),
+    )
+
+    assert report["ok"] is False
+    assert report["issues"] == [
+        {
+            "scope": "modern_cli",
+            "name": "cli_leaf_map",
+            "message": "Modern CLI AST/runtime inventory mismatch: runtime-only hidden",
+        }
+    ]
+
+
+def test_runtime_cli_leaves_rejects_non_module_handler(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import argparse
+    from bubble_mcp.cli import main as cli_main
+
+    def local_handler(_args):  # type: ignore[no-untyped-def]
+        return 0
+
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    leaf = roots.add_parser("local")
+    leaf.set_defaults(func=local_handler)
+    monkeypatch.setattr(cli_main, "build_parser", lambda: parser)
+    inventory.runtime_cli_leaves.cache_clear()
+
+    with pytest.raises(ValueError, match="not a named cli.main function: local"):
+        inventory.runtime_cli_leaves()
+
+
+def test_runtime_cli_leaves_rejects_terminal_without_handler(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    import argparse
+    from bubble_mcp.cli import main as cli_main
+
+    parser = argparse.ArgumentParser()
+    roots = parser.add_subparsers(dest="command", required=True)
+    roots.add_parser("missing")
+    monkeypatch.setattr(cli_main, "build_parser", lambda: parser)
+    inventory.runtime_cli_leaves.cache_clear()
+
+    with pytest.raises(ValueError, match="Runtime terminal CLI command has no func handler: missing"):
+        inventory.runtime_cli_leaves()
 
 
 def test_cli_leaf_map_audit_script_runs_from_checkout() -> None:

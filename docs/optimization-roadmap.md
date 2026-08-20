@@ -497,9 +497,10 @@ The checked map contains 105 terminal command paths and 105 unique handlers:
 `scripts/audit_cli_leaf_map.py` is deterministic and checkout-runnable. It
 fails if the parser adds or removes a leaf without updating the explicit map,
 if a mapped MCP capability no longer exists, if a classification contract is
-invalid, or if a catalog gap is declared. `bubble_catalog_quality` enforces the
-same result through the `modern_cli_leaf_map` check. This round changes no tool
-name, alias, schema, dispatch route, preview, confirmation, or result contract.
+invalid, or if a catalog gap is declared. The release and installed-wheel gates
+run this audit separately, preserving the successful `bubble_catalog_quality`
+response exactly. This round changes no tool name, alias, schema, dispatch
+route, preview, confirmation, or result contract.
 
 Round A.3 remains the separate targeted schema-precision pass. Broad catalog
 consolidation stays deferred until A.3 supplies evidence that a specific tool
