@@ -689,7 +689,11 @@ def call_tool(
 ) -> dict[str, Any]:
     """Call a supported tool and return a JSON-serializable payload."""
 
+    caller_supplied_appname = bool(str((arguments or {}).get("appname") or "").strip())
     arguments = _arguments_with_profile_defaults(arguments)
+    trusted_profile_default_appname = (
+        not caller_supplied_appname and bool(str(arguments.get("appname") or "").strip())
+    )
     _ = arguments
     if name == "bubble_health_check":
         return {
@@ -1921,7 +1925,11 @@ def call_tool(
     if name in enabled_extension_tools:
         return preview_extension_tool_call(name, arguments or {})
     if name in ARIA_BUBBLE_TOOL_NAMES:
-        return call_legacy_catalog_tool(name, arguments or {})
+        return call_legacy_catalog_tool(
+            name,
+            arguments or {},
+            trusted_profile_default_appname=trusted_profile_default_appname,
+        )
     raise ValueError(f"Unknown Bubble MCP tool: {name}")
 
 
@@ -1949,7 +1957,12 @@ def _changelog_filters_from_args(args: dict[str, Any]) -> dict[str, Any]:
     return filters
 
 
-def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+def call_legacy_catalog_tool(
+    name: str,
+    args: dict[str, Any],
+    *,
+    trusted_profile_default_appname: bool = False,
+) -> dict[str, Any]:
     """Handle a ported Aria Bubble MCP tool name.
 
     The standalone package exposes every Aria tool name. Families implemented by
@@ -1959,7 +1972,11 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
     if name == "sync_figma_tokens" and args.get("list_options") is True:
         args = {**args, "execute": False, "dry_run": True}
-    args = normalize_catalog_schema_precision_args(name, args)
+    args = normalize_catalog_schema_precision_args(
+        name,
+        args,
+        trusted_profile_default_appname=trusted_profile_default_appname,
+    )
     executing = args.get("execute") is True and args.get("dry_run") is not True
     confirmation_gated_tools = _DESTRUCTIVE_STYLE_TOKEN_TOOLS | _DESTRUCTIVE_FAMILY_FOUR_TOOLS
     if name in confirmation_gated_tools and executing and args.get("confirm") is not True:

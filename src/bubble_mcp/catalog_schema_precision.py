@@ -412,7 +412,12 @@ def catalog_schema_precision_report(
     }
 
 
-def normalize_catalog_schema_precision_args(name: str, args: Mapping[str, Any]) -> dict[str, Any]:
+def normalize_catalog_schema_precision_args(
+    name: str,
+    args: Mapping[str, Any],
+    *,
+    trusted_profile_default_appname: bool = False,
+) -> dict[str, Any]:
     """Validate targeted data-schema arguments before legacy catalog dispatch."""
 
     spec = DATA_SCHEMA_PRECISION_SPECS.get(name)
@@ -422,14 +427,16 @@ def normalize_catalog_schema_precision_args(name: str, args: Mapping[str, Any]) 
     accepted = set(spec.runtime) | set(spec.controls) | {
         alias.public_name for alias in spec.aliases
     }
-    # ``appname`` is injected from the resolved profile before the legacy
-    # boundary. It remains an internal compiler fallback, not a public schema
-    # property, so it is intentionally absent from the precision spec.
-    accepted.add("appname")
+    if trusted_profile_default_appname:
+        accepted.add("appname")
     if name == "delete_data_type_permanently":
         # These unpublished arguments must reach the existing guard that
         # rejects permanent-delete payload bypasses with its specific error.
-        accepted.update(("write_payload", "payload"))
+        accepted.update(
+            argument
+            for argument in ("write_payload", "payload")
+            if isinstance(args.get(argument), dict)
+        )
     unknown = sorted(set(args) - accepted)
     if unknown:
         raise ValueError(f"{name} does not accept operational argument: {unknown[0]}")

@@ -5118,6 +5118,124 @@ def test_api_exposure_legacy_value_alias_normalizes_before_mcp_dispatch(
     assert calls[0][1]["enabled"] is True
 
 
+def test_targeted_data_schema_tools_reject_caller_supplied_appname_at_mcp_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("caller appname reached dispatch")),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 117,
+            "method": "tools/call",
+            "params": {
+                "name": "create_data_type",
+                "arguments": {"profile": "smoke", "name": "Order", "appname": "caller-app"},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    assert response["result"]["structuredContent"]["error"] == (
+        "create_data_type does not accept operational argument: appname"
+    )
+
+
+def test_targeted_data_schema_tools_allow_trusted_profile_appname_at_mcp_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="profile-app",
+                    appname="profile-app",
+                    app_version="test",
+                )
+            },
+        )
+    )
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda name, args: calls.append((name, dict(args))) or {"ok": True},
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 118,
+            "method": "tools/call",
+            "params": {
+                "name": "create_data_type",
+                "arguments": {"profile": "smoke", "name": "Order"},
+            },
+        }
+    )
+
+    assert response is not None
+    assert calls == [
+        (
+            "create_data_type",
+            {
+                "profile": "smoke",
+                "name": "Order",
+                "app_id": "profile-app",
+                "appname": "profile-app",
+                "app_version": "test",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(("argument", "value"), [("payload", "invalid"), ("write_payload", [])])
+def test_permanent_data_type_delete_rejects_non_mapping_payload_arguments_at_mcp_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    argument: str,
+    value: object,
+) -> None:
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("non-mapping payload reached dispatch")),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 119,
+            "method": "tools/call",
+            "params": {
+                "name": "delete_data_type_permanently",
+                "arguments": {
+                    "profile": "smoke",
+                    "data_type_ref": "order",
+                    "execute": True,
+                    "confirm": True,
+                    argument: value,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    assert response["result"]["structuredContent"]["error"] == (
+        f"delete_data_type_permanently does not accept operational argument: {argument}"
+    )
+
+
 def test_data_schema_tools_publish_precise_option_set_and_value_contracts() -> None:
     response = handle_request({"jsonrpc": "2.0", "id": 114, "method": "tools/list"})
 
