@@ -657,7 +657,7 @@ rtk env PYTHONPATH=src python scripts/audit_catalog_ambiguity.py
 rtk env PYTHONPATH=src python scripts/audit_cli_catalog.py
 rtk env PYTHONPATH=src python scripts/audit_cli_leaf_map.py
 rtk env PYTHONPATH=src python scripts/audit_catalog_schema_precision.py
-rtk python scripts/audit_sensitive_paths.py
+rtk python scripts/audit_sensitive_paths.py .
 rtk git diff --check
 ```
 
