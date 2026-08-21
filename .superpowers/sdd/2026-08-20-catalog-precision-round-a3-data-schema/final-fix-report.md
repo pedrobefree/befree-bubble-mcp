@@ -60,13 +60,26 @@ RED command:
 ```bash
 PYTHONPATH=src:. pytest -q \
   tests/unit/test_catalog_schema_precision.py::test_precision_inventory_mapping_rejects_runtime_mutation \
-  tests/unit/test_catalog_schema_precision.py::test_default_precision_report_fails_when_inventory_target_is_removed \
-  tests/unit/test_package_smoke.py::test_package_smoke_checks_catalog_quality_from_installed_wheel
+  tests/unit/test_catalog_schema_precision.py::test_default_precision_report_fails_when_inventory_target_is_removed
 ```
 
-RED result: `3 failed in 0.11s`. The mapping accepted assignment, the default
-report retained the old 28-entry default object after the module inventory was
-reduced, and the wheel command lacked exact count/failure assertions.
+RED result: both inventory assertions failed in the recorded three-case RED
+run (`3 failed in 0.11s` overall). The mapping accepted assignment and the
+default report retained the old 28-entry default object after the module
+inventory was reduced.
+
+The installed-wheel behavior was then exercised by running the executable
+check against reports mutated to `27 tools / 0 failures` and
+`28 tools / 1 failure`:
+
+```bash
+PYTHONPATH=src:. pytest -q \
+  tests/unit/test_package_smoke.py::test_package_smoke_rejects_non_exact_installed_precision_report
+```
+
+With the exact assertions removed, RED was `2 failed in 15.17s`: both invalid
+reports printed successfully instead of raising. This behavioral test replaced
+the provisional text-presence assertion.
 
 Fix:
 
@@ -79,7 +92,8 @@ Fix:
 - made the installed-wheel check assert `tool_count == 28` and
   `failure_count == 0` in addition to `ok is True`.
 
-GREEN result: the same command passed `3 passed in 0.16s`.
+GREEN result: the two inventory tests, the two executable wheel mutations, and
+the installed-quality check passed together: `5 passed in 13.14s`.
 
 ### 3. Important: audit trusted declared aliases and controls
 
@@ -198,7 +212,7 @@ PYTHONPATH=src:. pytest -q \
   tests/unit/test_package_smoke.py
 ```
 
-Result: `354 passed in 16.53s`.
+Result: `356 passed in 35.23s`.
 
 ### Static and deterministic gates
 
@@ -216,9 +230,9 @@ Result: `354 passed in 16.53s`.
 
 ### Full suites
 
-- `PYTHONPATH=src:. pytest -q` — `1956 passed in 91.36s (0:01:31)`.
+- `PYTHONPATH=src:. pytest -q` — `1958 passed in 136.52s (0:02:16)`.
 - `npm test` — 11 tests, 11 passed, 0 failed, 0 cancelled, 0 skipped,
-  0 todo; `duration_ms 123.324042`.
+  0 todo; `duration_ms 159.634`.
 
 ### Installed wheel and runtime smokes
 
@@ -229,10 +243,10 @@ Result: `354 passed in 16.53s`.
   `schema_precision_ok: true`, `schema_precision_tool_count: 28`, and server
   initialization included instructions.
 - `PYTHONPATH=src python -m bubble_mcp.cli.main smoke runtime --suite coverage`
-  — run `20260821015241_906008`; `ok: true`; 2 cases, 2 passed, 0 failed,
+  — run `20260821020323_276940`; `ok: true`; 2 cases, 2 passed, 0 failed,
   0 skipped; `profile: null`, `execute: false`.
 - `PYTHONPATH=src python -m bubble_mcp.cli.main smoke runtime --suite agent-routing`
-  — run `20260821015241_5cc9db`; `ok: true`; 9 cases, 9 passed, 0 failed,
+  — run `20260821020323_147ac6`; `ok: true`; 9 cases, 9 passed, 0 failed,
   0 skipped; `profile: null`, `execute: false`.
 
 ### Documentation and hygiene

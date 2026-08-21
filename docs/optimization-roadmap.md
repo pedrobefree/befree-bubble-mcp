@@ -551,8 +551,8 @@ both payload spellings by key presence, including explicitly empty mappings.
 
 Closing validation evidence (2026-08-20):
 
-- the focused contract command passed **354 tests in 16.53s**; the full Python
-  suite passed **1,956 tests in 91.36s**, and `npm test` passed **11 Node
+- the focused contract command passed **356 tests in 35.23s**; the full Python
+  suite passed **1,958 tests in 136.52s**, and `npm test` passed **11 Node
   tests** with 0 failed, skipped, cancelled, or todo;
 - Ruff reported `All checks passed!`; MyPy reported `Success: no issues found
   in 148 source files`; and `git diff --check` passed with no whitespace
@@ -577,8 +577,8 @@ Closing validation evidence (2026-08-20):
 - the clean Python 3.11 installed-wheel smoke reported `ok: true`,
   `schema_precision_ok: true`, and `schema_precision_tool_count: 28`;
 - profile-independent runtime coverage passed **2/2** (run
-  `20260821015241_906008`) and agent-routing passed **9/9** (run
-  `20260821015241_5cc9db`), each with 0 failed and `profile: null`,
+  `20260821020323_276940`) and agent-routing passed **9/9** (run
+  `20260821020323_147ac6`), each with 0 failed and `profile: null`,
   `execute: false`.
 
 All Round A.3 deterministic audits use no LLM, network, Bubble profile,
