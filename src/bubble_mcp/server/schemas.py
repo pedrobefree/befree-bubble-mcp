@@ -10,7 +10,7 @@ from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES, legacy_tool_schema
 from bubble_mcp.server.schema_families import native_tool_schemas
 
 
-def list_tool_schemas() -> list[dict[str, Any]]:
+def list_tool_schemas(*, include_extensions: bool = True) -> list[dict[str, Any]]:
     """Return MCP-compatible tool schema definitions."""
 
     native_tools = native_tool_schemas()
@@ -21,6 +21,8 @@ def list_tool_schemas() -> list[dict[str, Any]]:
         if name not in native_names
     ]
     base_tools = [enhance_tool_schema(tool) for tool in [*native_tools, *legacy_tools]]
+    if not include_extensions:
+        return base_tools
     base_names = {tool["name"] for tool in base_tools}
     extension_tools = [
         tool for tool in enabled_extension_tool_schemas() if tool["name"] not in base_names

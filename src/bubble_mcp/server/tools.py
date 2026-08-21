@@ -1977,6 +1977,13 @@ def call_legacy_catalog_tool(
         args,
         trusted_profile_default_appname=trusted_profile_default_appname,
     )
+    if name == "delete_data_type_permanently" and any(
+        argument in args for argument in ("write_payload", "payload")
+    ):
+        raise ValueError(
+            "Permanent data type deletion does not accept write_payload or payload. "
+            "Call the tool with data_type_ref, execute, and confirm so prior soft-delete state is verified."
+        )
     executing = args.get("execute") is True and args.get("dry_run") is not True
     confirmation_gated_tools = _DESTRUCTIVE_STYLE_TOKEN_TOOLS | _DESTRUCTIVE_FAMILY_FOUR_TOOLS
     if name in confirmation_gated_tools and executing and args.get("confirm") is not True:
@@ -2031,7 +2038,7 @@ def call_legacy_catalog_tool(
     execute = executing
 
     if isinstance(write_payload, dict):
-        if name == "delete_data_type_permanently" or permanent_data_type_delete_targets(write_payload):
+        if permanent_data_type_delete_targets(write_payload):
             raise ValueError(
                 "Permanent data type deletion does not accept write_payload or payload. "
                 "Call the tool with data_type_ref, execute, and confirm so prior soft-delete state is verified."

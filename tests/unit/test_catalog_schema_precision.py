@@ -9,6 +9,9 @@ import sys
 
 import pytest
 
+import bubble_mcp.aria_dispatch as aria_dispatch_module
+import bubble_mcp.catalog_schema_precision as precision_module
+import bubble_mcp.server.schemas as schemas_module
 from bubble_mcp.catalog_schema_precision import (
     DATA_SCHEMA_PRECISION_SPECS,
     ArgumentAlias,
@@ -78,6 +81,41 @@ def _report(**kwargs: object) -> dict[str, object]:
 def test_precision_inventory_owns_exact_round_a3_target_set() -> None:
     assert set(DATA_SCHEMA_PRECISION_SPECS) == EXPECTED_TARGETS
     assert len(DATA_SCHEMA_PRECISION_SPECS) == 28
+
+
+def test_precision_inventory_mapping_rejects_runtime_mutation() -> None:
+    original = DATA_SCHEMA_PRECISION_SPECS["scan_types"]
+
+    try:
+        with pytest.raises(TypeError):
+            DATA_SCHEMA_PRECISION_SPECS["scan_types"] = ToolSchemaPrecisionSpec(  # type: ignore[index]
+                "other",
+                (),
+                (),
+            )
+    finally:
+        if isinstance(DATA_SCHEMA_PRECISION_SPECS, dict):
+            DATA_SCHEMA_PRECISION_SPECS["scan_types"] = original
+
+
+def test_default_precision_report_fails_when_inventory_target_is_removed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reduced_specs = {
+        name: spec
+        for name, spec in DATA_SCHEMA_PRECISION_SPECS.items()
+        if name != "scan_types"
+    }
+    monkeypatch.setattr(precision_module, "DATA_SCHEMA_PRECISION_SPECS", reduced_specs)
+
+    report = catalog_schema_precision_report(tool_schemas=[], runtime_type=Runtime)
+
+    assert report["ok"] is False
+    assert report["summary"]["tool_count"] == 27
+    assert {
+        (failure["field"], failure["code"])
+        for failure in report["failures"]
+    } >= {("scan_types", "target_set_mismatch")}
 
 
 def test_precision_records_are_immutable() -> None:
@@ -281,6 +319,64 @@ def test_live_data_schema_precision_report_is_complete_and_green() -> None:
     assert report["failures"] == []
 
 
+def test_live_precision_report_validates_aliases_against_dispatch_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(
+        aria_dispatch_module.OPERATION_ARG_ALIASES,
+        "set_data_type_api_exposure",
+        {},
+    )
+
+    report = catalog_schema_precision_report()
+
+    assert report["ok"] is False
+    assert {
+        (failure["tool"], failure["field"], failure["code"])
+        for failure in report["failures"]
+    } >= {("set_data_type_api_exposure", "value", "dispatch_alias_mismatch")}
+
+
+def test_live_precision_report_validates_controls_against_boundary_consumers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    consumers = dict(
+        getattr(precision_module, "SERVER_BOUNDARY_CONTROL_CONSUMERS", {})
+    )
+    consumers.pop("execute", None)
+    monkeypatch.setattr(
+        precision_module,
+        "SERVER_BOUNDARY_CONTROL_CONSUMERS",
+        consumers,
+        raising=False,
+    )
+
+    report = catalog_schema_precision_report()
+
+    assert report["ok"] is False
+    assert any(
+        failure["field"] == "execute"
+        and failure["code"] == "unconsumed_control"
+        for failure in report["failures"]
+    )
+
+
+def test_default_precision_report_does_not_load_local_extension_packs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        schemas_module,
+        "enabled_extension_tool_schemas",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("default precision audit traversed extension packs")
+        ),
+    )
+
+    report = catalog_schema_precision_report()
+
+    assert report["ok"] is True
+
+
 def test_schema_precision_audit_runs_from_checkout_without_pythonpath() -> None:
     root = Path(__file__).resolve().parents[2]
     env = os.environ.copy()
@@ -305,6 +401,29 @@ def test_targeted_argument_normalization_rejects_unknown_operational_fields() ->
     with pytest.raises(ValueError, match="create_data_type does not accept operational argument: fields"):
         normalize_catalog_schema_precision_args(
             "create_data_type", {"profile": "smoke", "name": "Order", "fields": []}
+        )
+
+
+@pytest.mark.parametrize(
+    ("argument", "value"),
+    [
+        ("execute", True),
+        ("write_payload", {}),
+        ("payload", {}),
+        ("settings_path", "/tmp/settings.json"),
+    ],
+)
+def test_read_only_data_type_discovery_rejects_write_and_unused_controls(
+    argument: str,
+    value: object,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=rf"scan_types does not accept operational argument: {argument}",
+    ):
+        normalize_catalog_schema_precision_args(
+            "scan_types",
+            {"profile": "smoke", argument: value},
         )
 
 

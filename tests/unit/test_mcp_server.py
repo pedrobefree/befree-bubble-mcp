@@ -10,6 +10,7 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 import bubble_mcp.server.completion as completion_module
 import bubble_mcp.server.agent_guide as agent_guide_module
 import bubble_mcp.server.tools as tools_module
+from bubble_mcp.catalog_schema_precision import DATA_SCHEMA_PRECISION_SPECS
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.agent_guide import search_tool_catalog
@@ -5088,6 +5089,31 @@ def test_targeted_data_schema_tools_reject_unsupported_operational_fields_at_mcp
     )
 
 
+def test_read_only_data_type_discovery_schemas_publish_no_write_channels() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 1151, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    for name in ("scan_types", "list_data_types"):
+        tool = tools[name]
+        assert tool["annotations"]["readOnlyHint"] is True
+        assert {
+            "execute",
+            "write_payload",
+            "payload",
+            "settings_path",
+        }.isdisjoint(tool["inputSchema"]["properties"])
+
+
+def test_data_schema_schemas_do_not_publish_unconsumed_settings_path() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 1152, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    for name in DATA_SCHEMA_PRECISION_SPECS:
+        assert "settings_path" not in tools[name]["inputSchema"]["properties"]
+
+
 def test_api_exposure_legacy_value_alias_normalizes_before_mcp_dispatch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5234,6 +5260,31 @@ def test_permanent_data_type_delete_rejects_non_mapping_payload_arguments_at_mcp
     assert response["result"]["structuredContent"]["error"] == (
         f"delete_data_type_permanently does not accept operational argument: {argument}"
     )
+
+
+@pytest.mark.parametrize("argument", ["payload", "write_payload"])
+def test_permanent_data_type_delete_rejects_explicit_empty_payload_mappings(
+    monkeypatch: pytest.MonkeyPatch,
+    argument: str,
+) -> None:
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("empty permanent-delete payload escaped validation")
+        ),
+    )
+    with pytest.raises(ValueError, match="does not accept write_payload or payload"):
+        tools_module.call_legacy_catalog_tool(
+            "delete_data_type_permanently",
+            {
+                "profile": "smoke",
+                "data_type_ref": "order",
+                "execute": True,
+                "confirm": True,
+                argument: {},
+            },
+        )
 
 
 def test_data_schema_tools_publish_precise_option_set_and_value_contracts() -> None:

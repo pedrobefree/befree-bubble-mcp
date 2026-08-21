@@ -1028,8 +1028,8 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "resolve_refs": (("profile",), ("dry_run", "settings_path", "context", "parent_ref", "parent_match_index", "element_ref", "element_ref_kind", "match_index", "event_ref", "event_ref_kind", "style_ref", "style_element_type", "data_type_ref", "data_type_ref_kind", "option_set_ref", "option_set_ref_kind", "option_value_ref", "json")),
     "verify_write": (("profile",), ("dry_run", "settings_path", "path", "context", "entity", "ref", "property_path", "ref_kind", "element_ref_kind", "match_index", "expected", "value_type", "json")),
     "sync_element_ref_cache": (("profile", "capture_file"), ("dry_run", "settings_path", "json")),
-    "scan_types": (("profile",), ("app_id", "app_version", "context_file", "execute", "dry_run", "settings_path", "write_payload", "payload", "include_cache", "json")),
-    "list_data_types": (("profile",), ("app_id", "app_version", "context_file", "execute", "dry_run", "settings_path", "write_payload", "payload", "include_cache", "json")),
+    "scan_types": (("profile",), ("app_id", "app_version", "context_file", "dry_run", "include_cache", "json")),
+    "list_data_types": (("profile",), ("app_id", "app_version", "context_file", "dry_run", "include_cache", "json")),
     "create_page": (("profile", "name"), ("dry_run", "settings_path", "title", "layout", "default_builder_width", "min_width", "min_height", "row_gap", "column_gap", "container_alignment", "style", "keep_overrides", "type_of_content", "url_backup_field", "meta_title", "meta_description", "html_header", *BACKGROUND_FIELDS)),
     "delete_page": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
     "clone_page": (("profile", "source", "name"), ("dry_run", "settings_path", "title")),
@@ -1763,29 +1763,28 @@ def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
 
 def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if name == "create_data_type":
-        return (("profile", "name"), ("dry_run", "settings_path", "key", "private"))
+        return (("profile", "name"), ("dry_run", "key", "private"))
     if name == "rename_data_type":
-        return (("profile", "data_type_ref", "new_name"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "new_name"), ("dry_run",))
     if name == "delete_data_type":
-        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "confirm"))
+        return (("profile", "data_type_ref"), ("dry_run", "confirm"))
     if name == "delete_data_type_permanently":
-        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "data_type_ref_kind", "confirm"))
+        return (("profile", "data_type_ref"), ("dry_run", "data_type_ref_kind", "confirm"))
     if name == "create_data_field":
-        return (("profile", "data_type_ref", "name", "type"), ("dry_run", "settings_path", "field_key"))
+        return (("profile", "data_type_ref", "name", "type"), ("dry_run", "field_key"))
     if name == "rename_data_field":
-        return (("profile", "data_type_ref", "name", "new_name"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "name", "new_name"), ("dry_run",))
     if name == "delete_data_field":
-        return (("profile", "data_type_ref", "name"), ("dry_run", "settings_path", "confirm"))
+        return (("profile", "data_type_ref", "name"), ("dry_run", "confirm"))
     if name == "set_data_type_api_exposure":
-        return (("profile", "data_type_ref", "enabled"), ("dry_run", "settings_path", "ref_kind"))
+        return (("profile", "data_type_ref", "enabled"), ("dry_run", "ref_kind"))
     if name == "list_privacy_rules":
-        return (("profile", "data_type_ref"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref"), ("dry_run",))
     if name == "create_privacy_rule":
         return (
             ("profile", "data_type_ref"),
             (
                 "dry_run",
-                "settings_path",
                 "rule_key",
                 "rule_name",
                 "view_all",
@@ -1800,22 +1799,22 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
             ),
         )
     if name == "delete_privacy_rule":
-        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "settings_path", "confirm"))
+        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "confirm"))
     if name == "set_privacy_rule_name":
-        return (("profile", "data_type_ref", "rule_key", "new_name"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "rule_key", "new_name"), ("dry_run",))
     if name == "set_privacy_rule_condition":
-        return (("profile", "data_type_ref", "rule_key", "condition_json"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "rule_key", "condition_json"), ("dry_run",))
     if name == "set_privacy_rule_permission":
-        return (("profile", "data_type_ref", "rule_key", "permission", "value"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "rule_key", "permission", "value"), ("dry_run",))
     if name == "set_privacy_rule_field_visibility":
-        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "settings_path", "view_all", "view_fields"))
+        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "view_all", "view_fields"))
     if name == "set_privacy_rule_auto_binding":
-        return (("profile", "data_type_ref", "rule_key", "auto_binding"), ("dry_run", "settings_path", "binding_fields"))
-    return (("profile", "data_type_ref"), ("dry_run", "settings_path", "value", "confirm"))
+        return (("profile", "data_type_ref", "rule_key", "auto_binding"), ("dry_run", "binding_fields"))
+    return (("profile", "data_type_ref"), ("dry_run", "value", "confirm"))
 
 
 def _option_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    controls = ("dry_run", "settings_path")
+    controls = ("dry_run",)
     value_reference = (*controls, "ref_kind")
     if name == "create_option_set":
         return (("profile", "name"), (*controls, "key"))
@@ -1835,7 +1834,7 @@ def _option_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
         return (("profile", "option_set_ref", "option_value_ref", "name", "value"), (*value_reference, "parse_json"))
     if name == "reorder_option_values":
         return (("profile", "option_set_ref", "order"), value_reference)
-    return (("profile", "option_set_ref"), ("dry_run", "settings_path", "json"))
+    return (("profile", "option_set_ref"), ("dry_run", "json"))
 
 
 def _color_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:

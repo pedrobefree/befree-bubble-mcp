@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from inspect import Parameter, signature
+from types import MappingProxyType
 from typing import Any, Iterable, Literal, Mapping
 
 
@@ -15,11 +16,91 @@ _SHARED_CONTROLS = (
     "context_file",
     "execute",
     "dry_run",
-    "settings_path",
     "write_payload",
     "payload",
 )
 _DESTRUCTIVE_CONTROLS = (*_SHARED_CONTROLS, "confirm")
+_READ_ONLY_DISCOVERY_CONTROLS = (
+    "profile",
+    "app_id",
+    "app_version",
+    "context_file",
+    "dry_run",
+)
+
+EXPECTED_DATA_SCHEMA_PRECISION_TARGETS = frozenset(
+    {
+        "scan_types",
+        "list_data_types",
+        "create_data_type",
+        "rename_data_type",
+        "delete_data_type",
+        "delete_data_type_permanently",
+        "create_data_field",
+        "rename_data_field",
+        "delete_data_field",
+        "set_data_type_api_exposure",
+        "list_privacy_rules",
+        "create_privacy_rule",
+        "delete_privacy_rule",
+        "set_privacy_rule_name",
+        "set_privacy_rule_condition",
+        "set_privacy_rule_permission",
+        "set_privacy_rule_field_visibility",
+        "set_privacy_rule_auto_binding",
+        "create_option_set",
+        "rename_option_set",
+        "delete_option_set",
+        "create_option_attribute",
+        "create_option_value",
+        "delete_option_value",
+        "list_option_values",
+        "rename_option_value",
+        "set_option_value_attribute",
+        "reorder_option_values",
+    }
+)
+
+# Independent from the per-tool precision specs: this names controls with a
+# concrete consumer in the legacy MCP execution boundary. The audit compares
+# specs with this table, while normalization uses it to fail closed if the
+# consumption contract drifts.
+SERVER_BOUNDARY_CONTROL_CONSUMERS: dict[str, str] = {
+    "profile": "profile resolution and runtime dispatch",
+    "app_id": "runtime environment and compiler fallback",
+    "app_version": "runtime environment and target-version writes",
+    "context_file": "compiler fallback context loading",
+    "execute": "preview versus execution selection",
+    "dry_run": "preview enforcement",
+    "write_payload": "exact-payload execution",
+    "payload": "exact-payload compatibility input",
+    "confirm": "destructive execution confirmation",
+}
+
+_READ_ONLY_DATA_SCHEMA_TOOLS = frozenset(
+    {"scan_types", "list_data_types", "list_privacy_rules", "list_option_values"}
+)
+_DESTRUCTIVE_DATA_SCHEMA_TOOLS = frozenset(
+    {
+        "delete_data_type",
+        "delete_data_type_permanently",
+        "delete_data_field",
+        "delete_privacy_rule",
+        "delete_option_set",
+        "delete_option_value",
+    }
+)
+
+
+def _consumed_boundary_controls(name: str) -> frozenset[str]:
+    controls = set(SERVER_BOUNDARY_CONTROL_CONSUMERS)
+    if name in _READ_ONLY_DATA_SCHEMA_TOOLS:
+        controls.difference_update({"execute", "write_payload", "payload"})
+    if name == "delete_data_type_permanently":
+        controls.difference_update({"write_payload", "payload"})
+    if name not in _DESTRUCTIVE_DATA_SCHEMA_TOOLS:
+        controls.discard("confirm")
+    return frozenset(controls)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,8 +151,11 @@ FailureCode = Literal[
     "type_mismatch",
     "enum_mismatch",
     "default_mismatch",
+    "dispatch_alias_mismatch",
     "min_length_mismatch",
     "min_items_mismatch",
+    "target_set_mismatch",
+    "unconsumed_control",
 ]
 
 
@@ -99,13 +183,13 @@ def _boolean(name: str, default: Any = _UNSET) -> PropertyConstraint:
     return _constraint(name, type_name="boolean", default=default)
 
 
-DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
+DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = MappingProxyType({
     "scan_types": ToolSchemaPrecisionSpec(
-        "list_data_types", ("profile",), ("include_cache",), (_alias("json", "as_json"),), _SHARED_CONTROLS,
+        "list_data_types", ("profile",), ("include_cache",), (_alias("json", "as_json"),), _READ_ONLY_DISCOVERY_CONTROLS,
         (_boolean("json", False),),
     ),
     "list_data_types": ToolSchemaPrecisionSpec(
-        "list_data_types", ("profile",), ("include_cache",), (_alias("json", "as_json"),), _SHARED_CONTROLS,
+        "list_data_types", ("profile",), ("include_cache",), (_alias("json", "as_json"),), _READ_ONLY_DISCOVERY_CONTROLS,
         (_boolean("json", False),),
     ),
     "create_data_type": ToolSchemaPrecisionSpec(
@@ -124,7 +208,7 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
     ),
     "delete_data_type_permanently": ToolSchemaPrecisionSpec(
         "delete_data_type_permanently", ("profile", "data_type_ref"), ("data_type_ref_kind",),
-        (_alias("data_type_ref", "data_type_key"),), ("profile", "app_id", "app_version", "context_file", "execute", "dry_run", "settings_path", "confirm"),
+        (_alias("data_type_ref", "data_type_key"),), ("profile", "app_id", "app_version", "context_file", "execute", "dry_run", "confirm"),
         (_string("data_type_ref"),),
     ),
     "create_data_field": ToolSchemaPrecisionSpec(
@@ -149,7 +233,7 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
     ),
     "list_privacy_rules": ToolSchemaPrecisionSpec(
         "list_privacy_rules", ("profile", "data_type_ref"), (),
-        (_alias("data_type_ref", "data_type_key"),), ("profile", "dry_run", "settings_path"), (_string("data_type_ref"),),
+        (_alias("data_type_ref", "data_type_key"),), ("profile", "dry_run"), (_string("data_type_ref"),),
     ),
     "create_privacy_rule": ToolSchemaPrecisionSpec(
         "create_privacy_rule", ("profile", "data_type_ref"),
@@ -217,7 +301,7 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
     ),
     "list_option_values": ToolSchemaPrecisionSpec(
         "list_option_values", ("profile", "option_set_ref"), (),
-        (_alias("option_set_ref", "option_set_key"), _alias("json", "as_json")), ("profile", "dry_run", "settings_path"),
+        (_alias("option_set_ref", "option_set_key"), _alias("json", "as_json")), ("profile", "dry_run"),
         (_string("option_set_ref"), _boolean("json", False)),
     ),
     "rename_option_value": ToolSchemaPrecisionSpec(
@@ -235,7 +319,7 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = {
         (_alias("option_set_ref", "option_set_key"), _alias("order", "assignments")), _SHARED_CONTROLS,
         (_string("option_set_ref"), _constraint("order", type_name="array", min_items=1), _constraint("ref_kind", enum=("auto", "key", "label", "db_value"), default="key")),
     ),
-}
+})
 
 
 def _failure(tool: str, field: str, code: FailureCode, message: str) -> dict[str, str]:
@@ -314,14 +398,17 @@ def catalog_schema_precision_report(
     *,
     tool_schemas: Iterable[Mapping[str, Any]] | None = None,
     runtime_type: type[Any] | None = None,
-    specs: Mapping[str, ToolSchemaPrecisionSpec] = DATA_SCHEMA_PRECISION_SPECS,
+    specs: Mapping[str, ToolSchemaPrecisionSpec] | None = None,
 ) -> dict[str, Any]:
     """Compare target MCP schemas with their explicit public-runtime contracts."""
 
+    enforce_exact_targets = specs is None
+    if specs is None:
+        specs = DATA_SCHEMA_PRECISION_SPECS
     if tool_schemas is None:
         from bubble_mcp.server.schemas import list_tool_schemas
 
-        tool_schemas = list_tool_schemas()
+        tool_schemas = list_tool_schemas(include_extensions=False)
     if runtime_type is None:
         from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
 
@@ -334,6 +421,26 @@ def catalog_schema_precision_report(
             schemas_by_name[name] = tool_schema
 
     failures: list[dict[str, str]] = []
+    if enforce_exact_targets:
+        actual_targets = frozenset(specs)
+        for missing_target in sorted(EXPECTED_DATA_SCHEMA_PRECISION_TARGETS - actual_targets):
+            failures.append(
+                _failure(
+                    "inventory",
+                    missing_target,
+                    "target_set_mismatch",
+                    "Expected Round A.3 target is absent from the default inventory.",
+                )
+            )
+        for unexpected_target in sorted(actual_targets - EXPECTED_DATA_SCHEMA_PRECISION_TARGETS):
+            failures.append(
+                _failure(
+                    "inventory",
+                    unexpected_target,
+                    "target_set_mismatch",
+                    "Unexpected tool is present in the default Round A.3 inventory.",
+                )
+            )
     runtime_property_count = alias_property_count = control_property_count = property_count = 0
     required_parameter_count = sum(len(spec.required) for spec in specs.values())
 
@@ -358,10 +465,38 @@ def catalog_schema_precision_report(
             alias_by_public[alias.public_name] = alias.runtime_name
             if alias.runtime_name not in parameters:
                 failures.append(_failure(tool_name, alias.public_name, "stale_alias", f"Alias runtime parameter '{alias.runtime_name}' is absent."))
+            if tool_name in EXPECTED_DATA_SCHEMA_PRECISION_TARGETS:
+                from bubble_mcp.aria_dispatch import public_aliases_for_runtime_parameter
+
+                dispatch_aliases = public_aliases_for_runtime_parameter(
+                    spec.handler,
+                    alias.runtime_name,
+                )
+                if alias.public_name not in dispatch_aliases:
+                    failures.append(
+                        _failure(
+                            tool_name,
+                            alias.public_name,
+                            "dispatch_alias_mismatch",
+                            f"Dispatch does not map public alias to runtime parameter '{alias.runtime_name}'.",
+                        )
+                    )
 
         for runtime_name in spec.runtime:
             if runtime_name not in parameters:
                 failures.append(_failure(tool_name, runtime_name, "stale_runtime_property", "Direct runtime parameter is absent."))
+
+        consumed_controls = _consumed_boundary_controls(tool_name)
+        for control_name in spec.controls:
+            if control_name not in consumed_controls:
+                failures.append(
+                    _failure(
+                        tool_name,
+                        control_name,
+                        "unconsumed_control",
+                        "Declared control has no consumer at the legacy MCP execution boundary.",
+                    )
+                )
 
         for property_name in sorted(properties):
             if property_name in spec.runtime:
@@ -424,7 +559,8 @@ def normalize_catalog_schema_precision_args(
     if spec is None:
         return dict(args)
 
-    accepted = set(spec.runtime) | set(spec.controls) | {
+    accepted_controls = set(spec.controls) & set(_consumed_boundary_controls(name))
+    accepted = set(spec.runtime) | accepted_controls | {
         alias.public_name for alias in spec.aliases
     }
     if trusted_profile_default_appname:

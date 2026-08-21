@@ -23,4 +23,6 @@ def test_package_smoke_checks_catalog_quality_from_installed_wheel() -> None:
     assert "catalog_schema_precision_report" in package_smoke.INSTALLED_CATALOG_QUALITY_CHECK
     assert "schema_precision_ok" in package_smoke.INSTALLED_CATALOG_QUALITY_CHECK
     assert "schema_precision_tool_count" in package_smoke.INSTALLED_CATALOG_QUALITY_CHECK
+    assert "assert precision['summary']['tool_count']==28" in package_smoke.INSTALLED_CATALOG_QUALITY_CHECK
+    assert "assert precision['summary']['failure_count']==0" in package_smoke.INSTALLED_CATALOG_QUALITY_CHECK
     assert "leaf_count" in package_smoke.INSTALLED_CATALOG_QUALITY_CHECK
