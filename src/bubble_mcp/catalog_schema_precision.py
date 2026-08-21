@@ -328,10 +328,10 @@ def catalog_schema_precision_report(
         runtime_type = BubbleCLI
 
     schemas_by_name: dict[str, Mapping[str, Any]] = {}
-    for schema in tool_schemas:
-        name = schema.get("name")
+    for tool_schema in tool_schemas:
+        name = tool_schema.get("name")
         if isinstance(name, str) and name:
-            schemas_by_name[name] = schema
+            schemas_by_name[name] = tool_schema
 
     failures: list[dict[str, str]] = []
     runtime_property_count = alias_property_count = control_property_count = property_count = 0
@@ -339,8 +339,8 @@ def catalog_schema_precision_report(
 
     for tool_name in sorted(specs):
         spec = specs[tool_name]
-        schema = schemas_by_name.get(tool_name)
-        if schema is None:
+        target_schema = schemas_by_name.get(tool_name)
+        if target_schema is None:
             failures.append(_failure(tool_name, "tool", "missing_tool", "Target tool is absent from the catalog."))
             continue
         handler = getattr(runtime_type, spec.handler, None)
@@ -348,7 +348,7 @@ def catalog_schema_precision_report(
             failures.append(_failure(tool_name, "handler", "missing_handler", f"Runtime handler '{spec.handler}' is absent."))
             continue
 
-        properties = _schema_properties(schema)
+        properties = _schema_properties(target_schema)
         property_count += len(properties)
         parameters = _runtime_parameters(handler)
         alias_by_public: dict[str, str] = {}
@@ -378,12 +378,12 @@ def catalog_schema_precision_report(
             failures.append(_failure(tool_name, property_name, "missing_expected_property", "Expected public runtime, alias, or control property is absent from the schema."))
 
         expected_required = tuple(sorted(spec.required))
-        actual_required = _schema_required(schema)
+        actual_required = _schema_required(target_schema)
         if actual_required != expected_required:
             failures.append(_failure(tool_name, "required", "required_list_mismatch", f"Expected required {list(expected_required)!r}, found {list(actual_required)!r}."))
 
         expected_any_of = tuple(sorted(tuple(sorted(group)) for group in spec.any_of_required))
-        actual_any_of = _schema_any_of_required(schema)
+        actual_any_of = _schema_any_of_required(target_schema)
         if actual_any_of != expected_any_of:
             failures.append(_failure(tool_name, "anyOf", "conditional_contract_mismatch", f"Expected anyOf required groups {list(expected_any_of)!r}, found {list(actual_any_of)!r}."))
 
