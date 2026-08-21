@@ -531,8 +531,10 @@ and lifecycle, privacy lifecycle, option-set lifecycle, and option-value
 lifecycle. It adds a deterministic schema-to-`BubbleCLI` audit that fails
 closed for an unpublished runtime requirement, a published field with no
 consumer, stale aliases, missing handlers, or precision-critical contract
-drift. It makes no Bubble write-path change and preserves valid preview,
-confirmation, payload, dispatch, and response behavior.
+drift. The final safety pass also makes the target inventory immutable and
+exact, verifies aliases and controls against their real dispatch consumers,
+and loads the base catalog only. It preserves valid preview, confirmation,
+payload, dispatch, and response behavior.
 
 The public schemas now expose only supported operations. In particular,
 `create_data_type` no longer advertises `fields`, `exposed_api`, or its
@@ -542,11 +544,15 @@ non-destructive `confirm`; `create_data_field` no longer advertises ignored
 from automatic-resolution operations. The retained compatibility paths include
 field `name -> field_key` for rename/delete, exposure `value -> enabled`, and
 the established data-type, option-set, and option-value reference aliases.
+The read-only `scan_types` and `list_data_types` contracts no longer publish or
+accept `execute`, `write_payload`, or `payload`; the unconsumed `settings_path`
+field was removed from all 28 target schemas. Permanent deletion now rejects
+both payload spellings by key presence, including explicitly empty mappings.
 
 Closing validation evidence (2026-08-20):
 
-- the focused contract command passed **341 tests in 16.40s**; the full Python
-  suite passed **1,943 tests in 76.91s**, and `npm test` passed **11 Node
+- the focused contract command passed **354 tests in 16.53s**; the full Python
+  suite passed **1,956 tests in 91.36s**, and `npm test` passed **11 Node
   tests** with 0 failed, skipped, cancelled, or todo;
 - Ruff reported `All checks passed!`; MyPy reported `Success: no issues found
   in 148 source files`; and `git diff --check` passed with no whitespace
@@ -560,19 +566,19 @@ Closing validation evidence (2026-08-20):
   MCP, four administration-only, one local-housekeeping) with 0 catalog gaps
   and 0 issues;
 - `scripts/audit_catalog_schema_precision.py` reported `ok: true` for **28
-  tools**, **52 direct runtime properties**, **39 alias properties**, **244
-  control properties**, 335 total public properties, 83 required public
+  tools**, **52 direct runtime properties**, **39 alias properties**, **210
+  control properties**, 301 total public properties, 83 required public
   properties, and 0 failures;
-- the sensitive-source audit passed with the CI-defined command `python
-  scripts/audit_sensitive_paths.py .`. The abbreviated no-argument form in the
-  A.3 task brief exits 2 because the script requires one or more paths; no
-  source change was needed because CI and the release checklist both define
-  `.` as the audit target;
+- the initial Task 7 brief and initial validation attempt used the abbreviated
+  no-argument sensitive-source command, which exits 2 because the script
+  requires one or more paths. The canonical plan and regenerated brief were
+  subsequently corrected; the fresh closing run used `python
+  scripts/audit_sensitive_paths.py .` and passed;
 - the clean Python 3.11 installed-wheel smoke reported `ok: true`,
   `schema_precision_ok: true`, and `schema_precision_tool_count: 28`;
 - profile-independent runtime coverage passed **2/2** (run
-  `20260821010850_045ca5`) and agent-routing passed **9/9** (run
-  `20260821010858_665d1f`), each with 0 failed and `profile: null`,
+  `20260821015241_906008`) and agent-routing passed **9/9** (run
+  `20260821015241_5cc9db`), each with 0 failed and `profile: null`,
   `execute: false`.
 
 All Round A.3 deterministic audits use no LLM, network, Bubble profile,
