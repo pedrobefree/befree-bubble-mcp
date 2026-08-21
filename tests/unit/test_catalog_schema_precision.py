@@ -1,0 +1,504 @@
+from __future__ import annotations
+
+from dataclasses import FrozenInstanceError
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+import pytest
+
+import bubble_mcp.aria_dispatch as aria_dispatch_module
+import bubble_mcp.catalog_schema_precision as precision_module
+import bubble_mcp.server.schemas as schemas_module
+from bubble_mcp.catalog_schema_precision import (
+    DATA_SCHEMA_PRECISION_SPECS,
+    ArgumentAlias,
+    PropertyConstraint,
+    ToolSchemaPrecisionSpec,
+    catalog_schema_precision_report,
+    normalize_catalog_schema_precision_args,
+)
+from bubble_mcp.server.schemas import list_tool_schemas
+
+
+EXPECTED_TARGETS = {
+    "scan_types", "list_data_types", "create_data_type", "rename_data_type",
+    "delete_data_type", "delete_data_type_permanently", "create_data_field",
+    "rename_data_field", "delete_data_field", "set_data_type_api_exposure",
+    "list_privacy_rules", "create_privacy_rule", "delete_privacy_rule",
+    "set_privacy_rule_name", "set_privacy_rule_condition",
+    "set_privacy_rule_permission", "set_privacy_rule_field_visibility",
+    "set_privacy_rule_auto_binding", "create_option_set", "rename_option_set",
+    "delete_option_set", "create_option_attribute", "create_option_value",
+    "delete_option_value", "list_option_values", "rename_option_value",
+    "set_option_value_attribute", "reorder_option_values",
+}
+
+
+def _sample_schema(*, properties: dict[str, object] | None = None, required: list[str] | None = None) -> dict[str, object]:
+    return {
+        "name": "sample",
+        "inputSchema": {
+            "type": "object",
+            "required": ["profile", "target_ref", "enabled"] if required is None else required,
+            "properties": {
+                "profile": {"type": "string"},
+                "target_ref": {"type": "string"},
+                "enabled": {"type": "boolean"},
+                "execute": {"type": "boolean"},
+                "dry_run": {"type": "boolean"},
+            } if properties is None else properties,
+        },
+    }
+
+
+def _sample_specs(*, aliases: tuple[ArgumentAlias, ...] = (ArgumentAlias("target_ref", "target"),)) -> dict[str, ToolSchemaPrecisionSpec]:
+    return {
+        "sample": ToolSchemaPrecisionSpec(
+            handler="mutate",
+            required=("profile", "target_ref", "enabled"),
+            runtime=("enabled",),
+            aliases=aliases,
+            controls=("profile", "execute", "dry_run"),
+            constraints=(PropertyConstraint("enabled", type_name="boolean"),),
+        )
+    }
+
+
+class Runtime:
+    def mutate(self, target: str, enabled: bool, dry_run: bool = False) -> bool:
+        return True
+
+
+def _report(**kwargs: object) -> dict[str, object]:
+    return catalog_schema_precision_report(
+        tool_schemas=[_sample_schema()], runtime_type=Runtime, specs=_sample_specs(), **kwargs
+    )
+
+
+def test_precision_inventory_owns_exact_round_a3_target_set() -> None:
+    assert set(DATA_SCHEMA_PRECISION_SPECS) == EXPECTED_TARGETS
+    assert len(DATA_SCHEMA_PRECISION_SPECS) == 28
+
+
+def test_precision_inventory_mapping_rejects_runtime_mutation() -> None:
+    original = DATA_SCHEMA_PRECISION_SPECS["scan_types"]
+
+    try:
+        with pytest.raises(TypeError):
+            DATA_SCHEMA_PRECISION_SPECS["scan_types"] = ToolSchemaPrecisionSpec(  # type: ignore[index]
+                "other",
+                (),
+                (),
+            )
+    finally:
+        if isinstance(DATA_SCHEMA_PRECISION_SPECS, dict):
+            DATA_SCHEMA_PRECISION_SPECS["scan_types"] = original
+
+
+def test_default_precision_report_fails_when_inventory_target_is_removed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reduced_specs = {
+        name: spec
+        for name, spec in DATA_SCHEMA_PRECISION_SPECS.items()
+        if name != "scan_types"
+    }
+    monkeypatch.setattr(precision_module, "DATA_SCHEMA_PRECISION_SPECS", reduced_specs)
+
+    report = catalog_schema_precision_report(tool_schemas=[], runtime_type=Runtime)
+
+    assert report["ok"] is False
+    assert report["summary"]["tool_count"] == 27
+    assert {
+        (failure["field"], failure["code"])
+        for failure in report["failures"]
+    } >= {("scan_types", "target_set_mismatch")}
+
+
+def test_precision_records_are_immutable() -> None:
+    alias = ArgumentAlias("public", "runtime")
+    constraint = PropertyConstraint("public", type_name="string")
+    spec = ToolSchemaPrecisionSpec("method", (), ())
+
+    with pytest.raises(FrozenInstanceError):
+        alias.public_name = "other"  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        constraint.type_name = "boolean"  # type: ignore[misc]
+    with pytest.raises(FrozenInstanceError):
+        spec.handler = "other"  # type: ignore[misc]
+
+
+def test_precision_report_classifies_direct_alias_and_control_properties() -> None:
+    report = _report()
+
+    assert report["ok"] is True
+    assert report["summary"] == {
+        "tool_count": 1,
+        "property_count": 5,
+        "runtime_property_count": 1,
+        "alias_property_count": 1,
+        "control_property_count": 3,
+        "required_parameter_count": 3,
+        "failure_count": 0,
+    }
+
+
+def test_precision_report_detects_missing_optional_direct_alias_and_control_properties() -> None:
+    class OptionalRuntime:
+        def mutate(
+            self,
+            target: str,
+            enabled: bool,
+            verbose: bool = False,
+            note: str | None = None,
+            dry_run: bool = False,
+        ) -> bool:
+            return True
+
+    properties = _sample_schema()["inputSchema"]["properties"]  # type: ignore[index]
+    schema = _sample_schema(
+        properties={
+            name: value
+            for name, value in properties.items()
+            if name not in {"execute", "verbose", "note_ref"}
+        }
+    )
+    specs = {
+        "sample": ToolSchemaPrecisionSpec(
+            handler="mutate",
+            required=("profile", "target_ref", "enabled"),
+            runtime=("enabled", "verbose"),
+            aliases=(ArgumentAlias("target_ref", "target"), ArgumentAlias("note_ref", "note")),
+            controls=("profile", "execute", "dry_run"),
+        )
+    }
+
+    report = catalog_schema_precision_report(
+        tool_schemas=[schema], runtime_type=OptionalRuntime, specs=specs
+    )
+
+    assert report["ok"] is False
+    assert [failure["field"] for failure in report["failures"]] == [
+        "execute",
+        "note_ref",
+        "verbose",
+    ]
+    assert {failure["code"] for failure in report["failures"]} == {"missing_expected_property"}
+
+
+@pytest.mark.parametrize(
+    ("schemas", "runtime_type", "specs", "code"),
+    [
+        ([], Runtime, _sample_specs(), "missing_tool"),
+        ([_sample_schema()], Runtime, {"sample": ToolSchemaPrecisionSpec("absent", (), ())}, "missing_handler"),
+        ([_sample_schema(properties={**_sample_schema()["inputSchema"]["properties"], "stray": {"type": "string"}})], Runtime, _sample_specs(), "extra_property"),  # type: ignore[index]
+        ([_sample_schema()], Runtime, _sample_specs(aliases=(ArgumentAlias("target_ref", "absent"),)), "stale_alias"),
+        ([_sample_schema(required=["profile", "target_ref"])], Runtime, _sample_specs(), "required_list_mismatch"),
+    ],
+)
+def test_precision_report_emits_stable_failures(
+    schemas: list[dict[str, object]],
+    runtime_type: type[object],
+    specs: dict[str, ToolSchemaPrecisionSpec],
+    code: str,
+) -> None:
+    report = catalog_schema_precision_report(tool_schemas=schemas, runtime_type=runtime_type, specs=specs)
+
+    assert report["ok"] is False
+    assert report["failures"] == sorted(report["failures"], key=lambda failure: (failure["tool"], failure["field"], failure["code"]))
+    assert any(failure["code"] == code for failure in report["failures"])
+
+
+def test_precision_report_detects_missing_required_runtime_parameter() -> None:
+    class RequiredRuntime:
+        def mutate(self, target: str, enabled: bool, missing: str, dry_run: bool = False) -> bool:
+            return True
+
+    report = catalog_schema_precision_report(
+        tool_schemas=[_sample_schema()], runtime_type=RequiredRuntime, specs=_sample_specs()
+    )
+
+    assert {failure["code"] for failure in report["failures"]} == {"missing_required_runtime_parameter"}
+    assert report["failures"][0]["field"] == "missing"
+
+
+@pytest.mark.parametrize(
+    ("property_schema", "constraint", "code"),
+    [
+        ({"type": "string"}, PropertyConstraint("enabled", type_name="boolean"), "type_mismatch"),
+        ({"type": "boolean", "enum": [False]}, PropertyConstraint("enabled", enum=(True,)), "enum_mismatch"),
+        ({"type": "boolean", "default": True}, PropertyConstraint("enabled", default=False), "default_mismatch"),
+    ],
+)
+def test_precision_report_detects_property_constraint_drift(
+    property_schema: dict[str, object], constraint: PropertyConstraint, code: str
+) -> None:
+    schema = _sample_schema(properties={**_sample_schema()["inputSchema"]["properties"], "enabled": property_schema})  # type: ignore[index]
+    specs = _sample_specs()
+    specs["sample"] = ToolSchemaPrecisionSpec(
+        handler="mutate",
+        required=("profile", "target_ref", "enabled"),
+        runtime=("enabled",),
+        aliases=(ArgumentAlias("target_ref", "target"),),
+        controls=("profile", "execute", "dry_run"),
+        constraints=(constraint,),
+    )
+
+    report = catalog_schema_precision_report(tool_schemas=[schema], runtime_type=Runtime, specs=specs)
+
+    assert any(failure["code"] == code for failure in report["failures"])
+
+
+def test_precision_report_detects_any_of_and_duplicate_alias_drift() -> None:
+    specs = {
+        "sample": ToolSchemaPrecisionSpec(
+            handler="mutate",
+            required=("profile", "target_ref", "enabled"),
+            runtime=("enabled",),
+            aliases=(ArgumentAlias("target_ref", "target"), ArgumentAlias("target_ref", "target")),
+            controls=("profile", "execute", "dry_run"),
+            constraints=(PropertyConstraint("enabled", type_name="boolean"),),
+            any_of_required=(("enabled", "target_ref"),),
+        )
+    }
+
+    report = catalog_schema_precision_report(tool_schemas=[_sample_schema()], runtime_type=Runtime, specs=specs)
+
+    assert {failure["code"] for failure in report["failures"]} == {"conditional_contract_mismatch", "duplicate_alias"}
+
+
+def test_precision_report_reports_changed_any_of_as_conditional_contract_mismatch() -> None:
+    specs = {
+        "sample": ToolSchemaPrecisionSpec(
+            handler="mutate",
+            required=("profile", "target_ref", "enabled"),
+            runtime=("enabled",),
+            aliases=(ArgumentAlias("target_ref", "target"),),
+            controls=("profile", "execute", "dry_run"),
+            constraints=(PropertyConstraint("enabled", type_name="boolean"),),
+            any_of_required=(("enabled",),),
+        )
+    }
+
+    report = catalog_schema_precision_report(tool_schemas=[_sample_schema()], runtime_type=Runtime, specs=specs)
+
+    assert report["failures"] == [
+        {
+            "tool": "sample",
+            "field": "anyOf",
+            "code": "conditional_contract_mismatch",
+            "message": "Expected anyOf required groups [('enabled',)], found [].",
+        }
+    ]
+
+
+def test_precision_report_never_returns_non_ok_without_actionable_failures() -> None:
+    report = _report()
+
+    assert report["ok"] or report["failures"]
+
+
+def test_normalize_catalog_schema_precision_args_is_a_copying_pass_through() -> None:
+    args = {"enabled": True}
+
+    normalized = normalize_catalog_schema_precision_args("sample", args)
+
+    assert normalized == args
+    assert normalized is not args
+
+
+def test_live_data_schema_precision_report_is_complete_and_green() -> None:
+    report = catalog_schema_precision_report()
+
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 28
+    assert report["summary"]["failure_count"] == 0
+    assert report["failures"] == []
+
+
+def test_live_precision_report_validates_aliases_against_dispatch_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(
+        aria_dispatch_module.OPERATION_ARG_ALIASES,
+        "set_data_type_api_exposure",
+        {},
+    )
+
+    report = catalog_schema_precision_report()
+
+    assert report["ok"] is False
+    assert {
+        (failure["tool"], failure["field"], failure["code"])
+        for failure in report["failures"]
+    } >= {("set_data_type_api_exposure", "value", "dispatch_alias_mismatch")}
+
+
+def test_live_precision_report_validates_controls_against_boundary_consumers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    consumers = dict(
+        getattr(precision_module, "SERVER_BOUNDARY_CONTROL_CONSUMERS", {})
+    )
+    consumers.pop("execute", None)
+    monkeypatch.setattr(
+        precision_module,
+        "SERVER_BOUNDARY_CONTROL_CONSUMERS",
+        consumers,
+        raising=False,
+    )
+
+    report = catalog_schema_precision_report()
+
+    assert report["ok"] is False
+    assert any(
+        failure["field"] == "execute"
+        and failure["code"] == "unconsumed_control"
+        for failure in report["failures"]
+    )
+
+
+def test_default_precision_report_does_not_load_local_extension_packs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        schemas_module,
+        "enabled_extension_tool_schemas",
+        lambda: (_ for _ in ()).throw(
+            AssertionError("default precision audit traversed extension packs")
+        ),
+    )
+
+    report = catalog_schema_precision_report()
+
+    assert report["ok"] is True
+
+
+def test_schema_precision_audit_runs_from_checkout_without_pythonpath() -> None:
+    root = Path(__file__).resolve().parents[2]
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+
+    result = subprocess.run(
+        [sys.executable, "scripts/audit_catalog_schema_precision.py"],
+        cwd=root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    report = json.loads(result.stdout)
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 28
+
+
+def test_targeted_argument_normalization_rejects_unknown_operational_fields() -> None:
+    with pytest.raises(ValueError, match="create_data_type does not accept operational argument: fields"):
+        normalize_catalog_schema_precision_args(
+            "create_data_type", {"profile": "smoke", "name": "Order", "fields": []}
+        )
+
+
+@pytest.mark.parametrize(
+    ("argument", "value"),
+    [
+        ("execute", True),
+        ("write_payload", {}),
+        ("payload", {}),
+        ("settings_path", "/tmp/settings.json"),
+    ],
+)
+def test_read_only_data_type_discovery_rejects_write_and_unused_controls(
+    argument: str,
+    value: object,
+) -> None:
+    with pytest.raises(
+        ValueError,
+        match=rf"scan_types does not accept operational argument: {argument}",
+    ):
+        normalize_catalog_schema_precision_args(
+            "scan_types",
+            {"profile": "smoke", argument: value},
+        )
+
+
+def test_api_exposure_legacy_value_alias_normalizes_to_enabled() -> None:
+    normalized = normalize_catalog_schema_precision_args(
+        "set_data_type_api_exposure",
+        {"profile": "smoke", "data_type_ref": "order", "value": True},
+    )
+
+    assert normalized["enabled"] is True
+    assert normalized["value"] is True
+
+
+def test_data_type_tools_match_the_first_ten_live_precision_report() -> None:
+    names = (
+        "scan_types",
+        "list_data_types",
+        "create_data_type",
+        "rename_data_type",
+        "delete_data_type",
+        "delete_data_type_permanently",
+        "create_data_field",
+        "rename_data_field",
+        "delete_data_field",
+        "set_data_type_api_exposure",
+    )
+    report = catalog_schema_precision_report(
+        tool_schemas=list_tool_schemas(),
+        specs={name: DATA_SCHEMA_PRECISION_SPECS[name] for name in names},
+    )
+
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 10
+    assert report["failures"] == []
+
+
+def test_privacy_tools_match_the_live_precision_report() -> None:
+    names = (
+        "list_privacy_rules",
+        "create_privacy_rule",
+        "delete_privacy_rule",
+        "set_privacy_rule_name",
+        "set_privacy_rule_condition",
+        "set_privacy_rule_permission",
+        "set_privacy_rule_field_visibility",
+        "set_privacy_rule_auto_binding",
+    )
+    report = catalog_schema_precision_report(
+        tool_schemas=list_tool_schemas(),
+        specs={name: DATA_SCHEMA_PRECISION_SPECS[name] for name in names},
+    )
+
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 8
+    assert report["failures"] == []
+
+
+def test_option_tools_match_the_live_precision_report() -> None:
+    names = (
+        "create_option_set",
+        "rename_option_set",
+        "delete_option_set",
+        "create_option_attribute",
+        "create_option_value",
+        "delete_option_value",
+        "list_option_values",
+        "rename_option_value",
+        "set_option_value_attribute",
+        "reorder_option_values",
+    )
+    report = catalog_schema_precision_report(
+        tool_schemas=list_tool_schemas(),
+        specs={name: DATA_SCHEMA_PRECISION_SPECS[name] for name in names},
+    )
+
+    assert report["ok"] is True
+    assert report["summary"]["tool_count"] == 10
+    assert report["failures"] == []

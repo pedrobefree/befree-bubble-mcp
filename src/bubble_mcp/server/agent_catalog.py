@@ -1028,8 +1028,8 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "resolve_refs": (("profile",), ("dry_run", "settings_path", "context", "parent_ref", "parent_match_index", "element_ref", "element_ref_kind", "match_index", "event_ref", "event_ref_kind", "style_ref", "style_element_type", "data_type_ref", "data_type_ref_kind", "option_set_ref", "option_set_ref_kind", "option_value_ref", "json")),
     "verify_write": (("profile",), ("dry_run", "settings_path", "path", "context", "entity", "ref", "property_path", "ref_kind", "element_ref_kind", "match_index", "expected", "value_type", "json")),
     "sync_element_ref_cache": (("profile", "capture_file"), ("dry_run", "settings_path", "json")),
-    "scan_types": (("profile",), ("dry_run", "settings_path", "json")),
-    "list_data_types": (("profile",), ("dry_run", "settings_path", "include_cache", "json")),
+    "scan_types": (("profile",), ("app_id", "app_version", "context_file", "dry_run", "include_cache", "json")),
+    "list_data_types": (("profile",), ("app_id", "app_version", "context_file", "dry_run", "include_cache", "json")),
     "create_page": (("profile", "name"), ("dry_run", "settings_path", "title", "layout", "default_builder_width", "min_width", "min_height", "row_gap", "column_gap", "container_alignment", "style", "keep_overrides", "type_of_content", "url_backup_field", "meta_title", "meta_description", "html_header", *BACKGROUND_FIELDS)),
     "delete_page": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
     "clone_page": (("profile", "source", "name"), ("dry_run", "settings_path", "title")),
@@ -1152,6 +1152,7 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "limit_image_size_before_upload": {"type": "boolean"},
     "prefer_last": {"type": "boolean"},
     "include_cache": {"type": "boolean"},
+    "parse_json": {"type": "boolean", "default": False},
     "is_visible": {"type": "boolean"},
     "collapse_when_hidden": {"type": "boolean"},
     "append": {"type": "boolean", "default": True},
@@ -1164,6 +1165,11 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "parent_match_index": {"type": "integer"},
     "action_index": {"type": "integer"},
     "action_id": {"type": "string"},
+    "key": {"type": "string", "minLength": 1},
+    "attribute_key": {"type": "string", "minLength": 1},
+    "value_key": {"type": "string", "minLength": 1},
+    "db_value": {"type": "string", "minLength": 1},
+    "field_key": {"type": "string", "minLength": 1},
     "email_input_ref": {"type": "string"},
     "password_input_ref": {"type": "string"},
     "password_confirmation_input_ref": {"type": "string"},
@@ -1187,8 +1193,11 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "view_attachments": {"type": "boolean"},
     "search_for": {"type": "boolean"},
     "auto_binding": {"type": "boolean"},
+    "private": {"type": "boolean", "default": False},
+    "enabled": {"type": "boolean"},
     "include_everyone_default": {"type": "boolean", "default": True},
     "id_counter": {"type": "integer"},
+    "sort_factor": {"type": "integer"},
     "updated_at_ms": {"type": "integer", "minimum": 0},
     "duration_ms": {"type": "integer", "minimum": 0},
     "offset": {"type": "integer"},
@@ -1358,6 +1367,95 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
         field_schema = properties.setdefault(field, _property_schema(field))
         if field in defaults and isinstance(field_schema, dict):
             field_schema.setdefault("default", deepcopy(defaults[field]))
+    if name == "set_data_type_api_exposure":
+        input_schema["anyOf"] = [
+            {"required": ["enabled"]},
+            {"required": ["value"]},
+        ]
+        properties["value"] = {
+            "type": "boolean",
+            "deprecated": True,
+            "description": "Compatibility alias for enabled; new calls must use enabled.",
+        }
+    if name in {
+        "create_data_type",
+        "rename_data_type",
+        "delete_data_type",
+        "delete_data_type_permanently",
+        "create_data_field",
+        "rename_data_field",
+        "delete_data_field",
+        "set_data_type_api_exposure",
+    }:
+        for field in {"data_type_ref", "name", "type", "new_name"} & set(properties):
+            properties[field].setdefault("minLength", 1)
+    if name in {
+        "list_privacy_rules",
+        "create_privacy_rule",
+        "delete_privacy_rule",
+        "set_privacy_rule_name",
+        "set_privacy_rule_condition",
+        "set_privacy_rule_permission",
+        "set_privacy_rule_field_visibility",
+        "set_privacy_rule_auto_binding",
+    }:
+        for field in {"data_type_ref", "rule_key", "rule_name", "new_name"} & set(properties):
+            properties[field].setdefault("minLength", 1)
+    if name.startswith((
+        "create_option_",
+        "rename_option_",
+        "delete_option_",
+        "list_option_",
+        "set_option_",
+        "reorder_option_",
+    )):
+        for field in {
+            "name",
+            "type",
+            "new_name",
+            "option_set_ref",
+            "option_value_ref",
+            "attribute_key",
+            "value_key",
+            "db_value",
+        } & set(properties):
+            properties[field].setdefault("minLength", 1)
+    if name == "create_privacy_rule":
+        for field, default in {
+            "view_all": True,
+            "view_attachments": True,
+            "search_for": True,
+            "auto_binding": False,
+            "include_everyone_default": True,
+        }.items():
+            properties[field].setdefault("default", default)
+    if name == "set_privacy_rule_permission":
+        properties["value"] = {"type": "boolean"}
+    if name == "set_privacy_rule_field_visibility":
+        input_schema["anyOf"] = [
+            {"required": ["view_all"]},
+            {"required": ["view_fields"]},
+        ]
+    if name in {
+        "delete_option_value",
+        "rename_option_value",
+        "set_option_value_attribute",
+        "reorder_option_values",
+    }:
+        properties["ref_kind"] = {
+            "type": "string",
+            "enum": ["auto", "key", "label", "db_value"],
+            "default": "key",
+        }
+    if name == "reorder_option_values":
+        properties["order"] = {
+            "type": "array",
+            "items": {"type": "string", "minLength": 3},
+            "minItems": 1,
+            "description": "Complete value_key:sort_factor assignments; each active value must appear exactly once.",
+        }
+    if name in {"scan_types", "list_data_types", "list_option_values"}:
+        properties["json"]["default"] = False
     if name == "add_event_action":
         input_schema["anyOf"] = [
             {"required": ["event_ref"]},
@@ -1515,6 +1613,7 @@ def _documentation_family_for_name(name: str) -> str | None:
             "create_data_field",
             "rename_data_field",
             "delete_data_field",
+            "set_data_type_api_exposure",
             "list_privacy_rules",
             "create_privacy_rule",
             "delete_privacy_rule",
@@ -1664,27 +1763,28 @@ def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
 
 def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if name == "create_data_type":
-        return (("profile", "name"), ("dry_run", "settings_path", "fields", "exposed_api", "confirm"))
+        return (("profile", "name"), ("dry_run", "key", "private"))
     if name == "rename_data_type":
-        return (("profile", "data_type_ref", "new_name"), ("dry_run", "settings_path", "data_type_ref_kind"))
+        return (("profile", "data_type_ref", "new_name"), ("dry_run",))
     if name == "delete_data_type":
-        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "data_type_ref_kind", "confirm"))
+        return (("profile", "data_type_ref"), ("dry_run", "confirm"))
     if name == "delete_data_type_permanently":
-        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "data_type_ref_kind", "confirm"))
+        return (("profile", "data_type_ref"), ("dry_run", "data_type_ref_kind", "confirm"))
     if name == "create_data_field":
-        return (("profile", "data_type_ref", "name", "type"), ("dry_run", "settings_path", "is_list", "optional"))
+        return (("profile", "data_type_ref", "name", "type"), ("dry_run", "field_key"))
     if name == "rename_data_field":
-        return (("profile", "data_type_ref", "name", "new_name"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "name", "new_name"), ("dry_run",))
     if name == "delete_data_field":
-        return (("profile", "data_type_ref", "name"), ("dry_run", "settings_path", "confirm"))
+        return (("profile", "data_type_ref", "name"), ("dry_run", "confirm"))
+    if name == "set_data_type_api_exposure":
+        return (("profile", "data_type_ref"), ("dry_run", "enabled", "ref_kind"))
     if name == "list_privacy_rules":
-        return (("profile", "data_type_ref"), ("dry_run", "settings_path", "json"))
+        return (("profile", "data_type_ref"), ("dry_run",))
     if name == "create_privacy_rule":
         return (
             ("profile", "data_type_ref"),
             (
                 "dry_run",
-                "settings_path",
                 "rule_key",
                 "rule_name",
                 "view_all",
@@ -1699,41 +1799,42 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
             ),
         )
     if name == "delete_privacy_rule":
-        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "settings_path", "confirm"))
+        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "confirm"))
     if name == "set_privacy_rule_name":
-        return (("profile", "data_type_ref", "rule_key", "new_name"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "rule_key", "new_name"), ("dry_run",))
     if name == "set_privacy_rule_condition":
-        return (("profile", "data_type_ref", "rule_key", "condition_json"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "rule_key", "condition_json"), ("dry_run",))
     if name == "set_privacy_rule_permission":
-        return (("profile", "data_type_ref", "rule_key", "permission", "value"), ("dry_run", "settings_path"))
+        return (("profile", "data_type_ref", "rule_key", "permission", "value"), ("dry_run",))
     if name == "set_privacy_rule_field_visibility":
-        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "settings_path", "view_all", "view_fields"))
+        return (("profile", "data_type_ref", "rule_key"), ("dry_run", "view_all", "view_fields"))
     if name == "set_privacy_rule_auto_binding":
-        return (("profile", "data_type_ref", "rule_key", "auto_binding"), ("dry_run", "settings_path", "binding_fields"))
-    return (("profile", "data_type_ref"), ("dry_run", "settings_path", "value", "confirm"))
+        return (("profile", "data_type_ref", "rule_key", "auto_binding"), ("dry_run", "binding_fields"))
+    return (("profile", "data_type_ref"), ("dry_run", "value", "confirm"))
 
 
 def _option_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    common = ("dry_run", "settings_path", "ref_kind", "confirm")
+    controls = ("dry_run",)
+    value_reference = (*controls, "ref_kind")
     if name == "create_option_set":
-        return (("profile", "name"), (*common, "key", "values", "attributes"))
+        return (("profile", "name"), (*controls, "key"))
     if name == "rename_option_set":
-        return (("profile", "option_set_ref", "new_name"), common)
+        return (("profile", "option_set_ref", "new_name"), controls)
     if name == "delete_option_set":
-        return (("profile", "option_set_ref"), common)
+        return (("profile", "option_set_ref"), controls)
     if name == "create_option_attribute":
-        return (("profile", "option_set_ref", "name", "type"), (*common, "attribute_key"))
+        return (("profile", "option_set_ref", "name", "type"), (*controls, "attribute_key"))
     if name == "create_option_value":
-        return (("profile", "option_set_ref", "name"), (*common, "value_key", "db_value", "sort_factor", "id_counter"))
+        return (("profile", "option_set_ref", "name"), (*controls, "value_key", "db_value", "sort_factor", "id_counter"))
     if name == "delete_option_value":
-        return (("profile", "option_set_ref", "option_value_ref"), common)
+        return (("profile", "option_set_ref", "option_value_ref"), value_reference)
     if name == "rename_option_value":
-        return (("profile", "option_set_ref", "option_value_ref", "new_name"), common)
+        return (("profile", "option_set_ref", "option_value_ref", "new_name"), value_reference)
     if name == "set_option_value_attribute":
-        return (("profile", "option_set_ref", "option_value_ref", "name", "value"), (*common, "parse_json"))
+        return (("profile", "option_set_ref", "option_value_ref", "name", "value"), (*value_reference, "parse_json"))
     if name == "reorder_option_values":
-        return (("profile", "option_set_ref", "order"), common)
-    return (("profile", "option_set_ref"), ("dry_run", "settings_path", "json"))
+        return (("profile", "option_set_ref", "order"), value_reference)
+    return (("profile", "option_set_ref"), ("dry_run", "json"))
 
 
 def _color_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:

@@ -80,10 +80,24 @@ OPERATION_ARG_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
     "set_app_setting": {"path": ("name",)},
     "set_project_setting": {"setting_key": ("name",)},
     "set_data_type_api_exposure": {"enabled": ("value",)},
+    "rename_data_field": {"field_key": ("name", "field_name")},
+    "delete_data_field": {"field_key": ("name", "field_name")},
     "create_option_value": {"label": ("name",)},
     "set_option_value_attribute": {"attribute_key": ("name",)},
     "delete_301_redirect": {"rule_key": ("name",)},
 }
+
+
+def public_aliases_for_runtime_parameter(
+    method_name: str,
+    parameter_name: str,
+) -> tuple[str, ...]:
+    """Return the aliases actually consulted by runtime dispatch."""
+
+    operation_aliases = OPERATION_ARG_ALIASES.get(method_name, {})
+    if parameter_name in operation_aliases:
+        return operation_aliases[parameter_name]
+    return ARG_ALIASES.get(parameter_name, ())
 
 RUNTIME_TOOL_ALIASES = {
     "sync_cache": "refresh_profile_cache",
@@ -392,7 +406,7 @@ def _method_kwargs(method: Any, args: dict[str, Any], *, execute: bool) -> dict[
         if name in args:
             kwargs[name] = args[name]
             continue
-        aliases = OPERATION_ARG_ALIASES.get(method.__name__, {}).get(name, ARG_ALIASES.get(name, ()))
+        aliases = public_aliases_for_runtime_parameter(method.__name__, name)
         for alias in aliases:
             if alias in args:
                 kwargs[name] = args[alias]
@@ -410,11 +424,6 @@ def _method_kwargs(method: Any, args: dict[str, Any], *, execute: bool) -> dict[
 
     if method.__name__ == "add_event_go_to_page_action" and args.get("same_tab") is True:
         kwargs["open_in_new_tab"] = False
-    if method.__name__ in {"rename_data_field", "delete_data_field"} and "field_key" not in kwargs:
-        raw_field_ref = args.get("name") or args.get("field_name")
-        if raw_field_ref is not None:
-            kwargs["field_key"] = raw_field_ref
-
     if "dry_run" in signature.parameters:
         kwargs["dry_run"] = not execute
     return kwargs

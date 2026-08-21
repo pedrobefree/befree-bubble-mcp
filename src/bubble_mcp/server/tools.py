@@ -17,6 +17,7 @@ from bubble_mcp.browser_automation import (
     schedule_deploy,
 )
 from bubble_mcp.catalog_quality import catalog_quality_report
+from bubble_mcp.catalog_schema_precision import normalize_catalog_schema_precision_args
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import (
@@ -688,7 +689,9 @@ def call_tool(
 ) -> dict[str, Any]:
     """Call a supported tool and return a JSON-serializable payload."""
 
+    caller_argument_names = frozenset((arguments or {}).keys())
     arguments = _arguments_with_profile_defaults(arguments)
+    trusted_profile_defaults = frozenset(arguments) - caller_argument_names
     _ = arguments
     if name == "bubble_health_check":
         return {
@@ -1920,7 +1923,11 @@ def call_tool(
     if name in enabled_extension_tools:
         return preview_extension_tool_call(name, arguments or {})
     if name in ARIA_BUBBLE_TOOL_NAMES:
-        return call_legacy_catalog_tool(name, arguments or {})
+        return call_legacy_catalog_tool(
+            name,
+            arguments or {},
+            trusted_profile_defaults=trusted_profile_defaults,
+        )
     raise ValueError(f"Unknown Bubble MCP tool: {name}")
 
 
@@ -1948,7 +1955,12 @@ def _changelog_filters_from_args(args: dict[str, Any]) -> dict[str, Any]:
     return filters
 
 
-def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
+def call_legacy_catalog_tool(
+    name: str,
+    args: dict[str, Any],
+    *,
+    trusted_profile_defaults: frozenset[str] = frozenset(),
+) -> dict[str, Any]:
     """Handle a ported Aria Bubble MCP tool name.
 
     The standalone package exposes every Aria tool name. Families implemented by
@@ -1958,6 +1970,18 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
 
     if name == "sync_figma_tokens" and args.get("list_options") is True:
         args = {**args, "execute": False, "dry_run": True}
+    args = normalize_catalog_schema_precision_args(
+        name,
+        args,
+        trusted_profile_defaults=trusted_profile_defaults,
+    )
+    if name == "delete_data_type_permanently" and any(
+        argument in args for argument in ("write_payload", "payload")
+    ):
+        raise ValueError(
+            "Permanent data type deletion does not accept write_payload or payload. "
+            "Call the tool with data_type_ref, execute, and confirm so prior soft-delete state is verified."
+        )
     executing = args.get("execute") is True and args.get("dry_run") is not True
     confirmation_gated_tools = _DESTRUCTIVE_STYLE_TOKEN_TOOLS | _DESTRUCTIVE_FAMILY_FOUR_TOOLS
     if name in confirmation_gated_tools and executing and args.get("confirm") is not True:
@@ -2012,7 +2036,7 @@ def call_legacy_catalog_tool(name: str, args: dict[str, Any]) -> dict[str, Any]:
     execute = executing
 
     if isinstance(write_payload, dict):
-        if name == "delete_data_type_permanently" or permanent_data_type_delete_targets(write_payload):
+        if permanent_data_type_delete_targets(write_payload):
             raise ValueError(
                 "Permanent data type deletion does not accept write_payload or payload. "
                 "Call the tool with data_type_ref, execute, and confirm so prior soft-delete state is verified."

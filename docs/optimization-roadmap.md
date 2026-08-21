@@ -524,6 +524,78 @@ Round A.2 validation evidence (2026-08-20):
   operation commands, with 205 direct matches, one alias, one explained
   exclusion, and zero missing mappings.
 
+### Round A.3: Data-schema precision
+
+Round A.3 closes the exact 28-tool data-schema surface: type/field discovery
+and lifecycle, privacy lifecycle, option-set lifecycle, and option-value
+lifecycle. It adds a deterministic schema-to-`BubbleCLI` audit that fails
+closed for an unpublished runtime requirement, a published field with no
+consumer, stale aliases, missing handlers, or precision-critical contract
+drift. The final safety pass also makes the target inventory immutable and
+exact, verifies aliases and controls against their real dispatch consumers,
+and loads the base catalog only. It preserves valid preview, confirmation,
+payload, dispatch, and response behavior.
+
+The public schemas now expose only supported operations. In particular,
+`create_data_type` no longer advertises `fields`, `exposed_api`, or its
+non-destructive `confirm`; `create_data_field` no longer advertises ignored
+`is_list` or `optional`; and `create_option_set` no longer advertises inline
+`values` or `attributes`. Unsupported reference-kind fields were also removed
+from automatic-resolution operations. The retained compatibility paths include
+field `name -> field_key` for rename/delete, exposure `value -> enabled`, and
+the established data-type, option-set, and option-value reference aliases.
+The read-only `scan_types` and `list_data_types` contracts no longer publish or
+accept `execute`, `write_payload`, or `payload`; the unconsumed `settings_path`
+field was removed from all 28 target schemas. Permanent deletion now rejects
+both payload spellings by key presence, including explicitly empty mappings.
+
+The final independent-review remediation keeps profile-derived `app_id`,
+`appname`, and `app_version` usable at the runtime boundary without accepting
+those unpublished values from callers. The deprecated API-exposure `value`
+alias is now a schema-valid alternative to `enabled`. Target-specific `json`
+defaults and option-value `order` typing no longer leak through the shared
+field table: a base/head `tools/list` comparison reports exactly 28 changed
+target schemas and 0 changed non-target schemas, while
+`reorder_style_states.order` retains its string CSV/natural-phrase contract.
+
+Closing validation evidence refreshed after independent review (2026-08-21):
+
+- the focused contract command passed **359 tests in 27.78s**; the full Python
+  suite passed **1,961 tests in 87.89s**, and `npm test` passed **11 Node
+  tests** with 0 failed, skipped, cancelled, or todo;
+- Ruff reported `All checks passed!`; MyPy reported `Success: no issues found
+  in 148 source files`; and `git diff --check` passed with no whitespace
+  errors;
+- A.1 selection remained green with **327/327** canonical, reordered, and
+  order-independent cases (0 missing and 0 failed); its ambiguity audit passed
+  **27/27** cases across eight families (0 failed);
+- legacy CLI parity remained green: 207 commands, 205 direct mappings, one
+  alias, one explained exclusion, 122 MCP-only tools, and 0 missing mappings;
+  the A.2 leaf-map audit classified all 105 leaves (99 direct MCP, one composed
+  MCP, four administration-only, one local-housekeeping) with 0 catalog gaps
+  and 0 issues;
+- `scripts/audit_catalog_schema_precision.py` reported `ok: true` for **28
+  tools**, **52 direct runtime properties**, **39 alias properties**, **210
+  control properties**, 301 total public properties, 82 unconditionally
+  required public
+  properties, and 0 failures;
+- the initial Task 7 brief and initial validation attempt used the abbreviated
+  no-argument sensitive-source command, which exits 2 because the script
+  requires one or more paths. The canonical plan and regenerated brief were
+  subsequently corrected; the fresh closing run used `python
+  scripts/audit_sensitive_paths.py .` and passed;
+- the clean Python 3.11 installed-wheel smoke reported `ok: true`,
+  `schema_precision_ok: true`, and `schema_precision_tool_count: 28`;
+- profile-independent runtime coverage passed **2/2** (run
+  `20260821033704_ea45fd`) and agent-routing passed **9/9** (run
+  `20260821033704_530510`), each with 0 failed and `profile: null`,
+  `execute: false`.
+
+All Round A.3 deterministic audits use no LLM, network, Bubble profile,
+authentication, or editor state. No authenticated execution in the Bubble
+Editor was performed for this round; the runtime smokes validate catalog and
+routing contracts only.
+
 ## Consolidation and Alias Policy
 
 Catalog consolidation is a compatibility migration, not a bulk rename:

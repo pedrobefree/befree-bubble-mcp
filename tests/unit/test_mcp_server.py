@@ -10,6 +10,7 @@ from bubble_mcp.runtime_coverage import catalog_coverage_report
 import bubble_mcp.server.completion as completion_module
 import bubble_mcp.server.agent_guide as agent_guide_module
 import bubble_mcp.server.tools as tools_module
+from bubble_mcp.catalog_schema_precision import DATA_SCHEMA_PRECISION_SPECS
 from bubble_mcp.core.config import BubbleMcpSettings, BubbleProfile, save_settings
 from bubble_mcp.server.stdio import handle_request
 from bubble_mcp.server.agent_guide import search_tool_catalog
@@ -3875,6 +3876,16 @@ def test_privacy_tool_schemas_preserve_required_selectors_preview_defaults_and_d
     assert "field_name_text" in visibility["view_fields"]["description"]
     assert "field_name_text" in binding["binding_fields"]["description"]
 
+    assert "json" not in tools["list_privacy_rules"]["inputSchema"]["properties"]
+    visibility_schema = tools["set_privacy_rule_field_visibility"]["inputSchema"]
+    assert visibility_schema["anyOf"] == [
+        {"required": ["view_all"]},
+        {"required": ["view_fields"]},
+    ]
+    assert visibility["view_fields"]["type"] == ["string", "array", "object", "null"]
+    assert tools["set_privacy_rule_permission"]["inputSchema"]["properties"]["value"]["type"] == "boolean"
+    assert tools["delete_privacy_rule"]["inputSchema"]["properties"]["confirm"]["default"] is False
+
     list_styles = tools["list_styles"]["inputSchema"]
     assert "execute" not in list_styles["properties"]
     assert "payload" not in list_styles["properties"]
@@ -5016,6 +5027,390 @@ def test_high_potential_tools_include_docs_enrichment_metadata() -> None:
         assert docs["recommended_queries"]
         assert "never authorizes execution" in docs["source_policy"]
         assert f"Docs-enrichment family: {family}." in tools[tool_name]["description"]
+
+
+def test_data_schema_tools_publish_precise_data_type_field_and_api_exposure_contracts() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 113, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool["inputSchema"] for tool in response["result"]["tools"]}
+    expected = {
+        "create_data_type": (["profile", "name"], {"key", "private"}, {"fields", "exposed_api", "confirm"}),
+        "rename_data_type": (["profile", "data_type_ref", "new_name"], set(), {"data_type_ref_kind"}),
+        "delete_data_type": (["profile", "data_type_ref"], {"confirm"}, {"data_type_ref_kind"}),
+        "create_data_field": (["profile", "data_type_ref", "name", "type"], {"field_key"}, {"is_list", "optional"}),
+        "rename_data_field": (["profile", "data_type_ref", "name", "new_name"], set(), set()),
+        "delete_data_field": (["profile", "data_type_ref", "name"], {"confirm"}, set()),
+        "set_data_type_api_exposure": (["profile", "data_type_ref"], {"ref_kind", "value"}, {"confirm"}),
+    }
+
+    for name, (required, present, absent) in expected.items():
+        schema = tools[name]
+        properties = schema["properties"]
+        assert schema["required"] == required
+        assert present <= set(properties)
+        assert not absent & set(properties)
+
+    create_type_properties = tools["create_data_type"]["properties"]
+    create_field_properties = tools["create_data_field"]["properties"]
+    exposure_properties = tools["set_data_type_api_exposure"]["properties"]
+    assert create_type_properties["private"]["type"] == "boolean"
+    assert exposure_properties["enabled"]["type"] == "boolean"
+    assert create_field_properties["field_key"]["type"] == "string"
+    assert create_field_properties["field_key"]["minLength"] == 1
+    assert exposure_properties["value"]["deprecated"] is True
+    assert tools["set_data_type_api_exposure"]["anyOf"] == [
+        {"required": ["enabled"]},
+        {"required": ["value"]},
+    ]
+
+
+def test_round_a3_schema_overrides_do_not_change_non_target_catalog_contracts() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 1131, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool["inputSchema"] for tool in response["result"]["tools"]}
+    assert tools["reorder_style_states"]["properties"]["order"] == {
+        "type": "string",
+        "description": "Desired style condition/state order, as CSV or natural phrase.",
+    }
+    for name, schema in tools.items():
+        if name in DATA_SCHEMA_PRECISION_SPECS:
+            continue
+        json_property = schema.get("properties", {}).get("json")
+        if isinstance(json_property, dict):
+            assert "default" not in json_property, name
+
+
+def test_targeted_data_schema_tools_reject_unsupported_operational_fields_at_mcp_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("unsupported arguments reached dispatch")),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 115,
+            "method": "tools/call",
+            "params": {
+                "name": "create_data_type",
+                "arguments": {"profile": "smoke", "name": "Order", "fields": []},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    assert response["result"]["structuredContent"]["error"] == (
+        "create_data_type does not accept operational argument: fields"
+    )
+
+
+def test_read_only_data_type_discovery_schemas_publish_no_write_channels() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 1151, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    for name in ("scan_types", "list_data_types"):
+        tool = tools[name]
+        assert tool["annotations"]["readOnlyHint"] is True
+        assert {
+            "execute",
+            "write_payload",
+            "payload",
+            "settings_path",
+        }.isdisjoint(tool["inputSchema"]["properties"])
+
+
+def test_data_schema_schemas_do_not_publish_unconsumed_settings_path() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 1152, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    for name in DATA_SCHEMA_PRECISION_SPECS:
+        assert "settings_path" not in tools[name]["inputSchema"]["properties"]
+
+
+def test_api_exposure_legacy_value_alias_normalizes_before_mcp_dispatch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    def fake_dispatch(name: str, args: dict[str, object]) -> dict[str, object]:
+        calls.append((name, dict(args)))
+        return {"ok": True, "tool_name": name}
+
+    monkeypatch.setattr(tools_module, "dispatch_aria_runtime_tool", fake_dispatch)
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 116,
+            "method": "tools/call",
+            "params": {
+                "name": "set_data_type_api_exposure",
+                "arguments": {"profile": "smoke", "data_type_ref": "order", "value": True},
+            },
+        }
+    )
+
+    assert response is not None
+    assert len(calls) == 1
+    assert calls[0][0] == "set_data_type_api_exposure"
+    assert calls[0][1]["value"] is True
+    assert calls[0][1]["enabled"] is True
+
+
+def test_targeted_data_schema_tools_reject_caller_supplied_appname_at_mcp_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("caller appname reached dispatch")),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 117,
+            "method": "tools/call",
+            "params": {
+                "name": "create_data_type",
+                "arguments": {"profile": "smoke", "name": "Order", "appname": "caller-app"},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    assert response["result"]["structuredContent"]["error"] == (
+        "create_data_type does not accept operational argument: appname"
+    )
+
+
+def test_targeted_data_schema_tools_allow_trusted_profile_appname_at_mcp_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="profile-app",
+                    appname="profile-app",
+                    app_version="test",
+                )
+            },
+        )
+    )
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda name, args: calls.append((name, dict(args))) or {"ok": True},
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 118,
+            "method": "tools/call",
+            "params": {
+                "name": "create_data_type",
+                "arguments": {"profile": "smoke", "name": "Order"},
+            },
+        }
+    )
+
+    assert response is not None
+    assert calls == [
+        (
+            "create_data_type",
+            {
+                "profile": "smoke",
+                "name": "Order",
+                "app_id": "profile-app",
+                "appname": "profile-app",
+                "app_version": "test",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "selector"),
+    [
+        ("list_privacy_rules", {"data_type_ref": "order"}),
+        ("list_option_values", {"option_set_ref": "status"}),
+    ],
+)
+def test_read_only_schema_tools_accept_runtime_defaults_from_configured_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    tool_name: str,
+    selector: dict[str, str],
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="profile-app",
+                    appname="profile-app",
+                    app_version="test",
+                )
+            },
+        )
+    )
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda name, args: calls.append((name, dict(args))) or {"ok": True},
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1181,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {"profile": "smoke", **selector},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"].get("isError") is not True
+    assert calls == [
+        (
+            tool_name,
+            {
+                "profile": "smoke",
+                **selector,
+                "app_id": "profile-app",
+                "appname": "profile-app",
+                "app_version": "test",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(("argument", "value"), [("payload", "invalid"), ("write_payload", [])])
+def test_permanent_data_type_delete_rejects_non_mapping_payload_arguments_at_mcp_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+    argument: str,
+    value: object,
+) -> None:
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("non-mapping payload reached dispatch")),
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 119,
+            "method": "tools/call",
+            "params": {
+                "name": "delete_data_type_permanently",
+                "arguments": {
+                    "profile": "smoke",
+                    "data_type_ref": "order",
+                    "execute": True,
+                    "confirm": True,
+                    argument: value,
+                },
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"]["isError"] is True
+    assert response["result"]["structuredContent"]["error"] == (
+        f"delete_data_type_permanently does not accept operational argument: {argument}"
+    )
+
+
+@pytest.mark.parametrize("argument", ["payload", "write_payload"])
+def test_permanent_data_type_delete_rejects_explicit_empty_payload_mappings(
+    monkeypatch: pytest.MonkeyPatch,
+    argument: str,
+) -> None:
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("empty permanent-delete payload escaped validation")
+        ),
+    )
+    with pytest.raises(ValueError, match="does not accept write_payload or payload"):
+        tools_module.call_legacy_catalog_tool(
+            "delete_data_type_permanently",
+            {
+                "profile": "smoke",
+                "data_type_ref": "order",
+                "execute": True,
+                "confirm": True,
+                argument: {},
+            },
+        )
+
+
+def test_data_schema_tools_publish_precise_option_set_and_value_contracts() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 114, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool for tool in response["result"]["tools"]}
+    create_set = tools["create_option_set"]["inputSchema"]
+    assert create_set["required"] == ["profile", "name"]
+    assert "key" in create_set["properties"]
+    assert {"values", "attributes", "ref_kind", "confirm"}.isdisjoint(create_set["properties"])
+
+    create_attribute = tools["create_option_attribute"]["inputSchema"]
+    assert create_attribute["required"] == ["profile", "option_set_ref", "name", "type"]
+    assert "attribute_key" in create_attribute["properties"]
+    assert {"ref_kind", "confirm"}.isdisjoint(create_attribute["properties"])
+
+    for name in ["delete_option_value", "rename_option_value", "set_option_value_attribute", "reorder_option_values"]:
+        assert tools[name]["inputSchema"]["properties"]["ref_kind"]["enum"] == [
+            "auto", "key", "label", "db_value"
+        ]
+
+    order = tools["reorder_option_values"]["inputSchema"]["properties"]["order"]
+    assert order == {
+        "type": "array",
+        "items": {"type": "string", "minLength": 3},
+        "minItems": 1,
+        "description": "Complete value_key:sort_factor assignments; each active value must appear exactly once.",
+    }
+    create_value = tools["create_option_value"]["inputSchema"]["properties"]
+    set_attribute = tools["set_option_value_attribute"]["inputSchema"]["properties"]
+    assert create_value["sort_factor"]["type"] == "integer"
+    assert create_value["id_counter"]["type"] == "integer"
+    assert set_attribute["parse_json"]["type"] == "boolean"
+
+    option_tools = {
+        "create_option_set", "rename_option_set", "delete_option_set", "create_option_attribute",
+        "create_option_value", "delete_option_value", "list_option_values", "rename_option_value",
+        "set_option_value_attribute", "reorder_option_values",
+    }
+    confirm_tools = {name for name in option_tools if "confirm" in tools[name]["inputSchema"]["properties"]}
+    assert confirm_tools == {"delete_option_set", "delete_option_value"}
 
 
 def test_tool_search_returns_docs_enrichment_hints() -> None:

@@ -18,11 +18,15 @@ ROOT = Path(__file__).resolve().parents[1]
 INSTALLED_CATALOG_QUALITY_CHECK = (
     "import json; "
     "from bubble_mcp.catalog_quality import catalog_quality_report; "
+    "from bubble_mcp.catalog_schema_precision import catalog_schema_precision_report; "
     "from bubble_mcp.cli_leaf_inventory import cli_leaf_map_report; "
     "from bubble_mcp.harness.catalog_ambiguity import catalog_ambiguity_report; "
-    "quality=catalog_quality_report(); ambiguity=catalog_ambiguity_report(); leaf_map=cli_leaf_map_report(); "
-    "assert quality['ok'] is True; assert ambiguity['ok'] is True; assert leaf_map['ok'] is True; "
+    "quality=catalog_quality_report(); precision=catalog_schema_precision_report(); ambiguity=catalog_ambiguity_report(); leaf_map=cli_leaf_map_report(); "
+    "assert quality['ok'] is True; assert precision['ok'] is True; "
+    "assert precision['summary']['tool_count']==28; assert precision['summary']['failure_count']==0; "
+    "assert ambiguity['ok'] is True; assert leaf_map['ok'] is True; "
     "print(json.dumps({'quality_ok': quality['ok'], "
+    "'schema_precision_ok': precision['ok'], 'schema_precision_tool_count': precision['summary']['tool_count'], "
     "'ambiguity_ok': ambiguity['ok'], 'case_count': ambiguity['summary']['case_count'], "
     "'cli_leaf_map_ok': leaf_map['ok'], 'leaf_count': leaf_map['summary']['leaf_count']}))"
 )
