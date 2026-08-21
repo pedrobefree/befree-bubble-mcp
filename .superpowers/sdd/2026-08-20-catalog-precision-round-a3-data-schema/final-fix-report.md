@@ -190,8 +190,11 @@ evidence; `git diff --check` exited 0. No automated prose test was added.
 
 - `f124943` — `fix: close A.3 catalog precision review gaps`
 - `9ff1bdb` — `docs: refresh A.3 final review evidence`
-- this report is committed as the final local evidence artifact after the two
-  implementation/evidence commits above.
+- `65b3fc1` — `docs: record A.3 final review remediation`
+- `7d1f3bf` — `test: execute exact installed precision gate` (behavioral
+  mutation test plus the final fresh matrix evidence)
+- the final ledger-only commit containing this updated list is intentionally
+  identified by the final branch inspection rather than self-referenced here.
 
 No commit was pushed and no PR or remote state was changed.
 
