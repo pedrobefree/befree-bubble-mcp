@@ -689,11 +689,9 @@ def call_tool(
 ) -> dict[str, Any]:
     """Call a supported tool and return a JSON-serializable payload."""
 
-    caller_supplied_appname = bool(str((arguments or {}).get("appname") or "").strip())
+    caller_argument_names = frozenset((arguments or {}).keys())
     arguments = _arguments_with_profile_defaults(arguments)
-    trusted_profile_default_appname = (
-        not caller_supplied_appname and bool(str(arguments.get("appname") or "").strip())
-    )
+    trusted_profile_defaults = frozenset(arguments) - caller_argument_names
     _ = arguments
     if name == "bubble_health_check":
         return {
@@ -1928,7 +1926,7 @@ def call_tool(
         return call_legacy_catalog_tool(
             name,
             arguments or {},
-            trusted_profile_default_appname=trusted_profile_default_appname,
+            trusted_profile_defaults=trusted_profile_defaults,
         )
     raise ValueError(f"Unknown Bubble MCP tool: {name}")
 
@@ -1961,7 +1959,7 @@ def call_legacy_catalog_tool(
     name: str,
     args: dict[str, Any],
     *,
-    trusted_profile_default_appname: bool = False,
+    trusted_profile_defaults: frozenset[str] = frozenset(),
 ) -> dict[str, Any]:
     """Handle a ported Aria Bubble MCP tool name.
 
@@ -1975,7 +1973,7 @@ def call_legacy_catalog_tool(
     args = normalize_catalog_schema_precision_args(
         name,
         args,
-        trusted_profile_default_appname=trusted_profile_default_appname,
+        trusted_profile_defaults=trusted_profile_defaults,
     )
     if name == "delete_data_type_permanently" and any(
         argument in args for argument in ("write_payload", "payload")

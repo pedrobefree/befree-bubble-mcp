@@ -5041,7 +5041,7 @@ def test_data_schema_tools_publish_precise_data_type_field_and_api_exposure_cont
         "create_data_field": (["profile", "data_type_ref", "name", "type"], {"field_key"}, {"is_list", "optional"}),
         "rename_data_field": (["profile", "data_type_ref", "name", "new_name"], set(), set()),
         "delete_data_field": (["profile", "data_type_ref", "name"], {"confirm"}, set()),
-        "set_data_type_api_exposure": (["profile", "data_type_ref", "enabled"], {"ref_kind", "value"}, {"confirm"}),
+        "set_data_type_api_exposure": (["profile", "data_type_ref"], {"ref_kind", "value"}, {"confirm"}),
     }
 
     for name, (required, present, absent) in expected.items():
@@ -5059,6 +5059,27 @@ def test_data_schema_tools_publish_precise_data_type_field_and_api_exposure_cont
     assert create_field_properties["field_key"]["type"] == "string"
     assert create_field_properties["field_key"]["minLength"] == 1
     assert exposure_properties["value"]["deprecated"] is True
+    assert tools["set_data_type_api_exposure"]["anyOf"] == [
+        {"required": ["enabled"]},
+        {"required": ["value"]},
+    ]
+
+
+def test_round_a3_schema_overrides_do_not_change_non_target_catalog_contracts() -> None:
+    response = handle_request({"jsonrpc": "2.0", "id": 1131, "method": "tools/list"})
+
+    assert response is not None
+    tools = {tool["name"]: tool["inputSchema"] for tool in response["result"]["tools"]}
+    assert tools["reorder_style_states"]["properties"]["order"] == {
+        "type": "string",
+        "description": "Desired style condition/state order, as CSV or natural phrase.",
+    }
+    for name, schema in tools.items():
+        if name in DATA_SCHEMA_PRECISION_SPECS:
+            continue
+        json_property = schema.get("properties", {}).get("json")
+        if isinstance(json_property, dict):
+            assert "default" not in json_property, name
 
 
 def test_targeted_data_schema_tools_reject_unsupported_operational_fields_at_mcp_boundary(
@@ -5217,6 +5238,69 @@ def test_targeted_data_schema_tools_allow_trusted_profile_appname_at_mcp_boundar
             {
                 "profile": "smoke",
                 "name": "Order",
+                "app_id": "profile-app",
+                "appname": "profile-app",
+                "app_version": "test",
+            },
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "selector"),
+    [
+        ("list_privacy_rules", {"data_type_ref": "order"}),
+        ("list_option_values", {"option_set_ref": "status"}),
+    ],
+)
+def test_read_only_schema_tools_accept_runtime_defaults_from_configured_profile(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path,
+    tool_name: str,
+    selector: dict[str, str],
+) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path))
+    save_settings(
+        BubbleMcpSettings(
+            config_dir=tmp_path,
+            default_profile="smoke",
+            profiles={
+                "smoke": BubbleProfile(
+                    name="smoke",
+                    app_id="profile-app",
+                    appname="profile-app",
+                    app_version="test",
+                )
+            },
+        )
+    )
+    monkeypatch.setattr(
+        tools_module,
+        "dispatch_aria_runtime_tool",
+        lambda name, args: calls.append((name, dict(args))) or {"ok": True},
+    )
+
+    response = handle_request(
+        {
+            "jsonrpc": "2.0",
+            "id": 1181,
+            "method": "tools/call",
+            "params": {
+                "name": tool_name,
+                "arguments": {"profile": "smoke", **selector},
+            },
+        }
+    )
+
+    assert response is not None
+    assert response["result"].get("isError") is not True
+    assert calls == [
+        (
+            tool_name,
+            {
+                "profile": "smoke",
+                **selector,
                 "app_id": "profile-app",
                 "appname": "profile-app",
                 "app_version": "test",

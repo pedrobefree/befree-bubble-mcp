@@ -549,10 +549,19 @@ accept `execute`, `write_payload`, or `payload`; the unconsumed `settings_path`
 field was removed from all 28 target schemas. Permanent deletion now rejects
 both payload spellings by key presence, including explicitly empty mappings.
 
-Closing validation evidence (2026-08-20):
+The final independent-review remediation keeps profile-derived `app_id`,
+`appname`, and `app_version` usable at the runtime boundary without accepting
+those unpublished values from callers. The deprecated API-exposure `value`
+alias is now a schema-valid alternative to `enabled`. Target-specific `json`
+defaults and option-value `order` typing no longer leak through the shared
+field table: a base/head `tools/list` comparison reports exactly 28 changed
+target schemas and 0 changed non-target schemas, while
+`reorder_style_states.order` retains its string CSV/natural-phrase contract.
 
-- the focused contract command passed **356 tests in 35.23s**; the full Python
-  suite passed **1,958 tests in 136.52s**, and `npm test` passed **11 Node
+Closing validation evidence refreshed after independent review (2026-08-21):
+
+- the focused contract command passed **359 tests in 27.78s**; the full Python
+  suite passed **1,961 tests in 87.89s**, and `npm test` passed **11 Node
   tests** with 0 failed, skipped, cancelled, or todo;
 - Ruff reported `All checks passed!`; MyPy reported `Success: no issues found
   in 148 source files`; and `git diff --check` passed with no whitespace
@@ -567,7 +576,8 @@ Closing validation evidence (2026-08-20):
   and 0 issues;
 - `scripts/audit_catalog_schema_precision.py` reported `ok: true` for **28
   tools**, **52 direct runtime properties**, **39 alias properties**, **210
-  control properties**, 301 total public properties, 83 required public
+  control properties**, 301 total public properties, 82 unconditionally
+  required public
   properties, and 0 failures;
 - the initial Task 7 brief and initial validation attempt used the abbreviated
   no-argument sensitive-source command, which exits 2 because the script
@@ -577,8 +587,8 @@ Closing validation evidence (2026-08-20):
 - the clean Python 3.11 installed-wheel smoke reported `ok: true`,
   `schema_precision_ok: true`, and `schema_precision_tool_count: 28`;
 - profile-independent runtime coverage passed **2/2** (run
-  `20260821020323_276940`) and agent-routing passed **9/9** (run
-  `20260821020323_147ac6`), each with 0 failed and `profile: null`,
+  `20260821033704_ea45fd`) and agent-routing passed **9/9** (run
+  `20260821033704_530510`), each with 0 failed and `profile: null`,
   `execute: false`.
 
 All Round A.3 deterministic audits use no LLM, network, Bubble profile,

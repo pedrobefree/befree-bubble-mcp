@@ -227,9 +227,9 @@ DATA_SCHEMA_PRECISION_SPECS: Mapping[str, ToolSchemaPrecisionSpec] = MappingProx
         (_string("data_type_ref"), _string("name")),
     ),
     "set_data_type_api_exposure": ToolSchemaPrecisionSpec(
-        "set_data_type_api_exposure", ("profile", "data_type_ref", "enabled"), ("data_type_ref", "enabled", "ref_kind"),
+        "set_data_type_api_exposure", ("profile", "data_type_ref"), ("data_type_ref", "enabled", "ref_kind"),
         (_alias("value", "enabled"),), _SHARED_CONTROLS,
-        (_string("data_type_ref"), _boolean("enabled")),
+        (_string("data_type_ref"), _boolean("enabled")), (("enabled",), ("value",)),
     ),
     "list_privacy_rules": ToolSchemaPrecisionSpec(
         "list_privacy_rules", ("profile", "data_type_ref"), (),
@@ -551,7 +551,7 @@ def normalize_catalog_schema_precision_args(
     name: str,
     args: Mapping[str, Any],
     *,
-    trusted_profile_default_appname: bool = False,
+    trusted_profile_defaults: Iterable[str] = (),
 ) -> dict[str, Any]:
     """Validate targeted data-schema arguments before legacy catalog dispatch."""
 
@@ -563,8 +563,9 @@ def normalize_catalog_schema_precision_args(
     accepted = set(spec.runtime) | accepted_controls | {
         alias.public_name for alias in spec.aliases
     }
-    if trusted_profile_default_appname:
-        accepted.add("appname")
+    accepted.update(
+        set(trusted_profile_defaults) & {"app_id", "app_version", "appname"}
+    )
     if name == "delete_data_type_permanently":
         # These unpublished arguments must reach the existing guard that
         # rejects permanent-delete payload bypasses with its specific error.

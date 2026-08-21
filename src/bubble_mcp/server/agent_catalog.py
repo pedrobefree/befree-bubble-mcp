@@ -1117,7 +1117,7 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "clear": {"type": "boolean"},
     "all_tokens": {"type": "boolean", "default": False},
     "list_options": {"type": "boolean", "default": False},
-    "json": {"type": "boolean", "default": False},
+    "json": {"type": "boolean"},
     "include_elements": {"type": "boolean"},
     "include_workflows": {"type": "boolean"},
     "include_styles": {"type": "boolean"},
@@ -1198,12 +1198,6 @@ FIELD_TYPES: dict[str, dict[str, Any]] = {
     "include_everyone_default": {"type": "boolean", "default": True},
     "id_counter": {"type": "integer"},
     "sort_factor": {"type": "integer"},
-    "order": {
-        "type": "array",
-        "items": {"type": "string", "minLength": 3},
-        "minItems": 1,
-        "description": "Complete value_key:sort_factor assignments; each active value must appear exactly once.",
-    },
     "updated_at_ms": {"type": "integer", "minimum": 0},
     "duration_ms": {"type": "integer", "minimum": 0},
     "offset": {"type": "integer"},
@@ -1374,6 +1368,10 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
         if field in defaults and isinstance(field_schema, dict):
             field_schema.setdefault("default", deepcopy(defaults[field]))
     if name == "set_data_type_api_exposure":
+        input_schema["anyOf"] = [
+            {"required": ["enabled"]},
+            {"required": ["value"]},
+        ]
         properties["value"] = {
             "type": "boolean",
             "deprecated": True,
@@ -1456,6 +1454,8 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
             "minItems": 1,
             "description": "Complete value_key:sort_factor assignments; each active value must appear exactly once.",
         }
+    if name in {"scan_types", "list_data_types", "list_option_values"}:
+        properties["json"]["default"] = False
     if name == "add_event_action":
         input_schema["anyOf"] = [
             {"required": ["event_ref"]},
@@ -1777,7 +1777,7 @@ def _data_schema_fields(name: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
     if name == "delete_data_field":
         return (("profile", "data_type_ref", "name"), ("dry_run", "confirm"))
     if name == "set_data_type_api_exposure":
-        return (("profile", "data_type_ref", "enabled"), ("dry_run", "ref_kind"))
+        return (("profile", "data_type_ref"), ("dry_run", "enabled", "ref_kind"))
     if name == "list_privacy_rules":
         return (("profile", "data_type_ref"), ("dry_run",))
     if name == "create_privacy_rule":
