@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Workflow listing merges every context root instead of stopping at the first one: the
+  mutation overlay injects raw roots (%ed for reusables, %p3 for pages) carrying ONLY the
+  workflows a write touched, and that partial root used to shadow the .bubble export root
+  entirely. On a reusable with 33 workflows, list_events and inspect_context reported 1 as
+  soon as any write had touched the context - and because the same listing feeds workflow
+  matching by event type, add_action could no longer see the existing workflow and would
+  auto-create a duplicate. Reads now union the raw, discovery and module roots (raw first,
+  so overlay rows still win per key); writes keep resolving a single root through the write
+  root token.
 - Canonical raw form of APIEventParameter expressions recovered from live editor memory
   (Playwright + appquery child-node raw()): the parameter only resolves with btype_id +
   event_id + param_id (the parameter KEY, not the internal id) + param_name together, with

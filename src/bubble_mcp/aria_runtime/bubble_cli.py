@@ -49352,6 +49352,53 @@ class BubbleCLI:
             return module_payload
         return None
 
+    def _context_roots_for_workflow_listing(
+        self, context_id: str, context_type: str
+    ) -> List[Dict[str, Any]]:
+        """Every root that can hold workflows for a context, newest-first.
+
+        Reads must merge them instead of stopping at the first hit: the mutation overlay
+        injects raw roots (%ed/%p3) carrying ONLY the workflows a write touched, so a root
+        with one %wf entry can sit in front of an export root holding all of them. Writes
+        still resolve a single root via _get_context_root_for_workflows - the write root
+        token decides where a mutation lands, and merging is a read-side concern.
+        """
+
+        roots: List[Dict[str, Any]] = []
+        seen: set[int] = set()
+
+        def add(candidate: Any) -> None:
+            if not isinstance(candidate, dict):
+                return
+            if not (
+                isinstance(candidate.get("%wf"), dict)
+                or isinstance(candidate.get("workflows"), dict)
+            ):
+                return
+            if id(candidate) in seen:
+                return
+            seen.add(id(candidate))
+            roots.append(candidate)
+
+        context_root_token = self._resolve_context_write_root_token(context_id, context_type)
+        plain_context_id = str(context_id or "").strip()
+        tokens = [context_root_token]
+        if plain_context_id and plain_context_id != context_root_token:
+            tokens.append(plain_context_id)
+
+        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        raw_bucket = data.get(self._workflow_prefix(context_type))
+        if isinstance(raw_bucket, dict):
+            for token in tokens:
+                add(raw_bucket.get(token))
+        for token in tokens:
+            add(self.discovery._get_context_root(token, context_type))
+        if not roots:
+            # Last resort, as before: reading a module payload can walk the modules directory.
+            for token in tokens:
+                add(self._load_module_context_payload(token, context_type))
+        return roots
+
     # Cached workflow refs recorded up to this long before the local .bubble export was
     # downloaded may still be missing from that export (generation lag); newer ones always are.
     _WORKFLOW_CACHE_ROOT_TOLERANCE_MS = 15 * 60 * 1000
@@ -49668,7 +49715,7 @@ class BubbleCLI:
 
     def _list_context_workflows(self, context_id: str, context_type: str) -> List[Dict[str, Any]]:
         """List workflows in a context with their dict key and id."""
-        root = self._get_context_root_for_workflows(context_id, context_type)
+        roots = self._context_roots_for_workflow_listing(context_id, context_type)
         rows: List[Dict[str, Any]] = []
         row_by_key: Dict[str, Dict[str, Any]] = {}
 
@@ -49767,28 +49814,24 @@ class BubbleCLI:
                         existing_wf["id"] = new_wf.get("id")
                     existing["workflow"] = existing_wf
 
-        if not isinstance(root, dict):
-            for cached in self._list_cached_context_workflows(context_id, context_type):
-                push(cached)
-            return rows
-
-        # Prefer raw Bubble keyspace (%wf). Parsed 'workflows' keys can diverge and create ghost writes.
-        container_key = "%wf" if isinstance(root.get("%wf"), dict) else "workflows"
-        workflows = root.get(container_key)
-        if not isinstance(workflows, dict):
-            workflows = {}
-        for wf_key, wf in workflows.items():
-            if wf_key == "length" or not isinstance(wf, dict):
-                continue
-            props = wf.get("%p") if isinstance(wf.get("%p"), dict) else wf.get("properties", {})
-            push({
-                "key": str(wf_key),
-                "id": str(wf.get("id") or wf_key),
-                "type": wf.get("%x") or wf.get("type"),
-                "name": props.get("%en") if isinstance(props, dict) else None,
-                "from_cache": False,
-                "workflow": wf
-            })
+        for root in roots:
+            # Prefer raw Bubble keyspace (%wf). Parsed 'workflows' keys can diverge and create ghost writes.
+            container_key = "%wf" if isinstance(root.get("%wf"), dict) else "workflows"
+            workflows = root.get(container_key)
+            if not isinstance(workflows, dict):
+                workflows = {}
+            for wf_key, wf in workflows.items():
+                if wf_key == "length" or not isinstance(wf, dict):
+                    continue
+                props = wf.get("%p") if isinstance(wf.get("%p"), dict) else wf.get("properties", {})
+                push({
+                    "key": str(wf_key),
+                    "id": str(wf.get("id") or wf_key),
+                    "type": wf.get("%x") or wf.get("type"),
+                    "name": props.get("%en") if isinstance(props, dict) else None,
+                    "from_cache": False,
+                    "workflow": wf
+                })
         for cached in self._list_cached_context_workflows(context_id, context_type):
             push(cached)
         return rows

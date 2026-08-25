@@ -2821,3 +2821,165 @@ def test_add_action_reuses_workflow_it_just_auto_created_for_a_second_action(
 
     workflows = cli.discovery.data["pages"]["pg1"]["workflows"]
     assert len(workflows) == 1
+
+
+def test_list_context_workflows_keeps_export_workflows_when_overlay_root_is_partial(
+    tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    """The mutation overlay writes raw context roots (%ed for reusables, %p3 for pages)
+    that hold ONLY the workflows a write touched. Those partial roots must not shadow the
+    workflows the .bubble export already proves exist: list_events/inspect_context on a
+    reusable with 33 workflows used to report 1 as soon as any write had touched it.
+    """
+
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+
+    def workflow(workflow_id: str, element_id: str) -> dict:  # type: ignore[type-arg]
+        return {
+            "id": workflow_id,
+            "%x": "ButtonClicked",
+            "%p": {"%ei": element_id},
+            "actions": {},
+        }
+
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "element_definitions": {
+                    "rDEF": {
+                        "id": "rINNER",
+                        "name": "Client Adult Learning",
+                        "type": "CustomDefinition",
+                        "properties": {},
+                        "custom_states": {},
+                        "elements": {},
+                        "workflows": {
+                            "wfExportA": workflow("wfExportA", "btn1"),
+                            "wfExportB": workflow("wfExportB", "btn2"),
+                            "wfExportC": workflow("wfExportC", "btn3"),
+                        },
+                    }
+                },
+                "pages": {},
+                "user_types": {},
+                "option_sets": {},
+                "styles": {},
+                "settings": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    overlay_path = tmp_path / "overlay.json"
+    overlay_path.write_text(
+        json.dumps(
+            {
+                "app_id": "reprotest",
+                "version": 1,
+                "entries": [
+                    {
+                        "app_id": "reprotest",
+                        "changes": [
+                            {
+                                "path_array": ["%ed", "rDEF", "%wf", "wfOverlay"],
+                                "body": workflow("wfOverlay", "btn9"),
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="reprotest",
+    )
+
+    keys = {row["key"] for row in cli._list_context_workflows("rDEF", "reusable")}
+
+    assert keys == {"wfExportA", "wfExportB", "wfExportC", "wfOverlay"}
+
+
+def test_list_context_workflows_prefers_the_overlay_row_over_the_stale_export_row(
+    tmp_path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    """Merging roots must keep the overlay ahead of the export for a shared workflow key:
+    the overlay holds the write that already landed, the export is the snapshot taken
+    before it. Reversing that order silently serves stale trigger bindings.
+    """
+
+    monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
+
+    app_path = tmp_path / "app.json"
+    app_path.write_text(
+        json.dumps(
+            {
+                "element_definitions": {
+                    "rDEF": {
+                        "id": "rINNER",
+                        "name": "Client Adult Learning",
+                        "type": "CustomDefinition",
+                        "properties": {},
+                        "custom_states": {},
+                        "elements": {},
+                        "workflows": {
+                            "wfShared": {
+                                "id": "wfShared",
+                                "%x": "ButtonClicked",
+                                "%p": {"%ei": "btnStale"},
+                                "actions": {},
+                            }
+                        },
+                    }
+                },
+                "pages": {},
+                "user_types": {},
+                "option_sets": {},
+                "styles": {},
+                "settings": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    overlay_path = tmp_path / "overlay.json"
+    overlay_path.write_text(
+        json.dumps(
+            {
+                "app_id": "reprotest",
+                "version": 1,
+                "entries": [
+                    {
+                        "app_id": "reprotest",
+                        "changes": [
+                            {
+                                "path_array": ["%ed", "rDEF", "%wf", "wfShared"],
+                                "body": {
+                                    "id": "wfShared",
+                                    "%x": "ButtonClicked",
+                                    "%p": {"%ei": "btnRebound"},
+                                    "actions": {},
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    cli = BubbleCLI(
+        app_json_path=str(app_path),
+        mutation_overlay_path=str(overlay_path),
+        appname="reprotest",
+    )
+
+    rows = cli._list_context_workflows("rDEF", "reusable")
+
+    assert len(rows) == 1
+    assert rows[0]["workflow"]["%p"]["%ei"] == "btnRebound"
