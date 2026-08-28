@@ -739,7 +739,7 @@ def command_plugin_install(args: argparse.Namespace) -> int:
         plugin_key=args.plugin_key,
         app_id=args.app_id or None,
         app_version=args.app_version or None,
-        plugin_value=_json_scalar(args.plugin_value, True),
+        plugin_value=_json_scalar(args.plugin_value, None),
         installed_version=_json_scalar(args.installed_version, 1),
         installed_version_key=args.installed_version_key or None,
         include_installed_version=False if args.no_installed_version else None,

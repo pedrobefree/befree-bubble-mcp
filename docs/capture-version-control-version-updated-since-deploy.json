@@ -1,0 +1,10 @@
+{
+  "seq": 123,
+  "url": "https://bubble.io/appeditor/version_was_updated_since_last_deploy",
+  "method": "POST",
+  "raw_body": "{\"appname\":\"mcp-test-app\",\"app_version\":\"test\"}",
+  "parsed": {
+    "appname": "mcp-test-app",
+    "app_version": "test"
+  }
+}

@@ -32,6 +32,8 @@ from bubble_mcp.visual_defaults import (
 
 CONTROL_ARG_KEYS = {
     "profile",
+    # Consumed by the server layer (post-write verification), never by a runtime method.
+    "verify",
     "app_id",
     "appname",
     "app_version",

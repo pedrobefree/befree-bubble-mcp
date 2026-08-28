@@ -266,6 +266,17 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
         page_id = str(page.get("id") or page_index.get(page_name) or page_name or "")
         if not page_id:
             continue
+        # The page's node key in the app tree is not always its id (e.g. pages this
+        # tooling created). Crawled pages carry the real "path" they were fetched from
+        # (see detector._crawl_page); derive key/path_array from that when present.
+        # Crawler indexes cached before that field existed have no "path" and must keep
+        # importing exactly as before, keyed by id.
+        page_path_array = _encoded_path_to_array(str(page.get("path") or "")) or None
+        if page_path_array:
+            page_key = str(page.get("key") or page_path_array[-1])
+        else:
+            page_path_array = ["%p3", page_id]
+            page_key = page_id
         page_label = _label(page, page_id)
         node_id = _context_node_id("page", page_label, page_id, page_label_counts)
         nodes.append(
@@ -275,8 +286,8 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                 type="page",
                 metadata={
                     "bubble_id": page_id,
-                    "key": page_id,
-                    "path_array": ["%p3", page_id],
+                    "key": page_key,
+                    "path_array": page_path_array,
                     "properties": _obj(page.get("properties")),
                     "root_id": _root_id(page),
                     "children": [str(key) for key in _obj(page.get("elements")).keys()],
@@ -287,7 +298,7 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
         _walk_elements(
             _obj(page.get("elements")),
             context_node_id=node_id,
-            base_path=["%p3", page_id],
+            base_path=page_path_array,
             nodes=nodes,
             edges=edges,
             parent_node_id=node_id,

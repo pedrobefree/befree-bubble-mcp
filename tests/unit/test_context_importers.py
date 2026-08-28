@@ -335,3 +335,103 @@ def test_crawler_context_disambiguates_duplicate_context_labels(tmp_path) -> Non
         "reusable:Same reusable:reOne",
         "reusable:Same reusable:reTwo",
     }
+
+
+def test_crawler_context_page_key_from_path_differs_from_id(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # Regression for the login_page defect: the node lives at %p3.bVVl3 but its body
+    # carries id bG4Jl. The crawled page now records the real "path" it was fetched
+    # from (see detector._crawl_page); the importer must key/path elements off that,
+    # not off the id.
+    context = context_from_crawler_payload(
+        {
+            "appId": "synthetic-app",
+            "pages": [
+                {
+                    "id": "bG4Jl",
+                    "name": "login_page",
+                    "path": "%p3.bVVl3",
+                    "key": "bVVl3",
+                    "elements": {
+                        "elChild": {
+                            "name": "Child",
+                            "elements": {
+                                "elGrandchild": {"name": "Grandchild"},
+                            },
+                        },
+                    },
+                }
+            ],
+        },
+        tmp_path / "crawler.json",
+    )
+
+    page = next(node for node in context.nodes if node.type == "page")
+    assert page.metadata["bubble_id"] == "bG4Jl"
+    assert page.metadata["key"] == "bVVl3"
+    assert page.metadata["path_array"] == ["%p3", "bVVl3"]
+
+    elements = {node.metadata["bubble_id"]: node for node in context.nodes if node.type == "element"}
+    assert elements["elChild"].metadata["path_array"] == ["%p3", "bVVl3", "%el", "elChild"]
+    assert elements["elGrandchild"].metadata["path_array"] == [
+        "%p3",
+        "bVVl3",
+        "%el",
+        "elChild",
+        "%el",
+        "elGrandchild",
+    ]
+
+
+def test_crawler_context_page_without_path_field_falls_back_to_id(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # On-disk crawler indexes cached before "path" existed have no such field and must
+    # keep importing exactly as before: keyed by id.
+    context = context_from_crawler_payload(
+        {
+            "appId": "synthetic-app",
+            "pages": [
+                {
+                    "id": "AAX",
+                    "name": "index",
+                    "elements": {
+                        "elChild": {"name": "Child"},
+                    },
+                }
+            ],
+        },
+        tmp_path / "crawler.json",
+    )
+
+    page = next(node for node in context.nodes if node.type == "page")
+    assert page.metadata["bubble_id"] == "AAX"
+    assert page.metadata["key"] == "AAX"
+    assert page.metadata["path_array"] == ["%p3", "AAX"]
+
+    element = next(node for node in context.nodes if node.type == "element")
+    assert element.metadata["path_array"] == ["%p3", "AAX", "%el", "elChild"]
+
+
+def test_crawler_context_page_key_equal_to_id_is_unchanged(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    # Older pages have key == id. Whether "path" is present or absent, key/path_array
+    # must land the same.
+    with_path = context_from_crawler_payload(
+        {
+            "appId": "synthetic-app",
+            "pages": [{"id": "AAL", "name": "index", "path": "%p3.AAL", "key": "AAL"}],
+        },
+        tmp_path / "crawler-with-path.json",
+    )
+    without_path = context_from_crawler_payload(
+        {
+            "appId": "synthetic-app",
+            "pages": [{"id": "AAL", "name": "index"}],
+        },
+        tmp_path / "crawler-without-path.json",
+    )
+
+    page_with_path = next(node for node in with_path.nodes if node.type == "page")
+    page_without_path = next(node for node in without_path.nodes if node.type == "page")
+
+    assert page_with_path.metadata["key"] == "AAL"
+    assert page_with_path.metadata["path_array"] == ["%p3", "AAL"]
+    assert page_without_path.metadata["key"] == "AAL"
+    assert page_without_path.metadata["path_array"] == ["%p3", "AAL"]

@@ -387,7 +387,14 @@ def resolve_context_key(name: str, context: BubbleProjectContext | None = None) 
                 or str(node.metadata.get("bubble_id") or "") == target
                 or str(node.metadata.get("key") or "") == target
             ):
-                meta_key = node.metadata.get("bubble_id") or node.metadata.get("key")
+                # A page/reusable's node key in the Bubble app tree is frequently NOT
+                # its bubble_id (e.g. crawler-derived pages, see context/importers.py).
+                # Prefer the real path's leaf segment, then the recorded key, and only
+                # fall back to bubble_id when neither is available.
+                raw_path = node.metadata.get("path_array")
+                if isinstance(raw_path, list) and raw_path:
+                    return str(raw_path[-1])
+                meta_key = node.metadata.get("key") or node.metadata.get("bubble_id")
                 return str(meta_key or node.label or target)
     if ":" in target:
         return target.split(":", 1)[1]
@@ -1315,6 +1322,40 @@ def compile_workflow_changes(tool_name: str, args: dict[str, Any], session_id: s
     return []
 
 
+def resolve_element_ref_id(element_ref: str, context: BubbleProjectContext | None = None) -> str:
+    """Resolve an element reference (name or id) to its real element id.
+
+    Mirrors the element-node matching already used by ``resolve_element_path``.
+    When no context is loaded, the ref is trusted as-is (same self-authoring
+    fallback ``resolve_context_key`` uses when a caller builds its own plan from
+    scratch). When a context IS loaded but the ref does not match any element
+    node, this fails loudly instead of silently treating an unrecognized name
+    as if it were already an id.
+    """
+    target = str(element_ref or "").strip()
+    if not target:
+        raise ValueError("Element reference is required.")
+    if context is None:
+        return target
+    for node in context.nodes:
+        if node.type != "element":
+            continue
+        if (
+            node.label == target
+            or node.id == target
+            or node.id.endswith(f":{target}")
+            or str(node.metadata.get("bubble_id") or "") == target
+            or str(node.metadata.get("key") or "") == target
+        ):
+            resolved = str(node.metadata.get("bubble_id") or node.metadata.get("key") or "").strip()
+            if resolved:
+                return resolved
+    raise ValueError(
+        f"Could not resolve element reference '{target}' to an element id. "
+        "Pass the element's real id, or load a context that includes it."
+    )
+
+
 def element_get_data_expression(element_ref: str) -> dict[str, Any]:
     element_id = str(element_ref or "").strip()
     if not element_id:
@@ -1449,9 +1490,19 @@ def compile_auth_workflow_action_changes(
     session_id: str,
 ) -> list[dict[str, Any]]:
     if tool_name == "log_the_user_in":
+        login_context_name = str(args.get("context") or "").strip()
+        if (
+            context is not None
+            and login_context_name
+            and resolve_context_node_id(login_context_name, context) is None
+        ):
+            raise ValueError(
+                f"Could not resolve context '{login_context_name}' to a page/reusable node in "
+                "the loaded context. Pass its real node key, or load a context that includes it."
+            )
         login_properties: dict[str, Any] = {
-            "%em": element_get_data_expression(str(args.get("email_input_ref") or "")),
-            "%pw": element_get_data_expression(str(args.get("password_input_ref") or "")),
+            "%em": element_get_data_expression(resolve_element_ref_id(str(args.get("email_input_ref") or ""), context)),
+            "%pw": element_get_data_expression(resolve_element_ref_id(str(args.get("password_input_ref") or ""), context)),
         }
         if args.get("stay_logged_in") is not None:
             login_properties["stay_logged_in"] = bool(args.get("stay_logged_in"))
@@ -1474,17 +1525,25 @@ def compile_auth_workflow_action_changes(
         )
     if tool_name == "sign_the_user_up":
         signup_properties: dict[str, Any] = {
-            "%em": element_get_data_expression(str(args.get("email_input_ref") or "")),
-            "%pw": element_get_data_expression(str(args.get("password_input_ref") or "")),
+            "%em": element_get_data_expression(resolve_element_ref_id(str(args.get("email_input_ref") or ""), context)),
+            "%pw": element_get_data_expression(resolve_element_ref_id(str(args.get("password_input_ref") or ""), context)),
         }
         if args.get("require_password_confirmation") is not None:
             signup_properties["%rc"] = bool(args.get("require_password_confirmation"))
         if args.get("password_confirmation_input_ref"):
-            signup_properties["%p2"] = element_get_data_expression(str(args.get("password_confirmation_input_ref") or ""))
+            signup_properties["%p2"] = element_get_data_expression(
+                resolve_element_ref_id(str(args.get("password_confirmation_input_ref") or ""), context)
+            )
         if args.get("send_confirm_email") is not None:
             signup_properties["send_confirm_email"] = bool(args.get("send_confirm_email"))
         if args.get("confirmation_page_ref"):
-            signup_properties["%pa"] = str(args.get("confirmation_page_ref"))
+            confirmation_page_ref = str(args.get("confirmation_page_ref"))
+            if context is not None and resolve_context_node_id(confirmation_page_ref, context) is None:
+                raise ValueError(
+                    f"Could not resolve confirmation_page_ref '{confirmation_page_ref}' to a page/reusable "
+                    "node in the loaded context. Pass its real node key, or load a context that includes it."
+                )
+            signup_properties["%pa"] = resolve_context_key(confirmation_page_ref, context)
         if args.get("remember_email") is not None:
             signup_properties["remember_email"] = bool(args.get("remember_email"))
         field_changes = compile_field_changes(args.get("fields"))

@@ -1,0 +1,150 @@
+{
+  "seq": 7,
+  "url": "https://bubble.io/appeditor/write",
+  "method": "POST",
+  "raw_body": "{\"v\":1,\"appname\":\"mcp-test-app\",\"app_version\":\"test\",\"changes\":[{\"body\":\"%p3.bVVl3.%wf.bTGNO\",\"path_array\":[\"_index\",\"id_to_path\",\"bTGNE\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"body\":\"%p3.bVVl3.%wf.bTGNO.actions.0\",\"path_array\":[\"_index\",\"id_to_path\",\"bTGNJ\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"body\":\"%p3.bVVl3.%wf.bTGNO.actions.1\",\"path_array\":[\"_index\",\"id_to_path\",\"bTGNK\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"body\":{\"%p\":{\"%ei\":\"bVoQt\"},\"%x\":\"ButtonClicked\",\"id\":\"bTGNE\",\"actions\":{\"0\":{\"%p\":{\"%em\":{\"%n\":{\"%x\":\"Message\",\"%nm\":\"get_data\",\"is_slidable\":false},\"%p\":{\"%ei\":\"btTmX\"},\"%x\":\"GetElement\",\"is_slidable\":false},\"%pw\":{\"%n\":{\"%x\":\"Message\",\"%nm\":\"get_data\",\"is_slidable\":false},\"%p\":{\"%ei\":\"b0sDN\"},\"%x\":\"GetElement\",\"is_slidable\":false},\"stay_logged_in\":true},\"%x\":\"LogIn\",\"id\":\"bTGNJ\"},\"1\":{\"%p\":{\"%ei\":\"bq8bK\"},\"%x\":\"ChangePage\",\"id\":\"bTGNK\"}}},\"path_array\":[\"%p3\",\"bVVl3\",\"%wf\",\"bTGNO\"],\"intent\":{\"name\":\"CreateEvent\",\"id\":12,\"source_appname\":\"\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"body\":\"[{\\\"cross_page\\\":\\\"bTGNK\\\"}]\",\"path_array\":[\"_index\",\"issues_list\",\"bTGNE\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"body\":\"[\\\"b3eD6\\\",\\\"b2MHp\\\",\\\"b0pRF\\\",\\\"bTGMw\\\",\\\"bTGNE\\\",\\\"bO4rF\\\"]\",\"path_array\":[\"_index\",\"issues_sub\",\"bG4Jl\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"type\":\"id_counter\",\"value\":10000084}]}",
+  "parsed": {
+    "v": 1,
+    "appname": "mcp-test-app",
+    "app_version": "test",
+    "changes": [
+      {
+        "body": "%p3.bVVl3.%wf.bTGNO",
+        "path_array": [
+          "_index",
+          "id_to_path",
+          "bTGNE"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "body": "%p3.bVVl3.%wf.bTGNO.actions.0",
+        "path_array": [
+          "_index",
+          "id_to_path",
+          "bTGNJ"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "body": "%p3.bVVl3.%wf.bTGNO.actions.1",
+        "path_array": [
+          "_index",
+          "id_to_path",
+          "bTGNK"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "body": {
+          "%p": {
+            "%ei": "bVoQt"
+          },
+          "%x": "ButtonClicked",
+          "id": "bTGNE",
+          "actions": {
+            "0": {
+              "%p": {
+                "%em": {
+                  "%n": {
+                    "%x": "Message",
+                    "%nm": "get_data",
+                    "is_slidable": false
+                  },
+                  "%p": {
+                    "%ei": "btTmX"
+                  },
+                  "%x": "GetElement",
+                  "is_slidable": false
+                },
+                "%pw": {
+                  "%n": {
+                    "%x": "Message",
+                    "%nm": "get_data",
+                    "is_slidable": false
+                  },
+                  "%p": {
+                    "%ei": "b0sDN"
+                  },
+                  "%x": "GetElement",
+                  "is_slidable": false
+                },
+                "stay_logged_in": true
+              },
+              "%x": "LogIn",
+              "id": "bTGNJ"
+            },
+            "1": {
+              "%p": {
+                "%ei": "bq8bK"
+              },
+              "%x": "ChangePage",
+              "id": "bTGNK"
+            }
+          }
+        },
+        "path_array": [
+          "%p3",
+          "bVVl3",
+          "%wf",
+          "bTGNO"
+        ],
+        "intent": {
+          "name": "CreateEvent",
+          "id": 12,
+          "source_appname": ""
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "body": "[{\"cross_page\":\"bTGNK\"}]",
+        "path_array": [
+          "_index",
+          "issues_list",
+          "bTGNE"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "body": "[\"b3eD6\",\"b2MHp\",\"b0pRF\",\"bTGMw\",\"bTGNE\",\"bO4rF\"]",
+        "path_array": [
+          "_index",
+          "issues_sub",
+          "bG4Jl"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "type": "id_counter",
+        "value": 10000084
+      }
+    ]
+  }
+}

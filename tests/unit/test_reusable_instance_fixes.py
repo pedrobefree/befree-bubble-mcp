@@ -1,4 +1,4 @@
-"""Bugs from the 2026-08-24 Orana report: create_reusable_instance payload fidelity.
+"""Bugs from the 2026-08-24 the client report: create_reusable_instance payload fidelity.
 
 1. custom_id must be the definition's inner .id, not the element_definitions dict key.
 2. Created elements must carry %nm (name) and %p.order like editor-created instances.

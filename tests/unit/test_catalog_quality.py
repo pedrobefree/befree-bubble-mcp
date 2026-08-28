@@ -35,7 +35,7 @@ def test_catalog_quality_includes_complete_deterministic_selection_coverage() ->
         "ok": True,
         "issue_count": 0,
     }
-    assert report["summary"]["tool_count"] == 327
+    assert report["summary"]["tool_count"] == 343
 
 
 def test_catalog_quality_includes_deterministic_ambiguity_matrix() -> None:

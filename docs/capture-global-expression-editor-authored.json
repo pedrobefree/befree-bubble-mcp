@@ -1,0 +1,37 @@
+{
+  "source": "window.appquery live read of the running Bubble editor",
+  "app": "mcp-test-app",
+  "app_version": "test",
+  "pointer": [
+    "global_expressions",
+    "bTGOw0"
+  ],
+  "note": "Authored by hand in the editor. This is the raw wire encoding, not the decoded .bubble export.",
+  "node": {
+    "id": "bTGOw0",
+    "%nm": "User email",
+    "is_list": false,
+    "btype_id": "text",
+    "expression": {
+      "%n": {
+        "%x": "Message",
+        "%nm": "email",
+        "is_slidable": false
+      },
+      "%p": {
+        "param_id": "bTGPA0",
+        "global_expression_id": "bTGOw0"
+      },
+      "%x": "GlobalExpressionParameter",
+      "is_slidable": false
+    },
+    "parameters": {
+      "bTGPA0": {
+        "is_list": false,
+        "btype_id": "user",
+        "param_id": "bTGPA0",
+        "param_name": "user"
+      }
+    }
+  }
+}

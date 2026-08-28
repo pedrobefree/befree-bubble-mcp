@@ -13,7 +13,7 @@ from bubble_mcp.execution.client import (
     build_editor_write_headers,
 )
 from bubble_mcp.execution.executor import execute_plan
-from bubble_mcp.execution.plugins import build_install_plugin_payload, install_plugin
+from bubble_mcp.execution.plugins import PLUGIN_CATALOGUE_URL, build_install_plugin_payload, install_plugin
 from bubble_mcp.sessions.store import session_from_payload
 
 
@@ -140,6 +140,9 @@ def test_install_plugin_runs_editor_post_install_calls() -> None:
             return HttpResponse(status=200, body='{"last_change":123,"id_counter":"20000330"}', headers={})
         if url == EDITOR_CALCULATE_DERIVED_URL:
             return HttpResponse(status=200, body='{"fingerprints":["abc123"]}', headers={})
+        if url == PLUGIN_CATALOGUE_URL:
+            # Bubble's own plugins carry no last_version, which is what makes progressbar a true.
+            return HttpResponse(status=200, body='{"ret":{"progressbar":{"display":"Progress Bar"}}}', headers={})
         return HttpResponse(status=200, body="{}", headers={})
 
     result = install_plugin(
@@ -153,18 +156,21 @@ def test_install_plugin_runs_editor_post_install_calls() -> None:
 
     assert result["ok"] is True
     assert result["plugin_key"] == "progressbar"
+    assert result["plugin_value"] is True
+    assert result["plugin_value_source"] == "catalogue"
     assert [call[0] for call in calls] == [
+        PLUGIN_CATALOGUE_URL,
         EDITOR_WRITE_URL,
         EDITOR_GET_PLUGIN_CONFLICTS_URL,
         EDITOR_CALCULATE_DERIVED_URL,
         EDITOR_NOTIFY_AI_CONTEXT_CHANGE_URL,
     ]
-    assert calls[0][1]["changes"][0]["path_array"] == ["settings", "client_safe", "plugins", "progressbar"]
-    assert calls[2][1]["derived"] == [
+    assert calls[1][1]["changes"][0]["path_array"] == ["settings", "client_safe", "plugins", "progressbar"]
+    assert calls[3][1]["derived"] == [
         {"function_name": "UserCalls", "args": [], "verbose": False},
         {"function_name": "ElementTypeToPath", "args": [], "verbose": False},
     ]
-    assert calls[3][1]["globalContextChanged"] is True
+    assert calls[4][1]["globalContextChanged"] is True
 
 
 def test_install_plugin_auto_skips_installed_version_for_version_string_plugins() -> None:

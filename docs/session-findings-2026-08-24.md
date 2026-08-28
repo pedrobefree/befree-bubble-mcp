@@ -1,7 +1,7 @@
 # Session findings — 2026-08-22 → 2026-08-24
 
 Consolidated record of every problem, bug, and friction point found while testing the MCP
-end-to-end: API Connector flow, workflow tools on the Orana app, and rebuilding the
+end-to-end: API Connector flow, workflow tools on the client app, and rebuilding the
 ChronoTask hero/menu design on `mcp-test-app` (crawler-only, free plan). Fixed items list
 their commit on `feat/api-connector-routing`. Open items are the backlog.
 
@@ -22,7 +22,7 @@ their commit on `feat/api-connector-routing`. Open items are the backlog.
 
 | # | Bug | Commit |
 |---|-----|--------|
-| 5 | `add_action` advertised `event_ref`/`event_type`/`ref_kind` in its schema but the runtime signature lacked them; the dispatch layer dropped them **silently**. Element+event matching only covers click/change/load, so appending to a ConditionTrue or another element's workflow was impossible — agents fell back to hand-built `/appeditor/write` payloads (Orana report bug 4). Also: `to` now aliases `to_email`; unsupported `query_result_type` removed from the schema; a contract test now fails if schema args drift from the runtime signature. | `8d1c99e` |
+| 5 | `add_action` advertised `event_ref`/`event_type`/`ref_kind` in its schema but the runtime signature lacked them; the dispatch layer dropped them **silently**. Element+event matching only covers click/change/load, so appending to a ConditionTrue or another element's workflow was impossible — agents fell back to hand-built `/appeditor/write` payloads (the client report, bug 4). Also: `to` now aliases `to_email`; unsupported `query_result_type` removed from the schema; a contract test now fails if schema args drift from the runtime signature. | `8d1c99e` |
 | 6 | Anti-stale guard duplicated workflows: a workflow created via MCP exists only in the local event cache until the `.bubble` export is re-downloaded; the guard treated every cache-only ref as a ghost and auto-created a duplicate trigger on the server. Now cache rows newer than the export mtime (15 min tolerance) are trusted (`_select_trusted_workflow_rows`, both guard copies). | `3e7b402` |
 
 ### Crawler-only profiles (free plan, export endpoint returns 401)
@@ -32,7 +32,7 @@ their commit on `feat/api-connector-routing`. Open items are the backlog.
 | 7 | `PathDiscovery` used the crawler-index only to *enrich* a `.bubble`/consolelog source; with neither present, every aria tool died with "No app data source found" even though context detection had succeeded via the crawler. Crawler-index is now a primary fallback source. | `c29ff9d` |
 | 8 | `create_from_html` hard-required the `.bubble` file; the dispatch layer only accepted `crawler_index_path` as an explicit argument (never resolved the profile default), and a context-detection failure (no session) was fatal even when a crawler index existed. | `8d20b71` |
 
-### Payload fidelity (Orana report bugs 1–3, 7)
+### Payload fidelity (the client report, bugs 1–3, 7)
 
 | # | Bug | Commit |
 |---|-----|--------|
@@ -92,11 +92,11 @@ their commit on `feat/api-connector-routing`. Open items are the backlog.
 7. **`create_event` in dry-run pollutes the event cache** (observed: dry-run repro inserted
    `bcHeO` into `.bubble_cli_cache.json`; same class as auton commit `4dd72c0` for
    `set_event_element`). Dry runs must be side-effect free.
-8. **Workflow auto-creation still has no explicit opt-in** (Orana report 4.2). `add_action`
+8. **Workflow auto-creation still has no explicit opt-in** (the client report 4.2). `add_action`
    auto-creates a trigger when element+event matching finds nothing; report proposes
    `create_event_if_missing=true` and an error listing available workflows otherwise. Mitigated
    by the recency guard + `event_ref` path, not eliminated.
-9. **`add_action` trigger vs target ambiguity** (Orana report 4.3). With `event_ref` the action
+9. **`add_action` trigger vs target ambiguity** (the client report 4.3). With `event_ref` the action
    target goes in `param` (works, now documented in the description); without it,
    `element_name` means "trigger". Dedicated `target_element` arg would remove the ambiguity.
 10. **`rotation_angle` is accepted but Bubble has no native element rotation.** Create schemas
@@ -112,7 +112,7 @@ their commit on `feat/api-connector-routing`. Open items are the backlog.
 
 ---
 
-### Orana report bug 8 (2026-08-24, evening): expression encodings are not derivable from the export
+### the client report, bug 8 (2026-08-24, evening): expression encodings are not derivable from the export
 
 Three empirical attempts to write "Make changes to thing" actions with conditions via
 `bubble_editor_write`, all HTTP 200, all broken differently in the editor: decoded node keys →
@@ -136,7 +136,7 @@ notes. Still open (needs real editor captures, which require a human in the edit
 ### Bug 8 RESOLVED at the knowledge level (2026-08-24, night): canonical expression form recovered from live editor memory
 
 The Chrome-extension capture path stalled (extension context invalidated after reload), so the
-raw form was extracted directly from the running editor instead: Playwright + the stored orana
+raw form was extracted directly from the running editor instead: Playwright + the the stored client
 session, then `window.appquery.app().json._child('api')._child('<wf_id>').raw()` in the page.
 (`app.raw()` on the root is blocked "for performance reasons" — child nodes fetch fine.)
 
@@ -161,7 +161,7 @@ verification write of a fully-formed action to confirm the editor renders it.
 ## 3. Frictions and platform limits (not code bugs)
 
 - **Three checkouts, two config dirs.** `~/.claude.json` runs the `auton` checkout with
-  `~/.config/bubble-mcp`; Orana runs its own checkout with `~/.bubble-mcp`; this repo is a
+  `~/.config/bubble-mcp`; the client project runs its own checkout with `~/.bubble-mcp`; this repo is a
   third. Half the initial confusion ("fix doesn't work") was testing the wrong copy. One clone
   + one config dir, or a versioned package, would eliminate the class.
 - **Playwright browser builds are per-venv-version.** Chromium 1134/1228/1234 confusion; a
@@ -191,7 +191,7 @@ verification write of a fully-formed action to confirm the editor renders it.
 2. Fix `create_shape` sizes and `create_group` backgrounds at the create layer.
 3. Thread explicit order through batch creates (pending-children mechanism).
 4. Structured errors on every `ok: false` path.
-5. Golden-sample validation (Orana report's closing suggestion): before writing a node, diff
+5. Golden-sample validation (the client report's closing suggestion): before writing a node, diff
    its key set against a native sibling of the same type from the app tree; warn on missing
    keys (`%nm`, `order`, encoded-key check already landed as the editor-write lint).
 6. Automate the visual loop: import → capture → audit → auto-fix (`fit_width`, alignment,

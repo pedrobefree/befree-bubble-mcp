@@ -1,4 +1,4 @@
-"""Bug 7 (Orana report): bubble_editor_write accepted decoded keys in node bodies.
+"""Bug 7 (the client report): bubble_editor_write accepted decoded keys in node bodies.
 
 Bubble's internal app tree uses encoded keys (%x=type, %p=properties, %nm=name,
 %dn=default_name). The .bubble export is the DECODED form. Bodies written with
@@ -168,7 +168,7 @@ def test_editor_write_result_carries_expression_warnings(monkeypatch, tmp_path) 
 
 
 def test_incomplete_api_event_parameter_is_flagged() -> None:
-    """Root cause of the Orana report bug-8 failures: APIEventParameter resolves only with
+    """Root cause of the the client report, bug-8 failures: APIEventParameter resolves only with
     btype_id + event_id + param_id + param_name together (confirmed against live editor
     memory raw). A node missing the type context renders as an unresolved parameter."""
 

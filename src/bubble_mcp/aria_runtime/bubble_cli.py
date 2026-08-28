@@ -80,9 +80,11 @@ from visual_mutations import VisualMutationService
 try:
     from .style_lifecycle import StyleLifecycleService, StyleReferenceResolver
     from .schema_lifecycle import PROJECT_SETTING_ALIASES, SchemaLifecycleService  # noqa: F401
+    from .global_expressions import GlobalExpressionService
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
     from style_lifecycle import StyleLifecycleService, StyleReferenceResolver
     from schema_lifecycle import PROJECT_SETTING_ALIASES, SchemaLifecycleService  # noqa: F401
+    from global_expressions import GlobalExpressionService
 
 # ==========================================
 # EVENT MAPPER - CORREÇÃO CRÍTICA
@@ -397,6 +399,7 @@ class BubbleCLI:
         self._visual_mutations = VisualMutationService(self)
         self._style_lifecycle = StyleLifecycleService(self)
         self._schema_lifecycle = SchemaLifecycleService(self)
+        self._global_expressions = GlobalExpressionService(self)
 
         self.color_mapper = ColorMapper(self.discovery.data)
         # Seed with cached colors
@@ -1069,6 +1072,135 @@ class BubbleCLI:
     def dispatch_style_definition_payload(self, payload: PayloadBuilder) -> None:
         """Dispatch a completed definition/state plan through the mutation boundary."""
         self._dispatch_payload(payload)
+
+    def global_expression_snapshot(self) -> Dict[str, Any]:
+        """Expose app-level global expressions for name/id resolution."""
+        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        expressions = data.get("global_expressions")
+        return expressions if isinstance(expressions, dict) else {}
+
+    def dispatch_global_expression_payload(self, payload: PayloadBuilder) -> None:
+        """Dispatch a global expression plan through the mutation boundary."""
+        self._dispatch_payload(payload)
+
+    def list_global_expressions(self) -> List[Dict[str, Any]]:
+        """List app-level global expressions with their parameters."""
+        rows: List[Dict[str, Any]] = []
+        for expression_id, definition in self.global_expression_snapshot().items():
+            if not isinstance(definition, dict):
+                continue
+            parameters = definition.get("parameters")
+            rows.append(
+                {
+                    "id": expression_id,
+                    "name": definition.get("name") or definition.get("%nm") or expression_id,
+                    "type": definition.get("btype_id"),
+                    "is_list": bool(definition.get("is_list")),
+                    "has_expression": definition.get("expression") is not None,
+                    "parameters": [
+                        {
+                            "param_id": param_id,
+                            "name": param.get("param_name") if isinstance(param, dict) else None,
+                            "type": param.get("btype_id") if isinstance(param, dict) else None,
+                            "is_list": bool(param.get("is_list")) if isinstance(param, dict) else False,
+                        }
+                        for param_id, param in (parameters or {}).items()
+                    ]
+                    if isinstance(parameters, dict)
+                    else [],
+                }
+            )
+        return rows
+
+    def create_global_expression(
+        self,
+        name: str,
+        expression_type: str = "text",
+        is_list: bool = False,
+        dry_run: bool = False,
+    ) -> bool:
+        """Create an app-level global expression."""
+        return self._global_expressions.create_global_expression(
+            name,
+            expression_type=expression_type,
+            is_list=is_list,
+            dry_run=dry_run,
+        )
+
+    def set_global_expression_parameter(
+        self,
+        expression: str,
+        parameter_name: str,
+        parameter_type: str = "text",
+        is_list: bool = False,
+        parameter_id: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> bool:
+        """Add or retype a parameter on a global expression."""
+        return self._global_expressions.set_global_expression_parameter(
+            expression,
+            parameter_name,
+            parameter_type=parameter_type,
+            is_list=is_list,
+            parameter_id=parameter_id,
+            dry_run=dry_run,
+        )
+
+    def set_global_expression_expression(
+        self,
+        expression: str,
+        parameter: str,
+        field: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> bool:
+        """Point a global expression's body at one of its parameters."""
+        return self._global_expressions.set_global_expression_expression(
+            expression,
+            parameter,
+            field=field,
+            dry_run=dry_run,
+        )
+
+    def global_expression_folder_snapshot(self) -> Dict[str, Any]:
+        """Expose the folder list, which the editor keeps as one app setting."""
+        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        settings = data.get("settings")
+        client_safe = settings.get("client_safe") if isinstance(settings, dict) else None
+        folders = client_safe.get("global_expression_folder_list") if isinstance(client_safe, dict) else None
+        return folders if isinstance(folders, dict) else {}
+
+    def list_global_expression_folders(self) -> List[Dict[str, Any]]:
+        """List global expression folders with the expressions each one holds."""
+        return self._global_expressions.list_global_expression_folders()
+
+    def delete_global_expression(self, expression: str, dry_run: bool = False) -> bool:
+        """Remove a global expression and the index entries its creation registered."""
+        return self._global_expressions.delete_global_expression(expression, dry_run=dry_run)
+
+    def create_global_expression_folder(self, name: str, dry_run: bool = False) -> bool:
+        """Create a folder for grouping global expressions."""
+        return self._global_expressions.create_global_expression_folder(name, dry_run=dry_run)
+
+    def rename_global_expression_folder(self, folder: str, name: str, dry_run: bool = False) -> bool:
+        """Rename a global expression folder."""
+        return self._global_expressions.rename_global_expression_folder(folder, name, dry_run=dry_run)
+
+    def delete_global_expression_folder(self, folder: str, dry_run: bool = False) -> bool:
+        """Delete a folder and clear the folder_id of every expression it held."""
+        return self._global_expressions.delete_global_expression_folder(folder, dry_run=dry_run)
+
+    def set_global_expression_folder(
+        self,
+        expression: str,
+        folder: Optional[str] = None,
+        dry_run: bool = False,
+    ) -> bool:
+        """Move a global expression into a folder, or out of every folder when folder is empty."""
+        return self._global_expressions.set_global_expression_folder(
+            expression,
+            folder=folder,
+            dry_run=dry_run,
+        )
 
     def put_style_definition_cache(self, name: str, data: Dict[str, Any]) -> None:
         """Stage one style cache value; the service controls persistence ordering."""
@@ -50131,6 +50263,15 @@ class BubbleCLI:
                     if str(row.get("key")) == mapped_key:
                         return row
                 return {"key": mapped_key, "id": str(workflow_ref), "workflow": {}, "type": None, "name": None}
+        # Explicit key-only fallback (non-empty rows). `kind == "key"` means the
+        # caller is asserting the key, not asking discovery to find it — e.g. a
+        # composite create_event preview resolving its own just-previewed
+        # workflow on a context that already has other workflows, where the
+        # dry-run cache gate correctly keeps that preview out of `rows`. Mirrors
+        # the empty-rows fallback above. Deliberately excluded from "auto" so a
+        # genuine typo in an auto lookup still fails.
+        if kind == "key" and workflow_ref:
+            return {"key": str(workflow_ref), "id": str(workflow_ref), "workflow": {}, "type": None, "name": None}
         return None
 
     def _upsert_workflow_in_discovery(
@@ -50891,32 +51032,36 @@ class BubbleCLI:
             pb.add_change_raw({"type": "id_counter", "value": int(id_counter)})
 
         ok = self._send_schema_payload(pb, dry_run, f"Event created ({wf_key}) with type {bubble_type}.")
-        if ok:
+        if ok and not dry_run:
+            # A dry run must not leave the discovery cache claiming this workflow
+            # exists: a later real call would then believe it was already created
+            # and skip creating it, writing only the follow-up action onto an
+            # orphan workflow with no %x/%p.%ei/id.
             self._upsert_workflow_in_discovery(
                 context_id,
                 context_type,
                 wf_key,
                 {"%x": bubble_type, "%p": None, "id": wf_id, "actions": None}
             )
-            if not dry_run:
-                alias_candidates: List[str] = []
-                if bind_name and str(bind_name).strip():
-                    alias_candidates.append(str(bind_name).strip())
-                if custom_event_name and str(custom_event_name).strip():
-                    alias_candidates.append(str(custom_event_name).strip())
-                seen_norm: set[str] = set()
-                for alias in alias_candidates:
-                    norm = self._norm_lookup(alias)
-                    if not norm or norm in seen_norm:
-                        continue
-                    seen_norm.add(norm)
-                    self._cache_workflow_ref_alias(
-                        context_id=context_id,
-                        context_type=context_type,
-                        alias_name=alias,
-                        workflow_key=str(wf_key),
-                        workflow_id=str(wf_id),
-                    )
+            alias_candidates: List[str] = []
+            if bind_name and str(bind_name).strip():
+                alias_candidates.append(str(bind_name).strip())
+            if custom_event_name and str(custom_event_name).strip():
+                alias_candidates.append(str(custom_event_name).strip())
+            seen_norm: set[str] = set()
+            for alias in alias_candidates:
+                norm = self._norm_lookup(alias)
+                if not norm or norm in seen_norm:
+                    continue
+                seen_norm.add(norm)
+                self._cache_workflow_ref_alias(
+                    context_id=context_id,
+                    context_type=context_type,
+                    alias_name=alias,
+                    workflow_key=str(wf_key),
+                    workflow_id=str(wf_id),
+                )
+        if ok:
             logger.info(f"Event key: {wf_key}")
             logger.info(f"Event id: {wf_id}")
 
@@ -52225,16 +52370,16 @@ class BubbleCLI:
                 json.dumps(target_children)
             )
         ok = self._send_schema_payload(pb, dry_run, f"Event '{event_ref}' element set to {element_id}.")
-        if ok:
-            if not dry_run:
-                # A dry run must not leave the in-memory discovery root claiming a
-                # binding that was never sent to Bubble.
-                self._merge_workflow_properties_in_discovery(
-                    context_id,
-                    context_type,
-                    wf_key,
-                    {"%ei": element_id}
-                )
+        if ok and not dry_run:
+            # A dry run must not leave the in-memory discovery root, the persisted
+            # schema-events cache, or the alias registry claiming a binding that
+            # was never sent to Bubble.
+            self._merge_workflow_properties_in_discovery(
+                context_id,
+                context_type,
+                wf_key,
+                {"%ei": element_id}
+            )
             self._cache_workflow_event(
                 context_id,
                 context_type,

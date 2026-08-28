@@ -8,7 +8,7 @@
   is_slidable: false on every expression node. Frozen as a golden fixture
   (tests/fixtures/expressions/api-event-parameter-golden.json), and bubble_editor_write now
   flags APIEventParameter nodes missing any of the four context fields with the exact fix.
-- bubble_editor_write warns on hand-composed expression nodes in workflow actions (Orana report
+- bubble_editor_write warns on hand-composed expression nodes in workflow actions (the client report
   bug 8): expression encodings (APIEventParameter, Message chains, param ids) are not derivable
   from the .bubble export, and /appeditor/write returns HTTP 200 for any body — results now
   carry `warnings` steering agents to captured editor traffic (bubble_tool_wizard_start),
@@ -40,7 +40,7 @@
   resolves the profile's default crawler-index artifact automatically instead of requiring an
   explicit crawler_index_path argument on every call. Context-detection failures are non-fatal
   when a previously detected crawler index exists.
-- create_reusable_instance now mirrors editor serialization (2026-08-24 Orana bug report #1-#3):
+- create_reusable_instance now mirrors editor serialization (2026-08-24 the client project bug report #1-#3):
   %p.custom_id uses the definition's inner .id (never the element_definitions dict key), created
   elements get an element-level %nm write and a computed %p.order (max sibling order + 1) so they
   show up in the editor's Elements Tree, and a missing reusable name returns a clear structured

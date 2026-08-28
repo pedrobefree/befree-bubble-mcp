@@ -86,7 +86,7 @@ LEGACY_TOOL_DESCRIPTIONS: dict[str, str] = {
         "schedule_api_workflow, custom_event) to an existing workflow. Target it by element_name+event for "
         "click/change/load, or by event_ref (workflow key/id/name/alias, or shorthand like 'ButtonClicked my-button') "
         "for any workflow, including ConditionTrue, CustomEvent, and DoEvery. Reuses the workflow; does not create a "
-        "new one when the event already exists. Prefer event_ref over manual bubble_editor_write payloads; for action types this tool does not support (especially expression-heavy ones), capture the real editor write with bubble_tool_wizard_start instead of composing bodies from the export."
+        "new one when the event already exists. Prefer event_ref over manual bubble_editor_write payloads; for action types this tool does not support (especially expression-heavy ones), capture the real editor write with bubble_tool_wizard_start instead of composing bodies from the export. To change an action that already exists, use bubble_node_edit rather than adding a replacement."
     ),
     "replace_action": "Replace an existing action in a workflow (by event/element and action_type) with new parameters, keeping its position.",
     "delete_action": "Delete one action (action_ref) from a workflow after explicit confirm=true. Does not delete the event.",
@@ -226,6 +226,16 @@ LEGACY_TOOL_DESCRIPTIONS: dict[str, str] = {
     "update_placeholder": "Change the placeholder text (new_placeholder) of an input-like element (element_name).",
     "update_layout": "Set one layout property (property/value such as layout type, gap, alignment, size) on an element (element_name).",
     "create_custom_state": "Add a custom state (state_name, state_type, default_value) to an element (element_name/element_id) in context.",
+    "list_global_expressions": "List app-level global expressions with their id, return type, parameters, and whether a body expression is set.",
+    "create_global_expression": "Create an app-level global expression (name, expression_type, is_list); its body starts empty and is set separately.",
+    "set_global_expression_parameter": "Add or retype a parameter (parameter_name, parameter_type, is_list) on an existing global expression.",
+    "set_global_expression_expression": "Point a global expression body at one of its own parameters, optionally chaining one field such as email.",
+    "delete_global_expression": "Remove a global expression (expression, by id or name) along with the index entries its creation registered.",
+    "list_global_expression_folders": "List global expression folders with their id, name, and the expressions each one holds.",
+    "create_global_expression_folder": "Create a folder (name) for grouping global expressions; folders are an app setting, not a node.",
+    "rename_global_expression_folder": "Rename a global expression folder (folder, by id or current name) to name.",
+    "delete_global_expression_folder": "Delete a global expression folder (folder) and clear the folder_id of every expression it held.",
+    "set_global_expression_folder": "Move a global expression into a folder, or out of every folder when folder is omitted.",
     "update_text": "Find-and-replace the content of a text element: locate by search_text in context and set new_text.",
     "update_text_element": "Update a text element by element_name: content, name, style, and size/layout properties.",
     "update_image": "Replace the source of an image element (element_name) with new_source (prefer_last picks the last match).",

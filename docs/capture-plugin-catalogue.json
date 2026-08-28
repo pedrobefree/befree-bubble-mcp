@@ -1,0 +1,138 @@
+{
+  "source": "POST https://bubble.io/apiservice/doapicallfromserver",
+  "note": "The editor's plugin catalogue call. Creator identity fields and the plugin icons and code are stripped here; only what an installer needs is kept.",
+  "request": {
+    "service_name": "bubble_plugin",
+    "call_name": "get_edit_mode_plugins_list",
+    "properties": {
+      "appname": "<appname>",
+      "current_plugins": {}
+    },
+    "serialized_context": {
+      "skip_property_security": true
+    },
+    "ret_properties": true,
+    "response_shape": "ret: {<plugin_key>: entry}",
+    "entry_count": 10507
+  },
+  "marketplace_plugin": {
+    "plugin_key": "1660311476391x288865870778204160",
+    "entry": {
+      "bubble_manual_link": null,
+      "last_version": "4.2.0",
+      "creator_name": "Moabe Vettore",
+      "all_versions_rating": 3.92,
+      "last_version_rating": 5,
+      "item_count": 30026,
+      "meta_id": "free-toggle-1660311476391x288865870778204160",
+      "published_date": 1660329373106,
+      "license": "open_source",
+      "version": 6022143167,
+      "deprecated_versions": null,
+      "blocked": null,
+      "hidden": null,
+      "deleted": null,
+      "official": null,
+      "data_tracked": false,
+      "data_tracked_description": "no data tracked description",
+      "should_show_creator_url": true,
+      "payment_type": null,
+      "price": null,
+      "one_time_price": null,
+      "platforms_new": [
+        "web"
+      ],
+      "display": "Free Toggle",
+      "description": "Free Toggle is a customizable toggle switch element that brings modern UI interactions to your Bubble app. This plugin offers a sleek and responsive toggle switch with smooth animations and color customization options.\nKey features:\n\nClean and modern design\nCustomizable colors\nSmooth transition animations\nFully responsive and resizable\nBuilt-in preset states (Checked, Unchecked, Autobinding)\nEasy to implement and use\n\nPerfect for settings pages, preference toggles, on/off switches, and any interface that requires binary state controls. Simply drag and drop the element onto your page and customize its appearance to match your app's design.",
+      "link": "https://freetoggle.bubbleapps.io/version-test",
+      "has_mobile_dep": false,
+      "tags": {
+        "types": [
+          "element",
+          "event"
+        ],
+        "categories": [
+          "productivity",
+          "blog",
+          "customer support",
+          "data (things)",
+          "input forms"
+        ],
+        "platforms": [
+          "web"
+        ],
+        "types_by_platform": [
+          "web_element"
+        ]
+      }
+    },
+    "version_history_tail": [
+      {
+        "version": "4.1.1",
+        "description": "Preset for auto-biding",
+        "timestamp": 1739664244700,
+        "license": "open_source",
+        "can_revert": true,
+        "node_version": 18,
+        "data_tracked": false,
+        "data_tracked_description": ""
+      },
+      {
+        "version": "4.1.2",
+        "description": "new icon",
+        "timestamp": 1739665419333,
+        "license": "open_source",
+        "can_revert": true,
+        "node_version": 18,
+        "data_tracked": false,
+        "data_tracked_description": ""
+      },
+      {
+        "version": "4.2.0",
+        "description": "Bug fix on autobiding preset",
+        "timestamp": 1741290155867,
+        "license": "open_source",
+        "can_revert": true,
+        "node_version": 18,
+        "data_tracked": false,
+        "data_tracked_description": ""
+      }
+    ]
+  },
+  "native_plugin": {
+    "plugin_key": "apiconnector2",
+    "entry": {
+      "tags": {
+        "types": [
+          "api",
+          "action"
+        ],
+        "categories": [
+          "data (things)"
+        ],
+        "platforms": [
+          "web",
+          "mobile"
+        ]
+      },
+      "display": "API Connector",
+      "description": "The API connector lets you define your own API calls directly in the Bubble Editor and use them in your app.",
+      "help": "Learn about how to set up an API Connection <a href=\"https://manual.bubble.io/help-guides/integrations/api/the-api-connector\" style=\"color: var(--sc-shared-color-plugin-help-link);\" target=\"_blank\">here</a> and see our guides for commonly built connections like <a href=\"https://manual.bubble.io/help-guides/integrations/api/the-api-connector/api-guides/openai\" id=\"openai-tutorial\" style=\"color: var(--sc-shared-color-plugin-help-link);\" target=\"_blank\">OpenAI</a>. <br><br>You can also convert your connections into plugins that can be used in more than one app, and even shared with other Bubblers! See <a href=\"https://bubble.io/my_plugins\" style=\"color: var(--sc-shared-color-plugin-help-link);\" target=\"_blank\">your personal plugins page</a> for more details.",
+      "link": "/",
+      "needs_permission": true,
+      "documented": true,
+      "official": true,
+      "integration": false,
+      "creator_name": "Bubble",
+      "bubble_manual_link": "https://manual.bubble.io/core-resources/api/the-api-connector",
+      "all_versions_rating": 3.6496815286624202,
+      "last_version_rating": 3.6496815286624202,
+      "item_count": 1995300
+    }
+  },
+  "counts": {
+    "total": 10507,
+    "with_last_version": 10427,
+    "with_price": 3878
+  }
+}

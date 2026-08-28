@@ -1,0 +1,183 @@
+{
+  "source": "three MCP tool calls against mcp-test-app, each byte-verified by write_verify",
+  "app": "mcp-test-app",
+  "app_version": "test",
+  "writes": [
+    {
+      "seq": 1,
+      "tool": "create_global_expression",
+      "url": "https://bubble.io/appeditor/write",
+      "method": "POST",
+      "status": 200,
+      "parsed": {
+        "v": 1,
+        "appname": "mcp-test-app",
+        "app_version": "test",
+        "changes": [
+          {
+            "intent": {
+              "name": "Update index"
+            },
+            "path_array": [
+              "_index",
+              "id_to_path",
+              "bpOVa"
+            ],
+            "body": "global_expressions.bpOVa",
+            "version_control_api_version": 4,
+            "changelog_data": [],
+            "session_id": "1787939795949x27"
+          },
+          {
+            "intent": {
+              "name": "CreateGlobalExpression",
+              "id": 810687,
+              "source_appname": ""
+            },
+            "path_array": [
+              "global_expressions",
+              "bpOVa"
+            ],
+            "body": {
+              "%nm": "mcp-probe-user-email",
+              "btype_id": "text",
+              "id": "bpOVa",
+              "is_list": false
+            },
+            "version_control_api_version": 4,
+            "changelog_data": [],
+            "session_id": "1787939795949x46"
+          },
+          {
+            "intent": {
+              "name": "Update index"
+            },
+            "path_array": [
+              "_index",
+              "issues_list",
+              "bpOVa"
+            ],
+            "body": "[{\"message\": \"Global expression: remember to fill out expression\", \"node\": {\"constructor_name\": \"GlobalExpression\", \"args\": [{\"type\": \"json\", \"value\": \"global_expressions.bpOVa\"}]}}]",
+            "version_control_api_version": 4,
+            "changelog_data": [],
+            "session_id": "1787939795949x42"
+          }
+        ],
+        "appVersion": "test"
+      }
+    },
+    {
+      "seq": 2,
+      "tool": "set_global_expression_parameter",
+      "url": "https://bubble.io/appeditor/write",
+      "method": "POST",
+      "status": 200,
+      "parsed": {
+        "v": 1,
+        "appname": "mcp-test-app",
+        "app_version": "test",
+        "changes": [
+          {
+            "intent": {
+              "name": "ModifyGlobalExpression",
+              "id": 371843,
+              "source_appname": ""
+            },
+            "path_array": [
+              "global_expressions",
+              "bpOVa",
+              "parameters",
+              "bUmOQ"
+            ],
+            "body": {
+              "btype_id": "user",
+              "is_list": false,
+              "param_id": "bUmOQ",
+              "param_name": "user"
+            },
+            "version_control_api_version": 4,
+            "changelog_data": [],
+            "session_id": "1787939814622x45"
+          }
+        ],
+        "appVersion": "test"
+      }
+    },
+    {
+      "seq": 3,
+      "tool": "set_global_expression_expression",
+      "url": "https://bubble.io/appeditor/write",
+      "method": "POST",
+      "status": 200,
+      "parsed": {
+        "v": 1,
+        "appname": "mcp-test-app",
+        "app_version": "test",
+        "changes": [
+          {
+            "intent": {
+              "name": "ModifyGlobalExpression",
+              "id": 30540,
+              "source_appname": ""
+            },
+            "path_array": [
+              "global_expressions",
+              "bpOVa",
+              "expression"
+            ],
+            "body": {
+              "%x": "GlobalExpressionParameter",
+              "%p": {
+                "global_expression_id": "bpOVa",
+                "param_id": "bUmOQ"
+              },
+              "%n": {
+                "%x": "Message",
+                "%nm": "email",
+                "is_slidable": false
+              },
+              "is_slidable": false
+            },
+            "version_control_api_version": 4,
+            "changelog_data": [],
+            "session_id": "1787939825263x87"
+          }
+        ],
+        "appVersion": "test"
+      }
+    }
+  ],
+  "live_read_after": {
+    "pointer": [
+      "global_expressions",
+      "bpOVa"
+    ],
+    "node": {
+      "id": "bpOVa",
+      "%nm": "mcp-probe-user-email",
+      "is_list": false,
+      "btype_id": "text",
+      "expression": {
+        "%n": {
+          "%x": "Message",
+          "%nm": "email",
+          "is_slidable": false
+        },
+        "%p": {
+          "param_id": "bUmOQ",
+          "global_expression_id": "bpOVa"
+        },
+        "%x": "GlobalExpressionParameter",
+        "is_slidable": false
+      },
+      "parameters": {
+        "bUmOQ": {
+          "is_list": false,
+          "btype_id": "user",
+          "param_id": "bUmOQ",
+          "param_name": "user"
+        }
+      }
+    }
+  }
+}

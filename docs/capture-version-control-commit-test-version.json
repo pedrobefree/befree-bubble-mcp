@@ -1,0 +1,12 @@
+{
+  "seq": 129,
+  "url": "https://bubble.io/appeditor/commit_test_version",
+  "method": "POST",
+  "raw_body": "{\"appname\":\"mcp-test-app\",\"app_version\":\"test\",\"message\":\"test save point\",\"session_id\":\"1787834691376x48\"}",
+  "parsed": {
+    "appname": "mcp-test-app",
+    "app_version": "test",
+    "message": "test save point",
+    "session_id": "1787834691376x48"
+  }
+}

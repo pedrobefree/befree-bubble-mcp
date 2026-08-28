@@ -46,6 +46,7 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "context": "Target Bubble page, reusable element, or container context by visible name or known id.",
     "parent": "Parent Bubble element/container where new children should be added. Use root for page-level insertion.",
     "execute": "Set true only when the user asked to apply the change in Bubble. Leave false for preview/planning.",
+    "verify": "After an executed write, read every changed path back from the live editor and report divergences from what was sent. On by default; set false to skip the extra read-back for speed.",
     "compile": "Compile abstract plan steps into Bubble editor write payloads before execution.",
     "context_file": "Optional compact Bubble context JSON file to resolve pages, elements, and existing project structure.",
     "file": "Local file path to read as input.",
@@ -767,6 +768,44 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Preview or send an exact Bubble /appeditor/write payload with a stored local session. Use for advanced writes "
         "when a tool already produced a valid payload; execute=false previews, execute=true mutates Bubble."
     ),
+    "bubble_live_node_read": (
+        "Read one node as the running Bubble editor holds it, via window.appquery in a browser using "
+        "the stored session. The only source of the raw expression encoding; the .bubble export is "
+        "decoded and cannot be inverted."
+    ),
+    "bubble_node_edit": (
+        "Edit a live Bubble node in place - patch one leaf or reorder an actions map - re-encoding only "
+        "the node root, then re-read the node and report where it diverged from the intent. "
+        "execute=false previews. For op='patch' the pointer must address ONE action node, never the "
+        "actions map: only the node root is re-encoded. verified=true proves the bytes were read back "
+        "unchanged, not that the editor renders the node - render_unverified stays true until a human "
+        "checks the step in the editor."
+    ),
+    "bubble_deploy_preview": (
+        "Show what a deploy would push: the diff between the deployed live version and test. "
+        "Read-only, never deploys. source='overlay' compares only what this MCP wrote; "
+        "source='full_scan' walks both trees and also sees hand edits."
+    ),
+    "bubble_savepoint_create": (
+        "Create a Bubble savepoint on the selected app version so the work that follows has a "
+        "point to return to. One HTTP call, not a branch. The MCP takes one automatically before "
+        "a session's first executed write."
+    ),
+    "bubble_savepoint_list": (
+        "List the savepoints the app version can be restored to, with the epoch-ms timestamp each "
+        "is addressed by. Read-only."
+    ),
+    "bubble_savepoint_restore": (
+        "Revert the app version to a savepoint instant. Whole-version time travel: every change "
+        "after that instant is discarded. Requires confirm=true with execute=true."
+    ),
+    "bubble_clone_workflow": (
+        "Duplicate a whole workflow the way the editor does: read the source node raw, remint the "
+        "event and action ids, apply that mapping recursively over the body including expressions, "
+        "and write the copy into a sibling slot, then re-read and report divergences. Use instead of "
+        "recomposing with create_workflow plus add_action, which cannot reproduce expression "
+        "encodings. execute=false previews."
+    ),
     "bubble_plugin_install": (
         "Preview or install one Bubble plugin in a target app using the stored editor session. Use this when transfer "
         "planning reports a missing plugin-backed element/action type such as progressbar-ProgressBar. The tool writes "
@@ -1040,6 +1079,16 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "clone_reusable": (("profile", "source", "name"), ("dry_run", "settings_path")),
     "delete_reusable": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
     "create_custom_state": (("profile", "state_name"), ("dry_run", "settings_path", "element_id", "context", "element_name", "state_type", "default_value", "default_value_json")),
+    "list_global_expressions": (("profile",), ("settings_path",)),
+    "create_global_expression": (("profile", "name"), ("dry_run", "settings_path", "expression_type", "is_list")),
+    "set_global_expression_parameter": (("profile", "expression", "parameter_name"), ("dry_run", "settings_path", "parameter_type", "is_list", "parameter_id")),
+    "set_global_expression_expression": (("profile", "expression", "parameter"), ("dry_run", "settings_path", "field")),
+    "delete_global_expression": (("profile", "expression"), ("dry_run", "settings_path")),
+    "list_global_expression_folders": (("profile",), ("settings_path",)),
+    "create_global_expression_folder": (("profile", "name"), ("dry_run", "settings_path")),
+    "rename_global_expression_folder": (("profile", "folder", "name"), ("dry_run", "settings_path")),
+    "delete_global_expression_folder": (("profile", "folder"), ("dry_run", "settings_path")),
+    "set_global_expression_folder": (("profile", "expression"), ("dry_run", "settings_path", "folder")),
     "create_repeating_group": (("profile", "context", "parent", "name", "data_type"), ("dry_run", "layout", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS)),
     "update_repeating_group": (("profile", "context", "element_name"), ("dry_run", "settings_path", "layout", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS)),
     "build_source_query_json": (("profile", "query_source_type"), ("dry_run", "context", "query_result_type", "query_result_from_field", "query_constraints_json", "query_sort_field", "query_sort_desc", "query_ignore_empty_constraints")),
@@ -1110,6 +1159,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 FIELD_TYPES: dict[str, dict[str, Any]] = {
     "dry_run": {"type": "boolean", "default": True},
     "execute": {"type": "boolean", "default": False},
+    "verify": {"type": "boolean", "default": True},
     "rendered_html": {"type": "boolean", "default": True},
     "calculate_derived": {"type": "boolean", "default": False},
     "confirm": {"type": "boolean", "default": False},
@@ -1713,9 +1763,9 @@ def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
     if name.startswith(("sync_figma_", "sync_component", "upload_asset")):
         return (("profile",), ("dry_run", "settings_path", "context", "parent", "name", "file", "payload", "execute", "json"))
     if name == "batch":
-        return (("profile", "commands"), ("dry_run", "settings_path", "file", "input", "execute", "json"))
+        return (("profile", "commands"), ("dry_run", "settings_path", "file", "input", "execute", "verify", "json"))
     if name == "natural":
-        return (("profile",), ("dry_run", "settings_path", "message", "query", "commands", "execute", "json"))
+        return (("profile",), ("dry_run", "settings_path", "message", "query", "commands", "execute", "verify", "json"))
     return None
 
 
@@ -1918,6 +1968,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_framework_status",
         "bubble_list_scheduled_deploys",
         "bubble_deploy_history",
+        "bubble_savepoint_list",
+        "bubble_deploy_preview",
     }
     read_only = _is_read_only(name) or name in agent_read_only
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {
@@ -1927,6 +1979,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_branch_merge_resolve_conflicts",
         "bubble_branch_merge_finalize",
         "bubble_schedule_deploy",
+        "bubble_savepoint_restore",
     }
     return {
         "readOnlyHint": read_only,
@@ -1957,6 +2010,9 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_editor_write",
             "bubble_plugin_install",
             "bubble_execute_plan",
+            "bubble_live_node_read",
+            "bubble_node_edit",
+            "bubble_clone_workflow",
             "bubble_visual_capture",
         "bubble_visual_capture_actual",
         "bubble_visual_audit",
@@ -2109,6 +2165,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_manual_guidance",
         "bubble_manual_context_for_tool_authoring",
         "bubble_manual_context_for_validation",
+        "bubble_live_node_read",
         "refresh_profile_cache",
         "sync_cache",
         "sync_event_cache",
@@ -2148,4 +2205,12 @@ def _is_mutating(name: str) -> bool:
             "clear_",
             "regenerate_",
         )
-    ) or name in {"bubble_editor_write", "bubble_plugin_install", "bubble_execute_plan", "batch", "natural"}
+    ) or name in {
+        "bubble_editor_write",
+        "bubble_plugin_install",
+        "bubble_execute_plan",
+        "bubble_node_edit",
+        "bubble_clone_workflow",
+        "batch",
+        "natural",
+    }

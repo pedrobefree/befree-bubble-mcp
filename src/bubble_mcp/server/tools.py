@@ -18,7 +18,7 @@ from bubble_mcp.browser_automation import (
 )
 from bubble_mcp.catalog_quality import catalog_quality_report
 from bubble_mcp.catalog_schema_precision import normalize_catalog_schema_precision_args
-from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
+from bubble_mcp.compiler.payload import bubble_session_id, compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import (
     default_bubble_export_path,
@@ -27,7 +27,7 @@ from bubble_mcp.context.detector import (
     default_crawler_index_path,
     detect_project_context,
 )
-from bubble_mcp.context.mutation_overlay import record_mutation_overlay
+from bubble_mcp.context.mutation_overlay import read_mutation_overlay, record_mutation_overlay
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
@@ -60,9 +60,23 @@ from bubble_mcp.execution.editor_api import (
     start_bubble_branch_merge,
 )
 from bubble_mcp.execution.executor import execute_plan
+from bubble_mcp.execution.live_node_read import read_live_node
+from bubble_mcp.execution.node_edit import clone_live_workflow, edit_live_node
+from bubble_mcp.execution.deploy_preview import preview_deploy, read_nodes_over_http
+from bubble_mcp.execution.session_savepoint import (
+    ensure_session_savepoint,
+    process_session_id,
+)
+from bubble_mcp.server.agent_catalog import _is_mutating
+from bubble_mcp.execution.version_control import (
+    create_savepoint,
+    list_restore_history,
+    restore_to_timestamp,
+)
 from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import permanent_data_type_delete_targets, validate_structure
+from bubble_mcp.execution.write_verify import verify_changes
 from bubble_mcp.extensions.store import (
     disable_extension,
     enable_extension,
@@ -685,7 +699,139 @@ def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _executed_write_changes(runtime_result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect the change lists from every write that actually executed in a runtime result.
+
+    ``dispatch_aria_runtime_tool`` records one entry per write under ``results``; an executed,
+    successful write carries its normalized payload at ``result.request.payload.changes``
+    (``BubbleEditorClient.write`` builds ``request.payload`` from the exact body it POSTed - see
+    ``execution/client.py``). A dry run or a failed write contributes nothing: there is nothing
+    to verify, or nothing landed to compare against.
+    """
+
+    changes: list[dict[str, Any]] = []
+    for item in runtime_result.get("results") or []:
+        if not isinstance(item, dict) or not item.get("executed") or not item.get("ok"):
+            continue
+        write_result = item.get("result")
+        if not isinstance(write_result, dict):
+            continue
+        request = write_result.get("request")
+        payload = request.get("payload") if isinstance(request, dict) else None
+        item_changes = payload.get("changes") if isinstance(payload, dict) else None
+        if isinstance(item_changes, list):
+            changes.extend(change for change in item_changes if isinstance(change, dict))
+    return changes
+
+
+SAVEPOINT_EXEMPT_TOOLS = frozenset(
+    {"bubble_savepoint_create", "bubble_savepoint_list", "bubble_savepoint_restore"}
+)
+
+
+def savepoint_guard_report(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    """Take this session's savepoint before its first executed write, and report what happened.
+
+    Returns None when no savepoint is called for - a preview, a read-only tool, a call with no
+    profile to save, or one of the savepoint tools themselves (restoring a savepoint must not
+    first create another on top of the state being undone).
+
+    Never raises. The savepoint is a safety net for the write that follows; failing to take one is
+    something the caller should see, not something that should stop the work.
+    """
+
+    if name in SAVEPOINT_EXEMPT_TOOLS or not args.get("execute"):
+        return None
+    if not _is_mutating(name):
+        return None
+    profile = str(args.get("profile") or "").strip()
+    if not profile:
+        return None
+    app_id = str(args.get("app_id") or args.get("appname") or "").strip()
+    if not app_id:
+        session = load_session(profile)
+        app_id = str(getattr(session, "app_id", "") or "").strip()
+    if not app_id:
+        return None
+    try:
+        return ensure_session_savepoint(
+            profile=profile,
+            app_id=app_id,
+            app_version=str(args.get("app_version") or "test"),
+            session_id=process_session_id(),
+            message=f"before {name}",
+            create=lambda *, message: create_savepoint(
+                profile=profile,
+                message=message,
+                app_id=app_id,
+                app_version=str(args.get("app_version") or "test"),
+                execute=True,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - see the docstring: never block the write
+        return {"created": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+def _attach_write_verification(
+    runtime_result: dict[str, Any], *, profile: str, args: dict[str, Any]
+) -> dict[str, Any]:
+    """Read every path an executed aria-runtime write touched back and report divergences.
+
+    Only runs when the tool actually executed (never on a dry run/preview) and when there is at
+    least one successful write to verify. Opts out via ``verify=false``. A verification failure
+    (including the verifier itself raising) must never turn a successful write into a reported
+    failure: it is attached as a report under ``write_verification``, and the caller decides what
+    to do with it.
+
+    Attached under ``write_verification``, deliberately distinct from ``verification``: some
+    tools (``delete_data_type_permanently`` - see ``aria_dispatch.py``) already set their own
+    tool-specific ``verification`` key with evidence this generic pass cannot reproduce (a fresh
+    export confirming the data type is actually gone). Writing to that same key would silently
+    clobber that evidence with this generic re-read report every time such a tool executes.
+    """
+
+    if not runtime_result.get("executed") or args.get("verify") is False:
+        return runtime_result
+    changes = _executed_write_changes(runtime_result)
+    if not changes or not profile:
+        return runtime_result
+    try:
+        verification = verify_changes(
+            profile,
+            changes,
+            app_id=str(runtime_result.get("app_id") or "") or None,
+            app_version=str(runtime_result.get("app_version") or "test"),
+        )
+    except Exception as exc:  # noqa: BLE001 - verification must never turn a success into a raise
+        verification = {
+            "ok": False,
+            "error": "verification_failed",
+            "message": f"{type(exc).__name__}: {exc}",
+        }
+    runtime_result["write_verification"] = verification
+    return runtime_result
+
+
 def call_tool(
+    name: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Call a supported tool, taking this session's savepoint first if the call will write."""
+
+    # A savepoint marks the start of a working session, not a precondition for each write. When
+    # one cannot be taken the caller is told through `session_savepoint`, and the work goes ahead:
+    # a hiccup on commit_test_version must not stop an author from editing their own app.
+    report = savepoint_guard_report(name, _arguments_with_profile_defaults(arguments))
+    result = _call_tool(name, arguments, cancelled=cancelled, progress=progress)
+    if report is not None and isinstance(result, dict):
+        result.setdefault("session_savepoint", report)
+    return result
+
+
+def _call_tool(
     name: str,
     arguments: dict[str, Any] | None = None,
     *,
@@ -1625,6 +1771,166 @@ def call_tool(
         if expression_warnings:
             write_result = {**write_result, "warnings": expression_warnings}
         return write_result
+    if name == "bubble_live_node_read":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_live_node_read requires a profile.")
+        pointer = args.get("pointer")
+        if not isinstance(pointer, list) or not pointer:
+            raise ValueError("bubble_live_node_read requires a non-empty pointer array.")
+        raw_timeout = args.get("read_timeout_sec")
+        try:
+            timeout_sec = int(raw_timeout) if raw_timeout not in (None, "") else 90
+        except (TypeError, ValueError):
+            return {
+                "ok": False,
+                "error": "invalid_read_timeout_sec",
+                "message": f"read_timeout_sec must be a number of seconds; got {raw_timeout!r}.",
+            }
+        if timeout_sec <= 0:
+            return {
+                "ok": False,
+                "error": "invalid_read_timeout_sec",
+                "message": (
+                    f"read_timeout_sec must be a positive number of seconds; got {raw_timeout!r}."
+                ),
+            }
+        return read_live_node(
+            profile,
+            [str(part) for part in pointer],
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+            headless=bool(args.get("read_headless", True)),
+            timeout_sec=timeout_sec,
+        )
+    if name == "bubble_node_edit":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_node_edit requires a profile.")
+        pointer = args.get("pointer")
+        if not isinstance(pointer, list) or not pointer:
+            raise ValueError("bubble_node_edit requires a non-empty pointer array.")
+        leaf_pointer = args.get("leaf_pointer")
+        order = args.get("order")
+        remove_keys = args.get("keys")
+        execute = bool(args.get("execute"))
+        edit_result = edit_live_node(
+            profile=profile,
+            pointer=[str(part) for part in pointer],
+            op=str(args.get("op") or ""),
+            leaf_pointer=[str(part) for part in leaf_pointer] if isinstance(leaf_pointer, list) else None,
+            patch=args.get("patch") if isinstance(args.get("patch"), dict) else None,
+            order=[str(part) for part in order] if isinstance(order, list) else None,
+            keys=[str(part) for part in remove_keys] if isinstance(remove_keys, list) else None,
+            execute=execute,
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+        )
+        edit_write = edit_result.get("write") if isinstance(edit_result, dict) else None
+        if execute and isinstance(edit_write, dict) and edit_write.get("ok"):
+            edit_request = edit_write.get("request")
+            overlay_payload = edit_request.get("payload") if isinstance(edit_request, dict) else None
+            if isinstance(overlay_payload, dict):
+                overlay_session = load_session(profile)
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(
+                        overlay_payload.get("appname")
+                        or args.get("app_id")
+                        or (overlay_session.app_id if overlay_session else "")
+                    ),
+                    payload=overlay_payload,
+                    source="bubble_node_edit",
+                    response=edit_write.get("response"),
+                )
+        return edit_result
+    if name == "bubble_deploy_preview":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_deploy_preview requires a profile.")
+        preview_session = load_session(profile)
+        app_id = str(
+            args.get("app_id") or (preview_session.app_id if preview_session else "") or ""
+        ).strip()
+        return preview_deploy(
+            profile=profile,
+            app_id=app_id or None,
+            overlay=read_mutation_overlay(profile, app_id),
+            source=str(args.get("source") or "overlay"),
+            since=str(args.get("since") or "") or None,
+            test_version=str(args.get("app_version") or "test"),
+            reader=read_nodes_over_http,
+        )
+    if name in {"bubble_savepoint_create", "bubble_savepoint_list", "bubble_savepoint_restore"}:
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError(f"{name} requires a profile.")
+        app_id = str(args.get("app_id") or "") or None
+        app_version = str(args.get("app_version") or "") or None
+        if name == "bubble_savepoint_list":
+            return list_restore_history(profile=profile, app_id=app_id, app_version=app_version)
+        if name == "bubble_savepoint_create":
+            return create_savepoint(
+                profile=profile,
+                message=str(args.get("savepoint_message") or args.get("message") or ""),
+                app_id=app_id,
+                app_version=app_version,
+                session_id=str(args.get("session_id") or "") or None,
+                execute=bool(args.get("execute")),
+            )
+        raw_timestamp = args.get("timestamp", args.get("savepoint_timestamp"))
+        if raw_timestamp is None or str(raw_timestamp).strip() == "":
+            raise ValueError(
+                "bubble_savepoint_restore requires a timestamp; list them with bubble_savepoint_list."
+            )
+        return restore_to_timestamp(
+            profile=profile,
+            timestamp=raw_timestamp,
+            app_id=app_id,
+            app_version=app_version,
+            execute=bool(args.get("execute")),
+            confirm=bool(args.get("confirm")),
+        )
+    if name == "bubble_clone_workflow":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_clone_workflow requires a profile.")
+        pointer = args.get("pointer")
+        if not isinstance(pointer, list) or not pointer:
+            raise ValueError("bubble_clone_workflow requires a non-empty pointer array.")
+        clone_result = clone_live_workflow(
+            profile=profile,
+            pointer=[str(part) for part in pointer],
+            new_slot=str(args.get("new_slot") or "") or None,
+            wf_name=str(args["wf_name"]) if args.get("wf_name") is not None else None,
+            id_counter=int(args["id_counter"]) if args.get("id_counter") is not None else None,
+            execute=bool(args.get("execute")),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+        )
+        clone_write = clone_result.get("write") if isinstance(clone_result, dict) else None
+        if bool(args.get("execute")) and isinstance(clone_write, dict) and clone_write.get("ok"):
+            clone_request = clone_write.get("request")
+            clone_payload = clone_request.get("payload") if isinstance(clone_request, dict) else None
+            if isinstance(clone_payload, dict):
+                clone_session = load_session(profile)
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(
+                        clone_payload.get("appname")
+                        or args.get("app_id")
+                        or (clone_session.app_id if clone_session else "")
+                    ),
+                    payload=clone_payload,
+                    source="bubble_clone_workflow",
+                    response=clone_write.get("response"),
+                )
+        return clone_result
     if name == "bubble_plugin_install":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()
@@ -1643,7 +1949,7 @@ def call_tool(
             plugin_key=plugin_key,
             app_id=str(args.get("app_id") or "") or None,
             app_version=str(args.get("app_version") or "") or None,
-            plugin_value=args.get("plugin_value", True),
+            plugin_value=args.get("plugin_value"),
             installed_version=args.get("installed_version", 1),
             installed_version_key=str(args.get("installed_version_key") or "") or None,
             include_installed_version=(
@@ -2139,13 +2445,24 @@ def call_legacy_catalog_tool(
 
     runtime_result = dispatch_aria_runtime_tool(name, args)
     if runtime_result is not None:
-        return runtime_result
+        return _attach_write_verification(runtime_result, profile=profile, args=args)
 
     app_id = str(args.get("app_id") or args.get("appname") or "").strip()
     plan = {"steps": [{"id": "step_1", "tool_name": name, "args": dict(args)}]}
     if app_id:
         context = None
         context_file = str(args.get("context_file") or "").strip()
+        if not context_file and profile:
+            # Without a context the compiler trusts element/page refs as if they were already ids,
+            # which is how `log_the_user_in` once wrote `%ei: "in_email"` and a path keyed by the
+            # page NAME. The profile already knows where its context lives; use it.
+            try:
+                configured = resolve_profile(load_settings(), profile)
+            except Exception:  # noqa: BLE001 - a config problem must not break compilation
+                configured = None
+            profile_context = str(getattr(configured, "context_path", "") or "").strip()
+            if profile_context and Path(profile_context).exists():
+                context_file = profile_context
         if context_file:
             context = load_context_with_overlay(
                 Path(context_file),

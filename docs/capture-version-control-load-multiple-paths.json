@@ -1,0 +1,32 @@
+{
+  "seq": 2,
+  "url": "https://bubble.io/appeditor/load_multiple_paths/mcp-test-app/test",
+  "method": "POST",
+  "raw_body": "{\"path_arrays\":[[\"last_change\"],[\"last_change_date\"],[\"_index\"],[\"user_types\"],[\"option_sets\"],[\"settings\"],[\"global_expressions\"]],\"no_chunking\":false}",
+  "parsed": {
+    "path_arrays": [
+      [
+        "last_change"
+      ],
+      [
+        "last_change_date"
+      ],
+      [
+        "_index"
+      ],
+      [
+        "user_types"
+      ],
+      [
+        "option_sets"
+      ],
+      [
+        "settings"
+      ],
+      [
+        "global_expressions"
+      ]
+    ],
+    "no_chunking": false
+  }
+}

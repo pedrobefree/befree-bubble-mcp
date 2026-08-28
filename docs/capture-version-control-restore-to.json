@@ -1,0 +1,11 @@
+{
+  "seq": 139,
+  "url": "https://bubble.io/appeditor/restore_to",
+  "method": "POST",
+  "raw_body": "{\"appname\":\"mcp-test-app\",\"app_version\":\"test\",\"timestamp\":1787834752581}",
+  "parsed": {
+    "appname": "mcp-test-app",
+    "app_version": "test",
+    "timestamp": 1787834752581
+  }
+}

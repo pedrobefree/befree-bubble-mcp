@@ -1,0 +1,268 @@
+{
+  "source": "https://bubble.io/appeditor/fetch_changelog_entries",
+  "app": "mcp-test-app",
+  "app_version": "test",
+  "note": "Every entry below is a hand-made editor action, not a tool write. Values are in the decoded key space the changelog reports (next/type/properties/name), which maps to the wire keys %n/%x/%p/%nm.",
+  "entries": [
+    {
+      "timestamp": 1787859861170,
+      "change_path": "global_expressions.bTGOu0.",
+      "operation": "added",
+      "display_name": "Global expression",
+      "change_identifier": "bTGOu0",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    },
+    {
+      "timestamp": 1787859870224,
+      "change_path": "global_expressions.bTGOu0.%nm.",
+      "operation": "changed",
+      "display_name": "zz-expr-1",
+      "change_identifier": "bTGOu0",
+      "type": "GlobalExpression",
+      "before_value": "Global expression",
+      "after_value": "zz-expr-1"
+    },
+    {
+      "timestamp": 1787859875283,
+      "change_path": "global_expressions.bTGOu0.parameters.bTGOv0.",
+      "operation": "changed",
+      "display_name": "zz-expr-1",
+      "change_identifier": "bTGOu0",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": {
+        "is_list": false,
+        "btype_id": "text",
+        "param_id": "bTGOv0",
+        "param_name": "Parameter 1"
+      }
+    },
+    {
+      "timestamp": 1787859877888,
+      "change_path": "global_expressions.bTGOu0.parameters.bTGOv0.",
+      "operation": "changed",
+      "display_name": "zz-expr-1",
+      "change_identifier": "bTGOu0",
+      "type": "GlobalExpression",
+      "before_value": {
+        "is_list": false,
+        "btype_id": "text",
+        "param_id": "bTGOv0",
+        "param_name": "Parameter 1"
+      },
+      "after_value": {
+        "is_list": false,
+        "btype_id": "text",
+        "param_id": "bTGOv0",
+        "param_name": "user"
+      }
+    },
+    {
+      "timestamp": 1787860101276,
+      "change_path": "global_expressions.bTGOw0.parameters.bTGPA0.",
+      "operation": "changed",
+      "display_name": "User email",
+      "change_identifier": "bTGOw0",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": {
+        "is_list": false,
+        "btype_id": "text",
+        "param_id": "bTGPA0",
+        "param_name": "Parameter 1"
+      }
+    },
+    {
+      "timestamp": 1787860105748,
+      "change_path": "global_expressions.bTGOw0.parameters.bTGPA0.",
+      "operation": "changed",
+      "display_name": "User email",
+      "change_identifier": "bTGOw0",
+      "type": "GlobalExpression",
+      "before_value": {
+        "is_list": false,
+        "btype_id": "text",
+        "param_id": "bTGPA0",
+        "param_name": "user"
+      },
+      "after_value": {
+        "is_list": false,
+        "btype_id": "user",
+        "param_id": "bTGPA0",
+        "param_name": "user"
+      }
+    },
+    {
+      "timestamp": 1787860110663,
+      "change_path": "global_expressions.bTGOw0.expression.",
+      "operation": "changed",
+      "display_name": "User email",
+      "change_identifier": "bTGOw0",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": {
+        "next": null,
+        "type": "GlobalExpressionParameter",
+        "properties": {
+          "param_id": "bTGPA0",
+          "global_expression_id": "bTGOw0"
+        },
+        "is_slidable": false
+      }
+    },
+    {
+      "timestamp": 1787860112022,
+      "change_path": "global_expressions.bTGOw0.expression.",
+      "operation": "changed",
+      "display_name": "User email",
+      "change_identifier": "bTGOw0",
+      "type": "GlobalExpression",
+      "before_value": {
+        "next": null,
+        "type": "GlobalExpressionParameter",
+        "properties": {
+          "param_id": "bTGPA0",
+          "global_expression_id": "bTGOw0"
+        },
+        "is_slidable": false
+      },
+      "after_value": {
+        "next": {
+          "args": null,
+          "name": "email",
+          "next": null,
+          "type": "Message",
+          "is_slidable": false
+        },
+        "type": "GlobalExpressionParameter",
+        "properties": {
+          "param_id": "bTGPA0",
+          "global_expression_id": "bTGOw0"
+        },
+        "is_slidable": false
+      }
+    },
+    {
+      "timestamp": 1787945830173,
+      "change_path": "global_expressions.bTGPI0.",
+      "operation": "deleted",
+      "display_name": "test-delete-global",
+      "change_identifier": "bTGPI0",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    },
+    {
+      "timestamp": 1787945841946,
+      "change_path": "settings.client_safe.global_expression_folder_list.bTGPN.",
+      "operation": "added",
+      "display_name": "New folder",
+      "change_identifier": null,
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    },
+    {
+      "timestamp": 1787945846858,
+      "change_path": "settings.client_safe.global_expression_folder_list.bTGPN.",
+      "operation": "changed",
+      "display_name": "folder test",
+      "change_identifier": null,
+      "type": "GlobalExpression",
+      "before_value": "New folder",
+      "after_value": "folder test"
+    },
+    {
+      "timestamp": 1787945853659,
+      "change_path": "global_expressions.bTGPM.folder_id.",
+      "operation": "changed",
+      "display_name": "put inside folder",
+      "change_identifier": "bTGPM",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": "bTGPN"
+    },
+    {
+      "timestamp": 1787945916910,
+      "change_path": "comments.bTGPM.",
+      "operation": "added",
+      "display_name": "put inside folder",
+      "change_identifier": "bTGPM",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    },
+    {
+      "timestamp": 1787946084520,
+      "change_path": "settings.client_safe.global_expression_folder_list.bTGPS.",
+      "operation": "added",
+      "display_name": "New folder",
+      "change_identifier": null,
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    },
+    {
+      "timestamp": 1787946090845,
+      "change_path": "settings.client_safe.global_expression_folder_list.bTGPS.",
+      "operation": "changed",
+      "display_name": "probe folder test",
+      "change_identifier": null,
+      "type": "GlobalExpression",
+      "before_value": "New folder",
+      "after_value": "probe folder test"
+    },
+    {
+      "timestamp": 1787946095194,
+      "change_path": "global_expressions.bpOVa.folder_id.",
+      "operation": "changed",
+      "display_name": "mcp-probe-user-email",
+      "change_identifier": "bpOVa",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": "bTGPS"
+    },
+    {
+      "timestamp": 1787946099883,
+      "change_path": "global_expressions.bpOVa.",
+      "operation": "deleted",
+      "display_name": "mcp-probe-user-email",
+      "change_identifier": "bpOVa",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    },
+    {
+      "timestamp": 1787946103006,
+      "change_path": "settings.client_safe.global_expression_folder_list.bTGPS.",
+      "operation": "deleted",
+      "display_name": "probe folder test",
+      "change_identifier": null,
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    },
+    {
+      "timestamp": 1787946108795,
+      "change_path": "settings.client_safe.global_expression_folder_list.bTGPN.",
+      "operation": "deleted",
+      "display_name": "folder test",
+      "change_identifier": null,
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    },
+    {
+      "timestamp": 1787946115187,
+      "change_path": "global_expressions.bTGPM.",
+      "operation": "deleted",
+      "display_name": "put inside folder",
+      "change_identifier": "bTGPM",
+      "type": "GlobalExpression",
+      "before_value": null,
+      "after_value": null
+    }
+  ]
+}
