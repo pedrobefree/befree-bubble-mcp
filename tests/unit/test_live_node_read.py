@@ -17,7 +17,10 @@ from bubble_mcp.execution.live_node_read import (
     WrongApp,
     build_appquery_script,
     build_pointer_ready_script,
+    diagnose_stuck_gate,
+    editor_urls_for_pointers,
     is_transient_editor_error,
+    navigate_editor_page,
     parse_cookie_header,
     read_live_node,
     read_live_nodes,
@@ -643,3 +646,194 @@ def test_read_live_node_delegates_to_read_live_nodes_for_one_pointer() -> None:
     )
 
     assert single == batch[("api", "wf-1")]
+
+
+# --- The editor page a pointer needs open -------------------------------------------------
+#
+# The module used to hardcode `page?name=index`, which primes the index page and everything
+# app-wide and nothing else. A pointer into a reusable (`%ed.<key>`) therefore addressed a
+# subtree the editor had never started loading, and the ready gate - correctly - kept waiting
+# until the timeout. The page is a function of the pointer; these pin that it is treated as one.
+
+
+class _FakePage:
+    """The two things this module uses a Playwright page for: navigating and evaluating."""
+
+    def __init__(self, *, landed: str | None = None, identity: Any = None) -> None:
+        self.gotos: list[str] = []
+        self.url = ""
+        self._landed = landed
+        self._identity = identity
+
+    def goto(self, url: str, **_kwargs: Any) -> None:
+        self.gotos.append(url)
+        self.url = self._landed if self._landed is not None else url
+
+    def evaluate(self, _script: str) -> Any:
+        return self._identity
+
+
+def test_editor_urls_for_pointers_sends_a_reusable_pointer_to_its_own_reusable_page() -> None:
+    urls = editor_urls_for_pointers(
+        "mcp-test",
+        [("%ed", "bTZyj", "%el", "bTaCn"), ("api", "wf-1")],
+        app_id="mcp-test-app",
+        app_version="test",
+        resolver=lambda profile, app_id, kind, key: "New Client Form",
+    )
+
+    assert "type=reusable" in urls[("%ed", "bTZyj", "%el", "bTaCn")]
+    assert "name=New%20Client%20Form" in urls[("%ed", "bTZyj", "%el", "bTaCn")]
+    assert urls[("api", "wf-1")].endswith("page?name=index&id=mcp-test-app&version=test")
+
+
+def test_navigate_editor_page_goes_to_the_url_it_was_given() -> None:
+    page = _FakePage()
+
+    navigate_editor_page(page, "https://bubble.io/page?type=reusable&name=X&id=a&version=test", app_id="a", timeout_ms=1000)
+
+    assert page.gotos == ["https://bubble.io/page?type=reusable&name=X&id=a&version=test"]
+
+
+def test_navigate_editor_page_reports_a_logged_out_profile() -> None:
+    page = _FakePage(landed="https://bubble.io/login")
+
+    with pytest.raises(NotLoggedIn, match="bubble_session_login"):
+        navigate_editor_page(page, "https://bubble.io/page?name=index&id=a&version=test", app_id="a", timeout_ms=1000)
+
+
+def test_diagnose_stuck_gate_calls_an_expired_session_by_its_name() -> None:
+    """Measured on this machine: the editor serves the requested app for ~1s, then the page
+
+    bounces to https://bubble.io/ and window.appquery there answers for Bubble's own `meta`
+    app. The bounce is what a logged-out browser profile looks like from inside the editor, and
+    it lands AFTER the post-navigation URL check, so the only symptom left was every pointer
+    timing out as pointer_not_ready - which reads as a broken pointer, not an expired session.
+    """
+
+    page = _FakePage(identity={"url": "https://bubble.io/", "appname": "meta", "app_version": "live"})
+    page.url = "https://bubble.io/"
+
+    failure = diagnose_stuck_gate(page, expected_app_id="mcp-test-app", expected_app_version="test")
+
+    assert isinstance(failure, NotLoggedIn)
+    assert "bubble_session_login" in str(failure)
+
+
+def test_diagnose_stuck_gate_reports_a_wrong_app_that_kept_the_app_id_in_the_url() -> None:
+    page = _FakePage(identity={"url": "https://bubble.io/page?name=index&id=mcp-test-app&version=live", "appname": "mcp-test-app", "app_version": "live"})
+    page.url = "https://bubble.io/page?name=index&id=mcp-test-app&version=live"
+
+    failure = diagnose_stuck_gate(page, expected_app_id="mcp-test-app", expected_app_version="test")
+
+    assert isinstance(failure, WrongApp)
+
+
+def test_diagnose_stuck_gate_stays_silent_when_the_right_app_is_still_loaded() -> None:
+    """Then the gate really was waiting on a lazy subtree, and pointer_not_ready is the truth."""
+
+    page = _FakePage(identity={"url": "https://bubble.io/page?name=index&id=mcp-test-app&version=test", "appname": "mcp-test-app", "app_version": "test"})
+    page.url = "https://bubble.io/page?name=index&id=mcp-test-app&version=test"
+
+    assert diagnose_stuck_gate(page, expected_app_id="mcp-test-app", expected_app_version="test") is None
+
+
+def test_lazy_session_navigates_only_when_the_needed_page_changes(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """Two pointers into the same reusable share one navigation; the third needs its own.
+
+    Navigating the SAME page is what keeps a batch to one browser - a context per page would
+    reopen Chrome and pay the editor's whole boot again for every reusable in the batch.
+    """
+
+    import contextlib as _contextlib
+
+    import bubble_mcp.execution.live_node_read as module
+
+    page = _FakePage()
+
+    @_contextlib.contextmanager
+    def fake_open(**_kwargs: Any):  # type: ignore[no-untyped-def]
+        yield page
+
+    monkeypatch.setattr(module, "_open_editor_page", fake_open)
+    session = module._LazySession(
+        profile="mcp-test",
+        app_id="mcp-test-app",
+        app_version="test",
+        headless=True,
+        timeout_sec=1,
+    )
+    reusable_url = "https://bubble.io/page?type=reusable&name=R&id=mcp-test-app&tab=elements&version=test"
+    index_url = "https://bubble.io/page?name=index&id=mcp-test-app&version=test"
+
+    session.page_at(reusable_url)
+    session.page_at(reusable_url)
+    session.page_at(index_url)
+    session.close()
+
+    assert page.gotos == [reusable_url, index_url]
+
+
+def test_read_live_nodes_hands_each_pointer_the_editor_page_that_primes_it() -> None:
+    """The page is a function of the pointer, and every pointer in a batch may need its own."""
+
+    seen: list[tuple[tuple[str, ...], str]] = []
+
+    class RecordingSession:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def evaluator_for(
+            self,
+            ready_script: str,
+            expected_app_id: str,
+            expected_app_version: str,
+            timeout_sec: int,
+            url: str | None = None,
+        ):  # type: ignore[no-untyped-def]
+            def run(script: str) -> Any:
+                seen.append((tuple(current[0]), str(url)))
+                return {
+                    "appname": "mcp-test-app",
+                    "app_version": "test",
+                    "node": {"id": "n", "type": "Thing", "properties": {}},
+                }
+
+            return run
+
+        def close(self) -> None:
+            pass
+
+    import bubble_mcp.execution.live_node_read as module
+
+    pointers = [["%ed", "r1", "%el", "a"], ["%p3", "p1"], ["api", "wf-1"]]
+    current: list[list[str]] = [[]]
+
+    original_run_pointer = module._run_pointer
+
+    def tracking_run_pointer(run, segments, *args, **kwargs):  # type: ignore[no-untyped-def]
+        current[0] = segments
+        return original_run_pointer(run, segments, *args, **kwargs)
+
+    original_session = module._LazySession
+    module._LazySession = RecordingSession  # type: ignore[assignment]
+    module._run_pointer = tracking_run_pointer  # type: ignore[assignment]
+    try:
+        results = read_live_nodes(
+            "mcp-test",
+            pointers,
+            app_id="mcp-test-app",
+            app_version="test",
+            name_resolver=lambda profile, app_id, kind, key: {"r1": "Reusable One", "p1": "dashboard"}[key],
+        )
+    finally:
+        module._LazySession = original_session  # type: ignore[assignment]
+        module._run_pointer = original_run_pointer  # type: ignore[assignment]
+
+    assert all(result["ok"] for result in results.values())
+    by_pointer = dict(seen)
+    assert "type=reusable" in by_pointer[("%ed", "r1", "%el", "a")]
+    assert "name=Reusable%20One" in by_pointer[("%ed", "r1", "%el", "a")]
+    assert "name=dashboard" in by_pointer[("%p3", "p1")]
+    assert "type=reusable" not in by_pointer[("%p3", "p1")]
+    assert "name=index" in by_pointer[("api", "wf-1")]

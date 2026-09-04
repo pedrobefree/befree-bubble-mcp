@@ -21,6 +21,12 @@ import time
 from typing import Any, Callable, Sequence
 
 from bubble_mcp.core.config import load_settings
+from bubble_mcp.execution.editor_page import (
+    INDEX_EDITOR_URL_TEMPLATE,
+    NameResolver,
+    editor_url_for_pointer,
+    resolve_context_name,
+)
 from bubble_mcp.sessions.store import load_session
 
 
@@ -42,7 +48,25 @@ TRANSIENT_EDITOR_ERROR_MARKERS = (
     "not fully initialized",
     "navigated away",
 )
-EDITOR_URL_TEMPLATE = "https://bubble.io/page?name=index&id={app_id}&version={app_version}"
+# Kept as the app-wide default page only. Which page a given pointer needs open is decided by
+# editor_page.editor_url_for_pointer: the editor loads its tree lazily and per page, so a
+# pointer into a reusable (%ed.<key>) or into a page other than index addresses a subtree that
+# `index` never starts loading, and the ready gate waits for a node that is not coming.
+EDITOR_URL_TEMPLATE = INDEX_EDITOR_URL_TEMPLATE
+# What diagnose_stuck_gate reads out of a page whose ready gate ran out of time.
+EDITOR_IDENTITY_SCRIPT = """
+() => {
+  const out = {url: String(location.href)};
+  try {
+    const root = window.appquery.app().json;
+    out.appname = root.appname();
+    out.app_version = root.app_version();
+  } catch (error) {
+    out.unavailable = true;
+  }
+  return out;
+}
+"""
 # window.appquery is a getter: it exists (typeof === 'function') well before it is usable, and
 # calling through it while the editor is still initializing throws "The variable appquery is
 # not fully initialized yet". A typeof check races that window and passes too early, so the
@@ -317,6 +341,102 @@ def _session_cookie_header(session: Any) -> str:
     return str(getattr(session, "cookies", "") or "")
 
 
+def editor_urls_for_pointers(
+    profile: str,
+    pointers: Sequence[Sequence[str]],
+    *,
+    app_id: str,
+    app_version: str,
+    resolver: NameResolver = resolve_context_name,
+) -> dict[tuple[str, ...], str]:
+    """Map each pointer to the editor page that primes its subtree.
+
+    Reusable pointers get their own reusable page, page pointers get that page, and everything
+    app-wide (``api``, ``styles``, ...) gets the default ``index`` page - see
+    ``editor_page.editor_url_for_pointer``. Returning the whole mapping at once lets the caller
+    group a batch by page and navigate once per page instead of once per pointer.
+    """
+
+    urls: dict[tuple[str, ...], str] = {}
+    for pointer in pointers:
+        key = tuple(str(part) for part in pointer)
+        if key not in urls:
+            urls[key] = editor_url_for_pointer(
+                list(key),
+                profile=profile,
+                app_id=app_id,
+                app_version=app_version,
+                resolver=resolver,
+            )
+    return urls
+
+
+def navigate_editor_page(page: Any, url: str, *, app_id: str, timeout_ms: int) -> None:
+    """Navigate an already-open page to ``url`` and refuse a landing that is not the editor."""
+
+    page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
+    landed_url = page.url
+    if app_id not in landed_url:
+        # A logged-in editor load keeps the app id in the URL. A logged-out profile
+        # (directory exists, but Chrome never got a session cookie written into it)
+        # gets redirected by bubble.io to its marketing page or a /login-ish path
+        # instead, and the app id drops out of the URL.
+        raise NotLoggedIn(
+            f"Browser profile landed on {landed_url} instead of the editor for app "
+            f"'{app_id}'. The profile directory exists but appears never to have logged in to "
+            f"Bubble, or its session has expired; run bubble_session_login for this profile, "
+            f"then retry."
+        )
+
+
+def diagnose_stuck_gate(
+    page: Any, *, expected_app_id: str, expected_app_version: str
+) -> BaseException | None:
+    """Return the real failure behind a ready gate that ran out of time, or ``None``.
+
+    The gate returns "not ready" both for a subtree that is still loading and for a page that is
+    no longer serving the requested app at all - it compares ``root.appname()`` first, precisely
+    so it never settles on the wrong app's tree. That makes the two indistinguishable from the
+    timeout alone, and the second one is not a slow subtree at all: measured on this machine, a
+    logged-out browser profile loads the requested app for about a second and then bounces to
+    ``https://bubble.io/``, where ``window.appquery`` answers for Bubble's own ``meta`` app. The
+    bounce lands AFTER the post-navigation URL check, so every pointer then timed out as
+    ``pointer_not_ready``, which reads as a broken pointer instead of an expired session.
+
+    Asking the page what it is actually serving, once, after the gate gave up costs one
+    evaluation on a path that has already spent its whole timeout, and turns that into either
+    ``not_logged_in`` (the page left the app entirely) or ``wrong_app`` (still on the app's URL,
+    but serving another app or version). ``None`` means the right app really was loaded and the
+    gate really was waiting on a lazy subtree, so ``pointer_not_ready`` stands.
+    """
+
+    try:
+        identity = page.evaluate(EDITOR_IDENTITY_SCRIPT)
+    except Exception:  # noqa: BLE001 - a page that cannot answer adds nothing to diagnose with
+        return None
+    if not isinstance(identity, dict) or identity.get("unavailable"):
+        return None
+    actual_app_id = identity.get("appname")
+    actual_app_version = identity.get("app_version")
+    if actual_app_id == expected_app_id and actual_app_version == expected_app_version:
+        return None
+    landed_url = str(identity.get("url") or getattr(page, "url", "") or "")
+    if expected_app_id not in landed_url:
+        return NotLoggedIn(
+            f"The editor page left app '{expected_app_id}' and is now on {landed_url}, serving "
+            f"app '{actual_app_id}' version '{actual_app_version}'. That is what an expired or "
+            f"absent Bubble login looks like from inside the editor: the app loads for about a "
+            f"second and the page is then bounced away from it. Run bubble_session_login for "
+            f"this profile and retry."
+        )
+    return WrongApp(
+        expected_app_id=expected_app_id,
+        expected_app_version=expected_app_version,
+        actual_app_id=actual_app_id,
+        actual_app_version=actual_app_version,
+    )
+
+
 @contextlib.contextmanager
 def _open_editor_page(
     *, profile: str, app_id: str, app_version: str, headless: bool, timeout_sec: int
@@ -329,6 +449,10 @@ def _open_editor_page(
     with a dozen changes far too slow (see ``write_verify.verify_changes``).
     ``PlaywrightMissing``/``BrowserProfileMissing``/``NotLoggedIn`` are raised here because they
     are session-wide setup failures, not per-pointer ones.
+
+    The page it yields is navigated to the app's default (``index``) editor page. A batch that
+    needs other pages navigates the same page again through ``_LazySession.page_at``, rather
+    than opening a second browser.
     """
 
     try:
@@ -370,19 +494,10 @@ def _open_editor_page(
                 if cookies:
                     context.add_cookies(cookies)
             page = context.pages[0] if context.pages else context.new_page()
-            page.goto(url, wait_until="domcontentloaded", timeout=timeout_ms)
-            landed_url = page.url
-            if app_id not in landed_url:
-                # A logged-in editor load keeps the app id in the URL. A logged-out profile
-                # (directory exists, but Chrome never got a session cookie written into it)
-                # gets redirected by bubble.io to its marketing page or a /login-ish path
-                # instead, and the app id drops out of the URL.
-                raise NotLoggedIn(
-                    f"Browser profile '{profile}' landed on {landed_url} instead of the "
-                    f"editor for app '{app_id}'. The profile directory exists but appears "
-                    f"never to have logged in to Bubble; run bubble_session_login for "
-                    f"profile '{profile}', then retry."
-                )
+            try:
+                navigate_editor_page(page, url, app_id=app_id, timeout_ms=timeout_ms)
+            except NotLoggedIn as exc:
+                raise NotLoggedIn(f"Browser profile '{profile}': {exc}") from exc
             yield page
         finally:
             context.close()
@@ -396,6 +511,7 @@ def _evaluate_with_retries(
     expected_app_id: str,
     expected_app_version: str,
     timeout_sec: int,
+    url: str | None = None,
 ) -> Any:
     """Run both readiness gates and one ``evaluate()`` against an ALREADY OPEN page.
 
@@ -409,7 +525,9 @@ def _evaluate_with_retries(
     re-satisfied against the (possibly new) page context.
     """
 
-    url = EDITOR_URL_TEMPLATE.format(app_id=expected_app_id, app_version=expected_app_version)
+    url = url or EDITOR_URL_TEMPLATE.format(
+        app_id=expected_app_id, app_version=expected_app_version
+    )
     timeout_ms = timeout_sec * 1000
     last_message = ""
     for attempt in range(1, EDITOR_EVALUATE_MAX_ATTEMPTS + 1):
@@ -423,6 +541,16 @@ def _evaluate_with_retries(
             try:
                 page.wait_for_function(ready_script, timeout=timeout_ms)
             except Exception as exc:  # noqa: BLE001 - Playwright's own timeout type
+                # The gate reports "not ready" for a page that has left the app as well as for
+                # a subtree that is still loading; ask the page which one happened before
+                # settling on the slow-subtree reading of it.
+                diagnosed = diagnose_stuck_gate(
+                    page,
+                    expected_app_id=expected_app_id,
+                    expected_app_version=expected_app_version,
+                )
+                if diagnosed is not None:
+                    raise diagnosed from exc
                 raise PointerNotReady(
                     f"pointer subtree never finished loading on {url} within "
                     f"{timeout_sec}s"
@@ -484,6 +612,11 @@ class _LazySession:
         self._page: Any = None
         self._opened = False
         self._setup_error: BaseException | None = None
+        self._app_id = app_id
+        self._timeout_ms = timeout_sec * 1000
+        self._current_url = editor_url_for_pointer(
+            [], profile=profile, app_id=app_id, app_version=app_version
+        )
 
     def _ensure_open(self) -> Any:
         if self._setup_error is not None:
@@ -497,11 +630,31 @@ class _LazySession:
                 raise
         return self._page
 
+    def page_at(self, url: str) -> Any:
+        """Return the open page, navigated to ``url`` if it is not already there.
+
+        Pointers into different reusables need different editor pages, and the page is where
+        the editor decides which subtrees to load. Navigating the SAME page is what keeps a
+        batch to one browser: the alternative - a context per page - reopens Chrome and pays
+        the editor's whole boot again for every reusable in the batch.
+        """
+
+        page = self._ensure_open()
+        if url and url != self._current_url:
+            navigate_editor_page(page, url, app_id=self._app_id, timeout_ms=self._timeout_ms)
+            self._current_url = url
+        return page
+
     def evaluator_for(
-        self, ready_script: str, expected_app_id: str, expected_app_version: str, timeout_sec: int
+        self,
+        ready_script: str,
+        expected_app_id: str,
+        expected_app_version: str,
+        timeout_sec: int,
+        url: str | None = None,
     ) -> Evaluator:
         def run(script: str) -> Any:
-            page = self._ensure_open()
+            page = self.page_at(url) if url else self._ensure_open()
             return _evaluate_with_retries(
                 page,
                 ready_script=ready_script,
@@ -509,6 +662,7 @@ class _LazySession:
                 expected_app_id=expected_app_id,
                 expected_app_version=expected_app_version,
                 timeout_sec=timeout_sec,
+                url=url,
             )
 
         return run
@@ -632,6 +786,7 @@ def read_live_nodes(
     app_version: str = "test",
     headless: bool = True,
     timeout_sec: int = DEFAULT_READ_TIMEOUT_SEC,
+    name_resolver: NameResolver = resolve_context_name,
 ) -> dict[tuple[str, ...], dict[str, Any]]:
     """Read every pointer in ``pointers`` through ONE persistent browser context.
 
@@ -641,6 +796,11 @@ def read_live_nodes(
     with ``_evaluate_with_retries``, returning the SAME per-pointer result shape
     ``read_live_node`` already returns, keyed by the pointer tuple. ``read_live_node`` is now
     the one-pointer case of this function.
+
+    Each pointer is read on the editor page that primes it (``editor_urls_for_pointers``): the
+    editor loads its tree lazily and per page, so a reusable's subtree is only ever populated
+    on that reusable's own page. Pointers that need the same page share one navigation, and the
+    page carries over between them - the browser is still opened exactly once for the batch.
     """
 
     resolved_app_id = _resolve_app_id(profile, app_id)
@@ -662,14 +822,25 @@ def read_live_nodes(
         headless=headless,
         timeout_sec=timeout_sec,
     )
+    urls = editor_urls_for_pointers(
+        profile,
+        keys,
+        app_id=resolved_app_id,
+        app_version=app_version,
+        resolver=name_resolver,
+    )
     try:
-        for key in keys:
+        # Sorted by URL so pointers needing the same page run consecutively and navigate once,
+        # instead of bouncing back and forth between pages in the caller's pointer order.
+        for key in sorted(keys, key=lambda item: urls[item]):
             ready_script = build_pointer_ready_script(list(key), resolved_app_id)
-            run = session.evaluator_for(ready_script, resolved_app_id, app_version, timeout_sec)
+            run = session.evaluator_for(
+                ready_script, resolved_app_id, app_version, timeout_sec, urls[key]
+            )
             results[key] = _run_pointer(run, list(key), resolved_app_id, app_version, timeout_sec)
     finally:
         session.close()
-    return results
+    return {key: results[key] for key in keys}
 
 
 def read_live_node(
@@ -681,6 +852,7 @@ def read_live_node(
     app_version: str = "test",
     headless: bool = True,
     timeout_sec: int = DEFAULT_READ_TIMEOUT_SEC,
+    name_resolver: NameResolver = resolve_context_name,
 ) -> dict[str, Any]:
     """Read the node at ``pointer`` from the live editor, as a structured result.
 
@@ -697,5 +869,6 @@ def read_live_node(
         app_version=app_version,
         headless=headless,
         timeout_sec=timeout_sec,
+        name_resolver=name_resolver,
     )
     return results[tuple(segments)]
