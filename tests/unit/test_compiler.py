@@ -1,3 +1,7 @@
+import json
+
+import pytest
+
 from bubble_mcp.compiler.payload import compile_plan_to_write_payloads, resolve_context_root_id
 from bubble_mcp.context.models import BubbleContextNode, BubbleProjectContext
 from bubble_mcp.execution.executor import execute_plan
@@ -153,6 +157,297 @@ def test_compile_create_text_inside_reusable_context() -> None:
     assert ["_index", "issues_sub", "bReusableRoot"] in [change.get("path_array") for change in payload["changes"]]
 
 
+def test_compile_nested_element_uses_slot_for_path_and_object_id_for_parent_index() -> None:
+    context = BubbleProjectContext(
+        app_id="cms-portal",
+        source="test",
+        nodes=[
+            BubbleContextNode(
+                id="page:bpfznz",
+                label="salon-certification",
+                type="page",
+                metadata={
+                    "bubble_id": "bpfznz",
+                    "key": "bpfznz",
+                    "root_id": "bpnlwp",
+                },
+            ),
+            BubbleContextNode(
+                id="element:bParentSlot",
+                label="Parent group",
+                type="element",
+                metadata={
+                    "bubble_id": "bParentSlot",
+                    "key": "bParentSlot",
+                    "object_id": "bParentObject",
+                    "context": "page:salon-certification",
+                    "path_array": ["%p3", "bpfznz", "%el", "bParentSlot"],
+                    "children": ["bExistingChildObject"],
+                },
+            ),
+        ],
+        edges=[],
+    )
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "create_text",
+                "args": {
+                    "context": "salon-certification",
+                    "parent": "Parent group",
+                    "content": "Hello",
+                    "name": "Nested text",
+                    "slot_key": "bChildSlot",
+                },
+            }
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="cms-portal", context=context)
+    payload = compiled["steps"][0]["args"]["write_payload"]
+    created = first_change(payload, "CreateElement")
+    created_object_id = created["body"]["id"]
+
+    assert created["path_array"] == [
+        "%p3",
+        "bpfznz",
+        "%el",
+        "bParentSlot",
+        "%el",
+        "bChildSlot",
+    ]
+    parent_index = next(
+        change
+        for change in payload["changes"]
+        if change.get("path_array") == ["_index", "issues_sub", "bParentObject"]
+    )
+    assert json.loads(parent_index["body"]) == ["bExistingChildObject", created_object_id]
+
+
+def test_compiler_resolves_get_element_reference_to_object_id() -> None:
+    context = BubbleProjectContext(
+        app_id="cms-portal",
+        source="test",
+        nodes=[
+            BubbleContextNode(
+                id="page:bLoginSlot",
+                label="login",
+                type="page",
+                metadata={"bubble_id": "bLoginSlot", "key": "bLoginSlot", "root_id": "bLoginObject"},
+            ),
+            BubbleContextNode(
+                id="workflow:bWorkflowSlot",
+                label="Login button is clicked",
+                type="workflow",
+                metadata={
+                    "bubble_id": "bWorkflowSlot",
+                    "key": "bWorkflowSlot",
+                    "root_id": "bWorkflowObject",
+                    "context": "page:login",
+                    "path_array": ["%p3", "bLoginSlot", "%wf", "bWorkflowSlot"],
+                },
+            ),
+            BubbleContextNode(
+                id="element:bEmailSlot",
+                label="Email input",
+                type="element",
+                metadata={
+                    "bubble_id": "bEmailSlot",
+                    "key": "bEmailSlot",
+                    "object_id": "bEmailObject",
+                    "context": "page:login",
+                    "path_array": ["%p3", "bLoginSlot", "%el", "bEmailSlot"],
+                },
+            ),
+            BubbleContextNode(
+                id="element:bPasswordSlot",
+                label="Password input",
+                type="element",
+                metadata={
+                    "bubble_id": "bPasswordSlot",
+                    "key": "bPasswordSlot",
+                    "object_id": "bPasswordObject",
+                    "context": "page:login",
+                    "path_array": ["%p3", "bLoginSlot", "%el", "bPasswordSlot"],
+                },
+            ),
+        ],
+        edges=[],
+    )
+    plan = {
+        "steps": [
+            {
+                "id": "login",
+                "tool_name": "log_the_user_in",
+                "args": {
+                    "context": "login",
+                    "event_ref": "Login button is clicked",
+                    "email_input_ref": "Email input",
+                    "password_input_ref": "bPasswordSlot",
+                },
+            }
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(plan, app_id="cms-portal", context=context)
+    action = first_change(compiled["steps"][0]["args"]["write_payload"], "CreateAction")
+    props = action["body"]["0"]["%p"]
+
+    assert props["%em"]["%p"]["%ei"] == "bEmailObject"
+    assert props["%pw"]["%p"]["%ei"] == "bPasswordObject"
+
+
+def test_compile_reusable_instance_uses_source_root_id_and_host_structural_key() -> None:
+    context = BubbleProjectContext(
+        app_id="cms-portal",
+        source="test",
+        nodes=[
+            BubbleContextNode(
+                id="page:bpfznz",
+                label="salon-certification",
+                type="page",
+                metadata={
+                    "bubble_id": "bpfznz",
+                    "root_id": "bpnlwp",
+                    "children": ["bpuvww"],
+                },
+            ),
+            BubbleContextNode(
+                id="reusable:bTQwO0",
+                label="redirect-rules",
+                type="reusable",
+                metadata={"bubble_id": "bTQwO0", "root_id": "bTQwN0"},
+            ),
+        ],
+        edges=[],
+    )
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "create_reusable_instance",
+                "args": {
+                    "context": "salon-certification",
+                    "parent": "root",
+                    "source": "redirect-rules",
+                    "name": "redirect-rules diagnostic dry-run",
+                    "slot_key": "bTQwV1",
+                },
+            }
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(
+        plan,
+        app_id="cms-portal",
+        context=context,
+    )
+    payload = compiled["steps"][0]["args"]["write_payload"]
+    create = first_change(payload, "CreateElement")
+
+    assert create["path_array"] == ["%p3", "bpfznz", "%el", "bTQwV1"]
+    assert create["body"]["%x"] == "CustomElement"
+    assert create["body"]["%p"]["%ci"] == "bTQwN0"
+    assert ["_index", "issues_sub", "bpnlwp"] in [
+        change.get("path_array") for change in payload["changes"]
+    ]
+
+
+def test_compile_reusable_instance_fails_when_source_root_id_is_unproved() -> None:
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "create_reusable_instance",
+                "args": {
+                    "context": "salon-certification",
+                    "parent": "root",
+                    "source": "redirect-rules",
+                    "name": "diagnostic",
+                },
+            }
+        ]
+    }
+
+    with pytest.raises(ValueError, match="could not be resolved to a proven root id"):
+        compile_plan_to_write_payloads(plan, app_id="cms-portal")
+
+
+def test_compile_navigate_action_uses_workflow_key_and_page_internal_id() -> None:
+    context = BubbleProjectContext(
+        app_id="cms-portal",
+        source="test",
+        nodes=[
+            BubbleContextNode(
+                id="page:bTHGO",
+                label="login",
+                type="page",
+                metadata={"bubble_id": "bTHGO", "root_id": "bTHGI"},
+            ),
+            BubbleContextNode(
+                id="reusable:bTQwO0",
+                label="redirect-rules",
+                type="reusable",
+                metadata={"bubble_id": "bTQwO0", "root_id": "bTQwN0"},
+            ),
+            BubbleContextNode(
+                id="workflow:bPAwH",
+                label="User is logged out",
+                type="workflow",
+                metadata={
+                    "key": "bPAwH",
+                    "bubble_id": "bPAwH",
+                    "root_id": "bypGn",
+                    "context": "reusable:redirect-rules",
+                    "children": ["existing-action"],
+                },
+            ),
+        ],
+        edges=[],
+    )
+    plan = {
+        "steps": [
+            {
+                "id": "s1",
+                "tool_name": "add_action",
+                "args": {
+                    "context": "redirect-rules",
+                    "event_ref": "bypGn",
+                    "action_type": "navigate",
+                    "param": "login",
+                    "action_index": 0,
+                    "action_id": "b1DTm",
+                },
+            }
+        ]
+    }
+
+    compiled = compile_plan_to_write_payloads(
+        plan,
+        app_id="cms-portal",
+        context=context,
+    )
+    changes = compiled["steps"][0]["args"]["write_payload"]["changes"]
+
+    assert any(
+        change["path_array"]
+        == ["%ed", "bTQwO0", "%wf", "bPAwH", "actions", "0", "%p", "%ei"]
+        and change["body"] == "bTHGI"
+        for change in changes
+    )
+    assert any(
+        change["path_array"] == ["_index", "issues_sub", "bypGn"]
+        and json.loads(change["body"]) == ["existing-action", "b1DTm"]
+        for change in changes
+    )
+    assert any(
+        change["path_array"] == ["_index", "issues_list", "bypGn"]
+        and json.loads(change["body"]) == [{"cross_page": "b1DTm"}]
+        for change in changes
+    )
+
+
 def test_execute_plan_can_compile_missing_payload_before_execution() -> None:
     class FakeClient:
         def write(self, payload, session, *, dry_run=False):  # type: ignore[no-untyped-def]
@@ -249,7 +544,7 @@ def test_compile_schema_option_theme_and_workflow_tools() -> None:
             {"id": "s5", "tool_name": "create_color", "args": {"name": "Brand", "rgba": "rgba(1,2,3,1)"}},
             {"id": "s6", "tool_name": "create_style", "args": {"name": "Primary", "element_type": "Button"}},
             {"id": "s7", "tool_name": "create_workflow", "args": {"context": "index", "event": "click", "element_name": "Button"}},
-            {"id": "s8", "tool_name": "add_action", "args": {"context": "index", "workflow_id": "wf1", "action_type": "navigate"}},
+            {"id": "s8", "tool_name": "add_action", "args": {"context": "index", "workflow_id": "wf1", "action_type": "refresh_page"}},
         ]
     }
 

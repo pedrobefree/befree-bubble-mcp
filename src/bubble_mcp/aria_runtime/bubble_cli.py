@@ -10907,49 +10907,32 @@ class BubbleCLI:
         if not ref:
             return None
 
-        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
-        pages = data.get("%p3") if isinstance(data.get("%p3"), dict) else data.get("pages")
-        if not isinstance(pages, dict):
-            pages = {}
-
-        def _id_from_slot(slot_key: str) -> Optional[str]:
-            payload = pages.get(slot_key)
-            if isinstance(payload, dict):
-                return str(payload.get("id") or slot_key)
-            return None
-
-        # Direct slot key.
-        direct = _id_from_slot(ref)
-        if direct:
-            return direct
-
-        # Name lookup -> slot key -> object id.
-        slot = self.discovery.find_page(ref)
-        if slot:
-            resolved = _id_from_slot(str(slot))
-            if resolved:
-                return resolved
-            return str(slot)
-
-        # Direct object id match.
-        for _, payload in pages.items():
-            if not isinstance(payload, dict):
-                continue
-            if str(payload.get("id") or "").strip() == ref:
-                return ref
+        resolved = self.discovery.resolve_page_reference(ref)
+        if resolved and resolved.root_id:
+            return str(resolved.object_id)
 
         # Context alias fallback (page name mapped in CLI cache).
         ctx_id, ctx_type = self._find_context(ref)
         if ctx_id and ctx_type == "page":
-            resolved = _id_from_slot(str(ctx_id))
-            if resolved:
-                return resolved
-            return str(ctx_id)
-
-        # Last-resort explicit id text.
-        if re.match(r"^[A-Za-z0-9]+$", ref):
-            return ref
+            cached_resolution = self.discovery.resolve_page_reference(str(ctx_id))
+            if cached_resolution and cached_resolution.root_id:
+                return str(cached_resolution.object_id)
         return None
+
+    def _resolve_context_object_id(self, context_id: str, context_type: str) -> str:
+        """Return the root object id used by indexes, never its structural slot."""
+
+        if context_type == "reusable":
+            resolved = self.discovery.resolve_reusable_reference(context_id)
+        else:
+            resolved = self.discovery.resolve_page_reference(context_id)
+        if resolved:
+            return str(resolved.root_id or resolved.object_id or resolved.key)
+        cached = self._lookup_cached_context_object_id(context_type, context_id)
+        if cached:
+            return cached
+        indexed = self._resolve_context_object_id_from_index(context_id, context_type)
+        return str(indexed or context_id)
 
     def _resolve_parent_element(
         self,
@@ -21894,9 +21877,20 @@ class BubbleCLI:
             logger.error(f"Reusable '{reusable_name}' not found")
             return False
         reusable_key, reusable_definition = reusable_found
-        # Editor-created instances reference the definition's INNER id in custom_id,
-        # never the element_definitions dict key (they often differ).
-        reusable_id = str(reusable_definition.get("id") or reusable_key)
+        resolve_reusable = getattr(self.discovery, "resolve_reusable_reference", None)
+        resolved_reusable = resolve_reusable(reusable_key) if callable(resolve_reusable) else None
+        reusable_id = str(
+            (resolved_reusable.root_id if resolved_reusable else None)
+            or reusable_definition.get("root_id")
+            or reusable_definition.get("id")
+            or ""
+        ).strip()
+        if not reusable_id:
+            logger.error(
+                f"Reusable '{reusable_name}' has no proven internal/root id; refusing to use "
+                f"its structural key '{reusable_key}' as %ci."
+            )
+            return False
 
         instance_name = str(name or reusable_name or "").strip()
         if not instance_name:
@@ -21904,7 +21898,7 @@ class BubbleCLI:
             return False
 
         prop_updates: Dict[str, Any] = {
-            "custom_id": reusable_id,
+            "%ci": reusable_id,
         }
         if min_width is None:
             min_width = "320px"
@@ -51913,7 +51907,7 @@ class BubbleCLI:
             idx,
             resolved_action_id,
             "ChangePage",
-            fallback_workflow=workflow,
+            fallback_workflow=workflow_obj,
         )
 
         # Optional advanced fields
@@ -51966,15 +51960,6 @@ class BubbleCLI:
             intent_id=random.randint(1, 999999),
             source_appname=""
         )
-        self._add_schema_change(
-            pb,
-            "SetData",
-            [prefix, context_root_token, "%wf", wf_key, "actions", idx_key, "%p", "element_id"],
-            page_id,
-            intent_id=random.randint(1, 999999),
-            source_appname=""
-        )
-        # Compatibility alias for ChangePage destination.
         self._add_schema_change(
             pb,
             "SetData",
@@ -52062,11 +52047,11 @@ class BubbleCLI:
             dry_run,
             f"Go to page action added to workflow '{event_ref}' at index {idx}."
         )
-        if ok:
+        if ok and not dry_run:
             wf_cached = dict(workflow_obj) if isinstance(workflow_obj, dict) else {}
             wf_cached.setdefault("id", wf_id)
             wf_cached_actions = dict(actions)
-            action_props = {"element_id": page_id, "%ei": page_id}
+            action_props = {"%ei": page_id}
             if open_in_new_tab is not None:
                 action_props["%o9"] = bool(open_in_new_tab)
             if keep_current_page_params is not None:

@@ -60,7 +60,7 @@ def test_navigation_actions_normalize_optional_properties(builder: ActionBuilder
     }
 
     minimal = unwrap(builder.navigate_to_page(page_name="index"))["%p"]
-    assert minimal == {"element_id": "index", "%ei": "index"}
+    assert minimal == {"%ei": "index"}
 
     data = {"%x": "CurrentUser"}
     parameters = {"source": "campaign"}
@@ -75,7 +75,6 @@ def test_navigation_actions_normalize_optional_properties(builder: ActionBuilder
         )
     )["%p"]
     assert complete == {
-        "element_id": "dashboard",
         "%ei": "dashboard",
         "data_to_send": data,
         "%o9": True,

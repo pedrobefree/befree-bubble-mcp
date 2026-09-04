@@ -7,11 +7,22 @@ import json
 import os
 import pickle
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-
 JsonObject = dict[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedBubbleReference:
+    """A Bubble object resolved without collapsing storage keys into object ids."""
+
+    key: str
+    object_id: str
+    root_id: str | None
+    name: str | None
+    path_array: tuple[str, ...]
 
 
 class DiscoveryLogger(Protocol):
@@ -30,6 +41,8 @@ class DiscoveryDataBoundary:
     cache behavior, and overlay semantics testable under strict typing.
     """
 
+    _CACHE_FORMAT_VERSION = 2
+
     def __init__(
         self,
         app_json_path: str | None = None,
@@ -47,6 +60,8 @@ class DiscoveryDataBoundary:
         self._data: JsonObject | None = None
         self._data_source: str | None = None
         self._source_path: str | None = None
+        self._cacheable_data: JsonObject | None = None
+        self._overlay_applied = False
         self._force_source_reload = False
 
     def _load_crawler_index(self, path: str | None) -> JsonObject | None:
@@ -61,6 +76,11 @@ class DiscoveryDataBoundary:
 
     def _normalize_api_connector_collections(self, data: JsonObject) -> JsonObject:
         """Hook for the legacy API Connector normalizer."""
+
+        return data
+
+    def _normalize_reference_aliases(self, data: JsonObject) -> JsonObject:
+        """Hook for making normalized/wire reference buckets share complete records."""
 
         return data
 
@@ -254,7 +274,11 @@ class DiscoveryDataBoundary:
             os.close(descriptor)
             temporary_path = Path(raw_temporary_path)
             cache_payload = {
-                "__meta__": {"mtime_ns": source_mtime_ns, "size": source_size},
+                "__meta__": {
+                    "format_version": self._CACHE_FORMAT_VERSION,
+                    "mtime_ns": source_mtime_ns,
+                    "size": source_size,
+                },
                 "data": data,
             }
             with temporary_path.open("wb") as handle:
@@ -294,6 +318,7 @@ class DiscoveryDataBoundary:
                     cached_data = payload.get("data")
                     if (
                         isinstance(metadata, dict)
+                        and int(metadata.get("format_version", -1)) == self._CACHE_FORMAT_VERSION
                         and int(metadata.get("mtime_ns", -1)) == source_mtime_ns
                         and int(metadata.get("size", -1)) == source_size
                         and isinstance(cached_data, dict)
@@ -328,6 +353,7 @@ class DiscoveryDataBoundary:
                     bypass_cache=self._force_source_reload,
                 )
                 self._data = self._normalize_api_connector_collections(self._data)
+                self._data = self._normalize_reference_aliases(self._data)
                 self._data_source = source_name
                 self._source_path = source_path
                 if source_name == "consolelog":
@@ -367,12 +393,20 @@ class DiscoveryDataBoundary:
                             f"[PathDiscovery] Merged crawler-index into {self._data_source} data"
                         )
 
+            if self._data is not None:
+                self._data = self._normalize_reference_aliases(self._data)
+                # Parsed caches may contain source/crawler normalization, but never
+                # mutation overlays or later in-memory injections.
+                self._cacheable_data = copy.deepcopy(self._data)
+                self._data = copy.deepcopy(self._cacheable_data)
+
             if self._data is not None and self.mutation_overlay_path and os.path.exists(
                 self.mutation_overlay_path
             ):
                 overlay_entries = self._load_mutation_overlay(self.mutation_overlay_path)
                 if overlay_entries:
                     self._data = self._apply_mutation_overlay(self._data, overlay_entries)
+                    self._overlay_applied = True
                     self._data_source = f"{self._data_source}+overlay"
                     self._logger.info(
                         f"[PathDiscovery] Applied mutation overlay into {self._data_source} data"
@@ -398,6 +432,8 @@ class DiscoveryDataBoundary:
         self._data = None
         self._data_source = None
         self._source_path = None
+        self._cacheable_data = None
+        self._overlay_applied = False
         self._force_source_reload = True
         return self.data
 
@@ -425,5 +461,9 @@ class DiscoveryDataBoundary:
             self._cache_path_for_source(source_path),
             source_mtime_ns=source_mtime_ns,
             source_size=source_size,
-            data=self._data,
+            data=(
+                self._cacheable_data
+                if self._overlay_applied and self._cacheable_data is not None
+                else self._data
+            ),
         )

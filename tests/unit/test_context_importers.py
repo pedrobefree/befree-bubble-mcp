@@ -28,6 +28,86 @@ def test_crawler_context_preserves_style_metadata(tmp_path) -> None:  # type: ig
     assert context.metadata["styles"]["Button_default"]["name"] == "Primary Button"
 
 
+def test_crawler_context_preserves_workflow_slot_object_id_and_children(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    context = context_from_crawler_payload(
+        {
+            "appId": "cms-portal",
+            "reusables": [
+                {
+                    "id": "bTQwO0",
+                    "rootId": "bTQwN0",
+                    "name": "redirect-rules",
+                    "sourceKey": "element_definitions",
+                    "workflows": {
+                        "bPAwH": {
+                            "id": "bypGn",
+                            "name": "User is logged out",
+                            "actions": {"0": {"id": "existing-action"}},
+                        }
+                    },
+                }
+            ],
+        },
+        tmp_path / "crawler.json",
+    )
+
+    workflow = next(node for node in context.nodes if node.type == "workflow")
+    assert workflow.metadata["key"] == "bPAwH"
+    assert workflow.metadata["root_id"] == "bypGn"
+    assert workflow.metadata["path_array"] == ["%ed", "bTQwO0", "%wf", "bPAwH"]
+    assert workflow.metadata["children"] == ["existing-action"]
+
+
+def test_crawler_context_preserves_element_slot_object_id_and_child_ids(tmp_path) -> None:  # type: ignore[no-untyped-def]
+    context = context_from_crawler_payload(
+        {
+            "appId": "cms-portal",
+            "pages": [
+                {
+                    "id": "bpfznz",
+                    "rootId": "bpnlwp",
+                    "name": "salon-certification",
+                    "elements": {
+                        "bParentSlot": {
+                            "id": "bParentObject",
+                            "type": "Group",
+                            "elements": {
+                                "bChildSlot": {
+                                    "id": "bChildObject",
+                                    "type": "Input",
+                                }
+                            },
+                        }
+                    },
+                }
+            ],
+        },
+        tmp_path / "crawler.json",
+    )
+
+    page = next(node for node in context.nodes if node.type == "page")
+    parent = next(node for node in context.nodes if node.label == "bParentSlot")
+    child = next(node for node in context.nodes if node.label == "bChildSlot")
+
+    assert page.metadata["children"] == ["bParentObject"]
+    assert page.metadata["child_keys"] == ["bParentSlot"]
+    assert parent.id == "element:bParentSlot"
+    assert parent.metadata["key"] == "bParentSlot"
+    assert parent.metadata["object_id"] == "bParentObject"
+    assert parent.metadata["children"] == ["bChildObject"]
+    assert parent.metadata["child_keys"] == ["bChildSlot"]
+    assert child.metadata["key"] == "bChildSlot"
+    assert child.metadata["object_id"] == "bChildObject"
+    assert child.metadata["path_array"] == [
+        "%p3",
+        "bpfznz",
+        "%el",
+        "bParentSlot",
+        "%el",
+        "bChildSlot",
+    ]
+
+
 def test_bubble_export_context_preserves_style_metadata(tmp_path) -> None:  # type: ignore[no-untyped-def]
     bubble_file = tmp_path / "app.bubble"
     bubble_file.write_text(
@@ -295,8 +375,13 @@ def test_bubble_export_materializes_reusable_element_paths_and_root_id(tmp_path)
     elements = {node.metadata["bubble_id"]: node for node in context.nodes if node.type == "element"}
 
     assert reusable.metadata["root_id"] == "rootDialog"
-    assert reusable.metadata["children"] == ["elParent"]
+    assert reusable.metadata["children"] == ["pathParent"]
+    assert reusable.metadata["child_keys"] == ["elParent"]
     assert set(elements) == {"elParent", "elChild"}
+    assert elements["elParent"].metadata["object_id"] == "pathParent"
+    assert elements["elParent"].metadata["children"] == ["pathChild"]
+    assert elements["elParent"].metadata["child_keys"] == ["elChild"]
+    assert elements["elChild"].metadata["object_id"] == "pathChild"
     assert elements["elParent"].metadata["path_array"] == ["%ed", "reDialog", "%el", "elParent"]
     assert elements["elChild"].metadata["path_array"] == [
         "%ed",

@@ -1,12 +1,11 @@
 """Bugs from the 2026-08-24 Orana report: create_reusable_instance payload fidelity.
 
-1. custom_id must be the definition's inner .id, not the element_definitions dict key.
+1. %ci must be the definition's inner .id, not the element_definitions dict key.
 2. Created elements must carry %nm (name) and %p.order like editor-created instances.
 3. reusable_name must be optional-with-clear-error and aliased from `source`.
 """
 
 from __future__ import annotations
-
 
 
 def _discovery_with_definitions(defs):
@@ -77,7 +76,7 @@ def test_queue_create_writes_element_name_when_given() -> None:
         context_type="page",
         parent_result=parent_result,
         create_path=["%p3", "page1", "%el", "newkey"],
-        create_body={"id": "newid1", "%x": "CustomElement", "%dn": "Payment Message A", "%p": {"custom_id": "bTYKr0"}},
+        create_body={"id": "newid1", "%x": "CustomElement", "%dn": "Payment Message A", "%p": {"%ci": "bTYKr0"}},
         full_path_str="%p3.page1.%el.newkey",
         name_value="Payment Message A",
     )
@@ -103,5 +102,5 @@ def test_reusable_name_schema_and_alias() -> None:
     assert "source" in ARG_ALIASES.get("reusable_name", ())
     fields = _legacy_fields_for_name("create_reusable_instance")
     assert fields is not None
-    required, optional = fields
+    required, _optional = fields
     assert "source" in required or "reusable_name" in required

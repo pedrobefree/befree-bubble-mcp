@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from bubble_mcp.aria_runtime.bubble_sdk import PayloadBuilder
 from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
+from bubble_mcp.aria_runtime.bubble_sdk import PayloadBuilder
 from bubble_mcp.aria_runtime.visual_mutations.service import VisualMutationService
 
 
@@ -87,6 +87,11 @@ class _CreationHost:
 
     def _find_context(self, name: str) -> tuple[str | None, str | None]:
         return ("pg", "page") if name == "Home" else (None, None)
+
+    @staticmethod
+    def _resolve_context_object_id(context_id: str, context_type: str) -> str:
+        del context_type
+        return context_id
 
     def _find_element_by_ref(
         self,
@@ -230,8 +235,16 @@ def test_resolve_parent_preserves_fallback_order(channel: str) -> None:
 def test_resolve_parent_handles_root_empty_and_exhausted_fallbacks() -> None:
     service = VisualMutationService(_CreationHost()).creations
 
-    assert service.resolve_parent("pg", "page", "Home", "root") == {"path": [], "id": "pg"}
-    assert service.resolve_parent("pg", "page", "Home", "Home") == {"path": [], "id": "pg"}
+    assert service.resolve_parent("pg", "page", "Home", "root") == {
+        "path": [],
+        "id": "pg",
+        "element": service._host.discovery.root,
+    }
+    assert service.resolve_parent("pg", "page", "Home", "Home") == {
+        "path": [],
+        "id": "pg",
+        "element": service._host.discovery.root,
+    }
     assert service.resolve_parent("pg", "page", "Home", "") is None
     assert service.resolve_parent("pg", "page", "Home", "Unknown Parent") is None
 
@@ -382,7 +395,7 @@ def test_queue_create_without_parent_or_optional_properties() -> None:
     ]
 
 
-def test_finish_preview_injects_without_dispatch_or_alias_cache() -> None:
+def test_finish_preview_has_no_discovery_dispatch_or_alias_side_effects() -> None:
     host = _CreationHost()
     service = VisualMutationService(host).creations
     payload = PayloadBuilder(appname=host.appname)
@@ -404,7 +417,7 @@ def test_finish_preview_injects_without_dispatch_or_alias_cache() -> None:
         == "object-id"
     )
     assert host.sent == []
-    assert host.discovery.injected == [("pg", "page", "pg", body, "hero")]
+    assert host.discovery.injected == []
     assert host.cached_aliases == []
 
 
@@ -513,6 +526,7 @@ def test_finish_tolerates_injection_errors_and_supports_parent_override() -> Non
     assert service.finish(PayloadBuilder(appname=host.appname), dry_run=True, **kwargs) == "hero"
     assert service.finish(PayloadBuilder(appname=host.appname), dry_run=False, **kwargs) == "hero"
     assert len(host.sent) == 1
+    assert host.discovery.injected == []
     assert len(host.cached_aliases) == 1
 
 
@@ -533,8 +547,7 @@ def test_finish_strict_injection_error_and_print_failure(capsys: pytest.CaptureF
         "use_parent_result_id": False,
     }
 
-    with pytest.raises(RuntimeError, match="inject failed"):
-        service.finish(PayloadBuilder(appname=host.appname), dry_run=True, **kwargs)
+    assert service.finish(PayloadBuilder(appname=host.appname), dry_run=True, **kwargs) == "hero"
     assert service.finish(PayloadBuilder(appname=host.appname), dry_run=False, **kwargs) is False
 
     host.discovery.inject_error = False

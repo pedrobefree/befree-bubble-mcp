@@ -8,6 +8,8 @@ re-export, but the editor renders them as "[missing: null]".
 
 from __future__ import annotations
 
+import pytest
+
 from bubble_mcp.execution.write_lint import lint_editor_write_changes
 
 
@@ -51,6 +53,47 @@ def test_encoded_bodies_pass() -> None:
         ]
     )
     assert issues == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"id": "instance", "%x": "CustomElement", "%p": {"custom_id": "definition"}},
+        {"id": "action", "%x": "ChangePage", "%p": {"element_id": "page"}},
+    ],
+)
+def test_normalized_reference_properties_are_rejected_in_wire_node_bodies(body) -> None:
+    issues = lint_editor_write_changes(
+        [_change(["%p3", "page", "%el", "node"], body)]
+    )
+
+    assert len(issues) == 1
+    assert "%ci" in issues[0] or "%ei" in issues[0]
+
+
+def test_normalized_expression_nested_in_wire_action_is_rejected() -> None:
+    issues = lint_editor_write_changes(
+        [
+            _change(
+                ["%p3", "page", "%wf", "workflow", "actions", "0"],
+                {
+                    "id": "action",
+                    "%x": "SetCustomState",
+                    "%p": {
+                        "value": {
+                            "type": "GetElement",
+                            "properties": {"element_id": "bElementObject"},
+                            "next": {"type": "Message", "name": "get_data"},
+                        }
+                    },
+                },
+            )
+        ]
+    )
+
+    assert len(issues) == 1
+    assert "nested expression" in issues[0]
+    assert "type" in issues[0] and "%x" in issues[0]
 
 
 def test_non_node_paths_with_friendly_keys_pass() -> None:

@@ -18,8 +18,8 @@ from pathlib import Path
 
 
 def _compute_gaps() -> dict[str, list[str]]:
-    from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
     from bubble_mcp.aria_dispatch import ARG_ALIASES, CONTROL_ARG_KEYS, RUNTIME_TOOL_ALIASES
+    from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
     from bubble_mcp.server.agent_catalog import _legacy_fields_for_name
     from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 
@@ -77,3 +77,9 @@ def test_no_new_schema_args_are_dropped_by_runtime_signatures() -> None:
     assert stale == {}, (
         f"Snapshot entries no longer dropped — remove them from the fixture so the baseline shrinks: {stale}"
     )
+
+
+def test_create_reusable_instance_source_has_a_public_runtime_path() -> None:
+    """The precision audit must cover the source -> reusable_name dispatch contract."""
+
+    assert "create_reusable_instance" not in _compute_gaps()

@@ -137,10 +137,11 @@ def _element_node_from_change(change: dict[str, Any]) -> tuple[BubbleContextNode
     body = _obj(change.get("body"))
     props = _obj(body.get("%p") or body.get("properties"))
     path_array = _path_array(change)
-    element_id = str(body.get("id") or _node_key_from_path(path_array) or "").strip()
-    if not element_id:
+    element_key = str(_node_key_from_path(path_array) or body.get("id") or "").strip()
+    object_id = str(body.get("id") or element_key).strip()
+    if not element_key or not object_id:
         return None
-    label = str(props.get("%nm") or props.get("name") or body.get("name") or element_id)
+    label = str(props.get("%nm") or props.get("name") or body.get("name") or element_key)
     element_type = str(body.get("%x") or body.get("type") or props.get("%x") or "element")
     parent_node = _context_node_id(path_array)
     if "%el" in path_array:
@@ -149,11 +150,13 @@ def _element_node_from_change(change: dict[str, Any]) -> tuple[BubbleContextNode
             parent_key = path_array[last_el_index - 1]
             parent_node = f"element:{parent_key}"
     node = BubbleContextNode(
-        id=f"element:{element_id}",
+        id=f"element:{element_key}",
         label=label,
         type="element",
         metadata={
-            "bubble_id": element_id,
+            "bubble_id": element_key,
+            "key": element_key,
+            "object_id": object_id,
             "element_type": element_type,
             "context": _context_node_id(path_array),
             "path_array": path_array,
