@@ -1730,6 +1730,56 @@ def planning_execution_tools() -> list[ToolSchema]:
             required=["profile", "pointer"],
         ),
         tool_schema(
+            "bubble_run_as",
+            "Log in to the app as one of its users, the way the editor's 'Run as' button does, and "
+            "return a Playwright storage_state that drives the app as that user. Two GETs, no browser: "
+            "authenticate_as mints a short-lived access_token, and following its redirect sets the "
+            "app-domain session cookies. Use it to give UI/E2E work a real logged-in session instead of "
+            "clicking through the editor, whose markup and per-row element ids are not reusable. "
+            "user_id is the Bubble unique id of the row in the app's User type. Cookie values are never "
+            "returned - they go to the storage_state file, whose path is. A version with preview "
+            "password protection answers HTTP Basic: this is ON BY DEFAULT for apps on Bubble's agency "
+            "plan, and any owner may switch it on to keep strangers off a work-in-progress version. "
+            "Bubble seeds it with the literal pair username/password and owners often leave it, so a 401 "
+            "is retried once with that pair automatically - the result says when that is what worked. "
+            "Supply a real pair through BUBBLE_PREVIEW_USER and BUBBLE_PREVIEW_PW, or ask the app owner; "
+            "it gates the preview version, not the app's own user accounts.",
+            ["profile", "app_id", "app_version", "page"],
+            required=["profile"],
+            field_overrides={
+                "user_id": {
+                    "type": "string",
+                    "description": (
+                        "Bubble unique id of the user row to impersonate, as the editor's Data tab "
+                        "addresses it (for example 1700000000000x000000000000000001)."
+                    ),
+                },
+                "email": {
+                    "type": "string",
+                    "description": (
+                        "Email of the app user to impersonate, resolved to a user id through the "
+                        "app's Data API using the token in the matching bubble-cli bubble.json. "
+                        "Pass this OR user_id."
+                    ),
+                },
+                "data_api_dir": {
+                    "type": "string",
+                    "description": (
+                        "Folder holding the bubble.json for this app, when resolving by email. "
+                        "Defaults to BUBBLE_CLI_PROJECT_DIR / BUBBLE_CLI_ROOT."
+                    ),
+                },
+                "write_storage_state": {
+                    "type": "boolean",
+                    "default": True,
+                    "description": (
+                        "Write the impersonated session to a storage_state file under the MCP config "
+                        "directory. Set false to establish the session without leaving it on disk."
+                    ),
+                },
+            },
+        ),
+        tool_schema(
             "bubble_node_edit",
             "Edit a live Bubble node in place: read it from the editor, change one leaf (op='patch') or "
             "renumber an actions map (op='reorder'), write it back with only the node root re-encoded, "

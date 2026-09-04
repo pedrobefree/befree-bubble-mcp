@@ -51,6 +51,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_editor_write",
     "bubble_live_node_read",
     "bubble_node_edit",
+    "bubble_run_as",
     "bubble_clone_workflow",
     "bubble_savepoint_create",
     "bubble_savepoint_list",
