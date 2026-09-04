@@ -89,7 +89,11 @@ def test_string_conversion_remaps_ids_parameters_names_and_reusable_aliases(
 def test_conversion_maps_structures_properties_and_references(builder: PayloadBuilder) -> None:
     source = {
         "type": "Group",
-        "properties": {"width": 320, "background_color": "red"},
+        "properties": {
+            "width": 320,
+            "background_color": "red",
+            "custom_id": "reusable-root",
+        },
         "elements": {"child-old": {"id": "child-old", "type": "Text"}},
         "workflows": {"workflow-old": {"id": "workflow-old", "actions": {}}},
         "values": ["child-old", 2, True, None],
@@ -100,7 +104,11 @@ def test_conversion_maps_structures_properties_and_references(builder: PayloadBu
     )
 
     assert converted["%x"] == "Group"
-    assert converted["%p"] == {"%w": 320, "%bgc": "red"}
+    assert converted["%p"] == {
+        "%w": 320,
+        "%bgc": "red",
+        "%ci": "reusable-root",
+    }
     assert converted["%el"]["bCHILD"]["id"] == "bCHILD"
     assert converted["%wf"]["bWORKFLOW"]["id"] == "bWORKFLOW"
     assert converted["values"] == ["bCHILD", 2, True, None]

@@ -15,8 +15,11 @@ from typing import Any
 
 from bubble_mcp.aria_runtime.bubble_sdk import ElementBuilder, normalize_background_style
 from bubble_mcp.context.models import BubbleProjectContext
-from bubble_mcp.visual_defaults import apply_visual_default_args, enforce_visual_create_payload_quality
-
+from bubble_mcp.runtime_discovery import ResolvedBubbleReference
+from bubble_mcp.visual_defaults import (
+    apply_visual_default_args,
+    enforce_visual_create_payload_quality,
+)
 
 ROOT_PARENT_NAMES = {"", "root", "page", "index"}
 VISUAL_CREATE_TYPES = {
@@ -46,7 +49,7 @@ VISUAL_CREATE_TYPES = {
     "create_group_focus": "GroupFocus",
     "create_repeating_group": "RepeatingGroup",
     "create_table": "Table",
-    "create_reusable_instance": "ReusableElement",
+    "create_reusable_instance": "CustomElement",
 }
 ARIA_BUILDER_METHODS = {
     "create_text": "text",
@@ -414,6 +417,205 @@ def resolve_context_root_id(name: str, context: BubbleProjectContext | None = No
     return None
 
 
+def _resolve_root_node_reference(
+    name: str,
+    *,
+    node_type: str,
+    wire_prefix: str,
+    context: BubbleProjectContext | None,
+) -> ResolvedBubbleReference | None:
+    target = str(name or "").strip()
+    if not target or context is None:
+        return None
+    for node in context.nodes:
+        if node.type != node_type:
+            continue
+        slot_key = str(node.metadata.get("bubble_id") or node.metadata.get("key") or "").strip()
+        root_id = str(node.metadata.get("root_id") or node.metadata.get("root") or "").strip()
+        candidates = {
+            node.label,
+            node.id,
+            node.id.rsplit(":", 1)[-1],
+            slot_key,
+            root_id,
+        }
+        if target.casefold() not in {str(candidate or "").casefold() for candidate in candidates}:
+            continue
+        if not slot_key or not root_id:
+            return None
+        return ResolvedBubbleReference(
+            key=slot_key,
+            object_id=root_id,
+            root_id=root_id,
+            name=node.label,
+            path_array=(wire_prefix, slot_key),
+        )
+    return None
+
+
+def resolve_reusable_reference(
+    name: str,
+    context: BubbleProjectContext | None = None,
+) -> ResolvedBubbleReference | None:
+    """Resolve a reusable while keeping its definition slot separate from its root id."""
+
+    return _resolve_root_node_reference(
+        name,
+        node_type="reusable",
+        wire_prefix="%ed",
+        context=context,
+    )
+
+
+def resolve_page_reference(
+    name: str,
+    context: BubbleProjectContext | None = None,
+) -> ResolvedBubbleReference | None:
+    """Resolve a page while keeping its structural slot separate from its object id."""
+
+    return _resolve_root_node_reference(
+        name,
+        node_type="page",
+        wire_prefix="%p3",
+        context=context,
+    )
+
+
+def resolve_workflow_reference(
+    name: str,
+    *,
+    context_name: str,
+    context: BubbleProjectContext | None,
+) -> ResolvedBubbleReference | None:
+    """Resolve a workflow key/id within one page or reusable context."""
+
+    owner = resolve_page_reference(context_name, context) or resolve_reusable_reference(
+        context_name,
+        context,
+    )
+    target = str(name or "").strip()
+    if owner is None or not target or context is None:
+        return None
+    owner_node_ids = {
+        f"page:{owner.key}",
+        f"reusable:{owner.key}",
+        owner.key,
+        owner.object_id,
+    }
+    if owner.name:
+        owner_node_ids.update(
+            {
+                owner.name,
+                f"page:{owner.name}",
+                f"reusable:{owner.name}",
+            }
+        )
+    for node in context.nodes:
+        if node.type != "workflow":
+            continue
+        node_context = str(node.metadata.get("context") or "").strip()
+        if node_context and node_context not in owner_node_ids:
+            continue
+        workflow_key = str(node.metadata.get("key") or node.metadata.get("bubble_id") or "").strip()
+        workflow_id = str(
+            node.metadata.get("root_id") or node.metadata.get("object_id") or ""
+        ).strip()
+        candidates = {
+            node.label,
+            node.id,
+            node.id.rsplit(":", 1)[-1],
+            workflow_key,
+            workflow_id,
+        }
+        if target.casefold() not in {str(candidate or "").casefold() for candidate in candidates}:
+            continue
+        if not workflow_key or not workflow_id:
+            return None
+        return ResolvedBubbleReference(
+            key=workflow_key,
+            object_id=workflow_id,
+            root_id=workflow_id,
+            name=node.label,
+            path_array=(*owner.path_array, "%wf", workflow_key),
+        )
+    return None
+
+
+def resolve_element_reference(
+    name: str,
+    *,
+    context_name: str,
+    context: BubbleProjectContext | None,
+) -> ResolvedBubbleReference | None:
+    """Resolve an element without collapsing its tree slot into its object id."""
+
+    target = str(name or "").strip()
+    if not target or context is None:
+        return None
+
+    owner_tokens: set[str] = set()
+    owner_target = str(context_name or "").strip().casefold()
+    for node in context.nodes:
+        if node.type not in {"page", "reusable"}:
+            continue
+        key = str(node.metadata.get("key") or node.metadata.get("bubble_id") or "").strip()
+        object_id = str(node.metadata.get("root_id") or "").strip()
+        candidates = {node.id, node.label, key, object_id}
+        if owner_target not in {candidate.casefold() for candidate in candidates if candidate}:
+            continue
+        owner_tokens.update(candidate for candidate in candidates if candidate)
+        owner_tokens.add(f"{node.type}:{key}")
+        owner_tokens.add(f"{node.type}:{node.label}")
+
+    target_folded = target.casefold()
+    for node in context.nodes:
+        if node.type != "element":
+            continue
+        node_context = str(node.metadata.get("context") or "").strip()
+        if owner_tokens and node_context and node_context not in owner_tokens:
+            continue
+        key = str(node.metadata.get("key") or node.metadata.get("bubble_id") or "").strip()
+        object_id = str(node.metadata.get("object_id") or node.metadata.get("root_id") or "").strip()
+        raw_path = node.metadata.get("path_array")
+        path_array = (
+            tuple(str(part) for part in raw_path)
+            if isinstance(raw_path, list) and raw_path
+            else ()
+        )
+        candidates = {node.id, node.id.rsplit(":", 1)[-1], node.label, key, object_id}
+        if target_folded not in {candidate.casefold() for candidate in candidates if candidate}:
+            continue
+        if not key or not object_id or not path_array:
+            return None
+        return ResolvedBubbleReference(
+            key=key,
+            object_id=object_id,
+            root_id=None,
+            name=node.label,
+            path_array=path_array,
+        )
+    return None
+
+
+def resolve_workflow_children(
+    workflow: ResolvedBubbleReference,
+    context: BubbleProjectContext | None,
+) -> list[str]:
+    if context is None:
+        return []
+    for node in context.nodes:
+        if node.type != "workflow":
+            continue
+        node_key = str(node.metadata.get("key") or node.metadata.get("bubble_id") or "")
+        node_id = str(node.metadata.get("root_id") or node.metadata.get("object_id") or "")
+        if node_key != workflow.key or node_id != workflow.object_id:
+            continue
+        children = node.metadata.get("children")
+        if isinstance(children, list):
+            return [str(child) for child in children if str(child).strip()]
+    return []
+
+
 def resolve_context_node_id(name: str, context: BubbleProjectContext | None = None) -> str | None:
     target = str(name or "index").strip()
     if context is not None:
@@ -518,9 +720,19 @@ def resolve_parent_index_id(
         for node in context.nodes:
             if node.type != "element":
                 continue
-            if node.label == parent or node.id == parent or node.id.endswith(f":{parent}"):
-                element_id = str(node.metadata.get("bubble_id") or node.metadata.get("key") or "").strip()
-                return element_id or node.id.rsplit(":", 1)[-1]
+            if (
+                node.label == parent
+                or node.id == parent
+                or node.id.endswith(f":{parent}")
+                or str(node.metadata.get("key") or node.metadata.get("bubble_id") or "") == parent
+                or str(node.metadata.get("object_id") or "") == parent
+            ):
+                object_id = str(node.metadata.get("object_id") or node.metadata.get("root_id") or "").strip()
+                if not object_id:
+                    raise ValueError(
+                        f"Parent element '{parent}' has no proven object id. Refresh the context artifact."
+                    )
+                return object_id
 
     return parent if parent and parent.lower() not in ROOT_PARENT_NAMES else ""
 
@@ -543,6 +755,8 @@ def resolve_context_children(
                 node.id == target_id
                 or node.id.endswith(f":{target_id}")
                 or str(node.metadata.get("bubble_id") or "") == target_id
+                or str(node.metadata.get("key") or "") == target_id
+                or str(node.metadata.get("object_id") or "") == target_id
                 or node.label == target_parent
                 or node.id == target_parent
                 or node.id.endswith(f":{target_parent}")
@@ -680,9 +894,7 @@ def create_visual_element_changes(
     object_id = str(body.get("id") or "").strip() or bubble_element_id()
     body["id"] = object_id
     slot_key = str(args.get("slot_key") or args.get("element_key") or "").strip() or bubble_element_id()
-    if parent_path[-2:] == ["%el", slot_key]:
-        create_path = parent_path
-    elif parent_path[-1] == slot_key:
+    if parent_path[-2:] == ["%el", slot_key] or parent_path[-1] == slot_key:
         create_path = parent_path
     else:
         create_path = [*parent_path, "%el", slot_key]
@@ -1092,6 +1304,43 @@ def compile_create_visual_step(
     return body
 
 
+def compile_create_reusable_instance_step(
+    args: dict[str, Any],
+    *,
+    context: BubbleProjectContext | None,
+) -> dict[str, Any]:
+    source = str(args.get("source") or args.get("reusable_name") or "").strip()
+    if not source:
+        raise ValueError("create_reusable_instance requires source.")
+    resolved = resolve_reusable_reference(source, context)
+    if resolved is None or not resolved.root_id:
+        raise ValueError(
+            f"Reusable source '{source}' could not be resolved to a proven root id. "
+            "Refresh or pass a context artifact before compiling."
+        )
+
+    normalized_args = apply_create_defaults(
+        "create_reusable_instance",
+        args,
+        element_type="CustomElement",
+    )
+    normalized_args = apply_visual_default_args(
+        "create_reusable_instance",
+        normalized_args,
+        context=context,
+    )
+    properties = collect_visual_properties(normalized_args, element_type="CustomElement")
+    properties["%ci"] = resolved.root_id
+    body = {
+        "%x": "CustomElement",
+        "%dn": str(normalized_args.get("name") or source),
+        "%p": properties,
+        "id": bubble_element_id(),
+    }
+    enforce_visual_create_payload_quality(body, context=context)
+    return body
+
+
 def compile_create_group_step(
     args: dict[str, Any],
     *,
@@ -1276,8 +1525,15 @@ def compile_theme_changes(tool_name: str, args: dict[str, Any], session_id: str)
     return []
 
 
-def compile_workflow_changes(tool_name: str, args: dict[str, Any], session_id: str) -> list[dict[str, Any]]:
-    context_key = resolve_context_key(str(args.get("context") or "index"))
+def compile_workflow_changes(
+    tool_name: str,
+    args: dict[str, Any],
+    session_id: str,
+    *,
+    context: BubbleProjectContext | None,
+) -> list[dict[str, Any]]:
+    context_name = str(args.get("context") or "index")
+    context_key = resolve_context_key(context_name, context)
     if tool_name == "create_workflow":
         event = str(args.get("event") or "click").strip()
         element_name = str(args.get("element_name") or "").strip()
@@ -1292,11 +1548,64 @@ def compile_workflow_changes(tool_name: str, args: dict[str, Any], session_id: s
         }
         return [set_data_change(["%p3", context_key, "%wf", workflow_id], workflow_body, session_id)]
     if tool_name == "add_action":
-        workflow_id = str(args.get("workflow_id") or args.get("event_id") or "").strip()
+        workflow_ref = str(
+            args.get("event_ref") or args.get("workflow_id") or args.get("event_id") or ""
+        ).strip()
         action_type = str(args.get("action_type") or "navigate").strip()
-        if not workflow_id:
+        if not workflow_ref:
             raise ValueError("add_action requires workflow_id/event_id.")
         action_index = str(args.get("action_index") or "0")
+        if action_type == "navigate":
+            page_ref = str(args.get("page_ref") or args.get("param") or "").strip()
+            page = resolve_page_reference(page_ref, context)
+            workflow = resolve_workflow_reference(
+                workflow_ref,
+                context_name=context_name,
+                context=context,
+            )
+            if page is None:
+                raise ValueError(
+                    f"Navigation page '{page_ref}' could not be resolved to a proven object id."
+                )
+            if workflow is None:
+                raise ValueError(
+                    f"Workflow '{workflow_ref}' could not be resolved to proven key/id metadata."
+                )
+            action_id = str(args.get("action_id") or bubble_element_id()).strip()
+            action_path = [*workflow.path_array, "actions", action_index]
+            workflow_children = resolve_workflow_children(workflow, context)
+            if action_id not in workflow_children:
+                workflow_children.append(action_id)
+            return [
+                update_index_change(
+                    ["_index", "id_to_path", action_id],
+                    ".".join(action_path),
+                    session_id,
+                ),
+                create_action_change(
+                    [*workflow.path_array, "actions"],
+                    {
+                        action_index: {
+                            "%x": "ChangePage",
+                            "%p": None,
+                            "id": action_id,
+                        }
+                    },
+                    session_id,
+                ),
+                set_data_change([*action_path, "%p", "%ei"], page.object_id, session_id),
+                update_index_change(
+                    ["_index", "issues_sub", workflow.object_id],
+                    json.dumps(workflow_children, separators=(",", ":")),
+                    session_id,
+                ),
+                update_index_change(
+                    ["_index", "issues_list", workflow.object_id],
+                    json.dumps([{"cross_page": action_id}], separators=(",", ":")),
+                    session_id,
+                ),
+            ]
+        workflow_id = workflow_ref
         action_body: dict[str, Any] = {
             "%x": action_type,
             "%p": {
@@ -1315,8 +1624,20 @@ def compile_workflow_changes(tool_name: str, args: dict[str, Any], session_id: s
     return []
 
 
-def element_get_data_expression(element_ref: str) -> dict[str, Any]:
-    element_id = str(element_ref or "").strip()
+def element_get_data_expression(
+    element_ref: str,
+    *,
+    context_name: str = "",
+    context: BubbleProjectContext | None = None,
+) -> dict[str, Any]:
+    raw_ref = str(element_ref or "").strip()
+    resolved = resolve_element_reference(raw_ref, context_name=context_name, context=context)
+    if context is not None and resolved is None:
+        raise ValueError(
+            f"Element reference '{raw_ref}' could not be resolved to a proven object id in "
+            f"context '{context_name}'. Refresh the context artifact."
+        )
+    element_id = resolved.object_id if resolved is not None else raw_ref
     if not element_id:
         raise ValueError("Element reference is required.")
     return {
@@ -1371,7 +1692,12 @@ def parse_field_assignments(raw_fields: Any) -> list[dict[str, Any]]:
     raise ValueError("fields must be a string, object, or array.")
 
 
-def compile_field_changes(raw_fields: Any) -> dict[str, Any]:
+def compile_field_changes(
+    raw_fields: Any,
+    *,
+    context_name: str = "",
+    context: BubbleProjectContext | None = None,
+) -> dict[str, Any]:
     assignments: dict[str, Any] = {}
     for index, item in enumerate(parse_field_assignments(raw_fields)):
         key = str(item.get("field") or item.get("key") or item.get("%k") or "").strip()
@@ -1385,7 +1711,13 @@ def compile_field_changes(raw_fields: Any) -> dict[str, Any]:
             or ""
         ).strip()
         if source_ref:
-            value = workflow_text_expression(element_get_data_expression(source_ref))
+            value = workflow_text_expression(
+                element_get_data_expression(
+                    source_ref,
+                    context_name=context_name,
+                    context=context,
+                )
+            )
         else:
             raw_value = item.get("value", item.get("%v"))
             value = raw_value if isinstance(raw_value, dict) and raw_value.get("%x") else workflow_text_expression(raw_value)
@@ -1448,10 +1780,19 @@ def compile_auth_workflow_action_changes(
     context: BubbleProjectContext | None,
     session_id: str,
 ) -> list[dict[str, Any]]:
+    context_name = str(args.get("context") or "").strip()
+
+    def element_expression(ref: Any) -> dict[str, Any]:
+        return element_get_data_expression(
+            str(ref or ""),
+            context_name=context_name,
+            context=context,
+        )
+
     if tool_name == "log_the_user_in":
         login_properties: dict[str, Any] = {
-            "%em": element_get_data_expression(str(args.get("email_input_ref") or "")),
-            "%pw": element_get_data_expression(str(args.get("password_input_ref") or "")),
+            "%em": element_expression(args.get("email_input_ref")),
+            "%pw": element_expression(args.get("password_input_ref")),
         }
         if args.get("stay_logged_in") is not None:
             login_properties["stay_logged_in"] = bool(args.get("stay_logged_in"))
@@ -1474,20 +1815,24 @@ def compile_auth_workflow_action_changes(
         )
     if tool_name == "sign_the_user_up":
         signup_properties: dict[str, Any] = {
-            "%em": element_get_data_expression(str(args.get("email_input_ref") or "")),
-            "%pw": element_get_data_expression(str(args.get("password_input_ref") or "")),
+            "%em": element_expression(args.get("email_input_ref")),
+            "%pw": element_expression(args.get("password_input_ref")),
         }
         if args.get("require_password_confirmation") is not None:
             signup_properties["%rc"] = bool(args.get("require_password_confirmation"))
         if args.get("password_confirmation_input_ref"):
-            signup_properties["%p2"] = element_get_data_expression(str(args.get("password_confirmation_input_ref") or ""))
+            signup_properties["%p2"] = element_expression(args.get("password_confirmation_input_ref"))
         if args.get("send_confirm_email") is not None:
             signup_properties["send_confirm_email"] = bool(args.get("send_confirm_email"))
         if args.get("confirmation_page_ref"):
             signup_properties["%pa"] = str(args.get("confirmation_page_ref"))
         if args.get("remember_email") is not None:
             signup_properties["remember_email"] = bool(args.get("remember_email"))
-        field_changes = compile_field_changes(args.get("fields"))
+        field_changes = compile_field_changes(
+            args.get("fields"),
+            context_name=context_name,
+            context=context,
+        )
         if field_changes:
             signup_properties["%cs"] = field_changes
         return workflow_action_changes(
@@ -1564,7 +1909,11 @@ def compile_auth_workflow_action_changes(
             properties=confirmation_properties,
         )
     if tool_name == "make_changes_to_current_user":
-        field_changes = compile_field_changes(args.get("fields"))
+        field_changes = compile_field_changes(
+            args.get("fields"),
+            context_name=context_name,
+            context=context,
+        )
         if not field_changes:
             raise ValueError("make_changes_to_current_user requires fields.")
         return workflow_action_changes(
@@ -1576,12 +1925,12 @@ def compile_auth_workflow_action_changes(
         )
     if tool_name == "update_user_credentials":
         credentials_properties: dict[str, Any] = {
-            "old_password": element_get_data_expression(str(args.get("old_password_input_ref") or "")),
+            "old_password": element_expression(args.get("old_password_input_ref")),
         }
         if args.get("change_email") is not None:
             credentials_properties["change_email"] = bool(args.get("change_email"))
         if args.get("new_email_input_ref"):
-            credentials_properties["%em"] = element_get_data_expression(str(args.get("new_email_input_ref") or ""))
+            credentials_properties["%em"] = element_expression(args.get("new_email_input_ref"))
         if args.get("send_confirm_email") is not None:
             credentials_properties["send_confirm_email"] = bool(args.get("send_confirm_email"))
         if args.get("confirmation_page_ref"):
@@ -1589,11 +1938,11 @@ def compile_auth_workflow_action_changes(
         if args.get("change_password") is not None:
             credentials_properties["change_password"] = bool(args.get("change_password"))
         if args.get("new_password_input_ref"):
-            credentials_properties["%pw"] = element_get_data_expression(str(args.get("new_password_input_ref") or ""))
+            credentials_properties["%pw"] = element_expression(args.get("new_password_input_ref"))
         if args.get("require_password_confirmation") is not None:
             credentials_properties["%rc"] = bool(args.get("require_password_confirmation"))
         if args.get("password_confirmation_input_ref"):
-            credentials_properties["%p2"] = element_get_data_expression(str(args.get("password_confirmation_input_ref") or ""))
+            credentials_properties["%p2"] = element_expression(args.get("password_confirmation_input_ref"))
         if args.get("do_not_show_success_alert") is not None:
             credentials_properties["do_not_show_success_alert"] = bool(args.get("do_not_show_success_alert"))
         return workflow_action_changes(
@@ -1628,6 +1977,9 @@ def compile_step_to_payload(
     elif tool_name == "create_group":
         body = compile_create_group_step(args, context=context)
         changes = create_visual_element_changes(args, body, context=context, session_id=session_id)
+    elif tool_name == "create_reusable_instance":
+        body = compile_create_reusable_instance_step(args, context=context)
+        changes = create_visual_element_changes(args, body, context=context, session_id=session_id)
     elif tool_name in VISUAL_CREATE_TYPES:
         body = compile_create_visual_step(tool_name, args, context=context)
         changes = create_visual_element_changes(args, body, context=context, session_id=session_id)
@@ -1646,7 +1998,12 @@ def compile_step_to_payload(
     elif tool_name in {"create_color", "update_color", "create_style"}:
         changes = compile_theme_changes(tool_name, args, session_id)
     elif tool_name in {"create_workflow", "add_action"}:
-        changes = compile_workflow_changes(tool_name, args, session_id)
+        changes = compile_workflow_changes(
+            tool_name,
+            args,
+            session_id,
+            context=context,
+        )
     elif tool_name in AUTH_WORKFLOW_ACTION_TOOLS:
         changes = compile_auth_workflow_action_changes(tool_name, args, context=context, session_id=session_id)
     else:

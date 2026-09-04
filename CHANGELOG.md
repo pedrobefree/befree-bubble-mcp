@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Page/reusable/workflow references now retain structural keys and internal/root ids separately.
+  Partial wire overlays are deep-merged with normalized discovery data, parsed caches are versioned
+  and exclude overlays, and dry-runs no longer mutate discovery. ChangePage writers emit only `%ei`
+  with a proven page object id; reusable instances emit `%ci` with the reusable root id; root
+  `issues_sub` updates use the owner object id. The plan compiler follows the same contracts and
+  fails closed when compact context cannot prove an internal id.
 - Canonical raw form of APIEventParameter expressions recovered from live editor memory
   (Playwright + appquery child-node raw()): the parameter only resolves with btype_id +
   event_id + param_id (the parameter KEY, not the internal id) + param_name together, with
@@ -41,7 +47,8 @@
   explicit crawler_index_path argument on every call. Context-detection failures are non-fatal
   when a previously detected crawler index exists.
 - create_reusable_instance now mirrors editor serialization (2026-08-24 Orana bug report #1-#3):
-  %p.custom_id uses the definition's inner .id (never the element_definitions dict key), created
+  `%p.%ci` uses the definition's inner `.id` (never the `element_definitions` dict key or the
+  normalized read alias `custom_id`), created
   elements get an element-level %nm write and a computed %p.order (max sibling order + 1) so they
   show up in the editor's Elements Tree, and a missing reusable name returns a clear structured
   error instead of a Python TypeError (`source` is now required in the schema and aliases to

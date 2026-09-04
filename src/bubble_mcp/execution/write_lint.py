@@ -21,6 +21,49 @@ _DECODED_TO_ENCODED = {
     "properties": "%p",
     "default_name": "%dn",
 }
+_EXPRESSION_DECODED_TO_ENCODED = {
+    **_DECODED_TO_ENCODED,
+    "next": "%n",
+    "name": "%nm",
+    "entries": "%e",
+    "arguments": "%a",
+    "args": "%a",
+}
+_EXPRESSION_NODE_TYPES = {
+    "APIEventParameter",
+    "CurrentPageItem",
+    "CurrentUser",
+    "ElementParent",
+    "Empty",
+    "GetElement",
+    "Message",
+    "OneOptionValue",
+    "PageData",
+    "PreviousStep",
+    "Search",
+    "State",
+    "TextExpression",
+    "ThisElement",
+}
+
+
+def _nested_decoded_expression(value: Any, path: tuple[str, ...] = ()) -> tuple[tuple[str, ...], list[str]] | None:
+    if isinstance(value, dict):
+        node_type = str(value.get("%x") or value.get("type") or "")
+        if node_type in _EXPRESSION_NODE_TYPES:
+            decoded = [key for key in _EXPRESSION_DECODED_TO_ENCODED if key in value]
+            if decoded:
+                return path, decoded
+        for key, child in value.items():
+            found = _nested_decoded_expression(child, (*path, str(key)))
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            found = _nested_decoded_expression(child, (*path, str(index)))
+            if found is not None:
+                return found
+    return None
 
 
 def _is_node_position(path_array: Any) -> bool:
@@ -37,18 +80,41 @@ def _body_issues(path_str: str, body: Any) -> list[str]:
     if not isinstance(body, dict):
         return []
     decoded_present = [key for key in _DECODED_TO_ENCODED if key in body]
-    if not decoded_present:
-        return []
     encoded_present = any(key in body for key in ("%x", "%p"))
-    if encoded_present:
+    if decoded_present and not encoded_present:
+        mapping = ", ".join(f"'{key}' -> '{_DECODED_TO_ENCODED[key]}'" for key in decoded_present)
+        return [
+            f"{path_str}: node body uses decoded export keys ({mapping}). The editor stores nodes with "
+            + "encoded keys (%x=type, %p=properties, %nm=name, %dn=default_name); decoded keys are "
+            + "accepted by the server but render as '[missing: null]' in the editor. Copy the "
+            + "serialization from a sibling node in the live app tree, not from the .bubble export."
+        ]
+
+    node_type = str(body.get("%x") or "")
+    properties = body.get("%p")
+    if not isinstance(properties, dict):
         return []
-    mapping = ", ".join(f"'{key}' -> '{_DECODED_TO_ENCODED[key]}'" for key in decoded_present)
-    return [
-        f"{path_str}: node body uses decoded export keys ({mapping}). The editor stores nodes with "
-        "encoded keys (%x=type, %p=properties, %nm=name, %dn=default_name); decoded keys are accepted "
-        "by the server but render as '[missing: null]' in the editor. Copy the serialization from a "
-        "sibling node in the live app tree, not from the .bubble export."
-    ]
+    if node_type == "CustomElement" and "custom_id" in properties:
+        return [
+            f"{path_str}: CustomElement uses normalized property 'custom_id'; editor writes require "
+            + "the canonical wire key '%ci'. HTTP 200 does not prove this reference resolved."
+        ]
+    if node_type == "ChangePage" and "element_id" in properties:
+        return [
+            f"{path_str}: ChangePage uses normalized property 'element_id'; editor writes require "
+            + "the canonical wire key '%ei'. HTTP 200 does not prove this destination resolved."
+        ]
+    nested = _nested_decoded_expression(properties, ("%p",))
+    if nested is not None:
+        nested_path, decoded_keys = nested
+        mapping = ", ".join(
+            f"'{key}' -> '{_EXPRESSION_DECODED_TO_ENCODED[key]}'" for key in decoded_keys
+        )
+        return [
+            f"{path_str}/{'/'.join(nested_path)}: nested expression uses decoded export keys "
+            f"({mapping}). Serialize the complete expression tree to canonical wire keys before writing."
+        ]
+    return []
 
 
 def lint_editor_write_changes(changes: Any) -> list[str]:
@@ -68,21 +134,12 @@ def lint_editor_write_changes(changes: Any) -> list[str]:
     return issues
 
 
-_EXPRESSION_NODE_TYPES = {
-    "APIEventParameter",
-    "Message",
-    "PreviousStep",
-    "GetElement",
-    "Search",
-    "TextExpression",
-    "ElementParent",
-}
 _ACTION_MARKER = "actions"
 
 
 def _contains_expression_node(value: Any) -> bool:
     if isinstance(value, dict):
-        if str(value.get("%x") or "") in _EXPRESSION_NODE_TYPES:
+        if str(value.get("%x") or value.get("type") or "") in _EXPRESSION_NODE_TYPES:
             return True
         return any(_contains_expression_node(child) for child in value.values())
     if isinstance(value, list):

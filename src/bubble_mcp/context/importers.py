@@ -42,8 +42,13 @@ def _element_type(record: dict[str, Any]) -> str:
     return str(record.get("%x") or record.get("type") or props.get("%x") or "element")
 
 
+def _element_child_keys(record: dict[str, Any]) -> list[str]:
+    return [str(key) for key in _obj(record.get("%el") or record.get("elements"))]
+
+
 def _element_children(record: dict[str, Any]) -> list[str]:
-    return [str(key) for key in _obj(record.get("%el") or record.get("elements")).keys()]
+    children = _obj(record.get("%el") or record.get("elements"))
+    return [str(_root_id(_obj(child)) or key) for key, child in children.items()]
 
 
 def _root_id(record: dict[str, Any]) -> str | None:
@@ -168,6 +173,8 @@ def _materialize_reusable_index_paths(
                 break
             current = child
             offset += 2
+        if offset == len(parts):
+            current.setdefault("id", str(indexed_id))
 
 
 def _reusable_definitions(app: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -213,8 +220,10 @@ def _walk_elements(
     for element_id, raw in elements.items():
         if not isinstance(raw, dict):
             continue
-        element_path = [*base_path, "%el", str(element_id)]
-        node_id = f"element:{element_id}"
+        element_key = str(element_id)
+        object_id = str(_root_id(raw) or element_key)
+        element_path = [*base_path, "%el", element_key]
+        node_id = f"element:{element_key}"
         props = _obj(raw.get("%p") or raw.get("properties"))
         nodes.append(
             BubbleContextNode(
@@ -222,12 +231,15 @@ def _walk_elements(
                 label=_label(raw, str(element_id)),
                 type="element",
                 metadata={
-                    "bubble_id": str(element_id),
+                    "bubble_id": element_key,
+                    "key": element_key,
+                    "object_id": object_id,
                     "element_type": _element_type(raw),
                     "context": context_node_id,
                     "path_array": element_path,
                     "properties": props,
                     "children": _element_children(raw),
+                    "child_keys": _element_child_keys(raw),
                     "deleted": _deleted_value(raw),
                 },
             )
@@ -279,7 +291,8 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                     "path_array": ["%p3", page_id],
                     "properties": _obj(page.get("properties")),
                     "root_id": _root_id(page),
-                    "children": [str(key) for key in _obj(page.get("elements")).keys()],
+                    "children": _element_children(page),
+                    "child_keys": _element_child_keys(page),
                     "deleted": _deleted_value(page),
                 },
             )
@@ -294,15 +307,23 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
         )
         for workflow_id, workflow in _obj(page.get("workflows")).items():
             workflow_node_id = f"workflow:{workflow_id}"
+            workflow_record = _obj(workflow)
             nodes.append(
                 BubbleContextNode(
                     id=workflow_node_id,
-                    label=_label(_obj(workflow), str(workflow_id)),
+                    label=_label(workflow_record, str(workflow_id)),
                     type="workflow",
                     metadata={
                         "bubble_id": str(workflow_id),
+                        "key": str(workflow_id),
+                        "root_id": _root_id(workflow_record),
                         "context": node_id,
-                        "deleted": _deleted_value(_obj(workflow)),
+                        "path_array": ["%p3", page_id, "%wf", str(workflow_id)],
+                        "children": [
+                            str(_obj(action).get("id") or action_key)
+                            for action_key, action in _obj(workflow_record.get("actions")).items()
+                        ],
+                        "deleted": _deleted_value(workflow_record),
                     },
                 )
             )
@@ -342,7 +363,8 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
                     "path_array": [root_key, reusable_id],
                     "properties": _obj(reusable.get("properties")),
                     "root_id": _root_id(reusable),
-                    "children": [str(key) for key in _obj(reusable.get("elements")).keys()],
+                    "children": _element_children(reusable),
+                    "child_keys": _element_child_keys(reusable),
                     "inferred_from_index": bool(reusable.get("inferredFromIndex")),
                     "deleted": _deleted_value(reusable),
                 },
@@ -356,6 +378,35 @@ def _context_from_crawler_payload(payload: dict[str, Any], source: str) -> Bubbl
             edges=edges,
             parent_node_id=node_id,
         )
+        for workflow_key, workflow in _obj(reusable.get("workflows")).items():
+            workflow_record = _obj(workflow)
+            workflow_node_id = f"workflow:{workflow_key}"
+            nodes.append(
+                BubbleContextNode(
+                    id=workflow_node_id,
+                    label=_label(workflow_record, str(workflow_key)),
+                    type="workflow",
+                    metadata={
+                        "bubble_id": str(workflow_key),
+                        "key": str(workflow_key),
+                        "root_id": _root_id(workflow_record),
+                        "context": node_id,
+                        "path_array": [root_key, reusable_id, "%wf", str(workflow_key)],
+                        "children": [
+                            str(_obj(action).get("id") or action_key)
+                            for action_key, action in _obj(workflow_record.get("actions")).items()
+                        ],
+                        "deleted": _deleted_value(workflow_record),
+                    },
+                )
+            )
+            edges.append(
+                BubbleContextEdge(
+                    source=node_id,
+                    target=workflow_node_id,
+                    type="has_workflow",
+                )
+            )
 
     for type_id, raw in _obj(payload.get("dataTypes")).items():
         nodes.append(

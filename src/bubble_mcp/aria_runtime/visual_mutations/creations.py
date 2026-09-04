@@ -67,7 +67,15 @@ class VisualCreationService:
             logger.error("Parent element is required.")
             return None
         if parent_ref == context_name or parent_ref.lower() == "root":
-            return {"path": [], "id": context_id}
+            try:
+                root = self._host.discovery._get_context_root(context_id, context_type)
+            except Exception:
+                root = None
+            return {
+                "path": [],
+                "id": self._host._resolve_context_object_id(context_id, context_type),
+                **({"element": root} if isinstance(root, dict) else {}),
+            }
         if len(parent_ref) >= 5 and " " not in parent_ref:
             found = self._host.discovery.find_element_by_id(
                 context_id,
@@ -296,7 +304,6 @@ class VisualCreationService:
         if dry_run:
             logger.info("\n DRY RUN - Payload preview:")
             logger.log(payload.to_json())
-            inject(True)
             return result_value
         try:
             self._host._dispatch_payload(payload)

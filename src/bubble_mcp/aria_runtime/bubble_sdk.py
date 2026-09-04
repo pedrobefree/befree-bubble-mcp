@@ -15,7 +15,7 @@ from datetime import datetime
 import re
 from typing import Dict, List, Any, Optional, Union, Tuple
 
-from bubble_mcp.runtime_discovery import DiscoveryDataBoundary
+from bubble_mcp.runtime_discovery import DiscoveryDataBoundary, ResolvedBubbleReference
 
 
 # ==========================================
@@ -3891,9 +3891,7 @@ class ActionBuilder:
         """Cria ação Change Page"""
         action_id = self.id_gen.element_id()
         properties = {
-            # ChangePage destination uses element_id in Bubble schema.
-            "element_id": page_name,
-            # Compatibility alias: some editors still read %ei for ChangePage.
+            # ChangePage writes require the canonical wire key.
             "%ei": page_name,
         }
         if send_data is not None:
@@ -5674,7 +5672,7 @@ class PayloadBuilder:
 
     # Comprehensive Property Mapping (Modular -> Wire)
     PROP_MAPPING = {
-        "element_id": "%ei",
+        "element_id": "%ei", "custom_id": "%ci",
         "height": "%h", "width": "%w", "left": "%l", "top": "%t",
         "zindex": "%z", "min_width": "min_width_css", "min_height": "min_height_css",
         "visible_when_collapsed": "%vc", "is_visible": "%iv",
@@ -5706,7 +5704,7 @@ class PayloadBuilder:
         "name": "%nm", "entries": "%e", "states": "%s", "custom_states": "%s",
         "actions": "actions", "elements": "%el", "workflows": "%wf", "default_name": "%dn",
         "style": "%s1", "arguments": "%a", "args": "%a",
-        "element_id": "%ei",
+        "element_id": "%ei", "custom_id": "%ci",
         "type_of_content": "%gt", "group_type": "%gt", "data_source": "%ds"
     }
 
@@ -6682,12 +6680,45 @@ class PathDiscovery(DiscoveryDataBoundary):
         if alternate_mapping is None or preferred_mapping is alternate_mapping:
             return preferred_mapping
 
-        # Preserve alternate-only records before the preferred mapping, which
-        # retains preferred values and its insertion order on collisions.
-        return {
-            **{key: value for key, value in alternate_mapping.items() if key not in preferred_mapping},
-            **preferred_mapping,
+        # Preserve alternate-only records, but merge colliding records deeply so
+        # a sparse wire alias cannot hide identity metadata in the canonical map.
+        merged: Dict[str, Any] = {
+            key: deepcopy(value)
+            for key, value in alternate_mapping.items()
+            if key not in preferred_mapping
         }
+        for key, preferred_value in preferred_mapping.items():
+            alternate_value = alternate_mapping.get(key)
+            if isinstance(alternate_value, dict) and isinstance(preferred_value, dict):
+                merged[key] = PathDiscovery._deep_merge_alias_values(
+                    alternate_value,
+                    preferred_value,
+                )
+            else:
+                merged[key] = deepcopy(preferred_value)
+        return merged
+
+    @staticmethod
+    def _deep_merge_alias_values(alternate: Dict[str, Any], preferred: Dict[str, Any]) -> Dict[str, Any]:
+        """Merge aliases without letting an empty/stale value erase richer wire data."""
+
+        merged: Dict[str, Any] = deepcopy(alternate)
+        for key, preferred_value in preferred.items():
+            alternate_value = merged.get(key)
+            if isinstance(alternate_value, dict) and isinstance(preferred_value, dict):
+                merged[key] = PathDiscovery._deep_merge_alias_values(
+                    alternate_value,
+                    preferred_value,
+                )
+            elif preferred_value is None and alternate_value is not None:
+                continue
+            elif preferred_value == "" and isinstance(alternate_value, str) and alternate_value:
+                continue
+            elif isinstance(preferred_value, (dict, list)) and not preferred_value and alternate_value:
+                continue
+            else:
+                merged[key] = deepcopy(preferred_value)
+        return merged
 
     @staticmethod
     def _read_nonempty_alias_mapping(
@@ -6719,6 +6750,30 @@ class PathDiscovery(DiscoveryDataBoundary):
         obj[preferred_key] = resolved
         obj[alternate_key] = resolved
         return resolved
+
+    def _normalize_reference_aliases(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Unify canonical and wire buckets before applying mutation overlays."""
+
+        if isinstance(data.get("pages"), dict) or isinstance(data.get("%p3"), dict):
+            self._sync_alias_mapping(data, "pages", "%p3")
+        if isinstance(data.get("element_definitions"), dict) or isinstance(data.get("%ed"), dict):
+            self._sync_alias_mapping(data, "element_definitions", "%ed")
+
+        visited: set[int] = set()
+
+        def normalize_nested(value: Any) -> None:
+            if not isinstance(value, dict) or id(value) in visited:
+                return
+            visited.add(id(value))
+            if isinstance(value.get("elements"), dict) or isinstance(value.get("%el"), dict):
+                self._sync_alias_mapping(value, "elements", "%el")
+            if isinstance(value.get("workflows"), dict) or isinstance(value.get("%wf"), dict):
+                self._sync_alias_mapping(value, "workflows", "%wf")
+            for child in list(value.values()):
+                normalize_nested(child)
+
+        normalize_nested(data)
+        return data
 
     def _load_crawler_index(self, path: Optional[str]) -> Optional[Dict[str, Any]]:
         """
@@ -7100,8 +7155,80 @@ class PathDiscovery(DiscoveryDataBoundary):
         Find reusable element ID by name (case-insensitive).
         Returns: reusable_id (the element_definitions dict key) or None
         """
-        found = self.find_reusable_definition(name)
-        return found[0] if found else None
+        resolved = self.resolve_reusable_reference(name)
+        return resolved.key if resolved else None
+
+    def _resolve_root_reference(
+        self,
+        ref: str,
+        *,
+        preferred_bucket: str,
+        wire_bucket: str,
+        wire_prefix: str,
+    ) -> Optional[ResolvedBubbleReference]:
+        """Resolve a root object while retaining both its slot and internal ids."""
+
+        raw_ref = str(ref or "").strip()
+        needle = self._norm_lookup(raw_ref)
+        if not raw_ref:
+            return None
+        records = self._read_alias_mapping(self.data, preferred_bucket, wire_bucket)
+        preferred = self.data.get(preferred_bucket)
+        preferred_keys = list(preferred) if isinstance(preferred, dict) else []
+        ordered_keys = [*preferred_keys, *(key for key in records if key not in preferred_keys)]
+        for key in ordered_keys:
+            payload = records.get(key)
+            if not isinstance(payload, dict):
+                continue
+            slot_key = str(key)
+            explicit_object_id = str(payload.get("id") or payload.get("object_id") or "").strip()
+            root_id = str(payload.get("root_id") or explicit_object_id or "").strip()
+            object_id = explicit_object_id or root_id or slot_key
+            names = [
+                payload.get("name"),
+                payload.get("%nm"),
+                payload.get("%dn"),
+                payload.get("default_name"),
+                payload.get("%d"),
+            ]
+            public_name = next(
+                (str(value).strip() for value in names if isinstance(value, str) and value.strip()),
+                None,
+            )
+            candidates = {slot_key, object_id, root_id}
+            candidates.update(
+                str(value).strip()
+                for value in names
+                if isinstance(value, str) and value.strip()
+            )
+            if raw_ref not in candidates and needle not in {
+                self._norm_lookup(candidate) for candidate in candidates
+            }:
+                continue
+            return ResolvedBubbleReference(
+                key=slot_key,
+                object_id=object_id,
+                root_id=root_id or None,
+                name=public_name,
+                path_array=(wire_prefix, slot_key),
+            )
+        return None
+
+    def resolve_reusable_reference(self, ref: str) -> Optional[ResolvedBubbleReference]:
+        return self._resolve_root_reference(
+            ref,
+            preferred_bucket="element_definitions",
+            wire_bucket="%ed",
+            wire_prefix="%ed",
+        )
+
+    def resolve_page_reference(self, ref: str) -> Optional[ResolvedBubbleReference]:
+        return self._resolve_root_reference(
+            ref,
+            preferred_bucket="pages",
+            wire_bucket="%p3",
+            wire_prefix="%p3",
+        )
 
     def find_reusable_definition(self, name: str) -> Optional[Tuple[str, Dict[str, Any]]]:
         """
@@ -7109,43 +7236,29 @@ class PathDiscovery(DiscoveryDataBoundary):
         Returns: (dict_key, definition_dict) or None.
 
         The dict key and the definition's inner "id" often differ; instances created
-        by the Bubble editor reference the INNER id in %p.custom_id, never the key.
+        by the Bubble editor reference the INNER id in the wire field %p.%ci, never
+        the structural key.
         """
-        name_lower = self._norm_lookup(name)
-        seen_keys = set()
-        for reusables in (self.data.get('element_definitions'), self.data.get('%ed')):
-            if not isinstance(reusables, dict):
-                continue
-            for el_key, el_data in reusables.items():
-                if el_key in seen_keys:
-                    continue
-                seen_keys.add(el_key)
-                if isinstance(el_data, dict):
-                    el_name = el_data.get('name') or el_data.get('%nm', '')
-                    if self._norm_lookup(el_name) == name_lower:
-                        logger.info(f" [DEBUG] find_reusable_definition: '{name}' -> key '{el_key}' id '{el_data.get('id')}'")
-                        return str(el_key), el_data
-        return None
+        resolved = self.resolve_reusable_reference(name)
+        if resolved is None:
+            return None
+        reusables = self._read_alias_mapping(self.data, "element_definitions", "%ed")
+        definition = reusables.get(resolved.key)
+        if not isinstance(definition, dict):
+            return None
+        logger.info(
+            f" [DEBUG] find_reusable_definition: '{name}' -> key "
+            f"'{resolved.key}' id '{resolved.root_id}'"
+        )
+        return resolved.key, definition
 
     def find_page(self, name: str) -> Optional[str]:
         """
         Find page ID by name (case-insensitive).
         Returns: page_id or None
         """
-        name_lower = self._norm_lookup(name)
-        seen_ids = set()
-        for pages in (self.data.get('pages'), self.data.get('%p3')):
-            if not isinstance(pages, dict):
-                continue
-            for page_id, page_data in pages.items():
-                if page_id in seen_ids:
-                    continue
-                seen_ids.add(page_id)
-                if isinstance(page_data, dict):
-                    page_name = page_data.get('name') or page_data.get('%nm', '')
-                    if self._norm_lookup(page_name) == name_lower:
-                        return page_id
-        return None
+        resolved = self.resolve_page_reference(name)
+        return resolved.key if resolved else None
 
     def find_element_by_text(self, context_id: str, text: str, context_type: str = "reusable") -> Optional[Dict]:
         """

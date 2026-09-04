@@ -2134,7 +2134,12 @@ def test_cli_compile_plan_uses_context_file_for_editor_paths(tmp_path, capsys) -
                         "id": "element:elCard",
                         "label": "Card",
                         "type": "element",
-                        "metadata": {"bubble_id": "elCard", "path_array": ["%p3", "pgIndex", "%el", "elCard"]},
+                        "metadata": {
+                            "bubble_id": "elCard",
+                            "key": "elCard",
+                            "object_id": "elCardObject",
+                            "path_array": ["%p3", "pgIndex", "%el", "elCard"],
+                        },
                     },
                 ],
                 "edges": [],
@@ -2164,7 +2169,10 @@ def test_cli_compile_plan_uses_context_file_for_editor_paths(tmp_path, capsys) -
     assert create_change["path_array"][:4] == ["%p3", "pgIndex", "%el", "elCard"]
     assert write_payload["changes"][0]["body"].startswith("%p3.pgIndex.%el.elCard.%el.")
     assert first_change(write_payload, "Update index")["path_array"][:2] == ["_index", "id_to_path"]
-    assert any(change["path_array"] == ["_index", "issues_sub", "elCard"] for change in write_payload["changes"])
+    assert any(
+        change["path_array"] == ["_index", "issues_sub", "elCardObject"]
+        for change in write_payload["changes"]
+    )
 
 
 def test_cli_execute_plan_compile_uses_context_file_in_preview(tmp_path, capsys) -> None:  # type: ignore[no-untyped-def]
