@@ -18,7 +18,7 @@ else:
         from ..bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, FontBuilder
         from ..figma_bridge.transform_tokens import TokenTransformer
     except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-        from bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, FontBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ColorBuilder, DEFAULT_COLOR_NAMES, FontBuilder
         from figma_bridge.transform_tokens import TokenTransformer
 
 from .colors import ColorSnapshot, ColorTokenService

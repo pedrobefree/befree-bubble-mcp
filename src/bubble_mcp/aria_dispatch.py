@@ -12,6 +12,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, cast
 
+from bubble_mcp.aria_runtime_modules import load_aria_runtime_modules
 from bubble_mcp.context.detector import (
     default_bubble_export_path,
     default_crawler_index_path,
@@ -280,29 +281,10 @@ class AriaRuntimeEnvironment:
     mutation_overlay_path: str | None
 
 
-class _FakeInquirer:
-    class List:
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
-
-    class Text:
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
-
-    @staticmethod
-    def prompt(_questions: Any) -> None:
-        return None
-
-
 def _load_aria_runtime_modules() -> tuple[Any, Any]:
-    runtime_dir = Path(__file__).resolve().parent / "aria_runtime"
-    runtime_path = str(runtime_dir)
-    if runtime_path not in sys.path:
-        sys.path.insert(0, runtime_path)
-    bubble_cli = importlib.import_module("bubble_cli")
-    bubble_sdk = importlib.import_module("bubble_sdk")
-    setattr(bubble_cli, "inquirer", _FakeInquirer())
-    return bubble_cli, bubble_sdk
+    """Kept as the name three call sites and runtime_coverage already import."""
+
+    return load_aria_runtime_modules()
 
 
 def _resolve_optional_path(value: Any) -> str | None:

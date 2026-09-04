@@ -9,6 +9,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, cast
 
+from bubble_mcp.aria_runtime_modules import load_aria_runtime_modules
 from bubble_mcp.context.detector import default_crawler_index_path, detect_project_context
 from bubble_mcp.context.mutation_overlay import mutation_overlay_path, record_mutation_overlay
 from bubble_mcp.core.config import (
@@ -23,14 +24,9 @@ from bubble_mcp.sessions.store import load_session
 
 
 def _load_aria_runtime_modules() -> tuple[Any, Any]:
-    runtime_dir = Path(__file__).resolve().parent / "aria_runtime"
-    runtime_path = str(runtime_dir)
-    if runtime_path not in sys.path:
-        sys.path.insert(0, runtime_path)
-    import bubble_cli  # type: ignore[import-not-found]
-    import bubble_sdk  # type: ignore[import-not-found]
+    """Kept as the name three call sites and runtime_coverage already import."""
 
-    return bubble_cli, bubble_sdk
+    return load_aria_runtime_modules()
 
 
 def _raw_profile_config(profile: str) -> dict[str, Any]:

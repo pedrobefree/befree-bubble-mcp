@@ -7,7 +7,7 @@ from typing import Any
 try:
     from ..bubble_sdk import logger
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import logger
+    from bubble_mcp.aria_runtime.bubble_sdk import logger
 
 from .protocols import VisualElementTarget, VisualMutationHost
 

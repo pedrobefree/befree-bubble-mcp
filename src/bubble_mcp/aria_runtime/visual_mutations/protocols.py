@@ -8,7 +8,7 @@ from typing import Any, Protocol
 try:
     from ..bubble_sdk import PayloadBuilder
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import PayloadBuilder
+    from bubble_mcp.aria_runtime.bubble_sdk import PayloadBuilder
 
 
 @dataclass(frozen=True)
