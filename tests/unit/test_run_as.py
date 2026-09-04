@@ -491,7 +491,7 @@ def test_a_resolved_email_impersonates_the_id_it_found(
     monkeypatch.setattr(
         run_as_module,
         "_user_id_from_email",
-        lambda email, app_id, folder: {"ok": True, "user_id": USER_ID},
+        lambda email, app_id, folder, version: {"ok": True, "user_id": USER_ID},
     )
     transport = FakeTransport(
         replies=[HttpReply(status=302, location=REDIRECT), HttpReply(status=200)],
@@ -517,3 +517,85 @@ def test_a_failed_email_lookup_is_returned_untouched(
 
     assert run_as_user("mcp-test", email="a@b.com", transport=transport) is failure
     assert transport.calls == []
+
+
+def _project(config_dir: Path, version: str) -> Path:
+    folder = config_dir / "cli-project"
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "bubble.json").write_text(
+        json.dumps({"app_id": APP_ID, "api_key": "k" * 32, "version": version}), encoding="utf-8"
+    )
+    return folder
+
+
+def test_a_live_config_refuses_to_resolve_an_email_for_a_test_impersonation(
+    stored_session: FakeSession, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Bubble keeps test and live data in separate databases, so an id found in live simply does
+    # not exist in test. Left unchecked this surfaces much later as authenticate_as answering
+    # without a token, which reads as "no such user" and sends the caller hunting the wrong bug.
+    monkeypatch.delenv("BUBBLE_DATA_API_TOKEN", raising=False)
+    folder = _project(config_dir, "live")
+    transport = FakeTransport(replies=[])
+
+    result = run_as_user(
+        "mcp-test", email="a@b.com", app_version="test", data_api_dir=str(folder), transport=transport
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "data_api_version_mismatch"
+    assert "SEPARATE databases" in result["message"]
+    # Refused before any request: nothing was looked up and nothing was impersonated.
+    assert transport.calls == []
+
+
+def test_a_test_config_refuses_a_live_impersonation(
+    stored_session: FakeSession, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BUBBLE_DATA_API_TOKEN", raising=False)
+    folder = _project(config_dir, "test")
+
+    result = run_as_user(
+        "mcp-test",
+        email="a@b.com",
+        app_version="live",
+        data_api_dir=str(folder),
+        transport=FakeTransport(replies=[]),
+    )
+
+    assert result["error"] == "data_api_version_mismatch"
+
+
+def test_matching_versions_are_allowed_through(
+    stored_session: FakeSession, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BUBBLE_DATA_API_TOKEN", raising=False)
+    folder = _project(config_dir, "live")
+    seen: list[str] = []
+    def fake_lookup(email: str, app_id: str, folder_arg: str | None, version: str) -> dict[str, Any]:
+        seen.append(version)
+        return {"ok": True, "user_id": USER_ID}
+
+    monkeypatch.setattr(run_as_module, "_user_id_from_email", fake_lookup)
+    transport = FakeTransport(
+        replies=[HttpReply(status=302, location=REDIRECT), HttpReply(status=200)],
+        jar=_session_cookies(),
+    )
+
+    result = run_as_user(
+        "mcp-test", email="a@b.com", app_version="live", data_api_dir=str(folder), transport=transport
+    )
+
+    assert result["ok"] is True
+    assert seen == ["live"]
+
+
+def test_any_branch_counts_as_the_test_side(
+    stored_session: FakeSession, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # bubble-cli maps anything that is not "live" onto version-test, and a feature branch shares
+    # that database, so a non-live config must not be refused for a branch.
+    monkeypatch.delenv("BUBBLE_DATA_API_TOKEN", raising=False)
+    assert run_as_module._versions_disagree("feature-checkout", "test") is False
+    assert run_as_module._versions_disagree("live", "live") is False
+    assert run_as_module._versions_disagree("test", "live") is True

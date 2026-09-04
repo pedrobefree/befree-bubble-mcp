@@ -260,7 +260,20 @@ def build_storage_state(cookies: list[CookieRecord]) -> dict[str, Any]:
     }
 
 
-def _user_id_from_email(email: str, app_id: str, data_api_dir: str | None) -> dict[str, Any]:
+def _versions_disagree(impersonating: str, data_api_version: str) -> bool:
+    """Would the lookup read a different Bubble database than the one being impersonated?
+
+    Bubble's test and live versions hold SEPARATE data, so a unique id from one does not exist
+    in the other. bubble-cli's config says "live" or anything-else-means-version-test, and this
+    server names a branch, so the comparison is live-vs-not-live rather than string equality.
+    """
+
+    return (impersonating.strip().lower() == "live") != (data_api_version.strip().lower() == "live")
+
+
+def _user_id_from_email(
+    email: str, app_id: str, data_api_dir: str | None, app_version: str
+) -> dict[str, Any]:
     """Turn an email into a Bubble unique id through the app's Data API.
 
     Imported lazily so the impersonation path - which needs no Data API at all - does not pay
@@ -284,6 +297,24 @@ def _user_id_from_email(email: str, app_id: str, data_api_dir: str | None) -> di
                 "user_id directly needs no token at all."
             ),
         }
+    if _versions_disagree(app_version, config.version):
+        # Left alone this fails much later and lies about the cause: authenticate_as answers
+        # without a token for an id that does not exist in the version being impersonated, and
+        # the message reads as if the user were missing rather than as if it were looked up in
+        # the wrong database.
+        return {
+            "ok": False,
+            "error": "data_api_version_mismatch",
+            "message": (
+                f"The Data API config for '{app_id}' reads version '{config.version}' while this "
+                f"call impersonates '{app_version}', and Bubble keeps test and live data in "
+                "SEPARATE databases - an id found in one does not exist in the other. Point "
+                "app_version at the same side, use a config for that version, or pass user_id "
+                f"directly. Config: {config.source_path or 'environment'}."
+            ),
+            "data_api": config.describe(),
+        }
+
     result = find_user_id(config, email)
     if result.get("ok"):
         result["data_api"] = config.describe()
@@ -352,7 +383,7 @@ def run_as_user(
                 "error": "missing_user",
                 "message": "Pass user_id (a Bubble unique id) or email.",
             }
-        email_lookup = _user_id_from_email(str(email), resolved_app_id, data_api_dir)
+        email_lookup = _user_id_from_email(str(email), resolved_app_id, data_api_dir, app_version)
         if not email_lookup.get("ok"):
             return email_lookup
         resolved_user_id = str(email_lookup["user_id"])
