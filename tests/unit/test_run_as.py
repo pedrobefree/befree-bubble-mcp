@@ -221,6 +221,33 @@ def test_cookies_from_other_domains_are_not_treated_as_the_session(
     assert result["error"] == "no_session_cookie"
 
 
+def test_cookies_on_a_custom_domain_are_still_the_session(
+    stored_session: FakeSession, config_dir: Path
+) -> None:
+    # An app with redirect_all_to_domain sends the Run as redirect on to its own domain, and
+    # Bubble sets the session there. Nothing in that hostname mentions the app id - the cookie
+    # NAME is what carries it - so matching on the domain alone loses a working session.
+    transport = FakeTransport(
+        replies=[HttpReply(status=302, location=REDIRECT), HttpReply(status=200)],
+        jar=[
+            CookieRecord(
+                name=f"{APP_ID}_test_u2main", value="live", domain=".app.example.org.au"
+            ),
+            CookieRecord(
+                name=f"{APP_ID}_test_u2main.sig", value="sig", domain=".app.example.org.au"
+            ),
+        ],
+    )
+
+    result = run_as_user("mcp-test", USER_ID, transport=transport)
+
+    assert result["ok"] is True
+    assert [cookie["domain"] for cookie in result["cookies"]] == [
+        ".app.example.org.au",
+        ".app.example.org.au",
+    ]
+
+
 def test_storage_state_shape_matches_what_playwright_accepts() -> None:
     state = build_storage_state(_session_cookies())
 

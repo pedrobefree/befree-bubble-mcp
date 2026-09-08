@@ -7,8 +7,13 @@ that matters happens in their headers.
    the editor session. It answers ``302``, and the ``Location`` it hands back has a fresh
    ``access_token`` in the query string. The token is minted per call and short-lived.
 2. Following that ``Location`` - ``<app>.bubbleapps.io/version-<version>/api/1.1/u/redirect``
-   with the token - lands on the requested page and, on the way, sets the app-domain session
-   cookies for the impersonated user: ``<app>_<version>_u2main`` and its ``.sig``.
+   with the token - lands on the requested page and, on the way, sets the session cookies for
+   the impersonated user: ``<app>_<version>_u2main`` and its ``.sig``.
+
+Where those cookies land is not fixed. An app with ``redirect_all_to_domain`` set forwards the
+second hop to its own domain, and Bubble sets the session there - on ``app.example.org``, a
+hostname that mentions the app id nowhere. The cookie NAME carries the app id in either case,
+so that is what identifies the session here, not the host it was set on.
 
 So the whole thing is reproducible without a browser, which is what this module does. That
 matters for more than tidiness: driving the editor's UI instead would pin the capability to
@@ -22,7 +27,7 @@ headlessly, with no editor open.
 
 Two constraints worth knowing before relying on this:
 
-* The app-domain cookie carries its own expiry (about a day in practice, but Bubble sets it,
+* The session cookie carries its own expiry (about a day in practice, but Bubble sets it,
   not us). A stored state outlives this process but not indefinitely.
 * A version with preview password protection answers HTTP Basic on the app domain, so step 2
   needs those credentials.
@@ -466,8 +471,15 @@ def run_as_user(
             "message": f"Following the Run as redirect answered {second.status}.",
         }
 
+    # Bubble names the session cookies after the app - "<app>_<version>_u2main" - and that
+    # name is the only part of them that stays put. The HOST does not: an app with
+    # redirect_all_to_domain hands the Run as redirect on to its own domain, so the session is
+    # set on something like app.example.org.au, which mentions the app id nowhere. Matching the
+    # domain alone therefore threw away a session that had been established correctly.
     session_cookies = [
-        cookie for cookie in http.cookies if resolved_app_id in cookie.domain
+        cookie
+        for cookie in http.cookies
+        if resolved_app_id in cookie.name or resolved_app_id in cookie.domain
     ]
     if not session_cookies:
         return {
