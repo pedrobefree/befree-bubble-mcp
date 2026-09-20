@@ -510,6 +510,14 @@ def run_as_user(
         target.write_text(
             json.dumps(build_storage_state(session_cookies), indent=2), encoding="utf-8"
         )
+        # This file holds live session cookies, exactly like sessions/store.py's session file,
+        # and deserves the same 0600. Best effort: the mode is meaningless on Windows and a
+        # filesystem may refuse it, neither of which is a reason to lose the session that was
+        # just captured. Defence in depth - the config directory itself should be 0700.
+        try:
+            os.chmod(target, 0o600)
+        except OSError:
+            pass
         result["storage_state_path"] = str(target)
         result["storage_state_note"] = (
             "This file holds live session cookies for the impersonated user. Pass it to "

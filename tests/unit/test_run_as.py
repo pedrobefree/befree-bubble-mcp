@@ -9,6 +9,8 @@ impersonates nobody.
 from __future__ import annotations
 
 import json
+import os
+import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -626,3 +628,28 @@ def test_any_branch_counts_as_the_test_side(
     assert run_as_module._versions_disagree("feature-checkout", "test") is False
     assert run_as_module._versions_disagree("live", "live") is False
     assert run_as_module._versions_disagree("test", "live") is True
+
+
+def test_the_storage_state_is_not_world_readable(
+    stored_session: FakeSession, config_dir: Path
+) -> None:
+    """The file holds live session cookies, so it gets the same 0600 as the session file.
+
+    POSIX only: chmod does not model Windows ACLs, and the call there is a documented no-op.
+    """
+
+    transport = FakeTransport(
+        replies=[
+            HttpReply(status=302, location=REDIRECT),
+            HttpReply(status=200, final_url=f"https://{APP_ID}.bubbleapps.io/version-test/index"),
+        ],
+        jar=_session_cookies(),
+    )
+
+    result = run_as_user("mcp-test", USER_ID, transport=transport)
+
+    path = Path(result["storage_state_path"])
+    assert path.exists()
+    if os.name == "nt":
+        pytest.skip("POSIX permission bits do not describe access on Windows.")
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
