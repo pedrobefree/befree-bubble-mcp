@@ -38,6 +38,12 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "notes": "Use bubble_readiness_check first for the compact health, coverage, catalog-quality, and routing sequence. Use individual smoke suites only for deeper diagnosis.",
     },
     {
+        "intent": "run_browser_e2e_tests",
+        "when": "The user asks to run, write, or read the result of an end-to-end / UAT test that drives the app in a browser.",
+        "tools": ["bubble_e2e_list", "bubble_e2e_run", "bubble_e2e_report", "bubble_e2e_scaffold", "bubble_run_as"],
+        "notes": "Call bubble_e2e_list first for the suite and case ids. bubble_e2e_run defaults to execute=false, which previews without opening a browser; execute=true creates real records in the app. A missing or expired session is fixed with bubble_run_as, never with a password inside a case.",
+    },
+    {
         "intent": "find_profile_session_or_context",
         "when": "The user names a project/profile, asks what projects are available, or a target cannot be resolved.",
         "tools": ["bubble_profile_cache_refresh", "bubble_project_bootstrap", "bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_login", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
@@ -169,6 +175,24 @@ ROUTES: tuple[dict[str, Any], ...] = (
 
 
 KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        (
+            "e2e",
+            "end to end",
+            "end-to-end",
+            "ponta a ponta",
+            "uat",
+            "playwright",
+            "browser test",
+            "teste de interface",
+            "teste de aceitacao",
+            "teste de aceitação",
+            "teste no navegador",
+            "suite de teste",
+            "suíte de teste",
+        ),
+        ("run_browser_e2e_tests",),
+    ),
     (
         (
             "api connector",
@@ -852,6 +876,42 @@ RECIPES: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "e2e_suite": {
+        "when": "Run, read or create a browser end-to-end / UAT test that drives the real app as a test user.",
+        "tools": ["bubble_e2e_list", "bubble_e2e_run", "bubble_e2e_report", "bubble_e2e_scaffold", "bubble_run_as"],
+        "steps": [
+            {
+                "tool": "bubble_e2e_list",
+                "purpose": "Learn the suite and case ids for the profile, and whether Playwright and the run-as session are ready.",
+                "args": {"profile": "$profile"},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_run_as",
+                "purpose": "Recapture the impersonated session when bubble_e2e_list reports it missing or expired. Skip it otherwise.",
+                "args": {"profile": "$profile"},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_e2e_run",
+                "purpose": "Preview the run: resolve branch and base URL and check every precondition without opening a browser.",
+                "args": {"profile": "$profile", "suite": "$suite", "execute": False},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_e2e_run",
+                "purpose": "Drive the cases for real. Only with the user's agreement: passing cases create records in the app.",
+                "args": {"profile": "$profile", "suite": "$suite", "execute": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_e2e_report",
+                "purpose": "Read a finished run by run_id instead of running the suite again.",
+                "args": {"profile": "$profile", "run_id": "$run_id"},
+                "required_before_execute": False,
+            },
+        ],
+    },
     "quality_gate": {
         "when": "Verify install health, catalog coverage, runtime behavior, or safe profile integration.",
         "tools": ["bubble_readiness_check", "bubble_runtime_smoke", "bubble_health_check", "bubble_tool_coverage", "bubble_catalog_quality"],
@@ -874,6 +934,24 @@ RECIPES: dict[str, dict[str, Any]] = {
 
 
 RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        (
+            "e2e",
+            "end to end",
+            "end-to-end",
+            "ponta a ponta",
+            "uat",
+            "playwright",
+            "browser test",
+            "teste de interface",
+            "teste de aceitacao",
+            "teste de aceitação",
+            "teste no navegador",
+            "suite de teste",
+            "suíte de teste",
+        ),
+        "e2e_suite",
+    ),
     (
         (
             "api connector",
@@ -1185,6 +1263,7 @@ RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
     "html_style_import": "create_styles_from_html html css style hover focus disabled pressed border radius",
     "page_or_reusable": "create page reusable clone delete context",
     "project_transfer": "project transfer copy reusable page element source target profile inventory preview execute",
+    "e2e_suite": "e2e end-to-end uat browser test playwright suite case run_as run report scaffold",
     "quality_gate": "readiness coverage catalog smoke health",
     "performance_logs_usage": "performance workload usage WU logs jetstream workflow runs storage plan usage audit",
     "setup_or_refresh_context": "bubble_profile_cache_refresh refresh cache atualizar recarregar sync profile context detect find status .bubble",

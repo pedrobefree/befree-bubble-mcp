@@ -254,6 +254,7 @@ The bridge listens on `http://localhost:3333`.
 - [Context engine](docs/context-engine.md)
 - [Session capture](docs/session-capture.md)
 - [Browser automation](docs/browser-automation.md)
+- [End-to-end testing](docs/e2e-testing.md)
 - [Project transfer](docs/transfer.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Extension packs](docs/extension-packs.md)
@@ -261,6 +262,26 @@ The bridge listens on `http://localhost:3333`.
 - [Tool authoring](docs/tool-authoring.md)
 - [Skills](docs/skills.md)
 - [Framework adapters](docs/framework-adapters.md)
+
+## End-to-End Testing
+
+Browser suites that drive a real app as a real test user, declared per profile and run by the
+MCP. Four tools cover the loop: `bubble_e2e_list` (what exists and whether it can run now),
+`bubble_e2e_run` (preview by default, `execute=true` to drive the browser), `bubble_e2e_report`
+(read a finished run by `run_id`) and `bubble_e2e_scaffold` (create the next suite or case).
+
+A suite is declared in `$BUBBLE_MCP_CONFIG_DIR/e2e/<profile>/suites/<name>.suite.json` and
+carries environment only: app, branch, the `bubble_run_as` user it impersonates, viewport, and
+whether a run records video. Steps are Python, in a case module, against a stable `ctx` API -
+the assertions these replace check computed font weight and the relative order of text inside
+one card, which no serialized step list expresses without becoming a language of its own.
+
+Artifacts land in `runs/<run_id>/<case_id>/`: one screenshot per named step plus the video.
+They stay outside every checkout. Cases authenticate only through the storage state captured by
+`bubble_run_as`; no password ever reaches a case.
+
+See [End-to-end testing](docs/e2e-testing.md) for the manifest reference, the context API and
+how to create the next suite.
 
 ## Safety Defaults
 
@@ -270,6 +291,9 @@ The bridge listens on `http://localhost:3333`.
 - Scheduled deploy is preview-first and requires a second confirmed call before it is armed.
 - Without execution opt-in, write commands preview the normalized request.
 - Sensitive values are redacted before logs or reports.
+- E2E suites run in preview by default; `execute=true` is what lets a case write to the app.
+- E2E case modules are resolved inside the suite's cases root; `..`, absolute paths and
+  symlinks out of the tree are refused.
 - Local extension, learning, knowledge, skill, and tool-authoring state stays under `BUBBLE_MCP_CONFIG_DIR`.
 
 ## Status

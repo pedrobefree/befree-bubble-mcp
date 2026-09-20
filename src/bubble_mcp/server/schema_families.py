@@ -736,6 +736,11 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "For execute-write smoke only: refresh Bubble context after writes and verify the temporary page/elements materialized with required defaults.",
         default=False,
     ),
+    "include_e2e": _prop(
+        "boolean",
+        "Also check the profile's E2E suites: Playwright availability and whether each suite's run-as session is still valid.",
+        default=False,
+    ),
     "include_family_preview": _prop(
         "boolean",
         "For readiness checks only: also run the broader family-preview smoke when a profile is available. This remains execute=false.",
@@ -1483,6 +1488,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
                 "app_version",
                 "max_age_hours",
                 "include_family_preview",
+                "include_e2e",
                 "include_details",
                 "stop_on_failure",
             ],
@@ -2732,6 +2738,215 @@ def extension_kernel_tools() -> list[ToolSchema]:
     ]
 
 
+def _e2e_suite_field(*, required: bool) -> JsonSchema:
+    return _prop(
+        "string",
+        (
+            "Name of the E2E suite declared for the profile, as bubble_e2e_list reports it."
+            if required
+            else "Optional suite name. Leave empty to list every suite declared for the profile."
+        ),
+        examples=["kaimia-ks1"],
+    )
+
+
+def e2e_tools() -> list[ToolSchema]:
+    """Browser end-to-end suites: list what exists, run it, read a finished run, scaffold more."""
+
+    return [
+        {
+            "name": "bubble_e2e_list",
+            "description": (
+                "List the E2E suites and cases declared for a profile, with the branch each one "
+                "targets and whether it could run right now (Playwright installed, run-as session "
+                "present and unexpired). Read-only."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "profile": field("profile"),
+                    "suite": _e2e_suite_field(required=False),
+                    "include_runs": _prop(
+                        "boolean",
+                        "Include the profile's recent run ids so a report can be fetched without guessing.",
+                        default=True,
+                    ),
+                },
+                required=["profile"],
+            ),
+        },
+        {
+            "name": "bubble_e2e_run",
+            "description": (
+                "Run an E2E suite, or named cases from it, against a Bubble branch as the "
+                "impersonated run-as user. execute=false (the default) previews: it resolves the "
+                "branch and base URL, checks the session and the case modules, and reports what "
+                "would run without opening a browser or creating a single record. execute=true "
+                "drives the browser and writes real data into the app. Each case runs in its own "
+                "browser, so one failure does not end the suite; the result names the failing step "
+                "and points at its screenshot and video."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "profile": field("profile"),
+                    "suite": _e2e_suite_field(required=True),
+                    "cases": _prop(
+                        "array",
+                        "Case ids to run. Leave empty to run the whole suite.",
+                        items={"type": "string"},
+                        examples=[["ks1-t23", "ks1-t29"]],
+                    ),
+                    "tags": _prop(
+                        "array",
+                        "Run only the cases carrying any of these tags. Ignored when 'cases' is given.",
+                        items={"type": "string"},
+                        examples=[["notes"]],
+                    ),
+                    "branch": _prop(
+                        "string",
+                        "Bubble branch (app version) to test. Overrides the suite manifest and the profile.",
+                        examples=["93k8b", "test"],
+                    ),
+                    "execute": _prop(
+                        "boolean",
+                        "false previews without opening a browser. true runs the cases for real, "
+                        "creating records in the app under test.",
+                        default=False,
+                    ),
+                    "headless": _prop(
+                        "boolean",
+                        "Override the suite's headless setting for this run.",
+                    ),
+                    "video": _prop(
+                        "boolean",
+                        "Record a video per case. Off unless the suite or this call turns it on.",
+                    ),
+                    "cursor": _prop(
+                        "boolean",
+                        "Paint the demo cursor, for a recording someone will watch.",
+                    ),
+                    "slow_mo": _prop(
+                        "integer",
+                        "Milliseconds to slow each Playwright action by, for a legible recording.",
+                        minimum=0,
+                    ),
+                    "timeout_ms": _prop(
+                        "integer",
+                        "Default Playwright timeout per action and assertion.",
+                        minimum=1000,
+                    ),
+                    "run_id": _prop(
+                        "string",
+                        "Optional id for this run's artifact directory. Leave empty to auto-generate one.",
+                    ),
+                    "stop_on_failure": field("stop_on_failure"),
+                    "include_details": _prop(
+                        "boolean",
+                        "Include the Python traceback of each failing case in the result.",
+                        default=False,
+                    ),
+                },
+                required=["profile", "suite"],
+            ),
+        },
+        {
+            "name": "bubble_e2e_report",
+            "description": (
+                "Read the structured result of a previous E2E run by run_id, without re-running "
+                "anything: status, duration and failing step per case, plus the paths of its "
+                "screenshots and video. Read-only."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "profile": field("profile"),
+                    "run_id": _prop(
+                        "string",
+                        "The run id reported by bubble_e2e_run or listed by bubble_e2e_list.",
+                        examples=["20260920143012_a1b2c3"],
+                    ),
+                    "include_details": _prop(
+                        "boolean",
+                        "Include the Python traceback of each failing case.",
+                        default=False,
+                    ),
+                },
+                required=["profile", "run_id"],
+            ),
+        },
+        {
+            "name": "bubble_e2e_scaffold",
+            "description": (
+                "Create or extend an E2E suite for a profile: lay out its directories, write the "
+                "manifest, and drop a case module skeleton already written against the runner's "
+                "context API. Use this when someone describes a test in plain language - it "
+                "produces the file to fill in, so nobody has to read the harness source. "
+                "execute=false (the default) reports the files it would write without writing them."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "profile": field("profile"),
+                    "suite": _e2e_suite_field(required=True),
+                    "case_id": _prop(
+                        "string",
+                        "Id of the case to add. Leave empty to create or update the suite alone.",
+                        examples=["ks1-t23", "uat-01"],
+                    ),
+                    "description": _prop(
+                        "string",
+                        "One line saying what the case proves, shown in listings and reports.",
+                        examples=["Note card shows Subject on top and meta in the footer"],
+                    ),
+                    "tags": _prop(
+                        "array",
+                        "Tags for selecting this case later with bubble_e2e_run.",
+                        items={"type": "string"},
+                    ),
+                    "start_path": _prop(
+                        "string",
+                        "App path the generated skeleton opens first, relative to the branch base URL.",
+                        default="index",
+                        examples=["admin/clients"],
+                    ),
+                    "app_id": field("app_id"),
+                    "branch": _prop(
+                        "string",
+                        "Default Bubble branch for the suite. A run can still override it.",
+                        examples=["93k8b"],
+                    ),
+                    "base_url": _prop(
+                        "string",
+                        "App origin without the /version-<branch> suffix. Set this when the app "
+                        "serves from its own domain, so the host is never guessed.",
+                        examples=["https://app.example.org"],
+                    ),
+                    "cases_root": _prop(
+                        "string",
+                        "Directory holding the suite's case modules. Defaults to the profile's own "
+                        "cases directory; point it at a checkout to keep an app's tests in the app's "
+                        "repository instead of copying them.",
+                        examples=["C:/Users/me/dev/myapp/e2e/cases"],
+                    ),
+                    "user_id": _prop(
+                        "string",
+                        "Bubble unique id of the test user the suite impersonates, as captured by bubble_run_as.",
+                        examples=["1784116269914x334073322121781100"],
+                    ),
+                    "execute": _prop(
+                        "boolean",
+                        "false reports the files it would write. true creates them.",
+                        default=False,
+                    ),
+                    "overwrite": _prop(
+                        "boolean",
+                        "Replace an existing case entry and its module instead of refusing.",
+                        default=False,
+                    ),
+                },
+                required=["profile", "suite"],
+            ),
+        },
+    ]
+
+
 def native_tool_schemas() -> list[ToolSchema]:
     """Return native tool schemas grouped by capability family."""
 
@@ -2740,6 +2955,7 @@ def native_tool_schemas() -> list[ToolSchema]:
         *planning_execution_tools(),
         *transfer_tools(),
         *browser_automation_tools(),
+        *e2e_tools(),
         *html_import_tools(),
         *branch_changelog_tools(),
         *performance_metrics_tools(),

@@ -683,6 +683,27 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Bubble writes. Add verify_context=true to refresh the Bubble context and confirm the temporary objects "
         "materialized."
     ),
+    "bubble_e2e_list": (
+        "List the browser end-to-end suites and cases declared for a profile, the branch each targets, and whether "
+        "each could run now: Playwright installed, run-as session present and unexpired. Use it before "
+        "bubble_e2e_run to learn the suite and case ids instead of guessing them. Read-only."
+    ),
+    "bubble_e2e_run": (
+        "Run a browser end-to-end suite, or named cases from it, against a Bubble branch as the impersonated run-as "
+        "user. Leave execute=false to preview: it resolves branch and base URL, checks the session and the case "
+        "modules, and reports what would run without opening a browser. Use execute=true only when the user wants "
+        "the cases driven for real, because they create records in the app under test."
+    ),
+    "bubble_e2e_report": (
+        "Read a previous end-to-end run by run_id: per-case status, duration, the step that failed, and the paths of "
+        "its screenshots and video. Use this instead of running the suite again when the user asks what happened in "
+        "an earlier run. Read-only."
+    ),
+    "bubble_e2e_scaffold": (
+        "Create or extend a browser end-to-end suite: directories, manifest, and a case module skeleton written "
+        "against the runner's context API. Use this when someone describes a test in plain language and a file has "
+        "to exist before the selectors and assertions can be filled in. execute=false reports the files it would write."
+    ),
     "bubble_context_summary": (
         "Summarize a compact Bubble project context file: pages, reusable elements, styles, data types, and indexed "
         "elements. Use before planning changes against a local context artifact. Read-only."
@@ -2075,6 +2096,9 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_branch_merge_finalize",
             "bubble_extension_companion_start",
             "bubble_schedule_deploy",
+            # Drives the app under test in a browser over the network. The read-only E2E
+            # tools stay closed-world: they only read local manifests and run results.
+            "bubble_e2e_run",
             "upload_asset",
         },
     }
@@ -2182,6 +2206,8 @@ def _is_read_only(name: str) -> bool:
         "bubble_health_check",
         "bubble_tool_coverage",
         "bubble_runtime_smoke",
+        "bubble_e2e_list",
+        "bubble_e2e_report",
         "bubble_context_summary",
         "bubble_context_find",
         "bubble_session_check",

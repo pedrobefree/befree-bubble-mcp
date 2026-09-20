@@ -119,6 +119,9 @@ from bubble_mcp.harness.visual import compare_visual_snapshot_files
 from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
+from bubble_mcp.e2e.report import list_e2e_suites, read_e2e_report
+from bubble_mcp.e2e.runner import run_e2e_suite
+from bubble_mcp.e2e.scaffold import scaffold_e2e
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.knowledge.advisor import knowledge_advice
 from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
@@ -232,6 +235,37 @@ def _required_string_arg(arguments: dict[str, Any] | None, key: str, tool_name: 
     if not value:
         raise ValueError(f"{tool_name} requires {key}.")
     return value
+
+
+def _string_list(value: Any) -> list[str]:
+    """Accept a list, a comma-separated string or nothing, and return a clean list of strings."""
+
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    if isinstance(value, list | tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
+def _optional_bool(value: Any) -> bool | None:
+    """Keep "not supplied" distinct from "supplied as false", so a suite default can win."""
+
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes", "on"}
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _cache_artifact_status(path: Path) -> dict[str, Any]:
@@ -1536,6 +1570,7 @@ def _call_tool(
             app_version=str(args.get("app_version") or "test"),
             max_age_hours=int(args.get("max_age_hours") or 24),
             include_family_preview=bool(args.get("include_family_preview")),
+            include_e2e=bool(args.get("include_e2e")),
             include_details=bool(args.get("include_details")),
             stop_on_failure=bool(args.get("stop_on_failure")),
         )
@@ -1585,6 +1620,55 @@ def _call_tool(
             run_id=str(args.get("run_id") or ""),
             verify_context=bool(args.get("verify_context")),
             verification_output=str(args.get("verification_output") or ""),
+        )
+    if name == "bubble_e2e_list":
+        args = arguments or {}
+        return list_e2e_suites(
+            profile=str(args.get("profile") or ""),
+            suite=str(args.get("suite") or ""),
+            include_runs=bool(args.get("include_runs", True)),
+        )
+    if name == "bubble_e2e_run":
+        args = arguments or {}
+        return run_e2e_suite(
+            profile=str(args.get("profile") or ""),
+            suite=str(args.get("suite") or ""),
+            cases=_string_list(args.get("cases") or args.get("case_ids")),
+            tags=_string_list(args.get("tags")),
+            branch=str(args.get("branch") or args.get("app_version") or ""),
+            execute=bool(args.get("execute")),
+            headless=_optional_bool(args.get("headless")),
+            video=_optional_bool(args.get("video")),
+            cursor=_optional_bool(args.get("cursor")),
+            slow_mo=_optional_int(args.get("slow_mo")),
+            timeout_ms=_optional_int(args.get("timeout_ms")),
+            run_id=str(args.get("run_id") or ""),
+            stop_on_failure=bool(args.get("stop_on_failure")),
+            include_details=bool(args.get("include_details")),
+        )
+    if name == "bubble_e2e_report":
+        args = arguments or {}
+        return read_e2e_report(
+            profile=str(args.get("profile") or ""),
+            run_id=str(args.get("run_id") or ""),
+            include_details=bool(args.get("include_details")),
+        )
+    if name == "bubble_e2e_scaffold":
+        args = arguments or {}
+        return scaffold_e2e(
+            profile=str(args.get("profile") or ""),
+            suite=str(args.get("suite") or ""),
+            case_id=str(args.get("case_id") or ""),
+            description=str(args.get("description") or ""),
+            tags=_string_list(args.get("tags")),
+            start_path=str(args.get("start_path") or "index"),
+            app_id=str(args.get("app_id") or ""),
+            branch=str(args.get("branch") or args.get("app_version") or ""),
+            base_url=str(args.get("base_url") or ""),
+            cases_root=str(args.get("cases_root") or ""),
+            user_id=str(args.get("user_id") or ""),
+            execute=bool(args.get("execute")),
+            overwrite=bool(args.get("overwrite")),
         )
     if name == "bubble_project_bootstrap":
         args = arguments or {}
