@@ -33,6 +33,7 @@ from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import BubbleProfile, load_settings, resolve_profile, save_settings, with_profile
 from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.core.versions import MainVersionReadOnlyError, is_main_version
 from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
 from bubble_mcp.execution.write_lint import (
     lint_editor_write_changes,
@@ -228,8 +229,43 @@ def _cache_artifact_status(path: Path) -> dict[str, Any]:
     }
 
 
+def _payload_body_version(args: dict[str, Any]) -> str:
+    """The version a raw write payload names in its body (app_version or appVersion), if any."""
+
+    for key in ("payload", "write_payload"):
+        payload = args.get(key)
+        if not isinstance(payload, dict):
+            continue
+        body = payload.get("body") if isinstance(payload.get("body"), dict) else payload
+        versions = {
+            str(body.get(field) or "").strip()
+            for field in ("app_version", "appVersion")
+            if str(body.get(field) or "").strip()
+        }
+        if len(versions) > 1:
+            raise ValueError(
+                f"The {key} body names two versions ({', '.join(sorted(versions))}) in "
+                "app_version and appVersion. Make them agree, or pass app_version at the top level."
+            )
+        if versions:
+            return versions.pop()
+    return ""
+
+
 def _arguments_with_profile_defaults(arguments: dict[str, Any] | None) -> dict[str, Any]:
     args = dict(arguments or {})
+    # A version named in a raw payload's body is what the caller asked for, so it outranks the
+    # profile's default. It used to be the other way round, and a write whose body said a branch
+    # was silently re-aimed at the profile's version, which was main.
+    explicit_version = str(args.get("app_version") or "").strip()
+    body_version = _payload_body_version(args)
+    if explicit_version and body_version and explicit_version != body_version:
+        raise ValueError(
+            f"app_version '{explicit_version}' disagrees with the version in the payload body "
+            f"('{body_version}'). Pass one version: drop it from the body, or make them match."
+        )
+    if body_version and not explicit_version:
+        args["app_version"] = body_version
     profile_name = str(args.get("profile") or "").strip()
     if not profile_name:
         return args
@@ -753,6 +789,93 @@ def _attach_write_verification(
     return runtime_result
 
 
+# Tools that execute a change in the Bubble editor although their names do not say so, and
+# mutating-named tools whose only effect is on local files.
+MAIN_GUARDED_EXTRA_TOOLS = frozenset({"bubble_savepoint_restore", "bubble_runtime_smoke"})
+MAIN_GUARD_LOCAL_ONLY_TOOLS = frozenset({"clear_cache"})
+
+
+def _resolved_write_version(args: dict[str, Any]) -> str:
+    """The version an executed call will write to, resolved the way the write paths resolve it."""
+
+    version = str(args.get("app_version") or "").strip()
+    if version:
+        return version
+    profile = str(args.get("profile") or "").strip()
+    session = load_session(profile) if profile else None
+    return str(getattr(session, "app_version", "") or "").strip() or "test"
+
+
+def main_write_refusal(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    """Refuse an executed write aimed at main (test or live), before anything else runs.
+
+    Main is read-only for this MCP (see ``bubble_mcp.core.versions``). Previews still run, so an
+    agent can see what it would send. ``BubbleEditorClient.write`` refuses main as well; this
+    check answers earlier and cleanly, before a savepoint is taken or a context is loaded.
+    """
+
+    if not args.get("execute") or args.get("dry_run") is True:
+        return None
+    if name in MAIN_GUARD_LOCAL_ONLY_TOOLS:
+        return None
+    if not _is_mutating(name) and name not in MAIN_GUARDED_EXTRA_TOOLS:
+        return None
+    version = _resolved_write_version(args)
+    if not is_main_version(version):
+        return None
+    return {
+        "ok": False,
+        "tool_name": name,
+        "executed": False,
+        "error": "main_is_read_only",
+        "app_version": version,
+        "message": str(MainVersionReadOnlyError(version, tool=name)),
+    }
+
+
+def _verify_raw_write(
+    write_result: dict[str, Any],
+    *,
+    profile: str,
+    changes: list[dict[str, Any]],
+    app_id: str,
+    app_version: str,
+) -> dict[str, Any]:
+    """Read a raw write back from the version it targeted, and fail loudly if it did not land.
+
+    Bubble answers 200 to any write body and does not say which version it applied it to. The
+    live read opens the editor on ``app_version`` and checks the version the editor reports
+    (``live_node_read`` refuses a mismatch), so a verified read-back is the confirmation that the
+    change is on that version. A divergence turns the result into ``ok: false`` with
+    ``write_not_verified``: the write was sent, but what is on the target version is not what was
+    asked for, and the agent must look before building on it. A read that could not run leaves
+    ``ok`` alone and reports the change as unverified.
+    """
+
+    try:
+        verification = verify_changes(profile, changes, app_id=app_id or None, app_version=app_version)
+    except Exception as exc:  # noqa: BLE001 - a verifier crash is reported, not raised
+        verification = {
+            "ok": False,
+            "error": "verification_failed",
+            "message": f"{type(exc).__name__}: {exc}",
+        }
+    result = {**write_result, "write_verification": verification}
+    if verification.get("verified") is True:
+        result["confirmed_app_version"] = app_version
+        return result
+    result["confirmed_app_version"] = None
+    if verification.get("divergences"):
+        result["ok"] = False
+        result["error"] = "write_not_verified"
+        result["message"] = (
+            f"The write was sent to '{app_version}', but reading it back from '{app_version}' "
+            "does not show the change as sent (see write_verification.divergences). Check the "
+            "target version before writing anything else."
+        )
+    return result
+
+
 def call_tool(
     name: str,
     arguments: dict[str, Any] | None = None,
@@ -760,6 +883,10 @@ def call_tool(
     cancelled: Callable[[], bool] | None = None,
     progress: Callable[[str], None] | None = None,
 ) -> dict[str, Any]:
+    """Call a tool after checking its resolved write target."""
+    refusal = main_write_refusal(name, _arguments_with_profile_defaults(arguments))
+    if refusal is not None:
+        return refusal
     """Call a supported tool and return a JSON-serializable payload."""
 
     caller_argument_names = frozenset((arguments or {}).keys())
@@ -1679,17 +1806,26 @@ def call_tool(
             dry_run=not execute,
             calculate_derived=bool(args.get("calculate_derived")),
         )
+        sent_payload = write_result.get("request", {}).get("payload") or targeted_payload
+        written_version = str(sent_payload.get("app_version") or "").strip()
+        write_result = {**write_result, "app_version": written_version}
         if execute and write_result.get("ok"):
+            written_app_id = str(sent_payload.get("appname") or write_session.app_id)
             record_mutation_overlay(
                 profile=profile,
-                app_id=str(
-                    write_result.get("request", {}).get("payload", {}).get("appname")
-                    or write_session.app_id
-                ),
-                payload=write_result.get("request", {}).get("payload") or targeted_payload,
+                app_id=written_app_id,
+                payload=sent_payload,
                 source="bubble_editor_write",
                 response=write_result.get("response"),
             )
+            if args.get("verify") is not False:
+                write_result = _verify_raw_write(
+                    write_result,
+                    profile=profile,
+                    changes=sent_payload.get("changes") or [],
+                    app_id=written_app_id,
+                    app_version=written_version,
+                )
         if expression_warnings:
             write_result = {**write_result, "warnings": expression_warnings}
         return write_result

@@ -10,6 +10,7 @@ from typing import Any, Callable
 from urllib import error, request
 
 from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.core.versions import editor_url_for_version, ensure_branch_version
 from bubble_mcp.sessions.store import BubbleSessionData, editor_write_session_status
 
 
@@ -180,6 +181,15 @@ def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, An
     bubble_request_id = f"{int(time.time() * 1000)}x{random.randint(10, 99)}"
     bubble_fiber_id = f"{int(time.time() * 1000)}x{random.randint(100000000000000000, 999999999999999999)}"
     appname = str(payload.get("appname") or session.app_id or "").strip()
+    # The editor tags each request with the URL of the version it is showing. Rebuild that URL
+    # for the version this request targets, so a session captured on one version cannot tag a
+    # write to another with the wrong one.
+    target_version = str(payload.get("app_version") or payload.get("appVersion") or "").strip()
+    editor_url = captured.get("referer") or session.url or f"https://bubble.io/page?id={appname}"
+    bubble_r = captured.get("x-bubble-r") or session.url or f"https://bubble.io/page?id={appname}"
+    if target_version:
+        editor_url = editor_url_for_version(editor_url, target_version)
+        bubble_r = editor_url_for_version(bubble_r, target_version)
 
     headers: dict[str, str] = {
         "accept": "application/json, text/javascript, */*; q=0.01",
@@ -188,7 +198,7 @@ def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, An
         "content-type": "application/json",
         "origin": captured.get("origin") or "https://bubble.io",
         "priority": captured.get("priority") or "u=1, i",
-        "referer": captured.get("referer") or session.url or f"https://bubble.io/page?id={appname}",
+        "referer": editor_url,
         "sec-fetch-dest": captured.get("sec-fetch-dest") or "empty",
         "sec-fetch-mode": captured.get("sec-fetch-mode") or "cors",
         "sec-fetch-site": captured.get("sec-fetch-site") or "same-origin",
@@ -201,7 +211,7 @@ def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, An
         "x-requested-with": captured.get("x-requested-with") or "XMLHttpRequest",
         "x-bubble-platform": captured.get("x-bubble-platform") or "web",
         "x-bubble-breaking-revision": captured.get("x-bubble-breaking-revision") or "5",
-        "x-bubble-r": captured.get("x-bubble-r") or session.url or f"https://bubble.io/page?id={appname}",
+        "x-bubble-r": bubble_r,
         "x-bubble-utm-data": captured.get("x-bubble-utm-data") or "{}",
     }
     for key in ("sec-ch-ua", "sec-ch-ua-mobile", "sec-ch-ua-platform"):
@@ -261,6 +271,9 @@ class BubbleEditorClient:
         calculate_derived: bool = False,
     ) -> dict[str, Any]:
         normalized = normalize_write_payload(payload, session)
+        if not dry_run:
+            # Main is read-only: nothing below this line may send a write to test or live.
+            ensure_branch_version(normalized.get("app_version"))
         headers = build_editor_write_headers(session, normalized)
         safe_request = {
             "url": EDITOR_WRITE_URL,

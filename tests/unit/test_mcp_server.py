@@ -1638,7 +1638,7 @@ def test_editor_write_rejects_body_wrapped_permanent_delete_bypass() -> None:
                     "body": {
                         "v": 1,
                         "appname": "cli-test",
-                        "app_version": "test",
+                        "app_version": "dev01",
                         "changes": [
                             {
                                 "intent": {"name": "CleanApp"},
@@ -2167,7 +2167,7 @@ def test_create_from_html_catalog_tool_uses_aria_runtime(monkeypatch) -> None:  
             "params": {
                 "name": "create_from_html",
                 "arguments": {
-                    "profile": "smoke",
+                    "profile": "smoke", "app_version": "dev01",
                     "app_id": "synthetic-app",
                     "context": "index",
                     "parent": "root",
@@ -2211,7 +2211,7 @@ def test_create_styles_from_html_catalog_tool_uses_style_runtime(monkeypatch) ->
             "params": {
                 "name": "create_styles_from_html",
                 "arguments": {
-                    "profile": "smoke",
+                    "profile": "smoke", "app_version": "dev01",
                     "html_file": "tests/fixtures/html/style-states.html",
                     "execute": True,
                     "selector": ".btn-primary",
@@ -2260,7 +2260,7 @@ def test_create_styles_from_html_execute_dispatches_style_operations(monkeypatch
             "params": {
                 "name": "create_styles_from_html",
                 "arguments": {
-                    "profile": "smoke",
+                    "profile": "smoke", "app_version": "dev01",
                     "html": """
                     <style>
                       .btn-primary { color: #ffffff; }
@@ -2781,7 +2781,7 @@ def test_family_four_destructive_tools_require_confirmation_only_for_execution(
             "method": "tools/call",
             "params": {
                 "name": tool_name,
-                "arguments": {"profile": "smoke", "execute": True, "confirm": False},
+                "arguments": {"profile": "smoke", "app_version": "dev01", "execute": True, "confirm": False},
             },
         }
     )
@@ -2799,7 +2799,7 @@ def test_family_four_destructive_tools_require_confirmation_only_for_execution(
             "method": "tools/call",
             "params": {
                 "name": tool_name,
-                "arguments": {"profile": "smoke", "execute": False, "confirm": False},
+                "arguments": {"profile": "smoke", "app_version": "dev01", "execute": False, "confirm": False},
             },
         }
     )
@@ -2810,7 +2810,7 @@ def test_family_four_destructive_tools_require_confirmation_only_for_execution(
             "method": "tools/call",
             "params": {
                 "name": tool_name,
-                "arguments": {"profile": "smoke", "execute": True, "confirm": True},
+                "arguments": {"profile": "smoke", "app_version": "dev01", "execute": True, "confirm": True},
             },
         }
     )
@@ -3175,7 +3175,7 @@ def test_sync_figma_tokens_list_options_dispatch_stays_read_only(
             "params": {
                 "name": "sync_figma_tokens",
                 "arguments": {
-                    "profile": "smoke",
+                    "profile": "smoke", "app_version": "dev01",
                     "tokens_path": "tokens.json",
                     "list_options": True,
                     "execute": execute,
@@ -3334,7 +3334,7 @@ def test_destructive_color_font_tools_require_confirmation_only_when_executing(
             "method": "tools/call",
             "params": {
                 "name": tool_name,
-                "arguments": {"profile": "smoke", **arguments, "execute": False},
+                "arguments": {"profile": "smoke", "app_version": "dev01", **arguments, "execute": False},
             },
         }
     )
@@ -3343,7 +3343,7 @@ def test_destructive_color_font_tools_require_confirmation_only_when_executing(
     assert preview_payload == {"ok": True, "executed": False}
     assert len(calls) == 1
     assert calls[0][0] == tool_name
-    for key, value in {"profile": "smoke", **arguments, "execute": False}.items():
+    for key, value in {"profile": "smoke", "app_version": "dev01", **arguments, "execute": False}.items():
         assert calls[0][1][key] == value
     calls.clear()
     blocked = handle_request(
@@ -3353,7 +3353,7 @@ def test_destructive_color_font_tools_require_confirmation_only_when_executing(
             "method": "tools/call",
             "params": {
                 "name": tool_name,
-                "arguments": {"profile": "smoke", **arguments, "execute": True},
+                "arguments": {"profile": "smoke", "app_version": "dev01", **arguments, "execute": True},
             },
         }
     )
@@ -3370,7 +3370,7 @@ def test_destructive_color_font_tools_require_confirmation_only_when_executing(
             "params": {
                 "name": tool_name,
                 "arguments": {
-                    "profile": "smoke",
+                    "profile": "smoke", "app_version": "dev01",
                     **arguments,
                     "execute": True,
                     "confirm": True,
@@ -3384,7 +3384,7 @@ def test_destructive_color_font_tools_require_confirmation_only_when_executing(
     assert len(calls) == 1
     assert calls[0][0] == tool_name
     for key, value in {
-        "profile": "smoke",
+        "profile": "smoke", "app_version": "dev01",
         **arguments,
         "execute": True,
         "confirm": True,
@@ -4162,10 +4162,9 @@ def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  
         ),
     )
 
+    # No version in the body: the profile's branch is the target.
     payload = {
         "appname": "synthetic-app",
-        "app_version": "test",
-        "appVersion": "test",
         "changes": [
             {
                 "intent": {"name": "CreatePage"},
@@ -4185,6 +4184,10 @@ def test_editor_write_records_mutation_overlay(tmp_path, monkeypatch) -> None:  
         }
 
     monkeypatch.setattr("bubble_mcp.server.tools.BubbleEditorClient.write", fake_write)
+    monkeypatch.setattr(
+        "bubble_mcp.server.tools.verify_changes",
+        lambda *_args, **_kwargs: {"ok": True, "verified": True, "divergences": [], "unverified": []},
+    )
 
     response = handle_request(
         {
@@ -4283,7 +4286,11 @@ def test_plugin_install_tool_records_mutation_overlay(tmp_path, monkeypatch) -> 
             "method": "tools/call",
             "params": {
                 "name": "bubble_plugin_install",
-                "arguments": {"profile": "cliente2", "plugin_key": "progressbar-ProgressBar", "execute": True},
+                "arguments": {
+                    "profile": "cliente2", "app_version": "dev01",
+                    "plugin_key": "progressbar-ProgressBar",
+                    "execute": True,
+                },
             },
         }
     )
@@ -5329,7 +5336,7 @@ def test_permanent_data_type_delete_rejects_non_mapping_payload_arguments_at_mcp
             "params": {
                 "name": "delete_data_type_permanently",
                 "arguments": {
-                    "profile": "smoke",
+                    "profile": "smoke", "app_version": "dev01",
                     "data_type_ref": "order",
                     "execute": True,
                     "confirm": True,

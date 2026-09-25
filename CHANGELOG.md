@@ -27,6 +27,22 @@
   with a proven page object id; reusable instances emit `%ci` with the reusable root id; root
   `issues_sub` updates use the owner object id. The plan compiler follows the same contracts and
   fails closed when compact context cannot prove an internal id.
+- Main is read-only. No executed write reaches `test` or `live`: `call_tool` refuses any
+  mutating tool whose resolved version is main with `main_is_read_only` (before a savepoint is
+  taken or a context loaded), and `BubbleEditorClient.write` refuses it again before sending, so
+  paths that skip `call_tool` (plan execution, transfers, the HTML and Figma importers) are
+  covered too. There is no override. Previews still run. Changes reach main through a branch
+  merge.
+- `bubble_editor_write` writes to the version it is asked to. The profile's version was
+  injected into the arguments and then written over the payload body, so on the team server a
+  write whose body said branch `93k8b` went to main. The target is now the top-level
+  `app_version` (newly in the schema), else the body's `app_version`/`appVersion`, else the
+  profile's; a top-level version that disagrees with the body is an error. `referer` and
+  `x-bubble-r` are rebuilt with `version=<target>` instead of copying the URL the session was
+  captured on. An executed write is read back from the target version: a divergence returns
+  `ok: false` with `write_not_verified`, and the response names `app_version` (sent) and
+  `confirmed_app_version` (confirmed by the read-back, or null). `verify=false` skips it.
+
 - Canonical raw form of APIEventParameter expressions recovered from live editor memory
   (Playwright + appquery child-node raw()): the parameter only resolves with btype_id +
   event_id + param_id (the parameter KEY, not the internal id) + param_name together, with

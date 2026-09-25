@@ -1467,6 +1467,7 @@ def agent_guide(task: str = "", *, include_knowledge_advice: bool = True) -> dic
             "use_mcp_tools_directly": True,
             "avoid_shell_cli_discovery": True,
             "preview_default": "Leave execute=false unless the user explicitly asked to apply the change in Bubble.",
+            "main_is_read_only": "Main (app_version test or live) is never written: pass the branch id as app_version on every executed write. A write resolved to main is refused with main_is_read_only; previews still run.",
             "profile_first": "Prefer profile-based calls so the server can use stored session, context, and mutation overlay.",
             "refresh_context_when_stale": "Run bubble_profile_cache_refresh with force=true for routine profile cache refresh; use bubble_context_detect only for lower-level context-specific options.",
             "reusable_definition_modules": REUSABLE_DEFINITION_MODULE_GUIDANCE,

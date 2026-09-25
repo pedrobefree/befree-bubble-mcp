@@ -86,7 +86,7 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "app_version": _prop(
         "string",
-        "Bubble branch/version id. Use test/version-test by default; pass a specific branch id when operating outside test.",
+        "Bubble branch/version id. Reads default to test (main). Main (test and live) is read-only: an executed write must name a branch id (see bubble_branch_list) and is refused on test or live. Defaults to the profile's version when omitted.",
         default="test",
         examples=["test", "version-test", "feature-checkout"],
     ),
@@ -1642,8 +1642,8 @@ def planning_execution_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_editor_write",
-            "Send a Bubble /appeditor/write payload using a stored local session. Set execute=true to mutate Bubble; otherwise it previews the request. Node bodies must use encoded keys (%x/%p/%nm/%dn); decoded export keys (type/properties) are rejected unless allow_decoded_keys=true. WARNING: the endpoint returns HTTP 200 for ANY body without semantic validation, and expression encodings (APIEventParameter, Message chains, param ids) are NOT derivable from the .bubble export — compose expression-bearing actions from captured editor traffic (bubble_tool_wizard_start) or via add_action, never from export-derived bodies; results carry warnings when such nodes are detected.",
-            ["profile", "payload", "execute", "calculate_derived", "allow_decoded_keys"],
+            "Send a Bubble /appeditor/write payload using a stored local session. Set execute=true to mutate Bubble; otherwise it previews the request. The target version is app_version, else the payload body's app_version/appVersion, else the profile's version; a write to main (test/live) is refused. An executed write is read back from the target version and fails with write_not_verified if what landed differs; the response names the version written (app_version) and whether the read-back confirmed it (confirmed_app_version). Node bodies must use encoded keys (%x/%p/%nm/%dn); decoded export keys (type/properties) are rejected unless allow_decoded_keys=true. WARNING: the endpoint returns HTTP 200 for ANY body without semantic validation, and expression encodings (APIEventParameter, Message chains, param ids) are NOT derivable from the .bubble export — compose expression-bearing actions from captured editor traffic (bubble_tool_wizard_start) or via add_action, never from export-derived bodies; results carry warnings when such nodes are detected.",
+            ["profile", "payload", "app_version", "execute", "calculate_derived", "allow_decoded_keys", "verify"],
             required=["profile", "payload"],
         ),
         tool_schema(

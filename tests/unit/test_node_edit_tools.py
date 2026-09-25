@@ -142,7 +142,7 @@ def test_edit_tool_records_a_mutation_overlay_for_an_executed_write(monkeypatch)
     call_tool(
         "bubble_node_edit",
         {
-            "profile": "mcp-test",
+            "profile": "mcp-test", "app_version": "dev01",
             "pointer": ["api", "wf-1", "actions", "0"],
             "op": "patch",
             "leaf_pointer": ["properties"],
