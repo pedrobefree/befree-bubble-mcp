@@ -42,6 +42,11 @@
   captured on. An executed write is read back from the target version: a divergence returns
   `ok: false` with `write_not_verified`, and the response names `app_version` (sent) and
   `confirmed_app_version` (confirmed by the read-back, or null). `verify=false` skips it.
+- Catalog tools resolve names against the version they edit. The cached `.bubble` export is
+  one version's, and its `.meta.json` says which; when it is another version's, it is
+  downloaded again for the target before use, and a failed download is an error instead of a
+  silent fallback (`delete_event` on a branch reported "Workflow not found" from main's export).
+  The mutation overlay applies only the entries recorded for the target version.
 - Catalog schemas match the runtime signatures. `create_button` without `name` failed as a
   Python `TypeError`; create tools now derive a missing name the way the compiler does
   (`bt_<label>`, returned as `element_name`), and a call that still lacks a runtime argument

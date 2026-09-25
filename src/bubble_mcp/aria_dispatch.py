@@ -15,6 +15,7 @@ from typing import Any, cast
 from bubble_mcp.aria_runtime_modules import load_aria_runtime_modules
 from bubble_mcp.compiler.payload import CREATE_NAME_PREFIXES, VISUAL_CREATE_TYPES, normalize_element_name
 from bubble_mcp.context.detector import (
+    cached_bubble_export_version,
     default_bubble_export_path,
     default_crawler_index_path,
     detect_project_context,
@@ -434,6 +435,16 @@ def _resolve_runtime_environment(
     default_export = default_bubble_export_path(profile, app_id)
     if not app_json_path and default_export.exists():
         app_json_path = str(default_export)
+    # The cached export is one version's picture of the app, and it is whichever version was
+    # downloaded last. Resolving a branch's workflow against main's export finds nothing, or the
+    # wrong thing (delete_event, team server, 2026-09-25), so a cache for another version is
+    # refreshed for this one before it is used.
+    cached_version = (
+        cached_bubble_export_version(default_export)
+        if not authoritative_refresh and app_json_path == str(default_export)
+        else None
+    )
+    export_is_other_version = cached_version is not None and cached_version != app_version
 
     explicit_consolelog_file = _resolve_optional_path(args.get("consolelog_file"))
     configured_consolelog_path = resolve_config_artifact_path(
@@ -464,7 +475,9 @@ def _resolve_runtime_environment(
         or (resolved_crawler_index_path and Path(resolved_crawler_index_path).expanduser().exists())
     )
     should_detect = not authoritative_refresh and (
-        bool(args.get("refresh_context") or args.get("force")) or not has_local_artifact
+        bool(args.get("refresh_context") or args.get("force"))
+        or not has_local_artifact
+        or export_is_other_version
     )
     if should_detect:
         try:
@@ -472,7 +485,7 @@ def _resolve_runtime_environment(
                 profile=profile,
                 app_id=app_id,
                 app_version=app_version,
-                force=bool(args.get("refresh_context") or args.get("force")),
+                force=bool(args.get("refresh_context") or args.get("force")) or export_is_other_version,
                 bubble_file=Path(explicit_bubble_file).expanduser() if explicit_bubble_file else None,
                 consolelog_file=Path(consolelog_json_path).expanduser() if consolelog_json_path else None,
             )
@@ -485,6 +498,14 @@ def _resolve_runtime_environment(
             app_json_path = str(candidate)
         elif detected is not None and detected.source.endswith("bubble") and Path(detected.context_path).exists():
             app_json_path = app_json_path
+
+    if export_is_other_version and cached_bubble_export_version(default_export) != app_version:
+        raise ValueError(
+            f"The local context for '{app_id}' is an export of version '{cached_version}', and "
+            f"downloading one of '{app_version}' failed. Refusing to resolve names on '{app_version}' "
+            f"against '{cached_version}'. Check the session, then run bubble_context_detect with "
+            f"app_version='{app_version}'."
+        )
 
     if not resolved_crawler_index_path:
         # Detection may have produced the index only now.

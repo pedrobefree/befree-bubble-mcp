@@ -1072,6 +1072,23 @@ def bubble_export_meta_path(export_path: Path) -> Path:
     return export_path.with_name(export_path.name + ".meta.json")
 
 
+def cached_bubble_export_version(export_path: Path) -> str | None:
+    """The version a cached export was downloaded from, or None when that is not recorded.
+
+    An export with no sidecar (imported by hand, or written before the sidecar existed) is not
+    assumed to be any version: None means unknown, and callers leave it alone.
+    """
+
+    if not export_path.exists():
+        return None
+    try:
+        meta = json.loads(bubble_export_meta_path(export_path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    version = str(meta.get("app_version") or "").strip() if isinstance(meta, dict) else ""
+    return version or None
+
+
 def _write_bubble_export_meta(
     export_path: Path,
     *,

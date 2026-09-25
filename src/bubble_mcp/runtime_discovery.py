@@ -63,6 +63,10 @@ class DiscoveryDataBoundary:
         self._cacheable_data: JsonObject | None = None
         self._overlay_applied = False
         self._force_source_reload = False
+        # The version this discovery describes. When set, only overlay entries recorded for that
+        # version are applied: a write to a branch must not show up in main's picture of the
+        # app, nor main's in a branch's.
+        self.app_version: str | None = None
 
     def _load_crawler_index(self, path: str | None) -> JsonObject | None:
         """Hook for the legacy crawler-index adapter."""
@@ -97,10 +101,13 @@ class DiscoveryDataBoundary:
         entries = raw.get("entries") if isinstance(raw, dict) else None
         if not isinstance(entries, list):
             return []
+        target_version = str(self.app_version or "").strip()
         return [
             entry
             for entry in entries
-            if isinstance(entry, dict) and isinstance(entry.get("changes"), list)
+            if isinstance(entry, dict)
+            and isinstance(entry.get("changes"), list)
+            and (not target_version or str(entry.get("app_version") or "test").strip() == target_version)
         ]
 
     @staticmethod

@@ -351,6 +351,7 @@ class BubbleCLI:
         consolelog_json_path = self._remap_legacy_runtime_path(consolelog_json_path)
         mutation_overlay_path = self._remap_legacy_runtime_path(mutation_overlay_path)
         self.discovery = PathDiscovery(app_json_path, consolelog_json_path, crawler_index_path, mutation_overlay_path)
+        self.discovery.app_version = app_version
 
         # Load CLI cache early to seed ColorMapper
         runtime_cache_dir = os.path.join(RUNTIME_ROOT, "src")
