@@ -767,14 +767,19 @@ def _run_pointer(
                 "error."
             ),
         }
-    if not isinstance(node, dict):
-        return {
-            "ok": False,
-            "error": "unexpected_node_shape",
-            "pointer": segments,
-            "message": f"Expected a node object at '{'.'.join(segments)}', got {type(node).__name__}.",
-        }
-    return {"ok": True, "pointer": segments, "node": node, "app_id": resolved_app_id}
+    if isinstance(node, dict):
+        return {"ok": True, "pointer": segments, "node": node, "node_kind": "object", "app_id": resolved_app_id}
+    if isinstance(node, (str, int, float, bool, list)):
+        # A leaf of the app tree - an `_index.id_to_path` entry is a path string, an
+        # `_index.issues_sub` entry a list of ids. Reading one is as legitimate as reading a node;
+        # the editor writes these next to every element it creates.
+        return {"ok": True, "pointer": segments, "node": node, "node_kind": "scalar", "app_id": resolved_app_id}
+    return {
+        "ok": False,
+        "error": "unexpected_node_shape",
+        "pointer": segments,
+        "message": f"Expected a node object or a JSON value at '{'.'.join(segments)}', got {type(node).__name__}.",
+    }
 
 
 def read_live_nodes(

@@ -680,3 +680,18 @@ def test_a_missing_order_is_refused_before_the_browser_is_launched() -> None:
     assert result["ok"] is False
     assert result["error"] == "invalid_edit"
     assert reader.calls == 0
+
+
+def test_node_edit_refuses_to_edit_a_scalar_as_if_it_were_a_node() -> None:
+    result = edit_live_node(
+        profile="team",
+        pointer=["_index", "id_to_path", "bTrZt0"],
+        op="patch",
+        leaf_pointer=["%nm"],
+        patch={"%nm": "x"},
+        app_version="93k8b",
+        reader=lambda *_args, **_kwargs: {"ok": True, "node": "%p3.bTiEc0", "node_kind": "scalar"},
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "unexpected_node_shape"

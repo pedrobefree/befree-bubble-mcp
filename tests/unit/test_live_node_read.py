@@ -283,9 +283,37 @@ def test_read_live_node_reports_a_pointer_that_did_not_resolve() -> None:
     }
 
 
-def test_read_live_node_rejects_a_page_value_that_is_not_a_node() -> None:
+def test_read_live_node_returns_an_index_path_string_as_a_scalar() -> None:
+    # Team server, 2026-09-25: `_index.id_to_path.<id>` holds a path string, and creating an
+    # element means reading and writing these; the read used to fail with unexpected_node_shape.
     result = read_live_node(
-        "mcp-test", ["api"], evaluator=lambda _script: "a string", app_id="mcp-test-app"
+        "mcp-test",
+        ["_index", "id_to_path", "bTrZt0"],
+        evaluator=lambda _script: "%p3.bTiEc0.%el.bTrZt0",
+        app_id="mcp-test-app",
+    )
+
+    assert result["ok"] is True
+    assert result["node"] == "%p3.bTiEc0.%el.bTrZt0"
+    assert result["node_kind"] == "scalar"
+
+
+def test_read_live_node_returns_an_issues_sub_list_as_a_scalar() -> None:
+    result = read_live_node(
+        "mcp-test",
+        ["_index", "issues_sub", "bTiEb0"],
+        evaluator=lambda _script: ["bTrZt0", "bTrZu0"],
+        app_id="mcp-test-app",
+    )
+
+    assert result["ok"] is True
+    assert result["node"] == ["bTrZt0", "bTrZu0"]
+    assert result["node_kind"] == "scalar"
+
+
+def test_read_live_node_still_rejects_a_value_that_is_not_json() -> None:
+    result = read_live_node(
+        "mcp-test", ["api"], evaluator=lambda _script: object(), app_id="mcp-test-app"
     )
 
     assert result["ok"] is False

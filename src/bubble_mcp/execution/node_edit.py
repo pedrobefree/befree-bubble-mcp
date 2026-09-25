@@ -227,6 +227,8 @@ def edit_live_node(
     if not before.get("ok"):
         return before
     current = before["node"]
+    if not isinstance(current, dict):
+        return _not_a_node(segments, current)
 
     session_id = bubble_session_id()
     try:
@@ -331,3 +333,17 @@ def _check_op_arguments(
         return
     if not order:
         raise ValueError("reorder requires order")
+
+
+def _not_a_node(segments: Sequence[str], value: Any) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": "unexpected_node_shape",
+        "pointer": list(segments),
+        "message": (
+            f"'{'.'.join(segments)}' holds a {type(value).__name__}, not a node. Edit or clone the "
+            "node that contains it."
+        ),
+    }
+
+
