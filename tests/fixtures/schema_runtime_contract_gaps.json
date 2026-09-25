@@ -36,58 +36,18 @@
     "confirm",
     "name"
   ],
-  "clone_page": [
-    "name",
-    "source",
-    "title"
-  ],
-  "clone_reusable": [
-    "name",
-    "source"
-  ],
-  "convert_text_parts_to_app_text": [
-    "element_name",
-    "language",
-    "name",
-    "path",
-    "search_text"
-  ],
-  "convert_text_path_to_app_text": [
-    "context",
-    "element_name",
-    "language",
-    "name",
-    "path",
-    "search_text"
-  ],
-  "convert_text_to_app_text": [
-    "element_name",
-    "language",
-    "name",
-    "path",
-    "search_text"
-  ],
   "create_api_token": [
-    "confirm",
-    "name"
-  ],
-  "create_app_text": [
-    "context",
     "name"
   ],
   "create_custom_state": [
     "default_value_json",
     "element_name"
   ],
-  "create_option_value": [
-    "name"
-  ],
   "create_styles_from_html": [
     "<NO RUNTIME METHOD>"
   ],
   "delete_301_redirect": [
-    "confirm",
-    "name"
+    "confirm"
   ],
   "delete_action": [
     "confirm"
@@ -96,8 +56,7 @@
     "confirm"
   ],
   "delete_api_token": [
-    "confirm",
-    "name"
+    "confirm"
   ],
   "delete_button": [
     "confirm"
@@ -112,8 +71,7 @@
     "confirm"
   ],
   "delete_data_field": [
-    "confirm",
-    "name"
+    "confirm"
   ],
   "delete_data_type": [
     "confirm"
@@ -179,12 +137,10 @@
     "confirm"
   ],
   "delete_repeating_group": [
-    "confirm",
-    "name"
+    "confirm"
   ],
   "delete_reusable": [
-    "confirm",
-    "name"
+    "confirm"
   ],
   "delete_searchbox": [
     "confirm"
@@ -227,10 +183,6 @@
   "list_element_ref_maps": [
     "<NO RUNTIME METHOD>"
   ],
-  "list_events": [
-    "limit",
-    "query"
-  ],
   "list_fonts": [
     "json"
   ],
@@ -243,10 +195,6 @@
     "context",
     "json",
     "limit"
-  ],
-  "list_text_matches": [
-    "limit",
-    "query"
   ],
   "log_the_user_in": [
     "<NO RUNTIME METHOD>"
@@ -263,42 +211,20 @@
   "natural": [
     "json"
   ],
-  "propagate_app_text": [
-    "context",
-    "language",
-    "value"
-  ],
   "regenerate_api_token": [
-    "confirm",
-    "name"
-  ],
-  "rename_api_token": [
-    "confirm",
-    "name",
-    "private_key"
-  ],
-  "rename_data_field": [
-    "name"
+    "confirm"
   ],
   "send_confirmation_email": [
     "<NO RUNTIME METHOD>"
   ],
   "set_app_setting": [
-    "json",
-    "name"
-  ],
-  "set_app_text_translation": [
-    "name"
+    "json"
   ],
   "set_event_type": [
     "element"
   ],
-  "set_option_value_attribute": [
-    "name"
-  ],
   "set_project_setting": [
-    "json",
-    "name"
+    "json"
   ],
   "sign_the_user_up": [
     "<NO RUNTIME METHOD>"
@@ -364,7 +290,6 @@
     "gradient_color1",
     "gradient_color2",
     "gradient_mid",
-    "html",
     "name",
     "padding",
     "rotation_angle",
@@ -465,10 +390,6 @@
     "shadow",
     "vert_alignment"
   ],
-  "update_reusable_type": [
-    "name",
-    "type"
-  ],
   "update_shape": [
     "color",
     "column_gap",
@@ -549,10 +470,7 @@
     "url"
   ],
   "upload_asset": [
-    "context",
     "file",
-    "json",
-    "name",
-    "parent"
+    "name"
   ]
 }

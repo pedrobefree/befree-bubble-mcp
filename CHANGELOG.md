@@ -42,6 +42,14 @@
   captured on. An executed write is read back from the target version: a divergence returns
   `ok: false` with `write_not_verified`, and the response names `app_version` (sent) and
   `confirmed_app_version` (confirmed by the read-back, or null). `verify=false` skips it.
+- Catalog schemas match the runtime signatures. `create_button` without `name` failed as a
+  Python `TypeError`; create tools now derive a missing name the way the compiler does
+  (`bt_<label>`, returned as `element_name`), and a call that still lacks a runtime argument
+  gets a `ValueError` naming it. The schemas that let a runtime-required argument be
+  omitted, or did not declare it under any name dispatch reads (`clone_page`,
+  `clone_reusable`, `update_reusable_type`, `delete_reusable`, the API token and app text
+  tools, `upload_asset`), were fixed. `bubble_catalog_quality` has a
+  `runtime_signature_parity` check that keeps them in step.
 
 - Canonical raw form of APIEventParameter expressions recovered from live editor memory
   (Playwright + appquery child-node raw()): the parameter only resolves with btype_id +

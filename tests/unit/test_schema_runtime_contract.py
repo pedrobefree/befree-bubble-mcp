@@ -18,18 +18,11 @@ from pathlib import Path
 
 
 def _compute_gaps() -> dict[str, list[str]]:
-    from bubble_mcp.aria_dispatch import ARG_ALIASES, CONTROL_ARG_KEYS, RUNTIME_TOOL_ALIASES
     from bubble_mcp.aria_runtime.bubble_cli import BubbleCLI
+    from bubble_mcp.aria_dispatch import CONTROL_ARG_KEYS, RUNTIME_TOOL_ALIASES, public_aliases_for_runtime_parameter
     from bubble_mcp.server.agent_catalog import _legacy_fields_for_name
     from bubble_mcp.server.catalog import ARIA_BUBBLE_TOOL_NAMES
 
-    # One alias can feed several runtime params ("type" -> field_type and value_type),
-    # so keep every target: a flat dict silently drops all but the last and reports
-    # tools whose runtime does accept the arg.
-    alias_targets: dict[str, set[str]] = {}
-    for param, aliases in ARG_ALIASES.items():
-        for alias in aliases:
-            alias_targets.setdefault(alias, set()).add(param)
     ignorable = set(CONTROL_ARG_KEYS) | {"profile", "dry_run", "settings_path"}
     report: dict[str, list[str]] = {}
     for tool in ARIA_BUBBLE_TOOL_NAMES:
@@ -42,6 +35,13 @@ def _compute_gaps() -> dict[str, list[str]]:
             continue
         signature = inspect.signature(method)
         params = set(signature.parameters)
+        # The aliases dispatch consults for this method (ARG_ALIASES, overridden per method by
+        # OPERATION_ARG_ALIASES). One alias can feed several runtime params ("type" ->
+        # field_type and value_type), so keep every target.
+        alias_targets: dict[str, set[str]] = {}
+        for param in params:
+            for alias in public_aliases_for_runtime_parameter(method.__name__, param):
+                alias_targets.setdefault(alias, set()).add(param)
         has_kwargs = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in signature.parameters.values())
         missing = sorted({
             field

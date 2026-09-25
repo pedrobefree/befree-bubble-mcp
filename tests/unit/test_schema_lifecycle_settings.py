@@ -54,12 +54,14 @@ def test_registry_captures_all_project_alias_paths_and_declared_types() -> None:
 def test_setting_and_redirect_tool_schemas_keep_existing_required_fields_and_preview_defaults() -> None:
     tools = {tool["name"]: tool for tool in list_tool_schemas()}
     expected_required = {
-        "set_app_setting": ["profile"],
-        "set_project_setting": ["profile"],
+        # The runtime needs the setting and its value, and the redirect to delete: a schema that
+        # let them be omitted failed as a Python TypeError (runtime_signature_parity).
+        "set_app_setting": ["profile", "name", "value"],
+        "set_project_setting": ["profile", "name", "value"],
         "list_project_settings": ["profile"],
         "list_301_redirects": ["profile"],
         "create_301_redirect": ["profile", "from_url", "to_url"],
-        "delete_301_redirect": ["profile"],
+        "delete_301_redirect": ["profile", "name"],
     }
     for name, required in expected_required.items():
         schema = tools[name]["inputSchema"]

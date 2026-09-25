@@ -1052,8 +1052,27 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "update_reusable": (("profile", "context", "element_name"), ("dry_run", "settings_path", "prefer_last", "width", "height", "is_visible", "collapse_when_hidden", "html_id", "unique_id", *VISUAL_STYLE_FIELDS)),
     "update_reusable_type": (("profile", "name", "type"), ("dry_run", "settings_path")),
     "clone_reusable": (("profile", "source", "name"), ("dry_run", "settings_path")),
-    "delete_reusable": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
-    "create_custom_state": (("profile", "state_name"), ("dry_run", "settings_path", "element_id", "context", "element_name", "state_type", "default_value", "default_value_json")),
+    "delete_reusable": (("profile", "context", "element_name"), ("dry_run", "settings_path", "prefer_last", "confirm")),
+    "delete_repeating_group": (("profile", "context", "element_name"), ("dry_run", "settings_path", "prefer_last", "confirm")),
+    "create_custom_state": (("profile", "state_name", "element_id"), ("dry_run", "settings_path", "context", "element_name", "state_type", "default_value", "default_value_json")),
+    "list_events": (("profile", "context"), ("dry_run", "settings_path", "json")),
+    "delete_style": (("profile", "name"), ("dry_run", "settings_path", "element_type", "confirm")),
+    "delete_301_redirect": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
+    "set_app_setting": (("profile", "name", "value"), ("dry_run", "settings_path", "json")),
+    "set_project_setting": (("profile", "name", "value"), ("dry_run", "settings_path", "json")),
+    "create_api_token": (("profile",), ("dry_run", "settings_path", "name", "private_key")),
+    "rename_api_token": (("profile", "token_id", "new_name"), ("dry_run", "settings_path")),
+    "regenerate_api_token": (("profile", "token_id"), ("dry_run", "settings_path", "private_key", "confirm")),
+    "delete_api_token": (("profile", "token_id"), ("dry_run", "settings_path", "confirm")),
+    "list_text_matches": (("profile", "context", "element_name"), ("dry_run", "settings_path", "ref_kind", "include_non_text", "json")),
+    "convert_text_parts_to_app_text": (("profile", "context", "element_name", "part"), ("dry_run", "settings_path", "part_translation", "part_text_id", "preview_text", "ref_kind", "match_index", "reuse_existing")),
+    "convert_text_to_app_text": (("profile", "context", "element_name"), ("dry_run", "settings_path", "app_text_label", "text_id", "translation_language", "translation_value", "preview_text", "ref_kind", "match_index", "reuse_existing")),
+    "convert_text_path_to_app_text": (("profile", "path"), ("dry_run", "settings_path", "app_text_label", "text_id", "translation_language", "translation_value", "preview_text", "reuse_existing")),
+    "create_app_text": (("profile", "name"), ("dry_run", "settings_path", "text_id", "language", "value", "reuse_existing")),
+    "set_app_text_translation": (("profile", "name", "language", "value"), ("dry_run", "settings_path", "ref_kind")),
+    "propagate_app_text": (("profile", "name", "search_text"), ("dry_run", "settings_path", "app_text_ref_kind", "scope", "contexts", "exact")),
+    "upload_asset": (("profile", "file"), ("dry_run", "settings_path", "name", "execute")),
+    "sync_figma_component": (("profile", "context"), ("dry_run", "settings_path", "parent", "name", "file", "payload", "execute", "json")),
     "create_repeating_group": (("profile", "context", "parent", "name", "data_type"), ("dry_run", "layout", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS)),
     "update_repeating_group": (("profile", "context", "element_name"), ("dry_run", "settings_path", "layout", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS)),
     "build_source_query_json": (("profile", "query_source_type"), ("dry_run", "context", "query_result_type", "query_result_from_field", "query_constraints_json", "query_sort_field", "query_sort_desc", "query_ignore_empty_constraints")),
@@ -1062,7 +1081,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "update_name": (("profile", "context", "element_name", "new_name"), ("dry_run", "settings_path")),
     "update_placeholder": (("profile", "context", "element_name", "new_placeholder"), ("dry_run", "settings_path")),
     "update_style": (("profile", "context", "element_name", "new_style"), ("dry_run", "settings_path", "keep_overrides")),
-    "update_style_all": (("profile", "context", "from_style", "to_style"), ("dry_run", "settings_path", "element_type", "keep_overrides", "by_contains")),
+    "update_style_all": (("profile", "context", "element_type", "from_style", "to_style"), ("dry_run", "settings_path", "keep_overrides", "by_contains")),
     "update_image": (("profile", "context", "element_name", "new_source"), ("dry_run", "settings_path", "prefer_last")),
     "update_icon": (("profile", "context", "element_name", "new_icon"), ("dry_run", "settings_path", "prefer_last")),
     "update_layout": (("profile", "context", "element_name", "property", "value"), ("dry_run", "settings_path")),
@@ -1097,7 +1116,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "create_event": (("profile", "context", "event_type"), ("dry_run", "settings_path", "element_ref", "element_ref_kind", "match_index", "bind_name", "custom_event_name", "run_when", "only_when_json", "interval_seconds", "event_key", "event_id", "id_counter")),
     "create_empty_event": (("profile", "context"), ("dry_run", "settings_path", "event_key", "event_id", "id_counter")),
     "delete_event": (("profile", "context", "event_ref"), ("dry_run", "settings_path", "ref_kind", "confirm")),
-    "set_event_type": (("profile", "context", "event_type"), ("dry_run", "settings_path", "event_ref", "ref_kind", "current_event_type", "element", "element_ref_kind", "match_index")),
+    "set_event_type": (("profile", "context", "event_ref", "event_type"), ("dry_run", "settings_path", "ref_kind", "current_event_type", "element", "element_ref_kind", "match_index")),
     "set_event_element": (("profile", "context", "event_ref", "element_ref"), ("dry_run", "settings_path", "event_ref_kind", "element_ref_kind", "match_index", "bind_name")),
     "map_element_ref": (("profile", "context", "alias_name", "element_ref"), ("dry_run", "settings_path", "ref_kind", "match_index")),
     "map_workflow_ref": (("profile", "context", "alias_name", "event_ref"), ("dry_run", "settings_path", "ref_kind", "match_index")),
@@ -1395,6 +1414,12 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
             "deprecated": True,
             "description": "Compatibility alias for enabled; new calls must use enabled.",
         }
+    if name == "natural":
+        input_schema["anyOf"] = [
+            {"required": ["message"]},
+            {"required": ["query"]},
+            {"required": ["commands"]},
+        ]
     if name in {
         "create_data_type",
         "rename_data_type",
@@ -1740,6 +1765,30 @@ def _property_schema(field: str) -> dict[str, Any]:
     return schema
 
 
+# Every element that can be filled in can also be marked "should not be empty". The runtime
+# has always written that property, under the parameter name `required`; `mandatory` is what
+# the property itself is called in the app tree, and is the name an agent reads off a node and
+# then tries to pass back. Declaring both is what stops the second one from being swallowed by
+# additionalProperties and dropped (see aria_dispatch.ARG_ALIASES).
+FORM_MANDATORY_FIELDS: tuple[str, ...] = ("required", "mandatory")
+
+
+# The fields a create_<element> call must carry, under the public name the schema declares
+# them by: what the runtime method takes without a default, except `name`, which dispatch
+# derives from the label or content when it is left out (aria_dispatch, CREATE_NAME_PREFIXES).
+# Elements not listed require their first field. aria_dispatch.runtime_schema_gaps, checked by
+# bubble_catalog_quality, keeps this honest.
+CREATE_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "text": ("content",),
+    "button": ("label",),
+    "image": ("name", "source"),
+    "icon": ("name", "icon"),
+    "html": ("name", "content"),
+    "link": ("name", "label"),
+    "alert": ("name", "content"),
+}
+
+
 def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
     create_fields: dict[str, tuple[str, ...]] = {
         "group": ("name", "layout", *VISUAL_STYLE_FIELDS, "data_class", "data_source", *QUERY_FIELDS),
@@ -1763,7 +1812,7 @@ def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
         "video": ("name", "url", "video_id", "origin", "autoplay", "style", *VISUAL_STYLE_FIELDS),
         "image": ("name", "source", "style", *VISUAL_STYLE_FIELDS),
         "icon": ("name", "icon", "style", "color", *VISUAL_STYLE_FIELDS),
-        "html": ("name", "html", "style", *VISUAL_STYLE_FIELDS),
+        "html": ("name", "content", "style", *VISUAL_STYLE_FIELDS),
         "link": ("name", "label", "url", "style", *VISUAL_STYLE_FIELDS),
         "alert": ("name", "content", "style", *VISUAL_STYLE_FIELDS),
         "map": ("name", "data_source", "style", *VISUAL_STYLE_FIELDS),
@@ -1776,7 +1825,11 @@ def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
                 # omitting it must be a schema validation error, not a Python TypeError.
                 remaining = tuple(field for field in fields if field not in {"name", "source"})
                 return (("profile", "context", "parent", "name", "source"), ("dry_run", "settings_path", *remaining))
-            return (("profile", "context", "parent", *fields[:1]), ("dry_run", "settings_path", *fields[1:]))
+            required = CREATE_REQUIRED_FIELDS.get(element, fields[:1])
+            return (
+                ("profile", "context", "parent", *required),
+                ("dry_run", "settings_path", *(field for field in fields if field not in required)),
+            )
         if name == f"update_{element}" or name == f"update_{element}_element":
             return (("profile", "context", "element_name"), ("dry_run", "settings_path", *fields, "prefer_last"))
         if name == f"delete_{element}":
