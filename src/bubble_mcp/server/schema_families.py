@@ -705,6 +705,27 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "editor appends '_copy' when a human duplicates; a page workflow has no name, so leave "
         "this unset there.",
     ),
+    "element_ids": _prop(
+        "array",
+        "Ids of the elements to copy, each with its whole subtree. Name every root that belongs "
+        "to one copy - a button and the popup it opens - so they share one id mapping and the "
+        "copied button opens the copied popup. All must be on the same page or reusable, and "
+        "none inside another.",
+        items={"type": "string"},
+    ),
+    "rename": _prop(
+        ["string", "object"],
+        "Name for the copy. A string names the single copied root; with several element_ids pass "
+        "an object mapping each source element id to its copy's name. Roots left unnamed get "
+        "the source name plus ' copy'; nested elements keep their names.",
+        additional_properties={"type": "string"},
+    ),
+    "include_workflows": _prop(
+        "boolean",
+        "Also copy every workflow triggered by a copied element, repointed at the copies. "
+        "Workflows that only reference a copied element are reported, never copied.",
+        default=True,
+    ),
     "read_headless": _prop(
         "boolean",
         "Run the editor browser without a visible window while reading the node.",
@@ -1835,6 +1856,42 @@ def planning_execution_tools() -> list[ToolSchema]:
                 "execute",
             ],
             required=["profile", "pointer"],
+        ),
+        tool_schema(
+            "bubble_duplicate_element",
+            "Duplicate (copy/paste, clone) live Bubble elements with their workflows: a button, a "
+            "popup, a group and everything inside it. Reads the raw nodes from the editor of the "
+            "named version, remints every element id, slot key, event id and action id without "
+            "colliding with ids the app already holds, repoints %ei references inside the copy "
+            "(a copied 'show popup' step opens the copied popup), and maintains _index itself - "
+            "id_to_path for every new id, issues_list for every new element, issues_sub for the "
+            "parents - so never assemble a bubble_editor_write payload or _index entries by hand "
+            "to copy an element. To copy a button together with the popup it opens, pass both in "
+            "element_ids. Workflows outside the copy that point at a copied element are listed in "
+            "referencing_workflows_not_copied. execute=false previews and lists every new id and "
+            "index entry; execute=true writes to a branch (main is refused) and reads every "
+            "copied node and index entry back from that version.",
+            [
+                "profile",
+                "element_ids",
+                "target_parent",
+                "rename",
+                "include_workflows",
+                "app_id",
+                "app_version",
+                "execute",
+            ],
+            required=["profile", "element_ids"],
+            field_overrides={
+                "target_parent": {
+                    "type": "string",
+                    "description": (
+                        "Id of the element (or of the page/reusable itself) to create the copy "
+                        "in. Omitted: beside each source, in the same container. Must be on the "
+                        "same page or reusable as the source."
+                    ),
+                },
+            },
         ),
         tool_schema(
             "bubble_plugin_install",

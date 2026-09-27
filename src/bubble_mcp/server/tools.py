@@ -68,6 +68,7 @@ from bubble_mcp.server.agent_catalog import _is_mutating
 from bubble_mcp.execution.version_policy import forget as forget_branches, main_write_allowed, write_policy
 from bubble_mcp.execution.run_as import run_as_user
 from bubble_mcp.execution.node_edit import clone_live_workflow, edit_live_node
+from bubble_mcp.execution.duplicate_element import duplicate_live_element
 from bubble_mcp.execution.deploy_preview import preview_deploy, read_nodes_over_http
 from bubble_mcp.execution.session_savepoint import (
     ensure_session_savepoint,
@@ -2337,6 +2338,50 @@ def _call_tool(
                     response=clone_write.get("response"),
                 )
         return clone_result
+    if name == "bubble_duplicate_element":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_duplicate_element requires a profile.")
+        element_ids = args.get("element_ids")
+        if isinstance(element_ids, str):
+            element_ids = [element_ids]
+        if not isinstance(element_ids, list) or not element_ids:
+            raise ValueError("bubble_duplicate_element requires element_ids, a non-empty array of element ids.")
+        rename = args.get("rename")
+        if rename is not None and not isinstance(rename, (str, dict)):
+            raise ValueError("bubble_duplicate_element rename must be a string or an object.")
+        duplicate_version = _resolved_write_version(args)
+        duplicate_result = duplicate_live_element(
+            profile=profile,
+            element_ids=[str(value) for value in element_ids],
+            target_parent=str(args.get("target_parent") or "").strip() or None,
+            rename=rename,
+            include_workflows=args.get("include_workflows") is not False,
+            execute=bool(args.get("execute")),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=duplicate_version,
+        )
+        duplicate_write = duplicate_result.get("write") if isinstance(duplicate_result, dict) else None
+        if bool(args.get("execute")) and isinstance(duplicate_write, dict) and duplicate_write.get("ok"):
+            duplicate_request = duplicate_write.get("request")
+            duplicate_payload = (
+                duplicate_request.get("payload") if isinstance(duplicate_request, dict) else None
+            )
+            if isinstance(duplicate_payload, dict):
+                duplicate_session = load_session(profile)
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(
+                        duplicate_payload.get("appname")
+                        or args.get("app_id")
+                        or (duplicate_session.app_id if duplicate_session else "")
+                    ),
+                    payload=duplicate_payload,
+                    source="bubble_duplicate_element",
+                    response=duplicate_write.get("response"),
+                )
+        return duplicate_result
     if name == "bubble_plugin_install":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()

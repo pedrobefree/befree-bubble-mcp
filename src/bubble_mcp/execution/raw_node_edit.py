@@ -180,7 +180,7 @@ ID_BEARING_KEYS = ("id", "event_id")
 
 
 def remap_node_ids_with_report(
-    node: Any, mapping: dict[str, str]
+    node: Any, mapping: dict[str, str], keys: tuple[str, ...] = ID_BEARING_KEYS
 ) -> tuple[Any, list[str]]:
     """Remap ids and also report where an old id was seen in a field that was NOT rewritten.
 
@@ -188,6 +188,9 @@ def remap_node_ids_with_report(
     self-reference in some field these captures never showed, it lands in `unmapped` instead of
     being silently left pointing at the source workflow - visible, rather than a clone that looks
     right and behaves wrong.
+
+    `keys` widens the rewritten fields when the mapping also holds element ids: duplicating an
+    element moves every `%ei` that pointed at a copied element onto its copy.
     """
 
     unmapped: list[str] = []
@@ -198,7 +201,7 @@ def remap_node_ids_with_report(
         if isinstance(value, list):
             return [walk(item, (*path, str(index)), None) for index, item in enumerate(value)]
         if isinstance(value, str) and value in mapping:
-            if key in ID_BEARING_KEYS:
+            if key in keys:
                 return mapping[value]
             unmapped.append(".".join(path))
         return value

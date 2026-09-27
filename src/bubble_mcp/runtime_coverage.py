@@ -57,6 +57,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_node_edit",
     "bubble_run_as",
     "bubble_clone_workflow",
+    "bubble_duplicate_element",
     "bubble_savepoint_create",
     "bubble_savepoint_list",
     "bubble_savepoint_restore",

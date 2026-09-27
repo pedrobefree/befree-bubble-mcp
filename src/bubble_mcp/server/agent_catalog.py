@@ -830,6 +830,13 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "recomposing with create_workflow plus add_action, which cannot reproduce expression "
         "encodings. execute=false previews."
     ),
+    "bubble_duplicate_element": (
+        "Duplicate (copy/paste) live elements - a button, a popup, a group with its children - "
+        "together with the workflows they trigger: remints every id, repoints references inside "
+        "the copy and maintains _index (id_to_path, issues_list, issues_sub) itself. Pass a button "
+        "and the popup it opens together in element_ids. execute=false previews every new id and "
+        "index entry; execute=true writes to a branch and reads it all back."
+    ),
     "bubble_plugin_install": (
         "Preview or install one Bubble plugin in a target app using the stored editor session. Use this when transfer "
         "planning reports a missing plugin-backed element/action type such as progressbar-ProgressBar. The tool writes "
@@ -2081,6 +2088,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_node_edit",
             "bubble_session_check",
             "bubble_clone_workflow",
+            "bubble_duplicate_element",
             "bubble_visual_capture",
         "bubble_visual_capture_actual",
         "bubble_visual_audit",
@@ -2285,6 +2293,7 @@ def _is_mutating(name: str) -> bool:
         "bubble_execute_plan",
         "bubble_node_edit",
         "bubble_clone_workflow",
+        "bubble_duplicate_element",
         "batch",
         "natural",
     }
