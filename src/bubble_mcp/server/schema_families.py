@@ -1386,10 +1386,16 @@ def profile_session_context_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_session_login",
-            "Open a local Playwright browser, let the user log in to Bubble, capture editor cookies and request headers, and save the redacted session for a profile. This is interactive and writes only local MCP session storage.",
+            "Open a local Playwright browser, let the user log in to Bubble, capture editor cookies and request headers, and save the redacted session for a profile. A browser profile that is not logged in opens Bubble's login page first (https://bubble.io/login?mode=login); login is detected by the ajs_user_id cookie, and the editor then opens on app_version. This is interactive and writes only local MCP session storage.",
             ["profile", "app_id", "editor_url", "app_version", "wait_seconds", "headless"],
             required=["profile"],
             field_overrides={
+                "login_first": _prop(
+                    "boolean",
+                    "Open Bubble's login page first when the browser profile is not logged in, and the "
+                    "editor once login is detected. false opens the editor directly.",
+                    default=True,
+                ),
                 "wait_seconds": _prop(
                     "integer",
                     "Maximum time to keep the local browser login flow open. The browser closes when this "

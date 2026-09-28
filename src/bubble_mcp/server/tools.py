@@ -1736,6 +1736,7 @@ def call_tool(
             app_version=app_version,
             progress=collect_progress,
             cancelled=cancelled,
+            login_first=args.get("login_first") is not False,
         )
         session_path = save_session(profile, captured_session)
         return {

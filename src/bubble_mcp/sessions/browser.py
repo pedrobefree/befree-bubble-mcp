@@ -22,6 +22,100 @@ EDITOR_VALIDATION_TIMEOUT_SEC = 10.0
 # exits as soon as the editor session validates.
 
 
+# Bubble's own login screen. Opening the editor for someone who is not logged in does not show it,
+# so on a server without a terminal nobody can sign in from there (team server, 2026-09-25).
+LOGIN_URL = "https://bubble.io/login?mode=login"
+# After signing in on LOGIN_URL, Bubble stays on that URL, so the URL cannot tell that login
+# happened. This cookie, holding the user id, can: it is empty or absent until then.
+LOGGED_IN_COOKIE = "ajs_user_id"
+_EMPTY_COOKIE_VALUES = {"", '""', "%22%22", "null", "%22null%22", "undefined"}
+
+
+def editor_url_for(app_id: str, app_version: str | None = None) -> str:
+    """The editor URL for ``app_id`` opened on ``app_version`` (main when not given)."""
+
+    url = f"https://bubble.io/page?id={app_id}&tab=Design&name=index"
+    version = str(app_version or "").strip()
+    if version and version != "test":
+        url += f"&version={version}"
+    return url
+
+
+def logged_in_user(context: Any) -> str | None:
+    """The Bubble user id the browser is logged in as, or None when it is not logged in."""
+
+    for url in ("https://bubble.io", None):
+        try:
+            cookies = context.cookies(url) if url else context.cookies()
+        except Exception:
+            continue
+        for cookie in cookies:
+            if cookie.get("name") != LOGGED_IN_COOKIE:
+                continue
+            value = str(cookie.get("value") or "").strip()
+            if value not in _EMPTY_COOKIE_VALUES:
+                return value
+    return None
+
+
+def _wait_for_login(
+    context: Any,
+    *,
+    deadline: float,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+    cancelled: CancellationCheck | None = None,
+) -> str:
+    """Wait for the login cookie; return why the wait ended."""
+
+    while True:
+        if cancelled is not None and cancelled():
+            return "cancelled"
+        if not _has_open_page(context):
+            return "browser_closed"
+        if logged_in_user(context):
+            return "logged_in"
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            return "timeout"
+        sleep(min(1, remaining))
+
+
+def _ensure_logged_in(
+    context: Any,
+    page: Any,
+    *,
+    wait_seconds: int,
+    deadline: float,
+    progress: ProgressCallback | None = None,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+    cancelled: CancellationCheck | None = None,
+) -> None:
+    """Open Bubble's login page and wait for a login, unless the profile is logged in already."""
+
+    if logged_in_user(context):
+        if progress is not None:
+            progress("Already logged in to Bubble in this browser profile.")
+        return
+    page.goto(LOGIN_URL, wait_until="domcontentloaded")
+    if progress is not None:
+        progress(f"Opened {LOGIN_URL}. Log in to Bubble; the editor opens once login is detected.")
+    reason = _wait_for_login(context, deadline=deadline, sleep=sleep, monotonic=monotonic, cancelled=cancelled)
+    if reason == "logged_in":
+        if progress is not None:
+            progress("Bubble login detected.")
+        return
+    if reason == "cancelled":
+        raise SessionCaptureCancelled("Bubble session login was cancelled by the MCP client.")
+    if reason == "browser_closed":
+        raise RuntimeError("The login browser was closed before Bubble login was detected.")
+    raise RuntimeError(
+        f"No Bubble login within {wait_seconds} seconds (the {LOGGED_IN_COOKIE} cookie stayed empty). "
+        "If a two-factor code was still pending, rerun with a larger wait_seconds (CLI: --wait-seconds)."
+    )
+
+
 class SessionCaptureCancelled(RuntimeError):
     """Raised when an MCP client cancels an interactive login capture."""
 
@@ -233,8 +327,14 @@ def capture_session_with_playwright(
     app_version: str | None = None,
     progress: ProgressCallback | None = None,
     cancelled: CancellationCheck | None = None,
+    login_first: bool = True,
 ) -> BubbleSessionData:
     """Open a local browser and capture Bubble cookies.
+
+    With ``login_first`` (the default) a browser profile that is not logged in is sent to
+    Bubble's login page first, and the editor is opened once the login cookie appears; the
+    editor itself never shows a login screen to someone signed out. ``wait_seconds`` covers the
+    login and the editor validation together.
 
     Playwright is an optional dependency. Install with
     `pip install "befree-bubble-mcp[browser]"` and run `playwright install`.
@@ -255,7 +355,7 @@ def capture_session_with_playwright(
             "&& python -m playwright install chromium"
         ) from exc
 
-    target_url = editor_url or f"https://bubble.io/page?id={app_id}"
+    target_url = editor_url or editor_url_for(app_id, app_version)
     last_cookie_string = ""
     last_user_agent = "befree-bubble-mcp"
     captured_write_headers: dict[str, str] = {}
@@ -351,13 +451,26 @@ def capture_session_with_playwright(
                     progress("Bubble editor request headers detected.")
 
         context.on("request", remember_bubble_headers)
+        deadline = time.monotonic() + wait_seconds
+        if login_first:
+            try:
+                _ensure_logged_in(
+                    context, page, wait_seconds=wait_seconds, deadline=deadline, progress=progress, cancelled=cancelled
+                )
+            except BaseException:
+                _close_quietly(context, browser)
+                raise
         page.goto(target_url, wait_until="domcontentloaded")
         if progress is not None:
-            progress("Browser opened. Log in to Bubble and keep the editor tab open until capture is confirmed.")
+            progress(
+                "Browser opened on the editor. Keep the editor tab open until capture is confirmed."
+                if login_first
+                else "Browser opened. Log in to Bubble and keep the editor tab open until capture is confirmed."
+            )
 
         poll_result = _poll_browser_session(
             context,
-            wait_seconds=wait_seconds,
+            wait_seconds=max(MIN_LOGIN_WAIT_SECONDS, int(deadline - time.monotonic())),
             last_cookie_string=last_cookie_string,
             last_user_agent=last_user_agent,
             progress=progress,
@@ -374,15 +487,7 @@ def capture_session_with_playwright(
                 last_cookie_string = cookie_string
         except Exception:
             pass
-        try:
-            context.close()
-        except Exception:
-            pass
-        if browser is not None:
-            try:
-                browser.close()
-            except Exception:
-                pass
+        _close_quietly(context, browser)
         if poll_result.stop_reason == "cancelled":
             raise SessionCaptureCancelled("Bubble session login was cancelled by the MCP client.")
         if poll_result.stop_reason == "interrupted" and not last_cookie_string:
@@ -416,3 +521,15 @@ def capture_session_with_playwright(
             "source": "browser",
         }
     )
+
+
+def _close_quietly(context: Any, browser: Any) -> None:
+    try:
+        context.close()
+    except Exception:
+        pass
+    if browser is not None:
+        try:
+            browser.close()
+        except Exception:
+            pass
