@@ -46,6 +46,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_session_list",
     "bubble_session_inspect",
     "bubble_session_login",
+    "bubble_session_check",
     "bubble_session_import",
     "bubble_editor_write",
     "bubble_live_node_read",

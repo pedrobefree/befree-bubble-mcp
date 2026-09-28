@@ -63,6 +63,7 @@ from bubble_mcp.execution.editor_api import (
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.live_node_read import read_live_node
 from bubble_mcp.execution.node_edit import edit_live_node
+from bubble_mcp.sessions.health import check_session, forget as forget_session_check
 from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import permanent_data_type_delete_targets, validate_structure
@@ -806,6 +807,86 @@ def _resolved_write_version(args: dict[str, Any]) -> str:
     return str(getattr(session, "app_version", "") or "").strip() or "test"
 
 
+# Tools that call the Bubble editor with the stored session even when they only read or preview.
+# Executed writes need it too, and are gated through _is_mutating below.
+EDITOR_SESSION_TOOLS = frozenset(
+    {
+        "bubble_live_node_read",
+        "bubble_node_edit",
+        "bubble_clone_workflow",
+        "bubble_duplicate_element",
+        "bubble_editor_write",
+        "bubble_branch_list",
+        "bubble_branch_contributors",
+        "bubble_branch_create",
+        "bubble_branch_delete",
+        "bubble_branch_merge_start",
+        "bubble_branch_merge_conflicts_describe",
+        "bubble_branch_merge_resolve_conflicts",
+        "bubble_branch_merge_confirm",
+        "bubble_branch_merge_finalize",
+        "bubble_changelog_fetch",
+        "bubble_savepoint_create",
+        "bubble_savepoint_list",
+        "bubble_savepoint_restore",
+        "bubble_deploy_history",
+        "bubble_list_scheduled_deploys",
+        "bubble_schedule_deploy",
+        "bubble_cancel_scheduled_deploy",
+        "bubble_logs_fetch",
+        "bubble_workflow_runs_get",
+        "bubble_plan_usage_get",
+        "bubble_storage_usage_get",
+        "bubble_workload_usage_breakdown",
+        "bubble_workload_usage_by_date",
+        "bubble_time_series_read",
+        "bubble_plugin_install",
+        "bubble_profile_cache_refresh",
+    }
+)
+SESSION_CHECK_TOOL = "bubble_session_check"
+
+
+def session_refusal(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    """Refuse a call that needs the editor when the stored session is known to be logged out.
+
+    An agent on an expired session otherwise spends call after call (each live read launching a
+    browser first) before concluding it was logged out - on a metered API with a weaker model,
+    a loop of paid calls that could never have worked. The check is one HTTP request, cached
+    for a few minutes while the session is good. Only a definite "logged out" refuses: no
+    stored session is left to the tool's own error, and a check that could not run lets the
+    call through.
+    """
+
+    needs_session = name in EDITOR_SESSION_TOOLS or (
+        bool(args.get("execute"))
+        and args.get("dry_run") is not True
+        and name not in MAIN_GUARD_LOCAL_ONLY_TOOLS
+        and (_is_mutating(name) or name in MAIN_GUARDED_EXTRA_TOOLS)
+    )
+    if not needs_session:
+        return None
+    profile = str(args.get("profile") or "").strip()
+    if not profile or load_session(profile) is None:
+        return None
+    check = check_session(profile)
+    if check.get("logged_in") is not False:
+        return None
+    return {
+        "ok": False,
+        "tool_name": name,
+        "executed": False,
+        "error": "session_expired",
+        "profile": profile,
+        "reason": check.get("reason"),
+        "message": (
+            f"The Bubble session stored for profile '{profile}' is logged out "
+            f"({check.get('message') or check.get('reason')}). Nothing was sent."
+        ),
+        "next_action": check.get("next_action"),
+    }
+
+
 def main_write_refusal(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
     """Refuse an executed write aimed at main (test or live), before anything else runs.
 
@@ -887,6 +968,19 @@ def call_tool(
     refusal = main_write_refusal(name, _arguments_with_profile_defaults(arguments))
     if refusal is not None:
         return refusal
+    refusal = session_refusal(name, _arguments_with_profile_defaults(arguments))
+    if refusal is not None:
+        return refusal
+    return _call_tool(name, arguments, cancelled=cancelled, progress=progress)
+
+
+def _call_tool(
+    name: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     """Call a supported tool and return a JSON-serializable payload."""
 
     caller_argument_names = frozenset((arguments or {}).keys())
@@ -1465,6 +1559,12 @@ def call_tool(
             "summary": context.summary(),
             "freshness": context_freshness(context, path=summary_path),
         }
+    if name == SESSION_CHECK_TOOL:
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_session_check requires a profile.")
+        return check_session(profile, use_cache=bool(args.get("use_cache")))
     if name == "bubble_context_find":
         args = arguments or {}
         profile_name = str(args.get("profile") or "").strip()
@@ -1739,6 +1839,7 @@ def call_tool(
             login_first=args.get("login_first") is not False,
         )
         session_path = save_session(profile, captured_session)
+        forget_session_check(profile)
         return {
             "ok": True,
             "profile": profile,
@@ -1759,6 +1860,7 @@ def call_tool(
             default_app_id=str(args.get("app_id") or "") or None,
         )
         session_path = save_session(profile, imported_session)
+        forget_session_check(profile)
         return {
             "ok": True,
             "profile": profile,

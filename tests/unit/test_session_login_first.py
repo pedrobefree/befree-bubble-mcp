@@ -26,18 +26,27 @@ class _Page:
     def __init__(self, context: _Context) -> None:
         self.context = context
         self.visits: list[str] = []
+        self.url = "about:blank"
 
     def goto(self, url: str, **kwargs: Any) -> None:
         self.visits.append(url)
         self.context.on_goto(url)
+        # An expired login loads the editor, then gets sent to the home page.
+        self.url = "https://bubble.io/" if "page?id=" in url and self.context.expired else url
+
+    def evaluate(self, script: str) -> Any:
+        return "kaimia-app" if "page?id=kaimia-app" in self.url else None
 
     def is_closed(self) -> bool:
         return False
 
 
 class _Context:
-    def __init__(self, *, logged_in: bool = False, logs_in_after: int | None = None) -> None:
+    def __init__(self, *, logged_in: bool = False, logs_in_after: int | None = None, expired: bool = False) -> None:
         self.logged_in = logged_in
+        # A stale login: the cookie is there, the editor sends the page away.
+        self.expired = expired
+        self.cleared = False
         # How many cookie reads after the login page opens before the user id appears.
         self.logs_in_after = logs_in_after
         self.on_login_page = False
@@ -56,6 +65,11 @@ class _Context:
                 self.logged_in = True
         value = "%22user-1%22" if self.logged_in else ""
         return [{"name": "ajs_user_id", "value": value}, {"name": "b", "value": "session"}]
+
+    def clear_cookies(self, **kwargs: Any) -> None:
+        self.cleared = True
+        self.logged_in = False
+        self.expired = False
 
     def on(self, event: str, handler: Any) -> None:
         pass
@@ -185,3 +199,21 @@ def test_the_login_tool_passes_login_first_through(monkeypatch: pytest.MonkeyPat
     with pytest.raises(RuntimeError, match="stop here"):
         call_tool("bubble_session_login", {"profile": "p", "app_id": "a", "login_first": False})
     assert seen["login_first"] is False
+
+
+def test_an_expired_login_that_kept_its_cookie_is_sent_to_the_login_page(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Any
+) -> None:
+    context = _Context(logged_in=True, expired=True, logs_in_after=2)
+    _install_fake_playwright(monkeypatch, context)
+    messages: list[str] = []
+
+    capture_session_with_playwright(
+        app_id="kaimia-app", app_version="93k8b", user_data_dir=tmp_path, wait_seconds=60, progress=messages.append
+    )
+
+    editor = "https://bubble.io/page?id=kaimia-app&tab=Design&name=index&version=93k8b"
+    assert context.page.visits == [editor, LOGIN_URL, editor]
+    assert context.cleared is True
+    assert any("expired" in message for message in messages)
+    assert not any("Already logged in" in message for message in messages)

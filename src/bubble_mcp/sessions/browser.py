@@ -81,10 +81,54 @@ def _wait_for_login(
         sleep(min(1, remaining))
 
 
+# How long a stored login gets to prove itself in the editor. An expired login keeps its
+# ajs_user_id cookie: the editor loads the app for about a second, then sends the page away
+# (the same bounce live_node_read reports as not_logged_in).
+EDITOR_BOUNCE_WAIT_SEC = 20.0
+EDITOR_APPNAME_SCRIPT = "() => { try { return window.appquery.app().json.appname(); } catch (e) { return null; } }"
+
+
+def _editor_session_alive(
+    page: Any,
+    app_id: str,
+    *,
+    deadline: float,
+    sleep: Callable[[float], None] = time.sleep,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> bool | None:
+    """True once the editor serves ``app_id``, False when it sends the page away, None if unsure."""
+
+    while True:
+        try:
+            if app_id not in str(page.url):
+                return False
+            if page.evaluate(EDITOR_APPNAME_SCRIPT) == app_id:
+                return True
+        except Exception:
+            pass
+        if monotonic() >= deadline:
+            return None
+        sleep(0.5)
+
+
+def _clear_bubble_cookies(context: Any) -> None:
+    """Drop an expired login so the login page starts clean and the cookie means a new login."""
+
+    try:
+        context.clear_cookies(domain=".bubble.io")
+        context.clear_cookies(domain="bubble.io")
+    except TypeError:  # older Playwright: no filters
+        context.clear_cookies()
+    except Exception:
+        pass
+
+
 def _ensure_logged_in(
     context: Any,
     page: Any,
     *,
+    target_url: str,
+    app_id: str,
     wait_seconds: int,
     deadline: float,
     progress: ProgressCallback | None = None,
@@ -92,12 +136,29 @@ def _ensure_logged_in(
     monotonic: Callable[[], float] = time.monotonic,
     cancelled: CancellationCheck | None = None,
 ) -> None:
-    """Open Bubble's login page and wait for a login, unless the profile is logged in already."""
+    """Leave ``page`` on the editor with a live login, going through Bubble's login page if needed.
+
+    The login cookie alone does not prove a login: an expired one keeps it. So a profile that
+    has it is sent to the editor first, and only counts as logged in when the editor serves the
+    app instead of sending the page away.
+    """
 
     if logged_in_user(context):
+        page.goto(target_url, wait_until="domcontentloaded")
+        alive = _editor_session_alive(
+            page,
+            app_id,
+            deadline=min(deadline, monotonic() + EDITOR_BOUNCE_WAIT_SEC),
+            sleep=sleep,
+            monotonic=monotonic,
+        )
+        if alive is not False:
+            if progress is not None:
+                progress("Already logged in to Bubble in this browser profile.")
+            return
         if progress is not None:
-            progress("Already logged in to Bubble in this browser profile.")
-        return
+            progress("The Bubble login stored in this browser profile has expired; opening the login page.")
+        _clear_bubble_cookies(context)
     page.goto(LOGIN_URL, wait_until="domcontentloaded")
     if progress is not None:
         progress(f"Opened {LOGIN_URL}. Log in to Bubble; the editor opens once login is detected.")
@@ -105,6 +166,7 @@ def _ensure_logged_in(
     if reason == "logged_in":
         if progress is not None:
             progress("Bubble login detected.")
+        page.goto(target_url, wait_until="domcontentloaded")
         return
     if reason == "cancelled":
         raise SessionCaptureCancelled("Bubble session login was cancelled by the MCP client.")
@@ -455,12 +517,20 @@ def capture_session_with_playwright(
         if login_first:
             try:
                 _ensure_logged_in(
-                    context, page, wait_seconds=wait_seconds, deadline=deadline, progress=progress, cancelled=cancelled
+                    context,
+                    page,
+                    target_url=target_url,
+                    app_id=app_id,
+                    wait_seconds=wait_seconds,
+                    deadline=deadline,
+                    progress=progress,
+                    cancelled=cancelled,
                 )
             except BaseException:
                 _close_quietly(context, browser)
                 raise
-        page.goto(target_url, wait_until="domcontentloaded")
+        else:
+            page.goto(target_url, wait_until="domcontentloaded")
         if progress is not None:
             progress(
                 "Browser opened on the editor. Keep the editor tab open until capture is confirmed."

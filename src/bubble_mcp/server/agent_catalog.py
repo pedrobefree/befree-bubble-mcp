@@ -693,6 +693,9 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "matches; inspect count/truncated and match_field to distinguish direct node matches from context references. "
         "Read-only."
     ),
+    "bubble_session_check": (
+        "Check the stored editor session before Bubble work; a logged-out session requires bubble_session_login. Read-only."
+    ),
     "bubble_context_import": (
         "Convert a Bubble project artifact into compact context. Supports .bubble exports, console.log(app) JSON, "
         "and crawler indexes. Writes only local context artifacts."
@@ -2027,6 +2030,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_execute_plan",
             "bubble_live_node_read",
             "bubble_node_edit",
+            "bubble_session_check",
             "bubble_visual_capture",
         "bubble_visual_capture_actual",
         "bubble_visual_audit",
@@ -2151,6 +2155,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_runtime_smoke",
         "bubble_context_summary",
         "bubble_context_find",
+        "bubble_session_check",
         "bubble_session_list",
         "bubble_session_inspect",
         "bubble_eval_run",

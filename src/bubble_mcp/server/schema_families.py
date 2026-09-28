@@ -1385,6 +1385,24 @@ def profile_session_context_tools() -> list[ToolSchema]:
             required=["profile"],
         ),
         tool_schema(
+            "bubble_session_check",
+            "Check whether the Bubble editor session stored for a profile is still logged in: one "
+            "HTTP request (~0.3s), no browser. Call it before starting Bubble work. logged_in=false "
+            "means every call that needs the editor will fail until the user logs in again with "
+            "bubble_session_login - stop and ask for that instead of retrying or trying other tools. "
+            "Tools that need the editor already refuse with error='session_expired' when the session "
+            "is known to be logged out. Read-only.",
+            ["profile"],
+            required=["profile"],
+            field_overrides={
+                "use_cache": _prop(
+                    "boolean",
+                    "Accept a logged-in answer from the last few minutes instead of asking Bubble again.",
+                    default=False,
+                ),
+            },
+        ),
+        tool_schema(
             "bubble_session_login",
             "Open a local Playwright browser, let the user log in to Bubble, capture editor cookies and request headers, and save the redacted session for a profile. A browser profile that is not logged in opens Bubble's login page first (https://bubble.io/login?mode=login); login is detected by the ajs_user_id cookie, and the editor then opens on app_version. This is interactive and writes only local MCP session storage.",
             ["profile", "app_id", "editor_url", "app_version", "wait_seconds", "headless"],
