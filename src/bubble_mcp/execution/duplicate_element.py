@@ -331,11 +331,13 @@ def _plan(
         for parent_id, pairs in parents.items()
     ]
     for element_id, node in elements:
-        children = [child for _, child in _child_elements(node)]
-        if not children:
-            continue
+        # An element's entry lists its children and, in live apps, workflows it triggers too
+        # (mcp-test-app: "bVoQt": ["b0pRF"]). Mirror whatever the source records, remapped; an
+        # id that was not copied belongs to the source alone and is left out.
         recorded = _parse_ids(issues_sub.get(element_id))
-        order = recorded if recorded else [str(child["id"]) for child in children]
+        order = recorded if recorded else [str(child["id"]) for _, child in _child_elements(node)]
+        if not any(entry in mapping for entry in order):
+            continue
         issues_sub_changes.append(
             _index_change(
                 ["_index", "issues_sub", mapping[element_id]],

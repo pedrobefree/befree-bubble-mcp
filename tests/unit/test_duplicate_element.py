@@ -509,3 +509,15 @@ def test_tool_search_finds_it_with_the_words_the_agent_used() -> None:
     ):
         names = [match["name"] for match in search_tool_catalog(query, limit=5)["matches"]]
         assert "bubble_duplicate_element" in names, (query, names)
+
+
+def test_an_element_entry_that_lists_its_workflows_is_mirrored_too() -> None:
+    editor = _Editor(_app())
+    # Live apps list the workflows an element triggers under the element (mcp-test-app).
+    editor.tree["_index"]["issues_sub"]["bOk"] = json.dumps(["bE2", "bE3"])
+
+    result = _run(editor)
+
+    mapping = result["id_mapping"]
+    ok_entry = json.loads(_change_at(result, "_index", "issues_sub", mapping["bOk"])["body"])
+    assert ok_entry == [mapping["bE2"]]  # bE3 was not copied, so it stays with the source
