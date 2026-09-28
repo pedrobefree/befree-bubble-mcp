@@ -175,6 +175,10 @@ def normalize_ai_context_change_payload(payload: dict[str, Any], session: Bubble
     }
 
 
+def _is_editor_page(url: str) -> bool:
+    return "bubble.io/page?" in str(url or "")
+
+
 def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, Any]) -> dict[str, str]:
     captured = {str(key).lower(): str(value) for key, value in session.headers.items()}
     cookie = str(session.cookies or captured.get("cookie") or "").strip()
@@ -185,9 +189,16 @@ def build_editor_write_headers(session: BubbleSessionData, payload: dict[str, An
     # for the version this request targets, so a session captured on one version cannot tag a
     # write to another with the wrong one.
     target_version = str(payload.get("app_version") or payload.get("appVersion") or "").strip()
-    editor_url = captured.get("referer") or session.url or f"https://bubble.io/page?id={appname}"
-    bubble_r = captured.get("x-bubble-r") or session.url or f"https://bubble.io/page?id={appname}"
+    fallback_url = session.url or f"https://bubble.io/page?id={appname}"
+    editor_url = captured.get("referer") or fallback_url
+    bubble_r = captured.get("x-bubble-r") or fallback_url
     if target_version:
+        # A session captured through the login page carries bubble.io/home in these headers,
+        # which names no version; the editor's own requests always carry its page URL.
+        if not _is_editor_page(editor_url):
+            editor_url = fallback_url
+        if not _is_editor_page(bubble_r):
+            bubble_r = fallback_url
         editor_url = editor_url_for_version(editor_url, target_version)
         bubble_r = editor_url_for_version(bubble_r, target_version)
 

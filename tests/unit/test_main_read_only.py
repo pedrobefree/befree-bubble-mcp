@@ -112,6 +112,27 @@ def test_write_headers_point_at_the_target_version_not_the_captured_one() -> Non
     assert "version=test" not in headers["referer"]
 
 
+def test_a_session_captured_through_the_login_page_still_tags_writes_with_the_target_version() -> None:
+    # Session login now starts on bubble.io/login, so the captured headers name bubble.io/home,
+    # which carries no version (mcp-test-app, 2026-09-28). The editor URL is rebuilt instead.
+    from dataclasses import replace
+
+    session = replace(
+        MAIN_SESSION,
+        url="https://bubble.io/page?id=kaimia-app&tab=Design&name=index",
+        headers={
+            "cookie": "sid=secret",
+            "referer": "https://bubble.io/",
+            "x-bubble-r": "https://bubble.io/home?resume=1790556477181x5",
+        },
+    )
+
+    headers = build_editor_write_headers(session, {"appname": "kaimia-app", "app_version": "93k8b"})
+
+    assert headers["referer"] == "https://bubble.io/page?id=kaimia-app&tab=Design&name=index&version=93k8b"
+    assert headers["x-bubble-r"] == headers["referer"]
+
+
 def test_client_refuses_to_send_a_write_to_main() -> None:
     calls: list[str] = []
 
