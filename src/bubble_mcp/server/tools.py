@@ -2166,7 +2166,8 @@ def _call_tool(
         if not user_id and not email:
             raise ValueError(
                 "bubble_run_as requires user_id (the Bubble unique id of the row in the app's "
-                "User type) or email, which is resolved through the app's Data API."
+                "User type) or email, which is resolved through the app's Data API or, without a "
+                "token, the editor's Data tab."
             )
         return run_as_user(
             profile,

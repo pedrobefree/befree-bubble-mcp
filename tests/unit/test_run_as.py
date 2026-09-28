@@ -498,18 +498,47 @@ def test_neither_user_id_nor_email_is_refused_before_any_request(
     assert transport.calls == []
 
 
-def test_an_email_with_no_bubble_cli_project_says_what_to_pass_instead(
+def test_an_email_with_no_data_api_token_is_looked_up_in_the_editor(
     stored_session: FakeSession, config_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("BUBBLE_CLI_PROJECT_DIR", raising=False)
     monkeypatch.delenv("BUBBLE_CLI_ROOT", raising=False)
+    monkeypatch.delenv("BUBBLE_DATA_API_TOKEN", raising=False)
+    transport = FakeTransport(
+        replies=[HttpReply(status=302, location=REDIRECT), HttpReply(status=200)],
+        jar=_session_cookies(),
+    )
+    seen: list[tuple[Any, ...]] = []
+
+    def editor_lookup(profile: str, app_id: str, email: str, **kwargs: Any) -> dict[str, Any]:
+        seen.append((profile, app_id, email, kwargs.get("app_version")))
+        return {"ok": True, "user_id": USER_ID, "email": email, "source": "editor_data_tab"}
+
+    result = run_as_user(
+        "mcp-test", email="a@b.com", app_version="93k8b", transport=transport, editor_lookup=editor_lookup
+    )
+
+    assert seen == [("mcp-test", APP_ID, "a@b.com", "93k8b")]
+    assert USER_ID in transport.calls[0][0]
+    assert result["ok"] is True
+
+
+def test_an_email_the_editor_cannot_find_stops_before_any_request(
+    stored_session: FakeSession, config_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BUBBLE_CLI_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("BUBBLE_CLI_ROOT", raising=False)
+    monkeypatch.delenv("BUBBLE_DATA_API_TOKEN", raising=False)
     transport = FakeTransport(replies=[])
 
-    result = run_as_user("mcp-test", email="a@b.com", transport=transport)
+    result = run_as_user(
+        "mcp-test",
+        email="a@b.com",
+        transport=transport,
+        editor_lookup=lambda *args, **kwargs: {"ok": False, "error": "user_not_found", "message": "none"},
+    )
 
-    assert result["ok"] is False
-    assert result["error"] == "no_data_api_config"
-    assert "bubble.json" in result["message"]
+    assert result["error"] == "user_not_found"
     assert transport.calls == []
 
 

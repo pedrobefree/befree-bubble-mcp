@@ -339,20 +339,17 @@ def run_as_user(
     preview_password: str | None = None,
     transport: Transport | None = None,
     write_storage_state: bool = True,
+    editor_lookup: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Establish an impersonated app session for ``user_id`` and report where it landed.
 
     ``user_id`` is the Bubble unique id of the row in the app's User type - the same id the
     editor's Data tab addresses.
 
-    Resolving one from an email is deliberately NOT done here, because it needs the app's Data
-    API and a Data API token, and a tool that already does that exists: the ``bubble-cli``
-    project mirrors a Bubble app into SQLite over the Data API and exposes it over MCP. There,
-    ``bubble(["pull", "--types", "User"])`` fills the mirror and
-    ``query("SELECT _id, email FROM User WHERE email = '...'")`` hands back the id this
-    function wants - the mirror's ``_id`` primary key IS the Bubble unique id. Duplicating a
-    Data API client here would mean a second token to register and a second thing to keep
-    correct.
+    ``email`` is resolved to that id through the app's Data API when a token is configured
+    (``_user_id_from_email``), and otherwise through the editor's own Data tab with the stored
+    editor session (``editor_user_lookup``), which needs no token and reads the development
+    database. ``editor_lookup`` replaces the latter in tests.
 
     Cookie VALUES never appear in the returned dictionary. They go to the storage-state file,
     whose path is returned instead, so a result can be logged or shown without leaking a live
@@ -389,6 +386,14 @@ def run_as_user(
                 "message": "Pass user_id (a Bubble unique id) or email.",
             }
         email_lookup = _user_id_from_email(str(email), resolved_app_id, data_api_dir, app_version)
+        if email_lookup.get("error") == "no_data_api_config":
+            # No token: read the id from the editor's Data tab, the way a person would, through
+            # the stored editor session (team server, 2026-09-25: the agent scripted exactly that).
+            if editor_lookup is None:
+                from bubble_mcp.execution.editor_user_lookup import find_user_id_in_editor
+
+                editor_lookup = find_user_id_in_editor
+            email_lookup = editor_lookup(profile, resolved_app_id, str(email), app_version=app_version)
         if not email_lookup.get("ok"):
             return email_lookup
         resolved_user_id = str(email_lookup["user_id"])

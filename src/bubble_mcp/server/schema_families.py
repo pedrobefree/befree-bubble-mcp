@@ -1785,8 +1785,9 @@ def planning_execution_tools() -> list[ToolSchema]:
                     "type": "string",
                     "description": (
                         "Email of the app user to impersonate, resolved to a user id through the "
-                        "app's Data API using the token in the matching bubble-cli bubble.json. "
-                        "Pass this OR user_id."
+                        "app's Data API when a token is configured (bubble-cli bubble.json or "
+                        "BUBBLE_DATA_API_TOKEN), otherwise read from the editor's Data tab with the "
+                        "stored editor session (development database; about 20s). Pass this OR user_id."
                     ),
                 },
                 "data_api_dir": {
