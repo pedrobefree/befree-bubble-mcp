@@ -688,6 +688,12 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "each could run now: Playwright installed, run-as session present and unexpired. Use it before "
         "bubble_e2e_run to learn the suite and case ids instead of guessing them. Read-only."
     ),
+    "bubble_e2e_flow": (
+        "Run a short browser flow declared inline (goto, click, fill, expect_text, screenshot) on one or more app "
+        "versions as an app user, and get the recordings side by side: before/after evidence of a change without "
+        "writing a Playwright script. execute=false previews; execute=true clicks for real in development data. "
+        "live is refused."
+    ),
     "bubble_e2e_run": (
         "Run a browser end-to-end suite, or named cases from it, against a Bubble branch as the impersonated run-as "
         "user. Leave execute=false to preview: it resolves branch and base URL, checks the session and the case "
@@ -2107,6 +2113,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             # Drives the app under test in a browser over the network. The read-only E2E
             # tools stay closed-world: they only read local manifests and run results.
             "bubble_e2e_run",
+            "bubble_e2e_flow",
             "upload_asset",
         },
     }

@@ -40,8 +40,8 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "run_browser_e2e_tests",
         "when": "The user asks to run, write, or read the result of an end-to-end / UAT test that drives the app in a browser.",
-        "tools": ["bubble_e2e_list", "bubble_e2e_run", "bubble_e2e_report", "bubble_e2e_scaffold", "bubble_run_as"],
-        "notes": "Call bubble_e2e_list first for the suite and case ids. bubble_e2e_run defaults to execute=false, which previews without opening a browser; execute=true creates real records in the app. A missing or expired session is fixed with bubble_run_as, never with a password inside a case.",
+        "tools": ["bubble_e2e_flow", "bubble_e2e_list", "bubble_e2e_run", "bubble_e2e_report", "bubble_e2e_scaffold", "bubble_run_as"],
+        "notes": "For before/after evidence of a change - open a page, click, confirm, check a text - use bubble_e2e_flow with the steps inline and versions=[main, branch]: it records each version and returns the videos side by side, with no Playwright script and no suite. Never write Playwright scripts by hand for that. For suites, call bubble_e2e_list first for the suite and case ids. bubble_e2e_run defaults to execute=false, which previews without opening a browser; execute=true creates real records in the app. A missing or expired session is fixed with bubble_run_as, never with a password inside a case.",
     },
     {
         "intent": "find_profile_session_or_context",
@@ -878,7 +878,7 @@ RECIPES: dict[str, dict[str, Any]] = {
     },
     "e2e_suite": {
         "when": "Run, read or create a browser end-to-end / UAT test that drives the real app as a test user.",
-        "tools": ["bubble_e2e_list", "bubble_e2e_run", "bubble_e2e_report", "bubble_e2e_scaffold", "bubble_run_as"],
+        "tools": ["bubble_e2e_flow", "bubble_e2e_list", "bubble_e2e_run", "bubble_e2e_report", "bubble_e2e_scaffold", "bubble_run_as"],
         "steps": [
             {
                 "tool": "bubble_e2e_list",

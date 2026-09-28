@@ -32,6 +32,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_runtime_smoke",
     "bubble_e2e_list",
     "bubble_e2e_run",
+    "bubble_e2e_flow",
     "bubble_e2e_report",
     "bubble_e2e_scaffold",
     "bubble_context_summary",

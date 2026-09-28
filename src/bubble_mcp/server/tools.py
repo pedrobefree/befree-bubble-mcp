@@ -69,6 +69,7 @@ from bubble_mcp.execution.version_policy import forget as forget_branches, main_
 from bubble_mcp.execution.run_as import run_as_user
 from bubble_mcp.execution.node_edit import clone_live_workflow, edit_live_node
 from bubble_mcp.execution.duplicate_element import duplicate_live_element
+from bubble_mcp.e2e.flow import run_e2e_flow
 from bubble_mcp.execution.deploy_preview import preview_deploy, read_nodes_over_http
 from bubble_mcp.execution.session_savepoint import (
     ensure_session_savepoint,
@@ -1654,6 +1655,22 @@ def _call_tool(
             run_id=str(args.get("run_id") or ""),
             stop_on_failure=bool(args.get("stop_on_failure")),
             include_details=bool(args.get("include_details")),
+        )
+    if name == "bubble_e2e_flow":
+        args = arguments or {}
+        return run_e2e_flow(
+            profile=str(args.get("profile") or ""),
+            steps=args.get("steps"),
+            versions=_string_list(args.get("versions")),
+            user_id=str(args.get("user_id") or ""),
+            email=str(args.get("email") or ""),
+            name=str(args.get("name") or "flow"),
+            execute=bool(args.get("execute")),
+            headless=args.get("headless") is not False,
+            video=args.get("video") is not False,
+            cursor=args.get("cursor") is not False,
+            timeout_ms=int(args.get("timeout_ms") or 30000),
+            base_url=str(args.get("base_url") or ""),
         )
     if name == "bubble_e2e_report":
         args = arguments or {}

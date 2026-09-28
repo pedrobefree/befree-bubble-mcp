@@ -228,8 +228,12 @@ def _run_one_case(
     headless: bool,
     slow_mo: int,
     config_dir: Path | None,
+    case_callable: Callable[[E2EContext], Any] | None = None,
 ) -> dict[str, Any]:
-    """One case, one browser. Every failure mode lands in the result instead of propagating."""
+    """One case, one browser. Every failure mode lands in the result instead of propagating.
+
+    ``case_callable`` runs a case that has no module - an inline flow (``e2e/flow.py``).
+    """
 
     artifact_dir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
@@ -237,9 +241,10 @@ def _run_one_case(
     artifacts: dict[str, Any] = {"dir": str(artifact_dir)}
 
     try:
-        case_callable = load_case_callable(
-            suite.profile, spec, config_dir, cases_root=suite.cases_root
-        )
+        if case_callable is None:
+            case_callable = load_case_callable(
+                suite.profile, spec, config_dir, cases_root=suite.cases_root
+            )
     except (E2ESuiteError, OSError, SyntaxError, ValueError) as error:
         return _case_result(
             spec,

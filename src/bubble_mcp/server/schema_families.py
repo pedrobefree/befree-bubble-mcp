@@ -2843,6 +2843,75 @@ def e2e_tools() -> list[ToolSchema]:
             ),
         },
         {
+            "name": "bubble_e2e_flow",
+            "description": (
+                "Run one short browser flow, declared inline, on one or more app versions as an "
+                "impersonated app user, and get video side by side - before/after evidence of a "
+                "change without writing a Playwright script or a suite. Each step names one action: "
+                "goto (a page name or path, or a full URL), click (visible text, or a selector "
+                "starting with # . [ css= xpath= text= role=), fill (a field by placeholder, label "
+                "or selector, with 'value'), expect_text / expect_no_text, wait (ms), screenshot. "
+                "Optional per step: name, exact, timeout_ms. execute=false (the default) checks the "
+                "steps and resolves each version's URL without opening a browser. execute=true runs "
+                "the flow on every version - it clicks and confirms for real in the development "
+                "data - and returns per-version steps, screenshots and video, compare.html playing "
+                "the recordings side by side, and side_by_side.webm when a full ffmpeg is on PATH. "
+                "live is refused. For checks a step list cannot express, write a suite case "
+                "(bubble_e2e_scaffold)."
+            ),
+            "inputSchema": object_schema(
+                {
+                    "profile": field("profile"),
+                    "steps": _prop(
+                        "array",
+                        "The flow, in order. Each item names exactly one action.",
+                        items={"type": "object", "additionalProperties": True},
+                        examples=[
+                            [
+                                {"goto": "client", "name": "open-client"},
+                                {"click": "Mark Client as Inactive"},
+                                {"click": "Confirm"},
+                                {"expect_text": "Inactive"},
+                                {"screenshot": "badge"},
+                            ]
+                        ],
+                    ),
+                    "versions": _prop(
+                        "array",
+                        "App versions to run the flow on, e.g. main (test) and the branch with the "
+                        "change. One to four; live is refused.",
+                        items={"type": "string"},
+                        examples=[["test", "93k8b"]],
+                    ),
+                    "email": _prop(
+                        "string",
+                        "Email of the app user to run as (resolved like bubble_run_as, no Data API "
+                        "token needed). Pass this or user_id.",
+                    ),
+                    "user_id": _prop("string", "Bubble unique id of the app user to run as."),
+                    "name": _prop("string", "Short name for the flow, used in artifact paths.", default="flow"),
+                    "execute": _prop(
+                        "boolean",
+                        "false checks and previews without a browser. true runs the flow for real on "
+                        "every version.",
+                        default=False,
+                    ),
+                    "headless": _prop("boolean", "Run the browser without a window.", default=True),
+                    "video": _prop("boolean", "Record each version.", default=True),
+                    "cursor": _prop("boolean", "Paint the demo cursor in the recordings.", default=True),
+                    "timeout_ms": _prop(
+                        "integer", "Default timeout per step, in milliseconds.", default=30000, minimum=1000
+                    ),
+                    "base_url": _prop(
+                        "string",
+                        "App origin when the export cannot tell it (a custom domain), e.g. "
+                        "https://app.example.org. The version path is added per version.",
+                    ),
+                },
+                required=["profile", "steps", "versions"],
+            ),
+        },
+        {
             "name": "bubble_e2e_run",
             "description": (
                 "Run an E2E suite, or named cases from it, against a Bubble branch as the "
