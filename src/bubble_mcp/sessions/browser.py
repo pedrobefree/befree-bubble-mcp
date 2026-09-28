@@ -25,10 +25,26 @@ EDITOR_VALIDATION_TIMEOUT_SEC = 10.0
 # Bubble's own login screen. Opening the editor for someone who is not logged in does not show it,
 # so on a server without a terminal nobody can sign in from there (team server, 2026-09-25).
 LOGIN_URL = "https://bubble.io/login?mode=login"
-# After signing in on LOGIN_URL, Bubble stays on that URL, so the URL cannot tell that login
-# happened. This cookie, holding the user id, can: it is empty or absent until then.
-LOGGED_IN_COOKIE = "ajs_user_id"
-_EMPTY_COOKIE_VALUES = {"", '""', "%22%22", "null", "%22null%22", "undefined"}
+LOGIN_CHECK_INTERVAL_SEC = 2.0
+# Whether the browser can open the app in the editor, asked from inside a bubble.io page so it
+# carries the browser's own cookies: /appeditor/get_versions answers 200 for an account with
+# access and 401 otherwise (measured 2026-09-28). The ajs_user_id cookie the team server used
+# does NOT answer this: Bubble's analytics keep the user id in localStorage and write the cookie
+# back on every page load, so an expired login keeps it forever, and the editor then loads the
+# app for a few seconds before sending the page to bubble.io's home.
+APP_ACCESS_SCRIPT = """async (app) => {
+  try {
+    const response = await fetch('https://bubble.io/appeditor/get_versions', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {'content-type': 'application/json', 'x-requested-with': 'XMLHttpRequest'},
+      body: JSON.stringify({appname: app}),
+    });
+    return response.status;
+  } catch (error) {
+    return 0;
+  }
+}"""
 
 
 def editor_url_for(app_id: str, app_version: str | None = None) -> str:
@@ -41,86 +57,46 @@ def editor_url_for(app_id: str, app_version: str | None = None) -> str:
     return url
 
 
-def logged_in_user(context: Any) -> str | None:
-    """The Bubble user id the browser is logged in as, or None when it is not logged in."""
+def has_app_access(page: Any, app_id: str) -> bool | None:
+    """True when the browser is logged in with access to ``app_id``, False when it is not,
+    None when the check could not run (the page is not on bubble.io yet, or the network failed)."""
 
-    for url in ("https://bubble.io", None):
-        try:
-            cookies = context.cookies(url) if url else context.cookies()
-        except Exception:
-            continue
-        for cookie in cookies:
-            if cookie.get("name") != LOGGED_IN_COOKIE:
-                continue
-            value = str(cookie.get("value") or "").strip()
-            if value not in _EMPTY_COOKIE_VALUES:
-                return value
+    try:
+        status = page.evaluate(APP_ACCESS_SCRIPT, app_id)
+    except Exception:
+        return None
+    if status == 200:
+        return True
+    if status in (401, 403):
+        return False
     return None
 
 
-def _wait_for_login(
+def _wait_for_app_access(
     context: Any,
+    page: Any,
+    app_id: str,
     *,
     deadline: float,
-    sleep: Callable[[float], None] = time.sleep,
-    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] | None = None,
+    monotonic: Callable[[], float] | None = None,
     cancelled: CancellationCheck | None = None,
 ) -> str:
-    """Wait for the login cookie; return why the wait ended."""
+    """Wait on the login page until the browser can open the app; return why the wait ended."""
 
+    sleep = sleep or time.sleep
+    monotonic = monotonic or time.monotonic
     while True:
         if cancelled is not None and cancelled():
             return "cancelled"
         if not _has_open_page(context):
             return "browser_closed"
-        if logged_in_user(context):
+        if has_app_access(page, app_id):
             return "logged_in"
         remaining = deadline - monotonic()
         if remaining <= 0:
             return "timeout"
-        sleep(min(1, remaining))
-
-
-# How long a stored login gets to prove itself in the editor. An expired login keeps its
-# ajs_user_id cookie: the editor loads the app for about a second, then sends the page away
-# (the same bounce live_node_read reports as not_logged_in).
-EDITOR_BOUNCE_WAIT_SEC = 20.0
-EDITOR_APPNAME_SCRIPT = "() => { try { return window.appquery.app().json.appname(); } catch (e) { return null; } }"
-
-
-def _editor_session_alive(
-    page: Any,
-    app_id: str,
-    *,
-    deadline: float,
-    sleep: Callable[[float], None] = time.sleep,
-    monotonic: Callable[[], float] = time.monotonic,
-) -> bool | None:
-    """True once the editor serves ``app_id``, False when it sends the page away, None if unsure."""
-
-    while True:
-        try:
-            if app_id not in str(page.url):
-                return False
-            if page.evaluate(EDITOR_APPNAME_SCRIPT) == app_id:
-                return True
-        except Exception:
-            pass
-        if monotonic() >= deadline:
-            return None
-        sleep(0.5)
-
-
-def _clear_bubble_cookies(context: Any) -> None:
-    """Drop an expired login so the login page starts clean and the cookie means a new login."""
-
-    try:
-        context.clear_cookies(domain=".bubble.io")
-        context.clear_cookies(domain="bubble.io")
-    except TypeError:  # older Playwright: no filters
-        context.clear_cookies()
-    except Exception:
-        pass
+        sleep(min(LOGIN_CHECK_INTERVAL_SEC, remaining))
 
 
 def _ensure_logged_in(
@@ -132,49 +108,45 @@ def _ensure_logged_in(
     wait_seconds: int,
     deadline: float,
     progress: ProgressCallback | None = None,
-    sleep: Callable[[float], None] = time.sleep,
-    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] | None = None,
+    monotonic: Callable[[], float] | None = None,
     cancelled: CancellationCheck | None = None,
+    reason: str = "",
 ) -> None:
-    """Leave ``page`` on the editor with a live login, going through Bubble's login page if needed.
+    """Leave ``page`` on the editor with a login that can open the app, via Bubble's login page.
 
-    The login cookie alone does not prove a login: an expired one keeps it. So a profile that
-    has it is sent to the editor first, and only counts as logged in when the editor serves the
-    app instead of sending the page away.
+    The login page is a bubble.io page, so the access check runs there first: a browser that is
+    already logged in goes straight on to the editor, and one that is not stays on the login page
+    until the check passes.
     """
 
-    if logged_in_user(context):
-        page.goto(target_url, wait_until="domcontentloaded")
-        alive = _editor_session_alive(
-            page,
-            app_id,
-            deadline=min(deadline, monotonic() + EDITOR_BOUNCE_WAIT_SEC),
-            sleep=sleep,
-            monotonic=monotonic,
-        )
-        if alive is not False:
-            if progress is not None:
-                progress("Already logged in to Bubble in this browser profile.")
-            return
-        if progress is not None:
-            progress("The Bubble login stored in this browser profile has expired; opening the login page.")
-        _clear_bubble_cookies(context)
     page.goto(LOGIN_URL, wait_until="domcontentloaded")
+    if has_app_access(page, app_id):
+        if progress is not None:
+            progress("Already logged in to Bubble with access to this app.")
+        page.goto(target_url, wait_until="domcontentloaded")
+        return
     if progress is not None:
-        progress(f"Opened {LOGIN_URL}. Log in to Bubble; the editor opens once login is detected.")
-    reason = _wait_for_login(context, deadline=deadline, sleep=sleep, monotonic=monotonic, cancelled=cancelled)
-    if reason == "logged_in":
+        progress(
+            f"{reason}Opened {LOGIN_URL}. Log in to Bubble with an account that can edit '{app_id}'; "
+            "the editor opens once the login is detected."
+        )
+    outcome = _wait_for_app_access(
+        context, page, app_id, deadline=deadline, sleep=sleep, monotonic=monotonic, cancelled=cancelled
+    )
+    if outcome == "logged_in":
         if progress is not None:
             progress("Bubble login detected.")
         page.goto(target_url, wait_until="domcontentloaded")
         return
-    if reason == "cancelled":
+    if outcome == "cancelled":
         raise SessionCaptureCancelled("Bubble session login was cancelled by the MCP client.")
-    if reason == "browser_closed":
+    if outcome == "browser_closed":
         raise RuntimeError("The login browser was closed before Bubble login was detected.")
     raise RuntimeError(
-        f"No Bubble login within {wait_seconds} seconds (the {LOGGED_IN_COOKIE} cookie stayed empty). "
-        "If a two-factor code was still pending, rerun with a larger wait_seconds (CLI: --wait-seconds)."
+        f"No Bubble login with access to '{app_id}' within {wait_seconds} seconds. Log in with an "
+        "account that can edit this app; if a two-factor code was still pending, rerun with a larger "
+        "wait_seconds (CLI: --wait-seconds)."
     )
 
 
@@ -248,6 +220,7 @@ def _poll_browser_session(
     progress: ProgressCallback | None = None,
     editor_session_ready: Callable[[str], bool] | None = None,
     cancelled: CancellationCheck | None = None,
+    editor_left: Callable[[], bool] | None = None,
 ) -> BrowserSessionPollResult:
     """Poll a Playwright context and keep the newest usable Bubble session state.
 
@@ -274,6 +247,11 @@ def _poll_browser_session(
             break
         if not _has_open_page(context):
             stop_reason = "browser_closed"
+            break
+        if editor_left is not None and editor_left():
+            # The editor sent the page away: the login is gone, and waiting out the budget for a
+            # validation that cannot come is exactly the hang this exists to end.
+            stop_reason = "editor_left"
             break
         try:
             cookie_string = _bubble_cookie_header(context)
@@ -538,15 +516,50 @@ def capture_session_with_playwright(
                 else "Browser opened. Log in to Bubble and keep the editor tab open until capture is confirmed."
             )
 
-        poll_result = _poll_browser_session(
-            context,
-            wait_seconds=max(MIN_LOGIN_WAIT_SECONDS, int(deadline - time.monotonic())),
-            last_cookie_string=last_cookie_string,
-            last_user_agent=last_user_agent,
-            progress=progress,
-            editor_session_ready=editor_session_ready,
-            cancelled=cancelled,
-        )
+        def editor_left() -> bool:
+            try:
+                return app_id not in str(page.url)
+            except Exception:
+                return False
+
+        relogged = False
+        while True:
+            poll_result = _poll_browser_session(
+                context,
+                wait_seconds=max(MIN_LOGIN_WAIT_SECONDS, int(deadline - time.monotonic())),
+                last_cookie_string=last_cookie_string,
+                last_user_agent=last_user_agent,
+                progress=progress,
+                editor_session_ready=editor_session_ready,
+                cancelled=cancelled,
+                editor_left=editor_left,
+            )
+            if poll_result.stop_reason != "editor_left":
+                break
+            if not login_first or relogged:
+                _close_quietly(context, browser)
+                raise RuntimeError(
+                    f"The Bubble editor sent the page away from app '{app_id}' (now on {page.url}): "
+                    "this browser profile is not logged in, or the account has no editor access to "
+                    "this app."
+                )
+            relogged = True
+            captured_write_headers.clear()
+            try:
+                _ensure_logged_in(
+                    context,
+                    page,
+                    target_url=target_url,
+                    app_id=app_id,
+                    wait_seconds=wait_seconds,
+                    deadline=deadline,
+                    progress=progress,
+                    cancelled=cancelled,
+                    reason="The editor sent the page away, so the Bubble login has expired. ",
+                )
+            except BaseException:
+                _close_quietly(context, browser)
+                raise
         last_cookie_string = poll_result.cookie_string
         last_user_agent = poll_result.user_agent
         validated = poll_result.validated
