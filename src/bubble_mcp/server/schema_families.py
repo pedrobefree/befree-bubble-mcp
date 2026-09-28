@@ -1440,6 +1440,16 @@ def profile_session_context_tools() -> list[ToolSchema]:
                     "string",
                     "Optional editor crawler index JSON path for this profile, used for context fallback.",
                 ),
+                "preview_username": _prop(
+                    "string",
+                    "Username of the development version's preview password page (HTTP Basic). Browser "
+                    "tools - E2E, visual capture, run as - send it when the app asks.",
+                ),
+                "preview_password": _prop(
+                    "string",
+                    "Password of the development version's preview password page. Stored in the local "
+                    "settings file; never echoed back.",
+                ),
             },
         ),
         _empty_tool("bubble_profile_list", "List local Bubble MCP profiles. This is read-only."),

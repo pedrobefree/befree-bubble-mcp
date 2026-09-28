@@ -42,7 +42,7 @@ from bubble_mcp.e2e.target import (
     playwright_available,
     resolve_target,
 )
-from bubble_mcp.execution.run_as import preview_credentials_from_export
+from bubble_mcp.execution.run_as import playwright_http_credentials
 
 CaseCallable = Callable[[E2EContext], None]
 
@@ -260,10 +260,7 @@ def _run_one_case(
             detail=traceback.format_exc(limit=6),
         )
 
-    credentials = preview_credentials_from_export(suite.profile, target.app_id)
-    http_credentials = (
-        {"username": credentials[0], "password": credentials[1]} if credentials else None
-    )
+    http_credentials = playwright_http_credentials(suite.profile, target.app_id)
     context_kwargs: dict[str, Any] = {
         "storage_state": str(session.path),
         "viewport": {"width": suite.viewport[0], "height": suite.viewport[1]},

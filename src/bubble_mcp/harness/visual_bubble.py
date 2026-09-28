@@ -7,8 +7,8 @@ from typing import Any
 from urllib.parse import quote, urlencode
 
 from bubble_mcp.core.config import load_settings, resolve_profile
+from bubble_mcp.execution.run_as import playwright_http_credentials
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
-
 
 JsonObject = dict[str, Any]
 
@@ -101,6 +101,12 @@ def capture_bubble_visual_snapshot(
         max_nodes=max_nodes,
         allow_raw_fallback=False,
         output=output,
+        # The dev version's preview password page answers 401 until these are sent.
+        http_credentials=playwright_http_credentials(
+            configured_profile.name if configured_profile else profile, resolved_app_id
+        )
+        if resolved_app_id
+        else None,
     )
     snapshot["bubble"] = {
         "profile": configured_profile.name if configured_profile else (profile or None),

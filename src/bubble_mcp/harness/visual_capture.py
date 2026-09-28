@@ -159,6 +159,7 @@ def _capture_rendered(
     wait_ms: int,
     selector_timeout_ms: int,
     max_nodes: int,
+    http_credentials: dict[str, str] | None = None,
 ) -> JsonObject:
     from playwright.sync_api import sync_playwright
 
@@ -233,7 +234,10 @@ def _capture_rendered(
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(headless=True)
         try:
-            page = browser.new_page(viewport={"width": viewport_width, "height": viewport_height})
+            page = browser.new_page(
+                viewport={"width": viewport_width, "height": viewport_height},
+                http_credentials=http_credentials,
+            )
             if source_type == "url":
                 page.goto(source, wait_until="networkidle")
             else:
@@ -277,8 +281,12 @@ def capture_visual_snapshot(
     max_nodes: int = 250,
     allow_raw_fallback: bool = True,
     output: Path | None = None,
+    http_credentials: dict[str, str] | None = None,
 ) -> JsonObject:
-    """Capture a structured visual snapshot and optionally write it to disk."""
+    """Capture a structured visual snapshot and optionally write it to disk.
+
+    ``http_credentials`` answers a preview password page (HTTP Basic) when the page asks.
+    """
 
     if not source.strip():
         raise ValueError("source is required.")
@@ -293,6 +301,7 @@ def capture_visual_snapshot(
                 wait_ms=wait_ms,
                 selector_timeout_ms=selector_timeout_ms,
                 max_nodes=max_nodes,
+                http_credentials=http_credentials,
             )
         except Exception as exc:
             if not allow_raw_fallback:

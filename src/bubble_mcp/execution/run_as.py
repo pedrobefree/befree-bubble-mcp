@@ -202,21 +202,67 @@ def _load_json(path: Path) -> Any:
         return None
 
 
+def _profile_preview_credentials(profile: str) -> tuple[str, str] | None:
+    from bubble_mcp.core.config import load_settings, resolve_profile
+
+    configured = resolve_profile(load_settings(), profile or None) if profile else None
+    user = str(getattr(configured, "preview_username", "") or "").strip()
+    secret = str(getattr(configured, "preview_password", "") or "").strip()
+    return (user, secret) if user and secret else None
+
+
+def resolve_preview_credentials(
+    profile: str,
+    app_id: str,
+    *,
+    username: str | None = None,
+    password: str | None = None,
+    include_default: bool = True,
+) -> tuple[tuple[str, str], str] | None:
+    """The preview password pair for a browser context, and where it came from.
+
+    Same order as run as, plus the seeded default at the end: a browser context only answers the
+    HTTP Basic challenge when the app issues one, so offering the default costs nothing on a
+    version without the password page and gets past it on one left at Bubble's seed. On the
+    team server E2E and visual capture had no source at all and 401'd until the agent typed the
+    pair in by hand.
+    """
+
+    found = _resolve_preview_credentials(username, password, profile, app_id)
+    if found is not None:
+        return found
+    return (DEFAULT_PREVIEW_CREDENTIALS, "default") if include_default else None
+
+
+def playwright_http_credentials(profile: str, app_id: str) -> dict[str, str] | None:
+    """``http_credentials`` for ``browser.new_context``/``new_page``, or None."""
+
+    found = resolve_preview_credentials(profile, app_id)
+    if found is None:
+        return None
+    (user, secret), _ = found
+    return {"username": user, "password": secret}
+
+
 def _resolve_preview_credentials(
     username: str | None, password: str | None, profile: str, app_id: str
 ) -> tuple[tuple[str, str], str] | None:
     """Return the pair to use and where it came from.
 
-    Order matters and is deliberate: what the caller passed beats the environment, the
-    environment beats the app's own export, and the seeded defaults are not here at all - they
-    are a last resort tried only after a real 401, so a stale export cannot silently mask a
-    changed password.
+    Order matters and is deliberate: what the caller passed beats the profile, the profile
+    beats the environment, the environment beats the app's own export, and the seeded defaults
+    are not here at all - they are a last resort tried only after a real 401, so a stale export
+    cannot silently mask a changed password.
     """
 
     explicit_user = (username or "").strip()
     explicit_secret = (password or "").strip()
     if explicit_user and explicit_secret:
         return (explicit_user, explicit_secret), "argument"
+
+    from_profile = _profile_preview_credentials(profile)
+    if from_profile:
+        return from_profile, "profile"
 
     env_user = os.environ.get(PREVIEW_USER_ENV, "").strip()
     env_secret = os.environ.get(PREVIEW_PASSWORD_ENV, "").strip()

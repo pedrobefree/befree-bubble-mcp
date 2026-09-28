@@ -993,7 +993,11 @@ PROFILE_FIELDS = (
     "consolelog_json_path",
     "context_path",
     "crawler_index_path",
+    "preview_username",
+    "preview_password",
 )
+# Stored, never echoed back.
+SECRET_PROFILE_FIELDS = frozenset({"preview_password"})
 # Arguments bubble_profile_add accepts without storing them as profile fields.
 PROFILE_ADD_ARGUMENTS = frozenset({"name", "profile", "app_id", *PROFILE_FIELDS})
 
@@ -1049,7 +1053,11 @@ def _add_or_update_profile(args: dict[str, Any]) -> dict[str, Any]:
         "app_id": new_profile.app_id,
         "created": existing is None,
         "changed": changed,
-        "stored": {key: value for key, value in asdict(new_profile).items() if value is not None},
+        "stored": {
+            key: ("[REDACTED]" if key in SECRET_PROFILE_FIELDS else value)
+            for key, value in asdict(new_profile).items()
+            if value is not None
+        },
         "settings": str(settings.config_dir / "settings.json"),
     }
 
