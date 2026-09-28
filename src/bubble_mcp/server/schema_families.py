@@ -1355,7 +1355,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
         ),
         tool_schema(
             "bubble_profile_add",
-            "Add or update a local Bubble MCP profile. This writes only local MCP settings; it does not contact or mutate Bubble. After adding a profile, run session login/import and context detect before app mutations.",
+            "Add or update a local Bubble MCP profile. This writes only local MCP settings; it does not contact or mutate Bubble. Updating an existing profile changes only the fields passed and keeps the rest; an argument the profile cannot store is an error. The response lists what changed and everything stored. After adding a profile, run session login/import and context detect before app mutations.",
             [
                 "name",
                 "app_id",
@@ -1366,6 +1366,17 @@ def profile_session_context_tools() -> list[ToolSchema]:
                 "consolelog_json_path",
             ],
             required=["name", "app_id"],
+            field_overrides={
+                "context_path": _prop(
+                    "string",
+                    "Optional compact context JSON path for this profile, used instead of the default "
+                    "contexts/<profile>/<app>-context.json.",
+                ),
+                "crawler_index_path": _prop(
+                    "string",
+                    "Optional editor crawler index JSON path for this profile, used for context fallback.",
+                ),
+            },
         ),
         _empty_tool("bubble_profile_list", "List local Bubble MCP profiles. This is read-only."),
         tool_schema(

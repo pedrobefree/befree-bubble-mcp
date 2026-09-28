@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import asdict, replace
 import re
 from typing import Any, Callable, cast
 from pathlib import Path
@@ -887,6 +888,75 @@ def session_refusal(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+PROFILE_FIELDS = (
+    "appname",
+    "editor_url",
+    "app_version",
+    "app_json_path",
+    "consolelog_json_path",
+    "context_path",
+    "crawler_index_path",
+)
+# Arguments bubble_profile_add accepts without storing them as profile fields.
+PROFILE_ADD_ARGUMENTS = frozenset({"name", "profile", "app_id", *PROFILE_FIELDS})
+
+
+def _add_or_update_profile(args: dict[str, Any]) -> dict[str, Any]:
+    """Create a profile, or change only the fields passed on an existing one.
+
+    It used to rebuild the profile from the arguments alone, so an update that named only
+    app_version reset every other field - on the team server the profile's context_path was
+    lost that way and had to be restored by hand - and fields it did not know (context_path
+    itself) were accepted and dropped. Now an update keeps what it is not told to change, and
+    an argument it cannot store is an error instead of a silent loss.
+    """
+
+    unknown = sorted(set(args) - PROFILE_ADD_ARGUMENTS)
+    if unknown:
+        raise ValueError(
+            f"bubble_profile_add does not store {', '.join(unknown)}; accepted fields are "
+            f"name, app_id, {', '.join(PROFILE_FIELDS)}."
+        )
+    profile_name = str(args.get("name") or args.get("profile") or "").strip()
+    app_id = str(args.get("app_id") or "").strip()
+    if not profile_name:
+        raise ValueError("bubble_profile_add requires name.")
+    if not app_id:
+        raise ValueError("bubble_profile_add requires app_id.")
+    settings = load_settings()
+    existing = settings.profiles.get(profile_name)
+    passed = {
+        field_name: (str(args[field_name]).strip() or None)
+        for field_name in PROFILE_FIELDS
+        if field_name in args and args[field_name] is not None
+    }
+    if existing is None:
+        new_profile = BubbleProfile(
+            name=profile_name,
+            app_id=app_id,
+            appname=passed.pop("appname", None) or app_id,
+            app_version=passed.pop("app_version", None) or "test",
+            **passed,
+        )
+        changed = ["app_id", "appname", "app_version", *passed]
+    else:
+        updates = {"app_id": app_id, **passed}
+        if existing.app_id != app_id and "appname" not in passed:
+            updates["appname"] = app_id
+        changed = [key for key, value in updates.items() if getattr(existing, key) != value]
+        new_profile = replace(existing, **updates)
+    save_settings(with_profile(settings, new_profile))
+    return {
+        "ok": True,
+        "profile": new_profile.name,
+        "app_id": new_profile.app_id,
+        "created": existing is None,
+        "changed": changed,
+        "stored": {key: value for key, value in asdict(new_profile).items() if value is not None},
+        "settings": str(settings.config_dir / "settings.json"),
+    }
+
+
 def main_write_refusal(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
     """Refuse an executed write aimed at main (test or live), before anything else runs.
 
@@ -1504,30 +1574,7 @@ def _call_tool(
             "status": status,
         }
     if name == "bubble_profile_add":
-        args = arguments or {}
-        profile_name = str(args.get("name") or args.get("profile") or "").strip()
-        app_id = str(args.get("app_id") or "").strip()
-        if not profile_name:
-            raise ValueError("bubble_profile_add requires name.")
-        if not app_id:
-            raise ValueError("bubble_profile_add requires app_id.")
-        settings = load_settings()
-        new_profile = BubbleProfile(
-            name=profile_name,
-            app_id=app_id,
-            appname=str(args.get("appname") or app_id).strip() or app_id,
-            editor_url=str(args.get("editor_url") or "").strip() or None,
-            app_version=str(args.get("app_version") or "test").strip() or None,
-            app_json_path=str(args.get("app_json_path") or "").strip() or None,
-            consolelog_json_path=str(args.get("consolelog_json_path") or "").strip() or None,
-        )
-        save_settings(with_profile(settings, new_profile))
-        return {
-            "ok": True,
-            "profile": new_profile.name,
-            "app_id": new_profile.app_id,
-            "settings": str(settings.config_dir / "settings.json"),
-        }
+        return _add_or_update_profile(arguments or {})
     if name == "bubble_profile_list":
         settings = load_settings()
         return {
