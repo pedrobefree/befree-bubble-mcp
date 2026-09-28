@@ -1,10 +1,10 @@
-"""Which Bubble app versions this MCP may write to.
+"""Which Bubble app versions are main, and the error raised when a write may not go there.
 
-Main is read-only here. Bubble names main's editable version ``test`` and the deployed one
-``live``; every other version id is a branch. Changes reach main only through a branch merge,
-which a person reviews in the editor, so no MCP write is ever sent to ``test`` or ``live``.
-There is deliberately no override: one missing or ignored version field once sent an agent's
-unreviewed change to the shared main (team server, 2026-09-25).
+Bubble names main's editable version ``test`` and the deployed one ``live``; every other version
+id is a branch. Whether main takes a write depends on the app (``execution/version_policy.py``):
+an app with branches keeps main read-only - one missing or ignored version field once sent an
+agent's unreviewed change to the shared main (team server, 2026-09-25) - while an app with only
+test and live develops on test. ``live`` is never written.
 """
 
 from __future__ import annotations
@@ -17,14 +17,17 @@ MAIN_VERSIONS = frozenset({"test", "live"})
 class MainVersionReadOnlyError(ValueError):
     """Raised before any request is sent when a write targets main."""
 
-    def __init__(self, app_version: str, *, tool: str | None = None) -> None:
+    def __init__(self, app_version: str, *, tool: str | None = None, advice: str = "") -> None:
         self.app_version = app_version
         self.tool = tool
         subject = f"{tool} would write" if tool else "This write would go"
         super().__init__(
-            f"{subject} to '{app_version}', which is main. Main is read-only for this MCP: "
-            "write to a branch (pass its version id as app_version, e.g. from bubble_branch_list) "
-            "and merge it through a reviewed branch merge."
+            f"{subject} to '{app_version}', which is main. "
+            + (
+                advice
+                or "Main is read-only for this MCP here: write to a branch (pass its version id as "
+                "app_version, e.g. from bubble_branch_list) and merge it through a reviewed branch merge."
+            )
         )
 
 

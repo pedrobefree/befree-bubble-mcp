@@ -10,7 +10,7 @@ from typing import Any, Callable
 from urllib import error, request
 
 from bubble_mcp.core.redaction import redact_sensitive
-from bubble_mcp.core.versions import editor_url_for_version, ensure_branch_version
+from bubble_mcp.core.versions import MainVersionReadOnlyError, editor_url_for_version, is_main_version
 from bubble_mcp.sessions.store import BubbleSessionData, editor_write_session_status
 
 
@@ -282,9 +282,17 @@ class BubbleEditorClient:
         calculate_derived: bool = False,
     ) -> dict[str, Any]:
         normalized = normalize_write_payload(payload, session)
-        if not dry_run:
-            # Main is read-only: nothing below this line may send a write to test or live.
-            ensure_branch_version(normalized.get("app_version"))
+        if not dry_run and is_main_version(normalized.get("app_version")):
+            # Nothing below this line may send a write to main unless the app has no branch
+            # (then test is where development happens); live never. See version_policy.
+            from bubble_mcp.execution.version_policy import main_write_allowed
+
+            version = str(normalized.get("app_version") or "test")
+            allowed, advice = main_write_allowed(
+                version, session, str(normalized.get("appname") or session.app_id or "")
+            )
+            if not allowed:
+                raise MainVersionReadOnlyError(version, advice=advice)
         headers = build_editor_write_headers(session, normalized)
         safe_request = {
             "url": EDITOR_WRITE_URL,
