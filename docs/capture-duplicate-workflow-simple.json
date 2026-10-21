@@ -1,0 +1,91 @@
+{
+  "seq": 6,
+  "url": "https://bubble.io/appeditor/write",
+  "method": "POST",
+  "raw_body": "{\"v\":1,\"appname\":\"mcp-test-app\",\"app_version\":\"test\",\"changes\":[{\"body\":\"%p3.bVVl3.%wf.bTGNC\",\"path_array\":[\"_index\",\"id_to_path\",\"bTGMw\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"body\":\"%p3.bVVl3.%wf.bTGNC.actions.0\",\"path_array\":[\"_index\",\"id_to_path\",\"bTGMy\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"body\":{\"%p\":{\"%ei\":\"b3eD6\"},\"%x\":\"ButtonClicked\",\"id\":\"bTGMw\",\"actions\":{\"0\":{\"%p\":{\"%ei\":\"b2MHp\"},\"%x\":\"ShowElement\",\"id\":\"bTGMy\"}}},\"path_array\":[\"%p3\",\"bVVl3\",\"%wf\",\"bTGNC\"],\"intent\":{\"name\":\"CreateEvent\",\"id\":11,\"source_appname\":\"\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"body\":\"[\\\"b3eD6\\\",\\\"b2MHp\\\",\\\"b0pRF\\\",\\\"bTGMw\\\",\\\"bO4rF\\\"]\",\"path_array\":[\"_index\",\"issues_sub\",\"bG4Jl\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787831851761x48\"},{\"type\":\"id_counter\",\"value\":10000072}]}",
+  "parsed": {
+    "v": 1,
+    "appname": "mcp-test-app",
+    "app_version": "test",
+    "changes": [
+      {
+        "body": "%p3.bVVl3.%wf.bTGNC",
+        "path_array": [
+          "_index",
+          "id_to_path",
+          "bTGMw"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "body": "%p3.bVVl3.%wf.bTGNC.actions.0",
+        "path_array": [
+          "_index",
+          "id_to_path",
+          "bTGMy"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "body": {
+          "%p": {
+            "%ei": "b3eD6"
+          },
+          "%x": "ButtonClicked",
+          "id": "bTGMw",
+          "actions": {
+            "0": {
+              "%p": {
+                "%ei": "b2MHp"
+              },
+              "%x": "ShowElement",
+              "id": "bTGMy"
+            }
+          }
+        },
+        "path_array": [
+          "%p3",
+          "bVVl3",
+          "%wf",
+          "bTGNC"
+        ],
+        "intent": {
+          "name": "CreateEvent",
+          "id": 11,
+          "source_appname": ""
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "body": "[\"b3eD6\",\"b2MHp\",\"b0pRF\",\"bTGMw\",\"bO4rF\"]",
+        "path_array": [
+          "_index",
+          "issues_sub",
+          "bG4Jl"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787831851761x48"
+      },
+      {
+        "type": "id_counter",
+        "value": 10000072
+      }
+    ]
+  }
+}

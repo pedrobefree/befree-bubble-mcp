@@ -71,7 +71,7 @@
   is_slidable: false on every expression node. Frozen as a golden fixture
   (tests/fixtures/expressions/api-event-parameter-golden.json), and bubble_editor_write now
   flags APIEventParameter nodes missing any of the four context fields with the exact fix.
-- bubble_editor_write warns on hand-composed expression nodes in workflow actions (Orana report
+- bubble_editor_write warns on hand-composed expression nodes in workflow actions (the client report
   bug 8): expression encodings (APIEventParameter, Message chains, param ids) are not derivable
   from the .bubble export, and /appeditor/write returns HTTP 200 for any body — results now
   carry `warnings` steering agents to captured editor traffic (bubble_tool_wizard_start),

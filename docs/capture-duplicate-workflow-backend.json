@@ -1,0 +1,99 @@
+{
+  "seq": 9,
+  "url": "https://bubble.io/appeditor/write",
+  "method": "POST",
+  "raw_body": "{\"v\":1,\"appname\":\"mcp-test-app\",\"app_version\":\"test\",\"changes\":[{\"body\":\"api.bTGNo\",\"path_array\":[\"_index\",\"id_to_path\",\"bTGNi\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787832360734x48\"},{\"body\":\"api.bTGNo.actions.0\",\"path_array\":[\"_index\",\"id_to_path\",\"bTGNn\"],\"intent\":{\"name\":\"Update index\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787832360734x48\"},{\"body\":{\"%x\":\"APIEvent\",\"%p\":{\"expose\":false,\"wf_name\":\"teste_copy\"},\"id\":\"bTGNi\",\"actions\":{\"0\":{\"%x\":\"NewThing\",\"%p\":{\"%tt\":\"custom.test\",\"%i2\":{\"0\":{\"%k\":\"text_text\",\"%ak\":\"=\",\"%v\":{\"%x\":\"TextExpression\",\"%e\":{\"0\":{\"%x\":\"ArbitraryText\",\"%p\":{\"arbitrary_text\":{\"%x\":\"TextExpression\",\"%e\":{\"0\":\"test data\"}}}},\"1\":\"\"}}}}},\"id\":\"bTGNn\"}}},\"path_array\":[\"api\",\"bTGNo\"],\"intent\":{\"name\":\"CreateEvent\",\"id\":9,\"source_appname\":\"\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787832360734x48\"},{\"type\":\"id_counter\",\"value\":10000114}]}",
+  "parsed": {
+    "v": 1,
+    "appname": "mcp-test-app",
+    "app_version": "test",
+    "changes": [
+      {
+        "body": "api.bTGNo",
+        "path_array": [
+          "_index",
+          "id_to_path",
+          "bTGNi"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787832360734x48"
+      },
+      {
+        "body": "api.bTGNo.actions.0",
+        "path_array": [
+          "_index",
+          "id_to_path",
+          "bTGNn"
+        ],
+        "intent": {
+          "name": "Update index"
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787832360734x48"
+      },
+      {
+        "body": {
+          "%x": "APIEvent",
+          "%p": {
+            "expose": false,
+            "wf_name": "teste_copy"
+          },
+          "id": "bTGNi",
+          "actions": {
+            "0": {
+              "%x": "NewThing",
+              "%p": {
+                "%tt": "custom.test",
+                "%i2": {
+                  "0": {
+                    "%k": "text_text",
+                    "%ak": "=",
+                    "%v": {
+                      "%x": "TextExpression",
+                      "%e": {
+                        "0": {
+                          "%x": "ArbitraryText",
+                          "%p": {
+                            "arbitrary_text": {
+                              "%x": "TextExpression",
+                              "%e": {
+                                "0": "test data"
+                              }
+                            }
+                          }
+                        },
+                        "1": ""
+                      }
+                    }
+                  }
+                }
+              },
+              "id": "bTGNn"
+            }
+          }
+        },
+        "path_array": [
+          "api",
+          "bTGNo"
+        ],
+        "intent": {
+          "name": "CreateEvent",
+          "id": 9,
+          "source_appname": ""
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787832360734x48"
+      },
+      {
+        "type": "id_counter",
+        "value": 10000114
+      }
+    ]
+  }
+}

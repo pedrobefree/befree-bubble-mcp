@@ -695,3 +695,76 @@ def test_node_edit_refuses_to_edit_a_scalar_as_if_it_were_a_node() -> None:
 
     assert result["ok"] is False
     assert result["error"] == "unexpected_node_shape"
+
+
+def _search_action() -> dict[str, Any]:
+    """A Search whose constraints are a map - the shape `patch` could never shorten."""
+
+    return {
+        "id": "act-1",
+        "%x": "Search",
+        "%p": {
+            "%t5": "custom.thing",
+            "%co": {
+                "0": {"%k": "status", "%v": {"%x": "TextExpression", "%e": {"0": "open"}}},
+                "1": {"%k": "owner", "%v": {"%x": "TextExpression", "%e": {"0": "me"}}},
+            },
+        },
+    }
+
+
+def test_remove_drops_one_constraint_and_verifies_the_result() -> None:
+    reader = _Reader(_search_action())
+
+    result = edit_live_node(
+        profile="mcp-test",
+        pointer=["api", "wf-1", "actions", "0"],
+        op="remove",
+        leaf_pointer=["%p", "%co"],
+        keys=["1"],
+        execute=True,
+        reader=reader,
+        writer=_writer_that_applies(reader),
+    )
+
+    assert result["verified"] is True
+    assert result["after"]["%p"]["%co"] == {
+        "0": {"%k": "status", "%v": {"%x": "TextExpression", "%e": {"0": "open"}}}
+    }
+
+
+def test_remove_previews_without_writing() -> None:
+    reader = _Reader(_search_action())
+
+    result = edit_live_node(
+        profile="mcp-test",
+        pointer=["api", "wf-1", "actions", "0"],
+        op="remove",
+        leaf_pointer=["%p", "%co"],
+        keys=["1"],
+        execute=False,
+        reader=reader,
+        writer=_writer_that_applies(reader),
+    )
+
+    assert result["ok"] is True
+    assert "1" not in result["intended"]["%p"]["%co"]
+    assert "1" in reader.node["%p"]["%co"]
+
+
+def test_remove_without_keys_is_refused_before_anything_is_read() -> None:
+    reader = _Reader(_search_action())
+
+    result = edit_live_node(
+        profile="mcp-test",
+        pointer=["api", "wf-1", "actions", "0"],
+        op="remove",
+        leaf_pointer=["%p", "%co"],
+        execute=True,
+        reader=reader,
+        writer=_writer_that_applies(reader),
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "invalid_edit"
+    assert reader.calls == 0

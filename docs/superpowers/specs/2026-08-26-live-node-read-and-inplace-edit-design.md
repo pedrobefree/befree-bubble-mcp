@@ -17,7 +17,7 @@ Editing an action inside an existing workflow is unsupported today. Every action
 composes the node from scratch out of the `.bubble` export, and the export is a decoded
 projection of what the editor actually stores: node keys, param ids, and Message tokens are
 all translated on the way out, and `src/bubble_mcp/vendor/bubble_modules.py` only splits the export, so
-there is no local map to invert. The Orana report measured the consequence — four composed
+there is no local map to invert. The the client report measured the consequence — four composed
 `ChangeThing` actions, all accepted with HTTP 200, all rendered `[missing: null]` in the
 editor. `/appeditor/write` performs no semantic validation, so a 200 is not evidence of
 anything.
@@ -442,7 +442,7 @@ baseline on the same machine, not an absolute pass count.
 
 ## Manual Validation
 
-Against profile `mcp-test` (`mcp-test-app`) only — never `orana` (`~/.bubble-mcp`) and never
+Against profile `mcp-test` (`mcp-test-app`) only — never the client profile (`~/.bubble-mcp`) and never
 `auto-on`:
 
 1. `bubble_live_node_read` on a workflow that already exists and works; keep the raw node.

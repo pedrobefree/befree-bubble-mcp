@@ -683,9 +683,27 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "op": _prop(
         "string",
-        "Which in-place edit to run: 'patch' replaces one leaf inside a node, 'reorder' "
-        "renumbers an actions map.",
-        enum=["patch", "reorder"],
+        "Which in-place edit to run: 'patch' replaces or adds values inside a node, 'reorder' "
+        "renumbers an actions map, 'remove' drops named keys - the only way to shorten a map "
+        "such as a search's %co constraints, which patch can only replace.",
+        enum=["patch", "reorder", "remove"],
+    ),
+    "keys": _prop(
+        "array",
+        "Key names to drop from the dict at leaf_pointer, for op='remove'. Every key must "
+        "already exist; the node's own %x/id/type are refused.",
+        items={"type": "string"},
+    ),
+    "new_slot": _prop(
+        "string",
+        "Key the copy is created under, beside the source. Minted when omitted. This is the "
+        "slot in the parent map, which is NOT the node's id - the editor keeps the two apart.",
+    ),
+    "wf_name": _prop(
+        "string",
+        "Name for the duplicated backend workflow, written into the body as %p.wf_name. The "
+        "editor appends '_copy' when a human duplicates; a page workflow has no name, so leave "
+        "this unset there.",
     ),
     "read_headless": _prop(
         "boolean",
@@ -957,8 +975,28 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
     ),
     "savepoint_message": _prop(
         "string",
-        "Bubble savepoint message recorded when starting the merge.",
-        examples=["sync:Started merging changes from staging"],
+        "Message recorded with the Bubble savepoint. This is the label the restore history is "
+        "read by, so it must say what was about to change.",
+        examples=["sync:Started merging changes from staging", "before adding the login workflow"],
+    ),
+    "source": _prop(
+        "string",
+        "Where the list of changed paths comes from: 'overlay' uses what the MCP itself wrote "
+        "(precise, free, blind to hand edits made directly in the editor); 'full_scan' walks the "
+        "app roots in both versions (sees everything, pulls both trees).",
+        enum=["overlay", "full_scan"],
+        default="overlay",
+    ),
+    "since": _prop(
+        "string",
+        "ISO-8601 UTC instant. Only changes recorded at or after it are considered.",
+        examples=["2026-08-27T00:00:00+00:00"],
+    ),
+    "timestamp": _prop(
+        "integer",
+        "Epoch-ms instant to restore the app version to, as returned by bubble_savepoint_list "
+        "(and by the path API at [\"last_change_date\"]).",
+        examples=[1787834752581],
     ),
     "merge_app_version": _prop(
         "string",
@@ -1710,11 +1748,37 @@ def planning_execution_tools() -> list[ToolSchema]:
                 "leaf_pointer",
                 "patch",
                 "order",
+                "keys",
                 "app_id",
                 "app_version",
                 "execute",
             ],
             required=["profile", "pointer", "op"],
+        ),
+        tool_schema(
+            "bubble_clone_workflow",
+            "Duplicate a whole workflow the way the Bubble editor does it: read the source node raw, "
+            "remint its own ids (the event and every action), apply that mapping recursively over the "
+            "body - expressions included - and write the copy into a sibling slot, then read it back "
+            "and report divergences. Use this instead of recomposing a workflow with create_workflow "
+            "plus add_action, which cannot reproduce expression encodings. References to objects "
+            "outside the node (element refs, the target custom event and its parameter ids, the "
+            "workflow's own parameter definition ids) are carried over untouched, so the copy shares "
+            "them with its source. pointer addresses the workflow root: [\"api\",\"<wf_id>\"] for a "
+            "backend workflow, [\"%p3\",\"<page>\",\"%wf\",\"<wf_id>\"] for a page one. "
+            "execute=false previews; execute=true mutates and verifies. verified=true proves the "
+            "written bytes were read back unchanged, not that the editor renders the copy.",
+            [
+                "profile",
+                "pointer",
+                "new_slot",
+                "wf_name",
+                "id_counter",
+                "app_id",
+                "app_version",
+                "execute",
+            ],
+            required=["profile", "pointer"],
         ),
         tool_schema(
             "bubble_plugin_install",
@@ -1950,6 +2014,47 @@ def html_import_tools() -> list[ToolSchema]:
 
 def branch_changelog_tools() -> list[ToolSchema]:
     return [
+        tool_schema(
+            "bubble_deploy_preview",
+            "Show what deploying would change: the diff between the deployed 'live' version and "
+            "'test'. Read-only - it never deploys. There is no stored copy of live; both versions "
+            "are read on demand through the editor's path API, which returns nodes in the same "
+            "encoded key space bubble_live_node_read uses. source='overlay' (default) compares "
+            "only the paths this MCP wrote, which is fast and free but blind to edits made by "
+            "hand in the editor; source='full_scan' walks the app roots in both versions and sees "
+            "everything, at the cost of pulling both trees. Ask the user which they want when the "
+            "difference matters.",
+            ["profile", "source", "since", "app_id", "app_version"],
+            required=["profile"],
+        ),
+        tool_schema(
+            "bubble_savepoint_create",
+            "Create a Bubble savepoint on the selected app version through the editor's "
+            "commit_test_version endpoint, so the work that follows has a point to return to. This "
+            "is NOT a branch: it is a labelled instant in the restore history, and it costs one "
+            "HTTP call. The MCP already takes one automatically before the first executed write of "
+            "a session; call this when you want an extra, explicitly labelled one. execute=false "
+            "previews.",
+            ["profile", "savepoint_message", "app_id", "app_version", "session_id", "execute"],
+            required=["profile", "savepoint_message"],
+        ),
+        tool_schema(
+            "bubble_savepoint_list",
+            "List the savepoints the selected app version can be restored to, with the epoch-ms "
+            "timestamp each one is addressed by. Read-only.",
+            ["profile", "app_id", "app_version"],
+            required=["profile"],
+        ),
+        tool_schema(
+            "bubble_savepoint_restore",
+            "Revert the app version to a savepoint instant through the editor's restore_to "
+            "endpoint. WARNING: this is whole-version time travel, not an undo of one edit - every "
+            "change made after that instant is discarded, including work you meant to keep. To "
+            "undo a single edit, rewrite the previous node body at its path instead. Requires "
+            "confirm=true on top of execute=true. Get the timestamp from bubble_savepoint_list.",
+            ["profile", "timestamp", "app_id", "app_version", "execute", "confirm"],
+            required=["profile", "timestamp"],
+        ),
         tool_schema(
             "bubble_branch_list",
             "List Bubble editor branches/versions for a profile by calling the authenticated editor get_versions endpoint.",

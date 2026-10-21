@@ -1,0 +1,49 @@
+{
+  "seq": 28,
+  "url": "https://bubble.io/appeditor/write",
+  "method": "POST",
+  "raw_body": "{\"v\":1,\"appname\":\"mcp-test-app\",\"app_version\":\"test\",\"changes\":[{\"body\":{\"0\":{\"param_id\":\"bTGOA\",\"arg_value\":{\"%x\":\"APIEventParameter\",\"%p\":{\"event_id\":\"bTGOQ\",\"param_id\":\"Parameter 1\",\"param_name\":\"Parameter 1\",\"optional\":null,\"btype_id\":\"custom.test\",\"in_url\":null},\"%n\":null,\"is_slidable\":false}}},\"path_array\":[\"api\",\"bTGOS\",\"actions\",\"0\",\"%p\",\"arguments\"],\"intent\":{\"name\":\"SetData\",\"id\":34,\"source_appname\":\"\"},\"version_control_api_version\":4,\"changelog_data\":[],\"session_id\":\"1787832360734x48\"}]}",
+  "parsed": {
+    "v": 1,
+    "appname": "mcp-test-app",
+    "app_version": "test",
+    "changes": [
+      {
+        "body": {
+          "0": {
+            "param_id": "bTGOA",
+            "arg_value": {
+              "%x": "APIEventParameter",
+              "%p": {
+                "event_id": "bTGOQ",
+                "param_id": "Parameter 1",
+                "param_name": "Parameter 1",
+                "optional": null,
+                "btype_id": "custom.test",
+                "in_url": null
+              },
+              "%n": null,
+              "is_slidable": false
+            }
+          }
+        },
+        "path_array": [
+          "api",
+          "bTGOS",
+          "actions",
+          "0",
+          "%p",
+          "arguments"
+        ],
+        "intent": {
+          "name": "SetData",
+          "id": 34,
+          "source_appname": ""
+        },
+        "version_control_api_version": 4,
+        "changelog_data": [],
+        "session_id": "1787832360734x48"
+      }
+    ]
+  }
+}

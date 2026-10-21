@@ -784,6 +784,31 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "unchanged, not that the editor renders the node - render_unverified stays true until a human "
         "checks the step in the editor."
     ),
+    "bubble_deploy_preview": (
+        "Show what a deploy would push: the diff between the deployed live version and test. "
+        "Read-only, never deploys. source='overlay' compares only what this MCP wrote; "
+        "source='full_scan' walks both trees and also sees hand edits."
+    ),
+    "bubble_savepoint_create": (
+        "Create a Bubble savepoint on the selected app version so the work that follows has a "
+        "point to return to. One HTTP call, not a branch. The MCP takes one automatically before "
+        "a session's first executed write."
+    ),
+    "bubble_savepoint_list": (
+        "List the savepoints the app version can be restored to, with the epoch-ms timestamp each "
+        "is addressed by. Read-only."
+    ),
+    "bubble_savepoint_restore": (
+        "Revert the app version to a savepoint instant. Whole-version time travel: every change "
+        "after that instant is discarded. Requires confirm=true with execute=true."
+    ),
+    "bubble_clone_workflow": (
+        "Duplicate a whole workflow the way the editor does: read the source node raw, remint the "
+        "event and action ids, apply that mapping recursively over the body including expressions, "
+        "and write the copy into a sibling slot, then re-read and report divergences. Use instead of "
+        "recomposing with create_workflow plus add_action, which cannot reproduce expression "
+        "encodings. execute=false previews."
+    ),
     "bubble_plugin_install": (
         "Preview or install one Bubble plugin in a target app using the stored editor session. Use this when transfer "
         "planning reports a missing plugin-backed element/action type such as progressbar-ProgressBar. The tool writes "
@@ -1989,6 +2014,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_framework_status",
         "bubble_list_scheduled_deploys",
         "bubble_deploy_history",
+        "bubble_savepoint_list",
+        "bubble_deploy_preview",
     }
     read_only = _is_read_only(name) or name in agent_read_only
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {
@@ -1998,6 +2025,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_branch_merge_resolve_conflicts",
         "bubble_branch_merge_finalize",
         "bubble_schedule_deploy",
+        "bubble_savepoint_restore",
     }
     return {
         "readOnlyHint": read_only,
@@ -2031,6 +2059,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_live_node_read",
             "bubble_node_edit",
             "bubble_session_check",
+            "bubble_clone_workflow",
             "bubble_visual_capture",
         "bubble_visual_capture_actual",
         "bubble_visual_audit",
@@ -2229,6 +2258,7 @@ def _is_mutating(name: str) -> bool:
         "bubble_plugin_install",
         "bubble_execute_plan",
         "bubble_node_edit",
+        "bubble_clone_workflow",
         "batch",
         "natural",
     }
