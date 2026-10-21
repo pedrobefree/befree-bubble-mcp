@@ -30,3 +30,9 @@ As regressões locais reproduziram fontes escalares em clone, caminhos Windows
 aceitos no POSIX, colisões source/since nos schemas e ferramentas novas sem guarda
 de sessão no preview. Os reparos preservam os contratos existentes. Testes isolam
 configuração/sessão/savepoint e não dependem de Playwright instalado para previews sintéticos.
+
+## Revisão final
+
+Os sete achados da revisão independente foram reparados com regressões; detalhes e
+resultados em docs/delivery-validation-local-validation.md. O pipeline local passou
+em2393ca8, e o PR47 está aberto para revisão humana. Aceitação Bubble real não executada.
