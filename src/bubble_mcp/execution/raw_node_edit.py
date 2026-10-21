@@ -40,6 +40,9 @@ def first_divergence(
             if found is not None:
                 return found
         return None
+    # JSON booleans and numbers are distinct even though Python equates True/1 and False/0.
+    if isinstance(intended, bool) != isinstance(actual, bool):
+        return ".".join(_path) or "<root>"
     if intended != actual:
         return ".".join(_path) or "<root>"
     return None

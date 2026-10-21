@@ -676,3 +676,36 @@ def test_null_leaf_write_requires_the_key_to_be_present(stored: dict[str, Any], 
         assert result["divergences"] == [
             {"path": "settings.key", "divergence": "<root>", "expected": None, "actual": "absent"}
         ]
+
+
+@pytest.mark.parametrize("boolean,number", [(True, 1), (False, 0), (True, 1.0), (False, 0.0)])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("node_write", [False, True])
+def test_boolean_number_mismatch_prevents_raw_write_confirmation(
+    monkeypatch: pytest.MonkeyPatch, boolean: bool, number: int | float, reverse: bool, node_write: bool
+) -> None:
+    from bubble_mcp.server import tools
+
+    intended, actual = (number, boolean) if reverse else (boolean, number)
+    if node_write:
+        changes = [_set_data(["settings"], {"values": [intended]})]
+        reader = FakeReader({("settings",): _ok({"values": [actual]})})
+    else:
+        changes = [_set_data(["settings", "value"], intended)]
+        reader = FakeReader({("settings",): _ok({"value": actual})})
+
+    def verify_with_reader(profile, changes, **kwargs):  # type: ignore[no-untyped-def]
+        return verify_changes(profile, changes, reader=reader, **kwargs)
+
+    monkeypatch.setattr(tools, "verify_changes", verify_with_reader)
+    result = tools._verify_raw_write(
+        {"ok": True}, profile="synthetic", changes=changes, app_id="synthetic-app", app_version="dev-1"
+    )
+
+    assert result["ok"] is False
+    assert result["error"] == "write_not_verified"
+    assert result["confirmed_app_version"] is None
+    assert result["write_verification"]["verified"] is False
+    divergence = result["write_verification"]["divergences"][0]
+    assert divergence["path"] == ("settings" if node_write else "settings.value")
+    assert divergence["divergence"] == ("values.0" if node_write else "<root>")

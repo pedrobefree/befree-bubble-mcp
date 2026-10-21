@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Read-back verification distinguishes JSON booleans from numbers, including nested values,
+  so true/1 and false/0 mismatches cannot be reported as verified writes or confirm a target version.
+
 - Reliability integration preserves the fork node/read-back foundation and upstream #42/#44
   reference contracts. Live reads, node edits and catalog writes report persisted-state
   verification separately from editor rendering. Session checks reject a known expired login;

@@ -1,5 +1,7 @@
 import copy
 
+import pytest
+
 from bubble_mcp.execution.raw_node_edit import (
     first_divergence,
     patch_expression_leaf,
@@ -105,3 +107,29 @@ def test_first_divergence_reports_a_key_the_editor_dropped() -> None:
     del written_back["%p"]["to_change"]["properties"]["btype_id"]
 
     assert first_divergence(intended, written_back) == "%p.to_change.properties.btype_id"
+
+
+@pytest.mark.parametrize("boolean,number", [(True, 1), (False, 0), (True, 1.0), (False, 0.0)])
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("shape", ["scalar", "array", "nested"])
+def test_first_divergence_distinguishes_json_boolean_and_number(
+    boolean: bool, number: int | float, reverse: bool, shape: str
+) -> None:
+    intended, actual = (number, boolean) if reverse else (boolean, number)
+    if shape == "scalar":
+        assert first_divergence(intended, actual) == "<root>"
+    elif shape == "array":
+        assert first_divergence([intended], [actual]) == "0"
+    else:
+        assert first_divergence(
+            {"node": [{"value": intended}]}, {"node": [{"value": actual}]}
+        ) == "node.0.value"
+
+
+@pytest.mark.parametrize("intended,actual", [
+    (True, True), (False, False), (1, 1), (0, 0), (1.0, 1.0), (0.0, 0.0), (1, 1.0), (1.0, 1)
+])
+def test_first_divergence_keeps_matching_booleans_and_json_numbers(
+    intended: bool | int | float, actual: bool | int | float
+) -> None:
+    assert first_divergence({"node": [intended]}, {"node": [actual]}) is None
