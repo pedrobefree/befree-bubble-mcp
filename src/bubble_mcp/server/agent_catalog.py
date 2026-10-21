@@ -524,6 +524,11 @@ DOC_ENRICHMENT_TOOL = "bubble_manual_context_for_tool_authoring"
 
 
 NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "bubble_run_as": (
+        "Impersonate an app user by Bubble unique id or email using the stored editor session. "
+        "Capture private Playwright storage state scoped to app, version and user, returning "
+        "cookie metadata without values. Select the intended development version for E2E."
+    ),
     "delete_data_type": (
         "Soft-delete a Bubble data type using Bubble's normal schema delete marker. The type remains recoverable "
         "in Bubble's internal schema. After a successful write, ask the user whether they also want permanent "
