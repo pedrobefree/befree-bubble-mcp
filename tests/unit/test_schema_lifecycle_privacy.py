@@ -144,6 +144,52 @@ def test_privacy_setters_and_delete_keep_golden_payload_paths(cli: BubbleCLI, ca
     assert _payload(capsys)["changes"][0] ["body"] is None
 
 
+def test_privacy_condition_compacts_expanded_export_expression(cli: BubbleCLI, capsys: pytest.CaptureFixture[str]) -> None:
+    # The .bubble export shows conditions expanded (type/next/name/args). Sent as-is, the editor stores an
+    # ObjectLiteral and the rule stops matching anyone, so the tool must write the compact editor form.
+    cli.discovery.data["user_types"]["account"]["privacy_role"] = {"members": {"permissions": {}}}
+    cli._invalidate_schema_reference_index("user_types")
+    expanded = {
+        "is_slidable": False, "said": "YXBw", "type": "InjectedValue",
+        "next": {
+            "is_slidable": False, "name": "org_custom_org", "type": "Message",
+            "next": {
+                "is_slidable": False, "name": "equals", "type": "Message",
+                "args": {"is_slidable": False, "type": "CurrentUser", "next": {"is_slidable": False, "name": "org_custom_org", "type": "Message"}},
+                "next": {
+                    "is_slidable": False, "name": "and_", "type": "Message",
+                    "args": {"is_slidable": False, "type": "InjectedValue", "next": {"is_slidable": False, "name": "org_custom_org", "type": "Message", "next": {"is_slidable": False, "name": "is_not_empty", "type": "Message"}}},
+                },
+            },
+        },
+    }
+    compact = {
+        "is_slidable": False, "said": "YXBw", "%x": "InjectedValue",
+        "%n": {
+            "is_slidable": False, "%nm": "org_custom_org", "%x": "Message",
+            "%n": {
+                "is_slidable": False, "%nm": "equals", "%x": "Message",
+                "%a": {"is_slidable": False, "%x": "CurrentUser", "%n": {"is_slidable": False, "%nm": "org_custom_org", "%x": "Message"}},
+                "%n": {
+                    "is_slidable": False, "%nm": "and_", "%x": "Message",
+                    "%a": {"is_slidable": False, "%x": "InjectedValue", "%n": {"is_slidable": False, "%nm": "org_custom_org", "%x": "Message", "%n": {"is_slidable": False, "%nm": "is_not_empty", "%x": "Message"}}},
+                },
+            },
+        },
+    }
+    assert cli.set_privacy_rule_condition("account", "members", json.dumps(expanded), dry_run=True)
+    assert _payload(capsys)["changes"][0]["body"] == compact
+    # Already-compact input and nested properties keep their shape (element_id becomes the editor's %ei).
+    option = {"%x": "OneOptionValue", "%p": {"option_set": "option.os", "option_value": "a"}}
+    element = {"type": "GetElement", "properties": {"element_id": "bAbC1"}, "next": {"name": "is_visible", "type": "Message"}}
+    assert cli.set_privacy_rule_condition("account", "members", option, dry_run=True)
+    assert _payload(capsys)["changes"][0]["body"] == option
+    assert cli.set_privacy_rule_condition("account", "members", element, dry_run=True)
+    assert _payload(capsys)["changes"][0]["body"] == {"%x": "GetElement", "%p": {"%ei": "bAbC1"}, "%n": {"%nm": "is_visible", "%x": "Message"}}
+    assert cli.create_privacy_rule("account", condition_json=expanded, id_counter=7, dry_run=True)
+    assert _payload(capsys)["changes"][-2]["body"]["%c"] == compact
+
+
 def test_privacy_rejects_invalid_permission_empty_change_and_missing_fresh_schema_before_builder(
     cli: BubbleCLI, monkeypatch: pytest.MonkeyPatch
 ) -> None:
