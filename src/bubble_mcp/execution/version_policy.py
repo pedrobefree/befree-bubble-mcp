@@ -113,8 +113,7 @@ def write_policy(session: BubbleSessionData | None, app_id: str, **kwargs: Any) 
             "live_writable": False,
             "advice": (
                 "This app has no branches, only test and live, so development happens on test: "
-                "writes with app_version='test' are allowed (after the session's automatic "
-                "savepoint). live is never written."
+                "writes with app_version='test' are allowed. live is never written."
             ),
         }
     shown = ", ".join(f"{key} ({listed['names'].get(key, key)})" for key in branches[:SHOWN_BRANCHES])

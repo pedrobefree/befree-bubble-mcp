@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from bubble_mcp.execution import write_verify as write_verify_module
 from bubble_mcp.execution.write_verify import verify_changes
 from bubble_mcp.server.tools import _attach_write_verification
@@ -645,3 +647,32 @@ def test_seam_remove_element_change_is_counted_and_its_absence_verified(monkeypa
 
     assert out["write_verification"]["checked"] == 1
     assert out["write_verification"]["verified"] is True
+
+
+@pytest.mark.parametrize("node_write", [False, True])
+def test_write_superseded_by_ancestor_removal_verifies_final_absence(node_write: bool) -> None:
+    workflow = ("api", "wf-1")
+    child = (*workflow, "actions", "0")
+    write = _set_data(list(child), {"id": "a1"}) if node_write else _set_data([*child, "%p", "x"], 1)
+    read_pointer = child if node_write else (*child, "%p")
+    reader = FakeReader({workflow: _not_found(workflow), read_pointer: _not_found(read_pointer)})
+    remove = {**_delete(list(workflow)), "intent": {"name": "RemoveEvent"}}
+
+    result = verify_changes("mcp-test", [write, remove], reader=reader)
+
+    assert result["verified"] is True
+    assert result["divergences"] == []
+    assert result["unverified"] == []
+
+
+@pytest.mark.parametrize("stored,present", [({}, False), ({"key": None}, True)])
+def test_null_leaf_write_requires_the_key_to_be_present(stored: dict[str, Any], present: bool) -> None:
+    reader = FakeReader({("settings",): _ok(stored)})
+
+    result = verify_changes("mcp-test", [_set_data(["settings", "key"], None)], reader=reader)
+
+    assert result["verified"] is present
+    if not present:
+        assert result["divergences"] == [
+            {"path": "settings.key", "divergence": "<root>", "expected": None, "actual": "absent"}
+        ]

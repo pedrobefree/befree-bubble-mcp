@@ -355,6 +355,17 @@ def verify_changes(
                 )
             continue
 
+        found, expected = _lookup_expected(
+            expected_tree,
+            plan["pointer"] if kind == "node" else (*plan["pointer"], plan["leaf_key"]),
+        )
+        if not found:
+            # A later change in the same payload overwrote this pointer's ancestor with a fresh
+            # node that no longer carries this key: this plan's own expectation was superseded
+            # before the payload finished applying. Whatever the final state is, it is checked by
+            # whichever later plan governs that pointer instead.
+            continue
+
         if not result.get("ok"):
             error = str(result.get("error") or "unverified")
             if error == "pointer_not_found" and kind in ("node", "leaf"):
@@ -385,22 +396,16 @@ def verify_changes(
                 )
             continue
 
-        found, expected = _lookup_expected(
-            expected_tree,
-            plan["pointer"] if kind == "node" else (*plan["pointer"], plan["leaf_key"]),
-        )
-        if not found:
-            # A later change in the same payload overwrote this pointer's ancestor with a fresh
-            # node that no longer carries this key: this plan's own expectation was superseded
-            # before the payload finished applying. Whatever the final state is, it is checked by
-            # whichever later plan governs that pointer instead.
-            continue
-
         actual_node = result.get("node")
         if kind == "node":
             actual = actual_node
         else:  # leaf
-            actual = actual_node.get(plan["leaf_key"]) if isinstance(actual_node, dict) else None
+            if not isinstance(actual_node, dict) or plan["leaf_key"] not in actual_node:
+                divergences.append(
+                    {"path": plan["path"], "divergence": "<root>", "expected": expected, "actual": "absent"}
+                )
+                continue
+            actual = actual_node[plan["leaf_key"]]
 
         divergence = first_divergence(expected, actual)
         if divergence is not None:

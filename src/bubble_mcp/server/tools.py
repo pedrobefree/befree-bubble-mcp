@@ -796,7 +796,7 @@ def _attach_write_verification(
 
 # Tools that execute a change in the Bubble editor although their names do not say so, and
 # mutating-named tools whose only effect is on local files.
-MAIN_GUARDED_EXTRA_TOOLS = frozenset({"bubble_savepoint_restore", "bubble_runtime_smoke"})
+MAIN_GUARDED_EXTRA_TOOLS = frozenset({"bubble_runtime_smoke"})
 MAIN_GUARD_LOCAL_ONLY_TOOLS = frozenset({"clear_cache"})
 
 
@@ -817,8 +817,6 @@ EDITOR_SESSION_TOOLS = frozenset(
     {
         "bubble_live_node_read",
         "bubble_node_edit",
-        "bubble_clone_workflow",
-        "bubble_duplicate_element",
         "bubble_editor_write",
         "bubble_branch_list",
         "bubble_branch_contributors",
@@ -830,9 +828,6 @@ EDITOR_SESSION_TOOLS = frozenset(
         "bubble_branch_merge_confirm",
         "bubble_branch_merge_finalize",
         "bubble_changelog_fetch",
-        "bubble_savepoint_create",
-        "bubble_savepoint_list",
-        "bubble_savepoint_restore",
         "bubble_deploy_history",
         "bubble_list_scheduled_deploys",
         "bubble_schedule_deploy",
