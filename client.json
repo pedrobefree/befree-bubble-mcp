@@ -1,0 +1,16 @@
+{
+  "client_name": "Befree Bubble MCP",
+  "redirect_uris": [
+    "http://127.0.0.1:8769/oauth/callback"
+  ],
+  "grant_types": [
+    "authorization_code",
+    "refresh_token"
+  ],
+  "response_types": [
+    "code"
+  ],
+  "token_endpoint_auth_method": "none",
+  "scope": "apps:list app:code:read",
+  "client_id": "https://raw.githubusercontent.com/pedrobefree/befree-bubble-mcp/refs/heads/test/official-mcp-client-metadata/client.json"
+}
