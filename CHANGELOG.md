@@ -10,7 +10,11 @@
   updates and passwords are redacted from returned profile status. Native catalog: 340 tools.
 - Integration regressions cover scalar clone sources, savepoint guard ordering,
   Windows E2E case-path traversal on POSIX, and deploy-preview schema fields without
-  overriding visual-capture or language-diff fields. Browser/runtime acceptance against
+  overriding visual-capture or language-diff fields. E2E refuses production targets and
+  navigation outside the selected development version; run-as state is private and scoped
+  by app/version/user. Cloning refuses occupied slots, deploy diffs distinguish JSON
+  booleans/numbers, and savepoints resolve the same version as the write.
+  Browser/runtime acceptance against
   a real Bubble app remains separate from the offline local pipeline.
 
 - Read-back verification distinguishes JSON booleans from numbers, including nested values,

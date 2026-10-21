@@ -511,3 +511,9 @@ def test_remove_expression_keys_refuses_to_empty_a_node_of_its_type() -> None:
         assert "%x" in str(error)
     else:
         raise AssertionError("removing the node's own type must be refused")
+
+
+@pytest.mark.parametrize(("left", "right"), [(True, 1), (False, 0), (1, True), (0, False)])
+def test_all_divergences_distinguishes_nested_booleans_and_numbers(left, right):  # type: ignore[no-untyped-def]
+    from bubble_mcp.execution.raw_node_edit import all_divergences
+    assert all_divergences({"nested": [left]}, {"nested": [right]}) == ["nested.0"]

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
+from urllib.parse import unquote, urlsplit, urlunsplit
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,9 +39,20 @@ class ResolvedTarget:
 
     def url(self, path: str = "") -> str:
         suffix = str(path or "").strip()
-        if not suffix:
-            return self.base_url
-        return f"{self.base_url}/{suffix.lstrip('/')}"
+        base = urlsplit(self.base_url)
+        candidate = urlsplit(suffix)
+        if "\\" in suffix or suffix.startswith("//"):
+            raise ValueError("Navigation must stay inside the selected development version.")
+        decoded = unquote(candidate.path)
+        if any(part in {".", ".."} for part in decoded.split("/")):
+            raise ValueError("Navigation cannot traverse outside the selected development version.")
+        if candidate.scheme or candidate.netloc:
+            if (candidate.scheme, candidate.netloc) != (base.scheme, base.netloc):
+                raise ValueError("Navigation must stay on the selected app origin.")
+            if candidate.path != base.path and not candidate.path.startswith(base.path + "/"):
+                raise ValueError("Navigation must stay inside the selected development version.")
+            return suffix
+        return urlunsplit((base.scheme, base.netloc, f"{base.path}/{candidate.path.lstrip('/')}" if candidate.path else base.path, candidate.query, candidate.fragment))
 
     def to_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -158,6 +171,11 @@ def resolve_target(
     else:
         resolved_branch, branch_origin = "test", "default"
 
+    if resolved_branch.lower() == "live":
+        raise ValueError("E2E cannot run on live production data; select test or a development branch.")
+    if not re.fullmatch(r"[A-Za-z0-9_-]+", resolved_branch):
+        raise ValueError("Invalid development branch identifier.")
+
     warnings: tuple[str, ...] = ()
     if suite.base_url:
         origin, base_url_origin = suite.base_url, "suite"
@@ -168,6 +186,12 @@ def resolve_target(
             f"Suite {suite.name!r} has no base_url and none could be derived for app "
             f"{app_id!r}. Add 'base_url' to the manifest."
         )
+
+    parsed_origin = urlsplit(origin)
+    if (parsed_origin.scheme not in {"http", "https"} or not parsed_origin.netloc
+            or parsed_origin.path not in {"", "/"} or parsed_origin.query or parsed_origin.fragment
+            or parsed_origin.username or parsed_origin.password):
+        raise ValueError("base_url must be an HTTP(S) app origin, without a version or page path.")
 
     return ResolvedTarget(
         profile=profile,
@@ -197,6 +221,7 @@ def check_run_as_session(
     user_id: str,
     *,
     now: datetime | None = None,
+    app_version: str = "test",
 ) -> SessionStatus:
     """Report whether the run-as storage state is present and still in date.
 
@@ -206,7 +231,7 @@ def check_run_as_session(
 
     recapture = {
         "tool": "bubble_run_as",
-        "arguments": {"profile": profile, "user_id": user_id},
+        "arguments": {"profile": profile, "app_id": app_id, "user_id": user_id, "app_version": app_version},
         "why": "Captures a fresh impersonated session and rewrites the storage state file.",
     }
     if not user_id:
@@ -222,7 +247,7 @@ def check_run_as_session(
             next_action=recapture,
         )
 
-    path = storage_state_path(profile, app_id, user_id)
+    path = storage_state_path(profile, app_id, user_id, app_version=app_version)
     if not path.exists():
         return SessionStatus(
             ok=False,
@@ -261,6 +286,12 @@ def check_run_as_session(
             next_action=recapture,
         )
 
+    expected_cookie = f"{app_id}_{app_version}_u2main"
+    if not any(isinstance(cookie, dict) and cookie.get("name") == expected_cookie and cookie.get("value") for cookie in cookies):
+        return SessionStatus(ok=False, path=path, user_id=user_id, reason="version_mismatch",
+                             message="No authentication cookie for the selected app/version. Recapture the session.",
+                             next_action=recapture)
+
     earliest = _earliest_expiry(cookies)
     moment = now or datetime.now(UTC)
     expires_at = (
@@ -282,3 +313,38 @@ def check_run_as_session(
             next_action=recapture,
         )
     return SessionStatus(ok=True, path=path, user_id=user_id, expires_at=expires_at)
+
+
+def install_navigation_guard(context: Any, target: ResolvedTarget) -> list[str]:
+    """Block top-level navigation outside the target, including popups and redirects.
+
+    Route interception catches direct navigation. Frame events close a page that followed
+    a redirect before a later test action can interact with the destination. This is a
+    browser navigation guard, not a sandbox for arbitrary Python case modules.
+    """
+    blocked: list[str] = []
+
+    def allowed(url: str) -> bool:
+        try:
+            target.url(url)
+            return True
+        except ValueError:
+            blocked.append("Navigation left the selected development version.")
+            return False
+
+    def route_request(route: Any) -> None:
+        request = route.request
+        if request.is_navigation_request() and request.frame.parent_frame is None and not allowed(request.url):
+            route.abort()
+        else:
+            route.continue_()
+
+    def watch_page(page: Any) -> None:
+        def navigated(frame: Any) -> None:
+            if frame == page.main_frame and frame.url != "about:blank" and not allowed(frame.url):
+                page.close()
+        page.on("framenavigated", navigated)
+
+    context.route("**/*", route_request)
+    context.on("page", watch_page)
+    return blocked

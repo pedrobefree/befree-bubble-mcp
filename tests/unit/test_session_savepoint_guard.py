@@ -214,3 +214,18 @@ def test_expired_session_precedes_savepoint_side_effects(monkeypatch) -> None:  
 
     assert result["error"] == "session_expired"
     assert calls == []
+
+
+def test_savepoint_resolves_the_same_session_version_as_the_write(monkeypatch):  # type: ignore[no-untyped-def]
+    from types import SimpleNamespace
+    from bubble_mcp.server import tools
+    calls = []
+    _record_calls(monkeypatch, calls)
+    monkeypatch.setattr(tools, "load_session", lambda profile: SimpleNamespace(app_id="demo", app_version="branch123"))
+    created = []
+    monkeypatch.setattr(tools, "create_savepoint", lambda **kwargs: created.append(kwargs) or {"ok": True})
+    args = {"profile": "p", "execute": True}
+    savepoint_guard_report("bubble_duplicate_element", args)
+    assert calls[0]["app_version"] == tools._resolved_write_version(args) == "branch123"
+    calls[0]["create"](message="regression")
+    assert created[0]["app_version"] == "branch123"

@@ -137,7 +137,7 @@ def list_e2e_suites(
             entry["error"] = str(error)
             entries.append(entry)
             continue
-        session = check_run_as_session(profile, target.app_id, item.user_id)
+        session = check_run_as_session(profile, target.app_id, item.user_id, app_version=target.branch)
         entry["target"] = target.to_payload()
         entry["session"] = session.to_payload()
         entry["ok"] = session.ok

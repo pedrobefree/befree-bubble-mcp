@@ -57,15 +57,16 @@ def _manifest(**overrides: Any) -> dict[str, Any]:
     return payload
 
 
-def _write_storage_state(config_dir: Path, *, expires: float) -> Path:
-    path = config_dir / "run-as" / f"kaimia-kaimia-app-{KAIMIA_USER}.json"
+def _write_storage_state(config_dir: Path, *, expires: float, app_version: str = "93k8b") -> Path:
+    from bubble_mcp.execution.run_as import storage_state_path
+    path = storage_state_path("kaimia", "kaimia-app", KAIMIA_USER, app_version=app_version)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {
                 "cookies": [
                     {
-                        "name": "u0",
+                        "name": f"kaimia-app_{app_version}_u2main",
                         "value": "super-secret-session-cookie",
                         "domain": "app.kaimia.org.au",
                         "path": "/",
@@ -336,7 +337,7 @@ def test_check_run_as_session_accepts_a_live_session(
     future = (datetime.now(UTC) + timedelta(days=1)).timestamp()
     _write_storage_state(tmp_path / "config", expires=future)
 
-    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER)
+    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER, app_version="93k8b")
 
     assert status.ok is True
     assert status.expires_at is not None
@@ -349,7 +350,7 @@ def test_check_run_as_session_reports_an_expired_session_with_the_tool_to_call(
     past = (datetime.now(UTC) - timedelta(hours=2)).timestamp()
     _write_storage_state(tmp_path / "config", expires=past)
 
-    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER)
+    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER, app_version="93k8b")
 
     assert status.ok is False
     assert status.reason == "expired"
@@ -362,7 +363,7 @@ def test_check_run_as_session_reports_a_missing_file(
 ) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
 
-    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER)
+    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER, app_version="93k8b")
 
     assert (status.ok, status.reason) == (False, "missing")
     assert status.next_action["arguments"]["user_id"] == KAIMIA_USER
@@ -372,11 +373,12 @@ def test_check_run_as_session_reports_an_empty_jar(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
-    path = tmp_path / "config" / "run-as" / f"kaimia-kaimia-app-{KAIMIA_USER}.json"
+    from bubble_mcp.execution.run_as import storage_state_path
+    path = storage_state_path("kaimia", "kaimia-app", KAIMIA_USER, app_version="93k8b")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps({"cookies": [], "origins": []}), encoding="utf-8")
 
-    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER)
+    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER, app_version="93k8b")
 
     assert (status.ok, status.reason) == (False, "empty")
 
@@ -385,11 +387,12 @@ def test_check_run_as_session_reports_an_unreadable_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setenv("BUBBLE_MCP_CONFIG_DIR", str(tmp_path / "config"))
-    path = tmp_path / "config" / "run-as" / f"kaimia-kaimia-app-{KAIMIA_USER}.json"
+    from bubble_mcp.execution.run_as import storage_state_path
+    path = storage_state_path("kaimia", "kaimia-app", KAIMIA_USER, app_version="93k8b")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("{ truncated", encoding="utf-8")
 
-    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER)
+    status = target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER, app_version="93k8b")
 
     assert (status.ok, status.reason) == (False, "unreadable")
 
@@ -412,7 +415,7 @@ def test_a_session_status_never_carries_a_cookie_value(
     future = (datetime.now(UTC) + timedelta(days=1)).timestamp()
     _write_storage_state(tmp_path / "config", expires=future)
 
-    payload = json.dumps(target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER).to_payload())
+    payload = json.dumps(target.check_run_as_session("kaimia", "kaimia-app", KAIMIA_USER, app_version="93k8b").to_payload())
 
     assert "super-secret-session-cookie" not in payload
 

@@ -77,7 +77,7 @@ def all_divergences(
         for index, (left, right) in enumerate(zip(intended, actual)):
             found.extend(all_divergences(left, right, (*_path, str(index))))
         return found
-    if intended != actual:
+    if isinstance(intended, bool) != isinstance(actual, bool) or intended != actual:
         return [".".join(_path) or "<root>"]
     return []
 

@@ -39,6 +39,7 @@ from bubble_mcp.e2e.target import (
     ResolvedTarget,
     SessionStatus,
     check_run_as_session,
+    install_navigation_guard,
     playwright_available,
     resolve_target,
 )
@@ -287,6 +288,7 @@ def _run_one_case(
     try:
         browser = playwright.chromium.launch(headless=headless, slow_mo=slow_mo)
         context = browser.new_context(**context_kwargs)
+        blocked_navigation = install_navigation_guard(context, target)
         if options.cursor:
             context.add_init_script(driver.CURSOR_SCRIPT)
         page = context.new_page()
@@ -302,6 +304,8 @@ def _run_one_case(
         )
         steps = ctx.steps
         case_callable(ctx)
+        if blocked_navigation:
+            raise ValueError(blocked_navigation[0])
     except AssertionError as error:
         status = "failed"
         message = str(error) or "Assertion failed."
@@ -398,7 +402,7 @@ def run_e2e_suite(
     except (E2ESuiteError, ValueError) as error:
         return {**base, "ok": False, "error": str(error), "summary": _summary([], 0), "results": []}
 
-    session = check_run_as_session(profile, target.app_id, loaded.user_id)
+    session = check_run_as_session(profile, target.app_id, loaded.user_id, app_version=target.branch)
     plans = [_case_plan(profile, spec, config_dir, loaded.cases_root) for spec in selected]
     blockers = _preflight(suite=loaded, target=target, session=session, plans=plans)
     fatal = [item for item in blockers if item.get("severity") != "warning"]

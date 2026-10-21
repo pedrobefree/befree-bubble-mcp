@@ -393,7 +393,11 @@ def _known_object_ids(
     node = index.get("node")
     if not isinstance(node, dict):
         return set(), False
-    return {str(key) for key in node}, True
+    taken = {str(key) for key in node}
+    for path in node.values():
+        parts = path if isinstance(path, list) else str(path).split(".")
+        taken.update(str(part) for part in parts)
+    return taken, True
 
 
 def _minter_avoiding(mint: Callable[[], str], taken: set[str]) -> Callable[[], str]:
@@ -455,6 +459,11 @@ def clone_live_workflow(
     taken, collision_checked = _known_object_ids(read, profile, segments, app_id, version)
     minter = _minter_avoiding(mint, taken)
     slot = new_slot or minter()
+    if slot in segments or (new_slot and slot in taken):
+        return {"ok": False, "error": "clone_destination_exists", "new_pointer": [*segments[:-1], slot]}
+    destination = read(profile, [*segments[:-1], slot], app_id=app_id, app_version=version)
+    if destination.get("ok"):
+        return {"ok": False, "error": "clone_destination_exists", "new_pointer": [*segments[:-1], slot]}
     try:
         mapping = workflow_id_mapping(source, minter)
     except (ValueError, TypeError) as error:

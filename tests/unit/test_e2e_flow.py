@@ -84,9 +84,9 @@ def _fake_run_as(config_dir: Path, calls: list[tuple[str, str]]):  # type: ignor
 
     def run_as(profile: str, user_id: str, *, email: str | None, app_id: str, app_version: str) -> dict[str, Any]:
         calls.append((email or user_id, app_version))
-        path = storage_state_path(profile, app_id, "u1")
+        path = storage_state_path(profile, app_id, "u1", app_version=app_version)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"cookies": [{"name": f"{app_version}_u2main", "value": "x"}], "origins": []}))
+        path.write_text(json.dumps({"cookies": [{"name": f"{app_id}_{app_version}_u2main", "value": "x"}], "origins": []}))
         return {"ok": True, "user_id": "u1", "storage_state_path": str(path)}
 
     return run_as
@@ -130,8 +130,8 @@ def test_execute_runs_each_version_with_its_own_session_and_compares(tmp_path: P
     assert result["ok"] is True
     assert calls == [("a@b.c", "test"), ("a@b.c", "63kqi")]
     # Each version ran with ITS session, not the one the next run_as overwrote.
-    assert result["results"]["test"]["ran_with"] == "test_u2main"
-    assert result["results"]["63kqi"]["ran_with"] == "63kqi_u2main"
+    assert result["results"]["test"]["ran_with"] == "mcp-test-app_test_u2main"
+    assert result["results"]["63kqi"]["ran_with"] == "mcp-test-app_63kqi_u2main"
     assert [run["target"].branch for run in runs] == ["test", "63kqi"]
     assert all(callable(run["case_callable"]) for run in runs)
     assert composed == [["test", "63kqi"]]

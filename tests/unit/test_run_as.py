@@ -58,19 +58,19 @@ class FakeSession:
 
     def __post_init__(self) -> None:
         if self.headers is None:
-            self.headers = {"user-agent": "chrome", "cookie": "stale-should-be-replaced"}
+            self.headers = {"user-agent": "chrome", "cookie": "stale"}
 
 
-def _session_cookies() -> list[CookieRecord]:
+def _session_cookies(version: str = "test") -> list[CookieRecord]:
     return [
         CookieRecord(
-            name=f"{APP_ID}_test_u2main",
+            name=f"{APP_ID}_{version}_u2main",
             value="a" * 69,
             domain=f"{APP_ID}.bubbleapps.io",
             expires=1788638317.0,
         ),
         CookieRecord(
-            name=f"{APP_ID}_test_u2main.sig",
+            name=f"{APP_ID}_{version}_u2main.sig",
             value="b" * 27,
             domain=f"{APP_ID}.bubbleapps.io",
         ),
@@ -506,7 +506,7 @@ def test_an_email_with_no_data_api_token_is_looked_up_in_the_editor(
     monkeypatch.delenv("BUBBLE_DATA_API_TOKEN", raising=False)
     transport = FakeTransport(
         replies=[HttpReply(status=302, location=REDIRECT), HttpReply(status=200)],
-        jar=_session_cookies(),
+        jar=_session_cookies("93k8b"),
     )
     seen: list[tuple[Any, ...]] = []
 
@@ -637,7 +637,7 @@ def test_matching_versions_are_allowed_through(
     monkeypatch.setattr(run_as_module, "_user_id_from_email", fake_lookup)
     transport = FakeTransport(
         replies=[HttpReply(status=302, location=REDIRECT), HttpReply(status=200)],
-        jar=_session_cookies(),
+        jar=_session_cookies("live"),
     )
 
     result = run_as_user(
@@ -682,3 +682,10 @@ def test_the_storage_state_is_not_world_readable(
     if os.name == "nt":
         pytest.skip("POSIX permission bits do not describe access on Windows.")
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+def test_analytics_cookie_does_not_prove_impersonation(stored_session, config_dir):  # type: ignore[no-untyped-def]
+    transport = FakeTransport(replies=[HttpReply(status=302, location=REDIRECT), HttpReply(status=200)], jar=[CookieRecord("analytics", "x", f"{APP_ID}.bubbleapps.io")])
+    result = run_as_user("mcp-test", USER_ID, transport=transport)
+    assert result["ok"] is False
+    assert result["error"] == "no_session_cookie"

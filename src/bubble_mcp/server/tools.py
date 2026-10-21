@@ -830,18 +830,19 @@ def savepoint_guard_report(name: str, args: dict[str, Any]) -> dict[str, Any] | 
         app_id = str(getattr(session, "app_id", "") or "").strip()
     if not app_id:
         return None
+    version = _resolved_write_version(args)
     try:
         return ensure_session_savepoint(
             profile=profile,
             app_id=app_id,
-            app_version=str(args.get("app_version") or "test"),
+            app_version=version,
             session_id=process_session_id(),
             message=f"before {name}",
             create=lambda *, message: create_savepoint(
                 profile=profile,
                 message=message,
                 app_id=app_id,
-                app_version=str(args.get("app_version") or "test"),
+                app_version=version,
                 execute=True,
             ),
         )

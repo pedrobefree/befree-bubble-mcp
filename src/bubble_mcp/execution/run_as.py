@@ -44,6 +44,7 @@ Explicit values, and then the environment, always take precedence over the defau
 from __future__ import annotations
 
 import base64
+import hashlib
 import http.cookiejar
 import json
 import os
@@ -279,15 +280,15 @@ def _app_domain(app_id: str) -> str:
     return f"https://{app_id}.bubbleapps.io"
 
 
-def storage_state_path(profile: str, app_id: str, user_id: str) -> Path:
+def storage_state_path(profile: str, app_id: str, user_id: str, *, app_version: str = "test") -> Path:
     """Where an impersonated session is parked.
 
     Under the MCP's config directory rather than the repository: the file holds live session
     cookies for a real app user, so it must not be somewhere a commit can pick it up.
     """
 
-    safe_user = "".join(char if char.isalnum() else "-" for char in user_id)[:64]
-    return get_config_dir() / "run-as" / f"{profile}-{app_id}-{safe_user}.json"
+    identity = json.dumps([profile, app_id, app_version, user_id], ensure_ascii=False).encode()
+    return get_config_dir() / "run-as" / f"{hashlib.sha256(identity).hexdigest()}.json"
 
 
 def build_storage_state(cookies: list[CookieRecord]) -> dict[str, Any]:
@@ -530,9 +531,9 @@ def run_as_user(
     session_cookies = [
         cookie
         for cookie in http.cookies
-        if resolved_app_id in cookie.name or resolved_app_id in cookie.domain
+        if cookie.name in {f"{resolved_app_id}_{app_version}_u2main", f"{resolved_app_id}_{app_version}_u2main.sig"}
     ]
-    if not session_cookies:
+    if not any(cookie.name == f"{resolved_app_id}_{app_version}_u2main" and cookie.value for cookie in session_cookies):
         return {
             "ok": False,
             "error": "no_session_cookie",
@@ -556,19 +557,12 @@ def run_as_user(
     }
 
     if write_storage_state:
-        target = storage_state_path(profile, resolved_app_id, resolved_user_id)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(build_storage_state(session_cookies), indent=2), encoding="utf-8"
-        )
-        # This file holds live session cookies, exactly like sessions/store.py's session file,
-        # and deserves the same 0600. Best effort: the mode is meaningless on Windows and a
-        # filesystem may refuse it, neither of which is a reason to lose the session that was
-        # just captured. Defence in depth - the config directory itself should be 0700.
-        try:
-            os.chmod(target, 0o600)
-        except OSError:
-            pass
+        target = storage_state_path(profile, resolved_app_id, resolved_user_id, app_version=app_version)
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        target.parent.chmod(0o700)
+        with os.fdopen(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w", encoding="utf-8") as handle:
+            target.chmod(0o600)
+            json.dump(build_storage_state(session_cookies), handle, indent=2)
         result["storage_state_path"] = str(target)
         result["storage_state_note"] = (
             "This file holds live session cookies for the impersonated user. Pass it to "

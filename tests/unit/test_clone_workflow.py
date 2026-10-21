@@ -301,3 +301,19 @@ def test_clone_refuses_non_node_source_without_writing(value) -> None:  # type: 
     )
     assert result["error"] == "unexpected_node_shape"
     assert writes == []
+
+
+@pytest.mark.parametrize("slot", ["SOURCE", "SIBLING"])
+def test_clone_refuses_existing_destination_without_writing(slot):  # type: ignore[no-untyped-def]
+    editor = _Editor({"api.SOURCE": _source_workflow(), "api.SIBLING": _source_workflow(), "_index.id_to_path": {"old": "api.SOURCE", "other": "api.SIBLING"}})
+    def must_not_write(*args, **kwargs):
+        raise AssertionError("existing workflows must survive clone")
+    result = clone_live_workflow(profile="p", pointer=["api", "SOURCE"], new_slot=slot, execute=True, reader=editor.read, writer=must_not_write, mint_id=_minter("fresh", "action"))
+    assert result["ok"] is False
+    assert result["error"] == "clone_destination_exists"
+
+
+def test_clone_minter_avoids_existing_structural_slots():
+    editor = _Editor({"api.SOURCE": _source_workflow(), "_index.id_to_path": {"old": "api.SOURCE", "other": "api.SIBLING"}})
+    result = clone_live_workflow(profile="p", pointer=["api", "SOURCE"], reader=editor.read, writer=editor.write, mint_id=_minter("SIBLING", "fresh-slot", "fresh-event", "fresh-action"))
+    assert result["new_pointer"] == ["api", "fresh-slot"]

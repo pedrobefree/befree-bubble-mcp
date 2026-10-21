@@ -231,3 +231,17 @@ the checkout; point it only at a repository you would run `make test` in.
 
 Session cookies never appear in a tool result, a log line or a committed artifact. Only the
 storage-state path, the reason a session was rejected and its expiry travel.
+
+## Development target and session boundaries
+
+E2E refuses `live` from the suite, profile or per-call override. `base_url` is an
+HTTP(S) origin without a page/version path. `goto` URLs must remain under the
+resolved `/version-<branch>` on that origin; traversal, another branch and live
+pages are refused. Browser navigation is guarded, and pages redirected outside
+the target are closed before subsequent test actions. Python case modules are
+trusted code, not a sandbox.
+
+Run-as storage now uses a collision-resistant app/profile/version/user identity.
+Existing unversioned files are not reused: recapture with `bubble_run_as` on the
+selected `app_version`. Session validation requires the target authentication
+cookie. Run snapshots and storage files retain private permissions.

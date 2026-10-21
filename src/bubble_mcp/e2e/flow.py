@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import html
 import json
+import os
 import shutil
 import subprocess
 from collections.abc import Callable, Iterable, Sequence
@@ -119,10 +120,7 @@ def flow_case(steps: Sequence[dict[str, Any]]) -> Callable[[E2EContext], None]:
             with ctx.step(_step_name(index, step)):
                 if action == "goto":
                     path = str(value)
-                    if path.startswith("http"):
-                        ctx.page.goto(path, wait_until="domcontentloaded")
-                    else:
-                        ctx.goto(path)
+                    ctx.goto(path)
                     ctx.page.wait_for_load_state("networkidle", timeout=timeout)
                     ctx.mark_ready()
                 elif action == "click":
@@ -191,6 +189,10 @@ def run_e2e_flow(
             headless=headless,
         )
         targets = {version: resolve_target(suite, branch=version) for version in wanted}
+        for target in targets.values():
+            for step in checked:
+                if "goto" in step:
+                    target.url(str(step["goto"]))
     except (FlowError, ValueError) as error:
         return {**base, "ok": False, "error": str(error)}
 
@@ -266,8 +268,7 @@ def _session_for(
     directory: Path,
     run_as: RunAs | None,
 ) -> SessionStatus:
-    """An impersonated session for this version, kept in the run so the next version cannot
-    overwrite it: Bubble's user session cookie is per version, the storage file is per user."""
+    """Keep a private snapshot of the app/version/user session for this run."""
 
     if run_as is None:
         from bubble_mcp.execution.run_as import run_as_user
@@ -284,8 +285,11 @@ def _session_for(
         )
     resolved_user = str(result.get("user_id") or user_id)
     kept = directory / f"storage-{safe_slug(version)}.json"
-    shutil.copyfile(str(result["storage_state_path"]), kept)
-    status = check_run_as_session(profile, app_id, resolved_user)
+    directory.chmod(0o700)
+    with os.fdopen(os.open(kept, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "wb") as destination:
+        os.chmod(kept, 0o600)
+        destination.write(Path(str(result["storage_state_path"])).read_bytes())
+    status = check_run_as_session(profile, app_id, resolved_user, app_version=version)
     return SessionStatus(ok=status.ok, path=kept, user_id=resolved_user, reason=status.reason, message=status.message)
 
 
