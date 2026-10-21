@@ -398,7 +398,7 @@ def verify_changes(
 
         actual_node = result.get("node")
         if kind == "node":
-            actual: Any = actual_node
+            actual = actual_node
         else:  # leaf
             actual = actual_node.get(plan["leaf_key"]) if isinstance(actual_node, dict) else None
 

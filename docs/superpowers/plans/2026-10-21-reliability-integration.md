@@ -27,7 +27,7 @@ Files: execution/{raw_node_edit,node_keys,live_node_read,node_edit,write_verify}
 
 Files: execution/{client,editor_page,version_policy}.py; core/versions.py; sessions/{browser,health}.py; server/{tools,schema_families,agent_catalog,instructions}.py; aria_dispatch.py; catalog_quality.py; context/detector.py and tests.
 
-- [ ] Transport selected original commits with git cherry-pick -x in dependency order: cf95377, 0e5f560, 0c46a0f, e6f4dec, 8960c9c, 9a7cb4f, 6dc3651, 40fff27, 8831a33, 6ced754, 05cd031. Omit only hunks that wire deferred capabilities absent from this branch, documenting each omission.
+- [ ] Transport selected original commits with git cherry-pick -x in dependency order: cf95377, 0e5f560, c758ae6 (package-loader dependency), 0c46a0f, e6f4dec, 8960c9c, 9a7cb4f, 6dc3651, 40fff27, 8831a33, 6ced754, 05cd031. Omit only hunks that wire deferred capabilities absent from this branch, documenting each omission.
 - [ ] Run each corresponding test module before resolving behavioral conflicts; inspect the actual exception and contract.
 - [ ] Keep catalog snapshots at the actual isolated native inventory, not fork full count. Keep all isolated-config and no-network fixtures relevant to this block.
 - [ ] Run focused session/version/profile/schema/overlay regressions; expected PASS.

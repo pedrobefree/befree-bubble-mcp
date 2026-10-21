@@ -65,6 +65,7 @@ from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.live_node_read import read_live_node
 from bubble_mcp.execution.node_edit import edit_live_node
 from bubble_mcp.sessions.health import check_session, forget as forget_session_check
+from bubble_mcp.server.agent_catalog import _is_mutating
 from bubble_mcp.execution.version_policy import forget as forget_branches, main_write_allowed, write_policy
 from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
@@ -239,7 +240,8 @@ def _payload_body_version(args: dict[str, Any]) -> str:
         payload = args.get(key)
         if not isinstance(payload, dict):
             continue
-        body = payload.get("body") if isinstance(payload.get("body"), dict) else payload
+        raw_body = payload.get("body")
+        body = raw_body if isinstance(raw_body, dict) else payload
         versions = {
             str(body.get(field) or "").strip()
             for field in ("app_version", "appVersion")
@@ -941,7 +943,7 @@ def _add_or_update_profile(args: dict[str, Any]) -> dict[str, Any]:
         )
         changed = ["app_id", "appname", "app_version", *passed]
     else:
-        updates = {"app_id": app_id, **passed}
+        updates: dict[str, Any] = {"app_id": app_id, **passed}
         if existing.app_id != app_id and "appname" not in passed:
             updates["appname"] = app_id
         changed = [key for key, value in updates.items() if getattr(existing, key) != value]

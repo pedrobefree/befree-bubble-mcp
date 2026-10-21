@@ -8,9 +8,7 @@ the writes complete.
 from __future__ import annotations
 
 import argparse
-import importlib
 import json
-import sys
 from contextlib import redirect_stderr, redirect_stdout
 from copy import deepcopy
 from io import StringIO

@@ -8,7 +8,7 @@ it to what was intended, which is what this module does on every executed edit.
 from __future__ import annotations
 
 import random
-from typing import Any, Callable, Sequence
+from typing import Any, cast, Callable, Sequence
 
 from bubble_mcp.compiler.payload import bubble_session_id
 from bubble_mcp.execution.client import BubbleEditorClient
@@ -250,7 +250,7 @@ def edit_live_node(
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
         write = BubbleEditorClient().write
 
-    write_result = write(payload, session, dry_run=not execute)
+    write_result = cast(Writer, write)(payload, session, dry_run=not execute)
 
     result: dict[str, Any] = {
         "ok": True,

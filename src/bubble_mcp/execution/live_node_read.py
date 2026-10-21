@@ -18,7 +18,7 @@ from __future__ import annotations
 import contextlib
 import json
 import time
-from typing import Any, Callable, Sequence
+from typing import Any, Iterator, Callable, Sequence
 
 from bubble_mcp.core.config import load_settings
 from bubble_mcp.execution.editor_page import (
@@ -440,7 +440,7 @@ def diagnose_stuck_gate(
 @contextlib.contextmanager
 def _open_editor_page(
     *, profile: str, app_id: str, app_version: str, headless: bool, timeout_sec: int
-):
+) -> Iterator[Any]:
     """Launch one persistent browser context for this app/profile and yield its page.
 
     This is the launch/cookie-seed/navigate/not-logged-in-check sequence every read needs,

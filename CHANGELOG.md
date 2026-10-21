@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Reliability integration preserves the fork node/read-back foundation and upstream #42/#44
+  reference contracts. Live reads, node edits and catalog writes report persisted-state
+  verification separately from editor rendering. Session checks reject a known expired login;
+  login validates app access rather than a cookie. Raw writes retain their requested version
+  and editor headers. Profiles update only supplied fields. Main is writable only for apps
+  without branches; live and unknown branch state remain blocked. The isolated native catalog
+  now contains 328 tools. E2E, savepoints, cloning, tester and autoupdate remain deferred.
+
 - Local verification is independent of personal extension packs: each test gets a temporary
   configuration, and catalog snapshots cover the 325 built-in tools. Scheduled-deploy CLI
   tests use a future timestamp and a synthetic executor. Sensitive-source auditing excludes
@@ -27,12 +35,6 @@
   with a proven page object id; reusable instances emit `%ci` with the reusable root id; root
   `issues_sub` updates use the owner object id. The plan compiler follows the same contracts and
   fails closed when compact context cannot prove an internal id.
-- Main is read-only. No executed write reaches `test` or `live`: `call_tool` refuses any
-  mutating tool whose resolved version is main with `main_is_read_only` (before a savepoint is
-  taken or a context loaded), and `BubbleEditorClient.write` refuses it again before sending, so
-  paths that skip `call_tool` (plan execution, transfers, the HTML and Figma importers) are
-  covered too. There is no override. Previews still run. Changes reach main through a branch
-  merge.
 - `bubble_editor_write` writes to the version it is asked to. The profile's version was
   injected into the arguments and then written over the payload body, so on the team server a
   write whose body said branch `93k8b` went to main. The target is now the top-level

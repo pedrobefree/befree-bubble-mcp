@@ -15,3 +15,9 @@ Decisão aprovada na conversa: usar pedrobefree/main como base canônica e integ
 ## Critérios
 
 Regressões de escritas parciais, contratos de referência, compilador, schemas, sessão e política passam. Suíte inteira, cobertura >=45.3%, lint, tipos, auditoria, smokes e Node passam. Revisão independente sem P1/P2 pendente. Documentar a distinção entre teste sintético e prova Bubble real.
+
+## Proveniência e adaptações
+
+Merge 5e70624 preserva os 32 commits originais do fundamento. Cherry-picks com -x mantêm autor e SHA de origem para cf95377, 0e5f560, c758ae6, 0c46a0f, e6f4dec, 8960c9c, 9a7cb4f, 6dc3651, 40fff27, 8831a33, 6ced754 e 05cd031. O loader por pacote c758ae6 é dependência necessária para evitar colisões com outro bubble_cli. Seu script de atualização de instalações foi removido deste candidato: distribuição será bloco posterior.
+
+Hunks de contexto que incluíam clone, savepoint, context_query, global expressions, modo core e documentação dessas capacidades foram omitidos quando ainda não existem nesta branch. Fixtures mantêm isolamento de configuração e stubs de sessão/listagem de versões, sem stub de savepoint inexistente. Snapshots refletem328 ferramentas nativas. Casos antigos do compilador agora provam key/object_id diferentes, preservando as asserções de resolução de nomes. A análise de tipos mantém o carregamento dinâmico da fronteira legada existente e verifica os160 arquivos não excluídos; nenhuma exclusão nova foi adicionada.

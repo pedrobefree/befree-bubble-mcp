@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import importlib
 import inspect
-import sys
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
@@ -335,7 +333,8 @@ def runtime_schema_gaps(tool_name: str, schema: dict[str, Any]) -> dict[str, lis
     method = getattr(bubble_cli.BubbleCLI, method_name, None)
     if method is None or tool_name in CUSTOM_RUNTIME_TOOLS:
         return {"not_required": [], "unreachable": []}
-    input_schema = schema.get("inputSchema") if isinstance(schema.get("inputSchema"), dict) else {}
+    raw_schema = schema.get("inputSchema")
+    input_schema = raw_schema if isinstance(raw_schema, dict) else {}
     required = set(input_schema.get("required") or [])
     any_of = [set(branch.get("required") or []) for branch in input_schema.get("anyOf") or [] if isinstance(branch, dict)]
     supplied = DISPATCH_SUPPLIED_PARAMETERS.get(tool_name, frozenset())

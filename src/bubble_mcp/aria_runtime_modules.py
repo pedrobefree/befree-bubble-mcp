@@ -24,6 +24,7 @@ mutation, and the top-level names are left to whoever else wants them.
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 
@@ -50,7 +51,8 @@ class FakeInquirer:
 def load_aria_runtime_modules() -> tuple[Any, Any]:
     """Return ``(bubble_cli, bubble_sdk)`` from this package, never from ``sys.path``."""
 
-    from bubble_mcp.aria_runtime import bubble_cli, bubble_sdk
+    bubble_cli = importlib.import_module("bubble_mcp.aria_runtime.bubble_cli")
+    bubble_sdk = importlib.import_module("bubble_mcp.aria_runtime.bubble_sdk")
 
     # Attached here rather than at each call site, so every caller sees the same patched module
     # instead of it depending on which one imported first.
