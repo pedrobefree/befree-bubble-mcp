@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 from copy import deepcopy
-import importlib
 import inspect
-import sys
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from typing import Any, cast
 
+from bubble_mcp.aria_runtime_modules import load_aria_runtime_modules
+from bubble_mcp.compiler.payload import CREATE_NAME_PREFIXES, VISUAL_CREATE_TYPES, normalize_element_name
 from bubble_mcp.context.detector import (
+    cached_bubble_export_version,
     default_bubble_export_path,
     default_crawler_index_path,
     detect_project_context,
@@ -32,6 +33,8 @@ from bubble_mcp.visual_defaults import (
 
 CONTROL_ARG_KEYS = {
     "profile",
+    # Consumed by the server layer (post-write verification), never by a runtime method.
+    "verify",
     "app_id",
     "appname",
     "app_version",
@@ -91,6 +94,17 @@ OPERATION_ARG_ALIASES: dict[str, dict[str, tuple[str, ...]]] = {
     "create_option_value": {"label": ("name",)},
     "set_option_value_attribute": {"attribute_key": ("name",)},
     "delete_301_redirect": {"rule_key": ("name",)},
+    "clone_page": {"source_page_name": ("source",), "new_page_name": ("name",), "new_title": ("title",)},
+    "clone_reusable": {"source_name": ("source",), "new_name": ("name",)},
+    "update_reusable_type": {"reusable_name": ("name",), "new_type": ("type",)},
+    "create_html": {"content": ("html",)},
+    "list_text_matches": {"element_ref": ("element_name",)},
+    "convert_text_parts_to_app_text": {"element_ref": ("element_name",)},
+    "convert_text_to_app_text": {"element_ref": ("element_name",)},
+    "convert_text_path_to_app_text": {"element_path": ("path",)},
+    "create_app_text": {"label": ("name",)},
+    "set_app_text_translation": {"app_text_ref": ("name",)},
+    "propagate_app_text": {"app_text_ref": ("name",)},
 }
 
 
@@ -121,7 +135,15 @@ RUNTIME_TOOL_ALIASES = {
     "regenerate_api_token": "regenerate_api_token_private_key",
 }
 
-CUSTOM_RUNTIME_TOOLS = {"list_element_ref_maps"}
+CUSTOM_RUNTIME_TOOLS = {"list_element_ref_maps", "upload_asset"}
+
+# Runtime parameters that dispatch supplies itself for these tools, so the schema need not
+# require them: batch sends a `commands` list without a file, and create_from_html turns
+# `url`/`html` into a file in the server before dispatch.
+DISPATCH_SUPPLIED_PARAMETERS: dict[str, frozenset[str]] = {
+    "batch": frozenset({"file_path"}),
+    "create_from_html": frozenset({"html_file"}),
+}
 
 MUTATING_PREFIXES = (
     "add_",
@@ -278,29 +300,70 @@ class AriaRuntimeEnvironment:
     mutation_overlay_path: str | None
 
 
-class _FakeInquirer:
-    class List:
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
+def missing_runtime_arguments(method: Any, kwargs: dict[str, Any]) -> list[str]:
+    """Public names of the runtime parameters a call left out that have no default.
 
-    class Text:
-        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
-            pass
+    A missing one used to reach Python as a TypeError ("missing 1 required positional argument:
+    'name'"), which tells the caller nothing about which tool argument to add. Each entry names
+    the parameter and, after a slash, the aliases dispatch also accepts for it.
+    """
 
-    @staticmethod
-    def prompt(_questions: Any) -> None:
-        return None
+    missing: list[str] = []
+    for name, param in inspect.signature(method).parameters.items():
+        if name == "self" or param.kind in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}:
+            continue
+        if param.default is not inspect.Parameter.empty or name in kwargs:
+            continue
+        aliases = public_aliases_for_runtime_parameter(method.__name__, name)
+        missing.append("/".join((name, *aliases)))
+    return missing
+
+
+def runtime_schema_gaps(tool_name: str, schema: dict[str, Any]) -> dict[str, list[str]]:
+    """Compare a catalog tool's published schema with the runtime method it dispatches to.
+
+    Returns ``not_required``: runtime parameters without a default that the schema lets the
+    caller omit, and ``unreachable``: the subset the schema does not declare under any name
+    dispatch reads (the tool can only work if the caller guesses the raw parameter name). Both
+    empty means the schema and the signature agree. Tools with no runtime method return empty.
+    """
+
+    bubble_cli, _ = _load_aria_runtime_modules()
+    method_name = RUNTIME_TOOL_ALIASES.get(tool_name, tool_name)
+    method = getattr(bubble_cli.BubbleCLI, method_name, None)
+    if method is None or tool_name in CUSTOM_RUNTIME_TOOLS:
+        return {"not_required": [], "unreachable": []}
+    raw_schema = schema.get("inputSchema")
+    input_schema = raw_schema if isinstance(raw_schema, dict) else {}
+    required = set(input_schema.get("required") or [])
+    any_of = [set(branch.get("required") or []) for branch in input_schema.get("anyOf") or [] if isinstance(branch, dict)]
+    supplied = DISPATCH_SUPPLIED_PARAMETERS.get(tool_name, frozenset())
+    if tool_name in CREATE_NAME_PREFIXES:
+        supplied = supplied | {"name"}
+    declared = set((input_schema.get("properties") or {}).keys())
+    not_required: list[str] = []
+    unreachable: list[str] = []
+    for name, param in inspect.signature(method).parameters.items():
+        if name in {"self", "dry_run"} or name in CONTROL_ARG_KEYS:
+            continue
+        if param.kind in {inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD}:
+            continue
+        if param.default is not inspect.Parameter.empty or name in supplied:
+            continue
+        public_names = {name, *public_aliases_for_runtime_parameter(method_name, name)}
+        # anyOf counts when every branch requires one of the parameter's names.
+        required_by_any_of = bool(any_of) and all(public_names & branch for branch in any_of)
+        if not public_names & required and not required_by_any_of:
+            not_required.append(name)
+        if not public_names & declared:
+            unreachable.append(name)
+    return {"not_required": not_required, "unreachable": unreachable}
 
 
 def _load_aria_runtime_modules() -> tuple[Any, Any]:
-    runtime_dir = Path(__file__).resolve().parent / "aria_runtime"
-    runtime_path = str(runtime_dir)
-    if runtime_path not in sys.path:
-        sys.path.insert(0, runtime_path)
-    bubble_cli = importlib.import_module("bubble_cli")
-    bubble_sdk = importlib.import_module("bubble_sdk")
-    setattr(bubble_cli, "inquirer", _FakeInquirer())
-    return bubble_cli, bubble_sdk
+    """Kept as the name three call sites and runtime_coverage already import."""
+
+    return load_aria_runtime_modules()
 
 
 def _resolve_optional_path(value: Any) -> str | None:
@@ -371,6 +434,16 @@ def _resolve_runtime_environment(
     default_export = default_bubble_export_path(profile, app_id)
     if not app_json_path and default_export.exists():
         app_json_path = str(default_export)
+    # The cached export is one version's picture of the app, and it is whichever version was
+    # downloaded last. Resolving a branch's workflow against main's export finds nothing, or the
+    # wrong thing (delete_event, team server, 2026-09-25), so a cache for another version is
+    # refreshed for this one before it is used.
+    cached_version = (
+        cached_bubble_export_version(default_export)
+        if not authoritative_refresh and app_json_path == str(default_export)
+        else None
+    )
+    export_is_other_version = cached_version is not None and cached_version != app_version
 
     explicit_consolelog_file = _resolve_optional_path(args.get("consolelog_file"))
     configured_consolelog_path = resolve_config_artifact_path(
@@ -401,7 +474,9 @@ def _resolve_runtime_environment(
         or (resolved_crawler_index_path and Path(resolved_crawler_index_path).expanduser().exists())
     )
     should_detect = not authoritative_refresh and (
-        bool(args.get("refresh_context") or args.get("force")) or not has_local_artifact
+        bool(args.get("refresh_context") or args.get("force"))
+        or not has_local_artifact
+        or export_is_other_version
     )
     if should_detect:
         try:
@@ -409,7 +484,7 @@ def _resolve_runtime_environment(
                 profile=profile,
                 app_id=app_id,
                 app_version=app_version,
-                force=bool(args.get("refresh_context") or args.get("force")),
+                force=bool(args.get("refresh_context") or args.get("force")) or export_is_other_version,
                 bubble_file=Path(explicit_bubble_file).expanduser() if explicit_bubble_file else None,
                 consolelog_file=Path(consolelog_json_path).expanduser() if consolelog_json_path else None,
             )
@@ -422,6 +497,14 @@ def _resolve_runtime_environment(
             app_json_path = str(candidate)
         elif detected is not None and detected.source.endswith("bubble") and Path(detected.context_path).exists():
             app_json_path = app_json_path
+
+    if export_is_other_version and cached_bubble_export_version(default_export) != app_version:
+        raise ValueError(
+            f"The local context for '{app_id}' is an export of version '{cached_version}', and "
+            f"downloading one of '{app_version}' failed. Refusing to resolve names on '{app_version}' "
+            f"against '{cached_version}'. Check the session, then run bubble_context_detect with "
+            f"app_version='{app_version}'."
+        )
 
     if not resolved_crawler_index_path:
         # Detection may have produced the index only now.
@@ -606,7 +689,22 @@ def _list_element_ref_maps(cli: Any, args: dict[str, Any]) -> dict[str, Any]:
 def _call_custom_runtime_tool(name: str, cli: Any, args: dict[str, Any]) -> dict[str, Any] | None:
     if name == "list_element_ref_maps":
         return _list_element_ref_maps(cli, args)
+    if name == "upload_asset":
+        return _upload_asset(cli, args)
     return None
+
+
+def _upload_asset(cli: Any, args: dict[str, Any]) -> dict[str, Any]:
+    """Upload a local file as a Bubble asset. The runtime takes bytes; the tool takes a path."""
+
+    file_path = Path(str(args.get("file") or "")).expanduser()
+    if not str(args.get("file") or "").strip() or not file_path.is_file():
+        raise ValueError(f"upload_asset needs file, a path to an existing local file (got '{args.get('file')}').")
+    filename = str(args.get("name") or "").strip() or file_path.name
+    if not (args.get("execute") is True and args.get("dry_run") is not True):
+        return {"ok": True, "executed": False, "file": str(file_path), "filename": filename, "bytes": file_path.stat().st_size}
+    url = cli.upload_asset(file_path.read_bytes(), filename)
+    return {"ok": bool(url), "executed": True, "file": str(file_path), "filename": filename, "url": url}
 
 
 def merge_write_payloads(payloads: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -649,6 +747,21 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         return None
 
     execute = args.get("execute") is True and args.get("dry_run") is not True
+    derived_element_name: str | None = None
+    if name in CREATE_NAME_PREFIXES and not str(args.get("name") or args.get("element_name") or "").strip():
+        # The runtime needs a name; the catalog lets it be omitted and names the element the
+        # way the compiler does (bt_<label>, tx_<content>, ...).
+        derived_element_name = normalize_element_name(name, args, VISUAL_CREATE_TYPES.get(name, "element"))
+        args = {**args, "name": derived_element_name}
+    if has_runtime_method and name not in CUSTOM_RUNTIME_TOOLS and not (
+        name == "batch" and isinstance(args.get("commands"), list)
+    ):
+        unbound_method = getattr(bubble_cli.BubbleCLI, method_name)
+        missing = missing_runtime_arguments(
+            unbound_method, _method_kwargs(unbound_method, args, execute=execute)
+        )
+        if missing:
+            raise ValueError(f"{name} is missing required argument(s): {', '.join(missing)}.")
     if name == "delete_data_type_permanently" and "confirm" in args and not isinstance(args.get("confirm"), bool):
         raise ValueError("delete_data_type_permanently requires confirm to be a boolean.")
     session = load_session(profile)
@@ -857,6 +970,8 @@ def dispatch_aria_runtime_tool(name: str, args: dict[str, Any]) -> dict[str, Any
         "results": [{"index": index, **item} for index, item in enumerate(captured_results, start=1)],
         "logs": logs,
     }
+    if derived_element_name:
+        response["element_name"] = derived_element_name
     if name == "sync_figma_tokens":
         response["figma_import"] = {
             "result": token_sync_result or {},

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from dataclasses import asdict, replace
 import re
 from typing import Any, Callable, cast
 from pathlib import Path
@@ -33,6 +34,7 @@ from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
 from bubble_mcp.core.config import BubbleProfile, load_settings, resolve_profile, save_settings, with_profile
 from bubble_mcp.core.redaction import redact_sensitive
+from bubble_mcp.core.versions import MainVersionReadOnlyError, is_main_version
 from bubble_mcp.execution.client import BubbleEditorClient, build_editor_write_headers
 from bubble_mcp.execution.write_lint import (
     lint_editor_write_changes,
@@ -60,9 +62,15 @@ from bubble_mcp.execution.editor_api import (
     start_bubble_branch_merge,
 )
 from bubble_mcp.execution.executor import execute_plan
+from bubble_mcp.execution.live_node_read import read_live_node
+from bubble_mcp.execution.node_edit import edit_live_node
+from bubble_mcp.sessions.health import check_session, forget as forget_session_check
+from bubble_mcp.server.agent_catalog import _is_mutating
+from bubble_mcp.execution.version_policy import forget as forget_branches, main_write_allowed, write_policy
 from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import permanent_data_type_delete_targets, validate_structure
+from bubble_mcp.execution.write_verify import verify_changes
 from bubble_mcp.extensions.store import (
     disable_extension,
     enable_extension,
@@ -225,8 +233,44 @@ def _cache_artifact_status(path: Path) -> dict[str, Any]:
     }
 
 
+def _payload_body_version(args: dict[str, Any]) -> str:
+    """The version a raw write payload names in its body (app_version or appVersion), if any."""
+
+    for key in ("payload", "write_payload"):
+        payload = args.get(key)
+        if not isinstance(payload, dict):
+            continue
+        raw_body = payload.get("body")
+        body = raw_body if isinstance(raw_body, dict) else payload
+        versions = {
+            str(body.get(field) or "").strip()
+            for field in ("app_version", "appVersion")
+            if str(body.get(field) or "").strip()
+        }
+        if len(versions) > 1:
+            raise ValueError(
+                f"The {key} body names two versions ({', '.join(sorted(versions))}) in "
+                "app_version and appVersion. Make them agree, or pass app_version at the top level."
+            )
+        if versions:
+            return versions.pop()
+    return ""
+
+
 def _arguments_with_profile_defaults(arguments: dict[str, Any] | None) -> dict[str, Any]:
     args = dict(arguments or {})
+    # A version named in a raw payload's body is what the caller asked for, so it outranks the
+    # profile's default. It used to be the other way round, and a write whose body said a branch
+    # was silently re-aimed at the profile's version, which was main.
+    explicit_version = str(args.get("app_version") or "").strip()
+    body_version = _payload_body_version(args)
+    if explicit_version and body_version and explicit_version != body_version:
+        raise ValueError(
+            f"app_version '{explicit_version}' disagrees with the version in the payload body "
+            f"('{body_version}'). Pass one version: drop it from the body, or make them match."
+        )
+    if body_version and not explicit_version:
+        args["app_version"] = body_version
     profile_name = str(args.get("profile") or "").strip()
     if not profile_name:
         return args
@@ -685,7 +729,335 @@ def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _executed_write_changes(runtime_result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect the change lists from every write that actually executed in a runtime result.
+
+    ``dispatch_aria_runtime_tool`` records one entry per write under ``results``; an executed,
+    successful write carries its normalized payload at ``result.request.payload.changes``
+    (``BubbleEditorClient.write`` builds ``request.payload`` from the exact body it POSTed - see
+    ``execution/client.py``). A dry run or a failed write contributes nothing: there is nothing
+    to verify, or nothing landed to compare against.
+    """
+
+    changes: list[dict[str, Any]] = []
+    for item in runtime_result.get("results") or []:
+        if not isinstance(item, dict) or not item.get("executed") or not item.get("ok"):
+            continue
+        write_result = item.get("result")
+        if not isinstance(write_result, dict):
+            continue
+        request = write_result.get("request")
+        payload = request.get("payload") if isinstance(request, dict) else None
+        item_changes = payload.get("changes") if isinstance(payload, dict) else None
+        if isinstance(item_changes, list):
+            changes.extend(change for change in item_changes if isinstance(change, dict))
+    return changes
+
+
+def _attach_write_verification(
+    runtime_result: dict[str, Any], *, profile: str, args: dict[str, Any]
+) -> dict[str, Any]:
+    """Read every path an executed aria-runtime write touched back and report divergences.
+
+    Only runs when the tool actually executed (never on a dry run/preview) and when there is at
+    least one successful write to verify. Opts out via ``verify=false``. A verification failure
+    (including the verifier itself raising) must never turn a successful write into a reported
+    failure: it is attached as a report under ``write_verification``, and the caller decides what
+    to do with it.
+
+    Attached under ``write_verification``, deliberately distinct from ``verification``: some
+    tools (``delete_data_type_permanently`` - see ``aria_dispatch.py``) already set their own
+    tool-specific ``verification`` key with evidence this generic pass cannot reproduce (a fresh
+    export confirming the data type is actually gone). Writing to that same key would silently
+    clobber that evidence with this generic re-read report every time such a tool executes.
+    """
+
+    if not runtime_result.get("executed") or args.get("verify") is False:
+        return runtime_result
+    changes = _executed_write_changes(runtime_result)
+    if not changes or not profile:
+        return runtime_result
+    try:
+        verification = verify_changes(
+            profile,
+            changes,
+            app_id=str(runtime_result.get("app_id") or "") or None,
+            app_version=str(runtime_result.get("app_version") or "test"),
+        )
+    except Exception as exc:  # noqa: BLE001 - verification must never turn a success into a raise
+        verification = {
+            "ok": False,
+            "error": "verification_failed",
+            "message": f"{type(exc).__name__}: {exc}",
+        }
+    runtime_result["write_verification"] = verification
+    return runtime_result
+
+
+# Tools that execute a change in the Bubble editor although their names do not say so, and
+# mutating-named tools whose only effect is on local files.
+MAIN_GUARDED_EXTRA_TOOLS = frozenset({"bubble_runtime_smoke"})
+MAIN_GUARD_LOCAL_ONLY_TOOLS = frozenset({"clear_cache"})
+
+
+def _resolved_write_version(args: dict[str, Any]) -> str:
+    """The version an executed call will write to, resolved the way the write paths resolve it."""
+
+    version = str(args.get("app_version") or "").strip()
+    if version:
+        return version
+    profile = str(args.get("profile") or "").strip()
+    session = load_session(profile) if profile else None
+    return str(getattr(session, "app_version", "") or "").strip() or "test"
+
+
+# Tools that call the Bubble editor with the stored session even when they only read or preview.
+# Executed writes need it too, and are gated through _is_mutating below.
+EDITOR_SESSION_TOOLS = frozenset(
+    {
+        "bubble_live_node_read",
+        "bubble_node_edit",
+        "bubble_editor_write",
+        "bubble_branch_list",
+        "bubble_branch_contributors",
+        "bubble_branch_create",
+        "bubble_branch_delete",
+        "bubble_branch_merge_start",
+        "bubble_branch_merge_conflicts_describe",
+        "bubble_branch_merge_resolve_conflicts",
+        "bubble_branch_merge_confirm",
+        "bubble_branch_merge_finalize",
+        "bubble_changelog_fetch",
+        "bubble_deploy_history",
+        "bubble_list_scheduled_deploys",
+        "bubble_schedule_deploy",
+        "bubble_cancel_scheduled_deploy",
+        "bubble_logs_fetch",
+        "bubble_workflow_runs_get",
+        "bubble_plan_usage_get",
+        "bubble_storage_usage_get",
+        "bubble_workload_usage_breakdown",
+        "bubble_workload_usage_by_date",
+        "bubble_time_series_read",
+        "bubble_plugin_install",
+        "bubble_profile_cache_refresh",
+    }
+)
+SESSION_CHECK_TOOL = "bubble_session_check"
+
+
+def session_refusal(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    """Refuse a call that needs the editor when the stored session is known to be logged out.
+
+    An agent on an expired session otherwise spends call after call (each live read launching a
+    browser first) before concluding it was logged out - on a metered API with a weaker model,
+    a loop of paid calls that could never have worked. The check is one HTTP request, cached
+    for a few minutes while the session is good. Only a definite "logged out" refuses: no
+    stored session is left to the tool's own error, and a check that could not run lets the
+    call through.
+    """
+
+    needs_session = name in EDITOR_SESSION_TOOLS or (
+        bool(args.get("execute"))
+        and args.get("dry_run") is not True
+        and name not in MAIN_GUARD_LOCAL_ONLY_TOOLS
+        and (_is_mutating(name) or name in MAIN_GUARDED_EXTRA_TOOLS)
+    )
+    if not needs_session:
+        return None
+    profile = str(args.get("profile") or "").strip()
+    if not profile or load_session(profile) is None:
+        return None
+    check = check_session(profile)
+    if check.get("logged_in") is not False:
+        return None
+    return {
+        "ok": False,
+        "tool_name": name,
+        "executed": False,
+        "error": "session_expired",
+        "profile": profile,
+        "reason": check.get("reason"),
+        "message": (
+            f"The Bubble session stored for profile '{profile}' is logged out "
+            f"({check.get('message') or check.get('reason')}). Nothing was sent."
+        ),
+        "next_action": check.get("next_action"),
+    }
+
+
+PROFILE_FIELDS = (
+    "appname",
+    "editor_url",
+    "app_version",
+    "app_json_path",
+    "consolelog_json_path",
+    "context_path",
+    "crawler_index_path",
+)
+# Arguments bubble_profile_add accepts without storing them as profile fields.
+PROFILE_ADD_ARGUMENTS = frozenset({"name", "profile", "app_id", *PROFILE_FIELDS})
+
+
+def _add_or_update_profile(args: dict[str, Any]) -> dict[str, Any]:
+    """Create a profile, or change only the fields passed on an existing one.
+
+    It used to rebuild the profile from the arguments alone, so an update that named only
+    app_version reset every other field - on the team server the profile's context_path was
+    lost that way and had to be restored by hand - and fields it did not know (context_path
+    itself) were accepted and dropped. Now an update keeps what it is not told to change, and
+    an argument it cannot store is an error instead of a silent loss.
+    """
+
+    unknown = sorted(set(args) - PROFILE_ADD_ARGUMENTS)
+    if unknown:
+        raise ValueError(
+            f"bubble_profile_add does not store {', '.join(unknown)}; accepted fields are "
+            f"name, app_id, {', '.join(PROFILE_FIELDS)}."
+        )
+    profile_name = str(args.get("name") or args.get("profile") or "").strip()
+    app_id = str(args.get("app_id") or "").strip()
+    if not profile_name:
+        raise ValueError("bubble_profile_add requires name.")
+    if not app_id:
+        raise ValueError("bubble_profile_add requires app_id.")
+    settings = load_settings()
+    existing = settings.profiles.get(profile_name)
+    passed = {
+        field_name: (str(args[field_name]).strip() or None)
+        for field_name in PROFILE_FIELDS
+        if field_name in args and args[field_name] is not None
+    }
+    if existing is None:
+        new_profile = BubbleProfile(
+            name=profile_name,
+            app_id=app_id,
+            appname=passed.pop("appname", None) or app_id,
+            app_version=passed.pop("app_version", None) or "test",
+            **passed,
+        )
+        changed = ["app_id", "appname", "app_version", *passed]
+    else:
+        updates: dict[str, Any] = {"app_id": app_id, **passed}
+        if existing.app_id != app_id and "appname" not in passed:
+            updates["appname"] = app_id
+        changed = [key for key, value in updates.items() if getattr(existing, key) != value]
+        new_profile = replace(existing, **updates)
+    save_settings(with_profile(settings, new_profile))
+    return {
+        "ok": True,
+        "profile": new_profile.name,
+        "app_id": new_profile.app_id,
+        "created": existing is None,
+        "changed": changed,
+        "stored": {key: value for key, value in asdict(new_profile).items() if value is not None},
+        "settings": str(settings.config_dir / "settings.json"),
+    }
+
+
+def main_write_refusal(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    """Refuse an executed write aimed at main, before anything else runs, unless the app has
+    no branch (``execution/version_policy``): then test is where development happens. live is
+    always refused.
+
+    Previews still run, so an agent can see what it would send. ``BubbleEditorClient.write``
+    applies the same rule; this check answers earlier and cleanly, before a savepoint is taken
+    or a context is loaded.
+    """
+
+    if not args.get("execute") or args.get("dry_run") is True:
+        return None
+    if name in MAIN_GUARD_LOCAL_ONLY_TOOLS:
+        return None
+    if not _is_mutating(name) and name not in MAIN_GUARDED_EXTRA_TOOLS:
+        return None
+    version = _resolved_write_version(args)
+    if not is_main_version(version):
+        return None
+    profile = str(args.get("profile") or "").strip()
+    session = load_session(profile) if profile else None
+    app_id = str(args.get("app_id") or args.get("appname") or getattr(session, "app_id", "") or "").strip()
+    allowed, advice = main_write_allowed(version, session, app_id)
+    if allowed:
+        return None
+    return {
+        "ok": False,
+        "tool_name": name,
+        "executed": False,
+        "error": "main_is_read_only",
+        "app_version": version,
+        "message": str(MainVersionReadOnlyError(version, tool=name, advice=advice)),
+        "next_action": {
+            "tool": "bubble_branch_create",
+            "arguments": {"profile": profile, "name": "<dev branch name>", "from_app_version": "test"},
+            "why": "Work goes to a branch in an app that has branches; pass the new branch id as app_version.",
+        }
+        if str(version).lower() != "live"
+        else None,
+    }
+
+
+def _verify_raw_write(
+    write_result: dict[str, Any],
+    *,
+    profile: str,
+    changes: list[dict[str, Any]],
+    app_id: str,
+    app_version: str,
+) -> dict[str, Any]:
+    """Read a raw write back from the version it targeted, and fail loudly if it did not land.
+
+    Bubble answers 200 to any write body and does not say which version it applied it to. The
+    live read opens the editor on ``app_version`` and checks the version the editor reports
+    (``live_node_read`` refuses a mismatch), so a verified read-back is the confirmation that the
+    change is on that version. A divergence turns the result into ``ok: false`` with
+    ``write_not_verified``: the write was sent, but what is on the target version is not what was
+    asked for, and the agent must look before building on it. A read that could not run leaves
+    ``ok`` alone and reports the change as unverified.
+    """
+
+    try:
+        verification = verify_changes(profile, changes, app_id=app_id or None, app_version=app_version)
+    except Exception as exc:  # noqa: BLE001 - a verifier crash is reported, not raised
+        verification = {
+            "ok": False,
+            "error": "verification_failed",
+            "message": f"{type(exc).__name__}: {exc}",
+        }
+    result = {**write_result, "write_verification": verification}
+    if verification.get("verified") is True:
+        result["confirmed_app_version"] = app_version
+        return result
+    result["confirmed_app_version"] = None
+    if verification.get("divergences"):
+        result["ok"] = False
+        result["error"] = "write_not_verified"
+        result["message"] = (
+            f"The write was sent to '{app_version}', but reading it back from '{app_version}' "
+            "does not show the change as sent (see write_verification.divergences). Check the "
+            "target version before writing anything else."
+        )
+    return result
+
+
 def call_tool(
+    name: str,
+    arguments: dict[str, Any] | None = None,
+    *,
+    cancelled: Callable[[], bool] | None = None,
+    progress: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
+    """Call a tool after checking its resolved write target."""
+    refusal = main_write_refusal(name, _arguments_with_profile_defaults(arguments))
+    if refusal is not None:
+        return refusal
+    refusal = session_refusal(name, _arguments_with_profile_defaults(arguments))
+    if refusal is not None:
+        return refusal
+    return _call_tool(name, arguments, cancelled=cancelled, progress=progress)
+
+
+def _call_tool(
     name: str,
     arguments: dict[str, Any] | None = None,
     *,
@@ -1215,30 +1587,7 @@ def call_tool(
             "status": status,
         }
     if name == "bubble_profile_add":
-        args = arguments or {}
-        profile_name = str(args.get("name") or args.get("profile") or "").strip()
-        app_id = str(args.get("app_id") or "").strip()
-        if not profile_name:
-            raise ValueError("bubble_profile_add requires name.")
-        if not app_id:
-            raise ValueError("bubble_profile_add requires app_id.")
-        settings = load_settings()
-        new_profile = BubbleProfile(
-            name=profile_name,
-            app_id=app_id,
-            appname=str(args.get("appname") or app_id).strip() or app_id,
-            editor_url=str(args.get("editor_url") or "").strip() or None,
-            app_version=str(args.get("app_version") or "test").strip() or None,
-            app_json_path=str(args.get("app_json_path") or "").strip() or None,
-            consolelog_json_path=str(args.get("consolelog_json_path") or "").strip() or None,
-        )
-        save_settings(with_profile(settings, new_profile))
-        return {
-            "ok": True,
-            "profile": new_profile.name,
-            "app_id": new_profile.app_id,
-            "settings": str(settings.config_dir / "settings.json"),
-        }
+        return _add_or_update_profile(arguments or {})
     if name == "bubble_profile_list":
         settings = load_settings()
         return {
@@ -1270,6 +1619,20 @@ def call_tool(
             "summary": context.summary(),
             "freshness": context_freshness(context, path=summary_path),
         }
+    if name == SESSION_CHECK_TOOL:
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_session_check requires a profile.")
+        checked = check_session(profile, use_cache=bool(args.get("use_cache")))
+        if checked.get("logged_in"):
+            # Where writes may go belongs in the first answer an agent reads, not in a refusal
+            # after it has built a change.
+            policy_session = load_session(profile)
+            checked["write_policy"] = write_policy(
+                policy_session, str(checked.get("app_id") or getattr(policy_session, "app_id", "") or "")
+            )
+        return checked
     if name == "bubble_context_find":
         args = arguments or {}
         profile_name = str(args.get("profile") or "").strip()
@@ -1541,8 +1904,10 @@ def call_tool(
             app_version=app_version,
             progress=collect_progress,
             cancelled=cancelled,
+            login_first=args.get("login_first") is not False,
         )
         session_path = save_session(profile, captured_session)
+        forget_session_check(profile)
         return {
             "ok": True,
             "profile": profile,
@@ -1563,6 +1928,7 @@ def call_tool(
             default_app_id=str(args.get("app_id") or "") or None,
         )
         session_path = save_session(profile, imported_session)
+        forget_session_check(profile)
         return {
             "ok": True,
             "profile": profile,
@@ -1611,20 +1977,102 @@ def call_tool(
             dry_run=not execute,
             calculate_derived=bool(args.get("calculate_derived")),
         )
+        sent_payload = write_result.get("request", {}).get("payload") or targeted_payload
+        written_version = str(sent_payload.get("app_version") or "").strip()
+        write_result = {**write_result, "app_version": written_version}
         if execute and write_result.get("ok"):
+            written_app_id = str(sent_payload.get("appname") or write_session.app_id)
             record_mutation_overlay(
                 profile=profile,
-                app_id=str(
-                    write_result.get("request", {}).get("payload", {}).get("appname")
-                    or write_session.app_id
-                ),
-                payload=write_result.get("request", {}).get("payload") or targeted_payload,
+                app_id=written_app_id,
+                payload=sent_payload,
                 source="bubble_editor_write",
                 response=write_result.get("response"),
             )
+            if args.get("verify") is not False:
+                write_result = _verify_raw_write(
+                    write_result,
+                    profile=profile,
+                    changes=sent_payload.get("changes") or [],
+                    app_id=written_app_id,
+                    app_version=written_version,
+                )
         if expression_warnings:
             write_result = {**write_result, "warnings": expression_warnings}
         return write_result
+    if name == "bubble_live_node_read":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_live_node_read requires a profile.")
+        pointer = args.get("pointer")
+        if not isinstance(pointer, list) or not pointer:
+            raise ValueError("bubble_live_node_read requires a non-empty pointer array.")
+        raw_timeout = args.get("read_timeout_sec")
+        try:
+            timeout_sec = int(raw_timeout) if raw_timeout not in (None, "") else 90
+        except (TypeError, ValueError):
+            return {
+                "ok": False,
+                "error": "invalid_read_timeout_sec",
+                "message": f"read_timeout_sec must be a number of seconds; got {raw_timeout!r}.",
+            }
+        if timeout_sec <= 0:
+            return {
+                "ok": False,
+                "error": "invalid_read_timeout_sec",
+                "message": (
+                    f"read_timeout_sec must be a positive number of seconds; got {raw_timeout!r}."
+                ),
+            }
+        return read_live_node(
+            profile,
+            [str(part) for part in pointer],
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+            headless=bool(args.get("read_headless", True)),
+            timeout_sec=timeout_sec,
+        )
+    if name == "bubble_node_edit":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_node_edit requires a profile.")
+        pointer = args.get("pointer")
+        if not isinstance(pointer, list) or not pointer:
+            raise ValueError("bubble_node_edit requires a non-empty pointer array.")
+        leaf_pointer = args.get("leaf_pointer")
+        order = args.get("order")
+        execute = bool(args.get("execute"))
+        edit_result = edit_live_node(
+            profile=profile,
+            pointer=[str(part) for part in pointer],
+            op=str(args.get("op") or ""),
+            leaf_pointer=[str(part) for part in leaf_pointer] if isinstance(leaf_pointer, list) else None,
+            patch=args.get("patch") if isinstance(args.get("patch"), dict) else None,
+            order=[str(part) for part in order] if isinstance(order, list) else None,
+            execute=execute,
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+        )
+        edit_write = edit_result.get("write") if isinstance(edit_result, dict) else None
+        if execute and isinstance(edit_write, dict) and edit_write.get("ok"):
+            edit_request = edit_write.get("request")
+            overlay_payload = edit_request.get("payload") if isinstance(edit_request, dict) else None
+            if isinstance(overlay_payload, dict):
+                overlay_session = load_session(profile)
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(
+                        overlay_payload.get("appname")
+                        or args.get("app_id")
+                        or (overlay_session.app_id if overlay_session else "")
+                    ),
+                    payload=overlay_payload,
+                    source="bubble_node_edit",
+                    response=edit_write.get("response"),
+                )
+        return edit_result
     if name == "bubble_plugin_install":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()
@@ -1802,6 +2250,7 @@ def call_tool(
         )
     if name == "bubble_branch_create":
         args = arguments or {}
+        forget_branches()
         return create_bubble_branch(
             profile=str(args.get("profile") or ""),
             app_id=str(args.get("app_id") or "") or None,
@@ -1813,6 +2262,7 @@ def call_tool(
         )
     if name == "bubble_branch_delete":
         args = arguments or {}
+        forget_branches()
         return delete_bubble_branch(
             profile=str(args.get("profile") or ""),
             app_id=str(args.get("app_id") or "") or None,
@@ -2139,13 +2589,24 @@ def call_legacy_catalog_tool(
 
     runtime_result = dispatch_aria_runtime_tool(name, args)
     if runtime_result is not None:
-        return runtime_result
+        return _attach_write_verification(runtime_result, profile=profile, args=args)
 
     app_id = str(args.get("app_id") or args.get("appname") or "").strip()
     plan = {"steps": [{"id": "step_1", "tool_name": name, "args": dict(args)}]}
     if app_id:
         context = None
         context_file = str(args.get("context_file") or "").strip()
+        if not context_file and profile:
+            # Without a context the compiler trusts element/page refs as if they were already ids,
+            # which is how `log_the_user_in` once wrote `%ei: "in_email"` and a path keyed by the
+            # page NAME. The profile already knows where its context lives; use it.
+            try:
+                configured = resolve_profile(load_settings(), profile)
+            except Exception:  # noqa: BLE001 - a config problem must not break compilation
+                configured = None
+            profile_context = str(getattr(configured, "context_path", "") or "").strip()
+            if profile_context and Path(profile_context).exists():
+                context_file = profile_context
         if context_file:
             context = load_context_with_overlay(
                 Path(context_file),

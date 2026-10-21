@@ -46,6 +46,7 @@ COMMON_PROPERTY_DESCRIPTIONS: dict[str, str] = {
     "context": "Target Bubble page, reusable element, or container context by visible name or known id.",
     "parent": "Parent Bubble element/container where new children should be added. Use root for page-level insertion.",
     "execute": "Set true only when the user asked to apply the change in Bubble. Leave false for preview/planning.",
+    "verify": "After an executed write, read every changed path back from the live editor and report divergences from what was sent. On by default; set false to skip the extra read-back for speed.",
     "compile": "Compile abstract plan steps into Bubble editor write payloads before execution.",
     "context_file": "Optional compact Bubble context JSON file to resolve pages, elements, and existing project structure.",
     "file": "Local file path to read as input.",
@@ -692,6 +693,9 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "matches; inspect count/truncated and match_field to distinguish direct node matches from context references. "
         "Read-only."
     ),
+    "bubble_session_check": (
+        "Check the stored editor session before Bubble work; a logged-out session requires bubble_session_login. Read-only."
+    ),
     "bubble_context_import": (
         "Convert a Bubble project artifact into compact context. Supports .bubble exports, console.log(app) JSON, "
         "and crawler indexes. Writes only local context artifacts."
@@ -766,6 +770,19 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
     "bubble_editor_write": (
         "Preview or send an exact Bubble /appeditor/write payload with a stored local session. Use for advanced writes "
         "when a tool already produced a valid payload; execute=false previews, execute=true mutates Bubble."
+    ),
+    "bubble_live_node_read": (
+        "Read one node as the running Bubble editor holds it, via window.appquery in a browser using "
+        "the stored session. The only source of the raw expression encoding; the .bubble export is "
+        "decoded and cannot be inverted."
+    ),
+    "bubble_node_edit": (
+        "Edit a live Bubble node in place - patch one leaf or reorder an actions map - re-encoding only "
+        "the node root, then re-read the node and report where it diverged from the intent. "
+        "execute=false previews. For op='patch' the pointer must address ONE action node, never the "
+        "actions map: only the node root is re-encoded. verified=true proves the bytes were read back "
+        "unchanged, not that the editor renders the node - render_unverified stays true until a human "
+        "checks the step in the editor."
     ),
     "bubble_plugin_install": (
         "Preview or install one Bubble plugin in a target app using the stored editor session. Use this when transfer "
@@ -1038,8 +1055,27 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "update_reusable": (("profile", "context", "element_name"), ("dry_run", "settings_path", "prefer_last", "width", "height", "is_visible", "collapse_when_hidden", "html_id", "unique_id", *VISUAL_STYLE_FIELDS)),
     "update_reusable_type": (("profile", "name", "type"), ("dry_run", "settings_path")),
     "clone_reusable": (("profile", "source", "name"), ("dry_run", "settings_path")),
-    "delete_reusable": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
-    "create_custom_state": (("profile", "state_name"), ("dry_run", "settings_path", "element_id", "context", "element_name", "state_type", "default_value", "default_value_json")),
+    "delete_reusable": (("profile", "context", "element_name"), ("dry_run", "settings_path", "prefer_last", "confirm")),
+    "delete_repeating_group": (("profile", "context", "element_name"), ("dry_run", "settings_path", "prefer_last", "confirm")),
+    "create_custom_state": (("profile", "state_name", "element_id"), ("dry_run", "settings_path", "context", "element_name", "state_type", "default_value", "default_value_json")),
+    "list_events": (("profile", "context"), ("dry_run", "settings_path", "json")),
+    "delete_style": (("profile", "name"), ("dry_run", "settings_path", "element_type", "confirm")),
+    "delete_301_redirect": (("profile", "name"), ("dry_run", "settings_path", "confirm")),
+    "set_app_setting": (("profile", "name", "value"), ("dry_run", "settings_path", "json")),
+    "set_project_setting": (("profile", "name", "value"), ("dry_run", "settings_path", "json")),
+    "create_api_token": (("profile",), ("dry_run", "settings_path", "name", "private_key")),
+    "rename_api_token": (("profile", "token_id", "new_name"), ("dry_run", "settings_path")),
+    "regenerate_api_token": (("profile", "token_id"), ("dry_run", "settings_path", "private_key", "confirm")),
+    "delete_api_token": (("profile", "token_id"), ("dry_run", "settings_path", "confirm")),
+    "list_text_matches": (("profile", "context", "element_name"), ("dry_run", "settings_path", "ref_kind", "include_non_text", "json")),
+    "convert_text_parts_to_app_text": (("profile", "context", "element_name", "part"), ("dry_run", "settings_path", "part_translation", "part_text_id", "preview_text", "ref_kind", "match_index", "reuse_existing")),
+    "convert_text_to_app_text": (("profile", "context", "element_name"), ("dry_run", "settings_path", "app_text_label", "text_id", "translation_language", "translation_value", "preview_text", "ref_kind", "match_index", "reuse_existing")),
+    "convert_text_path_to_app_text": (("profile", "path"), ("dry_run", "settings_path", "app_text_label", "text_id", "translation_language", "translation_value", "preview_text", "reuse_existing")),
+    "create_app_text": (("profile", "name"), ("dry_run", "settings_path", "text_id", "language", "value", "reuse_existing")),
+    "set_app_text_translation": (("profile", "name", "language", "value"), ("dry_run", "settings_path", "ref_kind")),
+    "propagate_app_text": (("profile", "name", "search_text"), ("dry_run", "settings_path", "app_text_ref_kind", "scope", "contexts", "exact")),
+    "upload_asset": (("profile", "file"), ("dry_run", "settings_path", "name", "execute")),
+    "sync_figma_component": (("profile", "context"), ("dry_run", "settings_path", "parent", "name", "file", "payload", "execute", "json")),
     "create_repeating_group": (("profile", "context", "parent", "name", "data_type"), ("dry_run", "layout", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS)),
     "update_repeating_group": (("profile", "context", "element_name"), ("dry_run", "settings_path", "layout", "rows", *QUERY_FIELDS, *VISUAL_STYLE_FIELDS)),
     "build_source_query_json": (("profile", "query_source_type"), ("dry_run", "context", "query_result_type", "query_result_from_field", "query_constraints_json", "query_sort_field", "query_sort_desc", "query_ignore_empty_constraints")),
@@ -1048,7 +1084,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "update_name": (("profile", "context", "element_name", "new_name"), ("dry_run", "settings_path")),
     "update_placeholder": (("profile", "context", "element_name", "new_placeholder"), ("dry_run", "settings_path")),
     "update_style": (("profile", "context", "element_name", "new_style"), ("dry_run", "settings_path", "keep_overrides")),
-    "update_style_all": (("profile", "context", "from_style", "to_style"), ("dry_run", "settings_path", "element_type", "keep_overrides", "by_contains")),
+    "update_style_all": (("profile", "context", "element_type", "from_style", "to_style"), ("dry_run", "settings_path", "keep_overrides", "by_contains")),
     "update_image": (("profile", "context", "element_name", "new_source"), ("dry_run", "settings_path", "prefer_last")),
     "update_icon": (("profile", "context", "element_name", "new_icon"), ("dry_run", "settings_path", "prefer_last")),
     "update_layout": (("profile", "context", "element_name", "property", "value"), ("dry_run", "settings_path")),
@@ -1083,7 +1119,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "create_event": (("profile", "context", "event_type"), ("dry_run", "settings_path", "element_ref", "element_ref_kind", "match_index", "bind_name", "custom_event_name", "run_when", "only_when_json", "interval_seconds", "event_key", "event_id", "id_counter")),
     "create_empty_event": (("profile", "context"), ("dry_run", "settings_path", "event_key", "event_id", "id_counter")),
     "delete_event": (("profile", "context", "event_ref"), ("dry_run", "settings_path", "ref_kind", "confirm")),
-    "set_event_type": (("profile", "context", "event_type"), ("dry_run", "settings_path", "event_ref", "ref_kind", "current_event_type", "element", "element_ref_kind", "match_index")),
+    "set_event_type": (("profile", "context", "event_ref", "event_type"), ("dry_run", "settings_path", "ref_kind", "current_event_type", "element", "element_ref_kind", "match_index")),
     "set_event_element": (("profile", "context", "event_ref", "element_ref"), ("dry_run", "settings_path", "event_ref_kind", "element_ref_kind", "match_index", "bind_name")),
     "map_element_ref": (("profile", "context", "alias_name", "element_ref"), ("dry_run", "settings_path", "ref_kind", "match_index")),
     "map_workflow_ref": (("profile", "context", "alias_name", "event_ref"), ("dry_run", "settings_path", "ref_kind", "match_index")),
@@ -1110,6 +1146,7 @@ EXACT_TOOL_FIELDS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 FIELD_TYPES: dict[str, dict[str, Any]] = {
     "dry_run": {"type": "boolean", "default": True},
     "execute": {"type": "boolean", "default": False},
+    "verify": {"type": "boolean", "default": True},
     "rendered_html": {"type": "boolean", "default": True},
     "calculate_derived": {"type": "boolean", "default": False},
     "confirm": {"type": "boolean", "default": False},
@@ -1380,6 +1417,12 @@ def apply_legacy_specific_schema(tool: dict[str, Any]) -> None:
             "deprecated": True,
             "description": "Compatibility alias for enabled; new calls must use enabled.",
         }
+    if name == "natural":
+        input_schema["anyOf"] = [
+            {"required": ["message"]},
+            {"required": ["query"]},
+            {"required": ["commands"]},
+        ]
     if name in {
         "create_data_type",
         "rename_data_type",
@@ -1713,9 +1756,9 @@ def _legacy_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
     if name.startswith(("sync_figma_", "sync_component", "upload_asset")):
         return (("profile",), ("dry_run", "settings_path", "context", "parent", "name", "file", "payload", "execute", "json"))
     if name == "batch":
-        return (("profile", "commands"), ("dry_run", "settings_path", "file", "input", "execute", "json"))
+        return (("profile", "commands"), ("dry_run", "settings_path", "file", "input", "execute", "verify", "json"))
     if name == "natural":
-        return (("profile",), ("dry_run", "settings_path", "message", "query", "commands", "execute", "json"))
+        return (("profile",), ("dry_run", "settings_path", "message", "query", "commands", "execute", "verify", "json"))
     return None
 
 
@@ -1723,6 +1766,30 @@ def _property_schema(field: str) -> dict[str, Any]:
     schema = deepcopy(FIELD_TYPES.get(field, {"type": "string"}))
     schema.setdefault("description", COMMON_PROPERTY_DESCRIPTIONS.get(field, f"Argument '{field}' for this Bubble MCP tool."))
     return schema
+
+
+# Every element that can be filled in can also be marked "should not be empty". The runtime
+# has always written that property, under the parameter name `required`; `mandatory` is what
+# the property itself is called in the app tree, and is the name an agent reads off a node and
+# then tries to pass back. Declaring both is what stops the second one from being swallowed by
+# additionalProperties and dropped (see aria_dispatch.ARG_ALIASES).
+FORM_MANDATORY_FIELDS: tuple[str, ...] = ("required", "mandatory")
+
+
+# The fields a create_<element> call must carry, under the public name the schema declares
+# them by: what the runtime method takes without a default, except `name`, which dispatch
+# derives from the label or content when it is left out (aria_dispatch, CREATE_NAME_PREFIXES).
+# Elements not listed require their first field. aria_dispatch.runtime_schema_gaps, checked by
+# bubble_catalog_quality, keeps this honest.
+CREATE_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "text": ("content",),
+    "button": ("label",),
+    "image": ("name", "source"),
+    "icon": ("name", "icon"),
+    "html": ("name", "content"),
+    "link": ("name", "label"),
+    "alert": ("name", "content"),
+}
 
 
 def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
@@ -1748,7 +1815,7 @@ def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
         "video": ("name", "url", "video_id", "origin", "autoplay", "style", *VISUAL_STYLE_FIELDS),
         "image": ("name", "source", "style", *VISUAL_STYLE_FIELDS),
         "icon": ("name", "icon", "style", "color", *VISUAL_STYLE_FIELDS),
-        "html": ("name", "html", "style", *VISUAL_STYLE_FIELDS),
+        "html": ("name", "content", "style", *VISUAL_STYLE_FIELDS),
         "link": ("name", "label", "url", "style", *VISUAL_STYLE_FIELDS),
         "alert": ("name", "content", "style", *VISUAL_STYLE_FIELDS),
         "map": ("name", "data_source", "style", *VISUAL_STYLE_FIELDS),
@@ -1761,7 +1828,11 @@ def _visual_fields_for_name(name: str) -> tuple[tuple[str, ...], tuple[str, ...]
                 # omitting it must be a schema validation error, not a Python TypeError.
                 remaining = tuple(field for field in fields if field not in {"name", "source"})
                 return (("profile", "context", "parent", "name", "source"), ("dry_run", "settings_path", *remaining))
-            return (("profile", "context", "parent", *fields[:1]), ("dry_run", "settings_path", *fields[1:]))
+            required = CREATE_REQUIRED_FIELDS.get(element, fields[:1])
+            return (
+                ("profile", "context", "parent", *required),
+                ("dry_run", "settings_path", *(field for field in fields if field not in required)),
+            )
         if name == f"update_{element}" or name == f"update_{element}_element":
             return (("profile", "context", "element_name"), ("dry_run", "settings_path", *fields, "prefer_last"))
         if name == f"delete_{element}":
@@ -1957,6 +2028,9 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_editor_write",
             "bubble_plugin_install",
             "bubble_execute_plan",
+            "bubble_live_node_read",
+            "bubble_node_edit",
+            "bubble_session_check",
             "bubble_visual_capture",
         "bubble_visual_capture_actual",
         "bubble_visual_audit",
@@ -2081,6 +2155,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_runtime_smoke",
         "bubble_context_summary",
         "bubble_context_find",
+        "bubble_session_check",
         "bubble_session_list",
         "bubble_session_inspect",
         "bubble_eval_run",
@@ -2109,6 +2184,7 @@ def _is_read_only(name: str) -> bool:
         "bubble_manual_guidance",
         "bubble_manual_context_for_tool_authoring",
         "bubble_manual_context_for_validation",
+        "bubble_live_node_read",
         "refresh_profile_cache",
         "sync_cache",
         "sync_event_cache",
@@ -2148,4 +2224,11 @@ def _is_mutating(name: str) -> bool:
             "clear_",
             "regenerate_",
         )
-    ) or name in {"bubble_editor_write", "bubble_plugin_install", "bubble_execute_plan", "batch", "natural"}
+    ) or name in {
+        "bubble_editor_write",
+        "bubble_plugin_install",
+        "bubble_execute_plan",
+        "bubble_node_edit",
+        "batch",
+        "natural",
+    }

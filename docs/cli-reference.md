@@ -380,6 +380,14 @@ python -m playwright install chromium
 bubble-mcp session login --profile my-app --app-id my-bubble-app
 ```
 
+When the browser profile is not logged in, the command opens Bubble's login page
+(`https://bubble.io/login?mode=login`) first and waits until the page can open
+the app (`/appeditor/get_versions` answers 200; Bubble stays on the same URL after
+login, and its `ajs_user_id` cookie survives an expired login). It then opens
+the editor on the profile's version (`--app-version`). A profile that is already
+logged in goes straight to the editor. `--no-login-first` opens the editor
+directly.
+
 `--wait-seconds` is the maximum time the command waits for an authenticated
 Bubble editor session and defaults to 600 seconds so password and two-factor
 authentication can complete. Keep the editor open until validation succeeds.

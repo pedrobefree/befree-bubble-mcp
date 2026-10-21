@@ -43,7 +43,7 @@ RUNTIME_ROOT = os.path.dirname(os.path.abspath(__file__))
 if RUNTIME_ROOT not in sys.path:
     sys.path.insert(0, RUNTIME_ROOT)
 
-from bubble_sdk import (
+from bubble_mcp.aria_runtime.bubble_sdk import (
     PathDiscovery,
     PayloadBuilder,
     WebhookClient,
@@ -56,26 +56,26 @@ from bubble_sdk import (
     StyleBuilder,
     logger
 )
-from metadata_scanner import scan_metadata
-from config import load_env_file, load_settings_file, resolve_profile
+from bubble_mcp.aria_runtime.metadata_scanner import scan_metadata
+from bubble_mcp.aria_runtime.config import load_env_file, load_settings_file, resolve_profile
 from agents import DiscoveryAgent, ElementAgent, HTMLAgent, ValidatorAgent
 from html_to_bubble import (
     HTMLParser,
     HTMLToBubbleMapper,
     BubbleCommandBuilder,
 )
-from color_mapper import ColorMapper
-from source_query_builder import build_search_source_expression, build_message_chain
-from element_capabilities import TOOL_ELEMENT_MAP, element_supported_properties
-from cli_cache import (
+from bubble_mcp.aria_runtime.color_mapper import ColorMapper
+from bubble_mcp.aria_runtime.source_query_builder import build_search_source_expression, build_message_chain
+from bubble_mcp.aria_runtime.element_capabilities import TOOL_ELEMENT_MAP, element_supported_properties
+from bubble_mcp.aria_runtime.cli_cache import (
     BubbleCLICacheStore,
     apply_cache_delta,
     cache_payloads_equal,
     default_cache_payload,
     merge_cache_payloads,
 )
-from context_alias_registry import ContextAliasRegistry
-from context_reference_resolver import ContextReferenceResolver
+from bubble_mcp.aria_runtime.context_alias_registry import ContextAliasRegistry
+from bubble_mcp.aria_runtime.context_reference_resolver import ContextReferenceResolver
 from visual_mutations import VisualMutationService
 try:
     from .style_lifecycle import StyleLifecycleService, StyleReferenceResolver
@@ -117,7 +117,7 @@ class EventMapper:
     @classmethod
     def build_workflow_body(cls, element_type: str, element_id: str, event: str = "click") -> dict:
         """Constrói body de workflow CORRETO baseado no tipo de elemento"""
-        from bubble_sdk import BubbleIDGenerator
+        from bubble_mcp.aria_runtime.bubble_sdk import BubbleIDGenerator
 
         event_type = cls.get_event_type(element_type, event)
         wf_id = BubbleIDGenerator.element_id()
@@ -351,6 +351,7 @@ class BubbleCLI:
         consolelog_json_path = self._remap_legacy_runtime_path(consolelog_json_path)
         mutation_overlay_path = self._remap_legacy_runtime_path(mutation_overlay_path)
         self.discovery = PathDiscovery(app_json_path, consolelog_json_path, crawler_index_path, mutation_overlay_path)
+        self.discovery.app_version = app_version
 
         # Load CLI cache early to seed ColorMapper
         runtime_cache_dir = os.path.join(RUNTIME_ROOT, "src")
@@ -10560,7 +10561,7 @@ class BubbleCLI:
 
     def _build_dynamic_text_expr_from_string(self, text: str) -> Optional[Dict[str, Any]]:
         """Build a TextExpression from supported dynamic tokens in a string."""
-        from bubble_sdk import DynamicTextBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import DynamicTextBuilder
         patterns = [
             (re.compile(r"current\s+user'?s\s+name", re.IGNORECASE),
              lambda: DynamicTextBuilder.current_user("name", "text")),
@@ -23936,7 +23937,7 @@ class BubbleCLI:
             return False
         wf_data = wf_info.get("workflow", {}) if isinstance(wf_info.get("workflow"), dict) else {}
 
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         action_payload = None
 
@@ -24093,7 +24094,7 @@ class BubbleCLI:
 
         element_name = name if name else f"Text {content[:10]}"
 
-        from bubble_sdk import ElementBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ElementBuilder
         eb = ElementBuilder(id_gen)
 
         if style:
@@ -50173,6 +50174,15 @@ class BubbleCLI:
                     if str(row.get("key")) == mapped_key:
                         return row
                 return {"key": mapped_key, "id": str(workflow_ref), "workflow": {}, "type": None, "name": None}
+        # Explicit key-only fallback (non-empty rows). `kind == "key"` means the
+        # caller is asserting the key, not asking discovery to find it — e.g. a
+        # composite create_event preview resolving its own just-previewed
+        # workflow on a context that already has other workflows, where the
+        # dry-run cache gate correctly keeps that preview out of `rows`. Mirrors
+        # the empty-rows fallback above. Deliberately excluded from "auto" so a
+        # genuine typo in an auto lookup still fails.
+        if kind == "key" and workflow_ref:
+            return {"key": str(workflow_ref), "id": str(workflow_ref), "workflow": {}, "type": None, "name": None}
         return None
 
     def _upsert_workflow_in_discovery(
@@ -50933,32 +50943,36 @@ class BubbleCLI:
             pb.add_change_raw({"type": "id_counter", "value": int(id_counter)})
 
         ok = self._send_schema_payload(pb, dry_run, f"Event created ({wf_key}) with type {bubble_type}.")
-        if ok:
+        if ok and not dry_run:
+            # A dry run must not leave the discovery cache claiming this workflow
+            # exists: a later real call would then believe it was already created
+            # and skip creating it, writing only the follow-up action onto an
+            # orphan workflow with no %x/%p.%ei/id.
             self._upsert_workflow_in_discovery(
                 context_id,
                 context_type,
                 wf_key,
                 {"%x": bubble_type, "%p": None, "id": wf_id, "actions": None}
             )
-            if not dry_run:
-                alias_candidates: List[str] = []
-                if bind_name and str(bind_name).strip():
-                    alias_candidates.append(str(bind_name).strip())
-                if custom_event_name and str(custom_event_name).strip():
-                    alias_candidates.append(str(custom_event_name).strip())
-                seen_norm: set[str] = set()
-                for alias in alias_candidates:
-                    norm = self._norm_lookup(alias)
-                    if not norm or norm in seen_norm:
-                        continue
-                    seen_norm.add(norm)
-                    self._cache_workflow_ref_alias(
-                        context_id=context_id,
-                        context_type=context_type,
-                        alias_name=alias,
-                        workflow_key=str(wf_key),
-                        workflow_id=str(wf_id),
-                    )
+            alias_candidates: List[str] = []
+            if bind_name and str(bind_name).strip():
+                alias_candidates.append(str(bind_name).strip())
+            if custom_event_name and str(custom_event_name).strip():
+                alias_candidates.append(str(custom_event_name).strip())
+            seen_norm: set[str] = set()
+            for alias in alias_candidates:
+                norm = self._norm_lookup(alias)
+                if not norm or norm in seen_norm:
+                    continue
+                seen_norm.add(norm)
+                self._cache_workflow_ref_alias(
+                    context_id=context_id,
+                    context_type=context_type,
+                    alias_name=alias,
+                    workflow_key=str(wf_key),
+                    workflow_id=str(wf_id),
+                )
+        if ok:
             logger.info(f"Event key: {wf_key}")
             logger.info(f"Event id: {wf_id}")
 
@@ -52259,16 +52273,16 @@ class BubbleCLI:
                 json.dumps(target_children)
             )
         ok = self._send_schema_payload(pb, dry_run, f"Event '{event_ref}' element set to {element_id}.")
-        if ok:
-            if not dry_run:
-                # A dry run must not leave the in-memory discovery root claiming a
-                # binding that was never sent to Bubble.
-                self._merge_workflow_properties_in_discovery(
-                    context_id,
-                    context_type,
-                    wf_key,
-                    {"%ei": element_id}
-                )
+        if ok and not dry_run:
+            # A dry run must not leave the in-memory discovery root, the persisted
+            # schema-events cache, or the alias registry claiming a binding that
+            # was never sent to Bubble.
+            self._merge_workflow_properties_in_discovery(
+                context_id,
+                context_type,
+                wf_key,
+                {"%ei": element_id}
+            )
             self._cache_workflow_event(
                 context_id,
                 context_type,
@@ -53396,7 +53410,7 @@ class BubbleCLI:
         print(f"➕ Adding action at index: {new_index}")
 
         # Build Action
-        from bubble_sdk import ActionBuilder, BubbleIDGenerator
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder, BubbleIDGenerator
         ab = ActionBuilder()
         pb = PayloadBuilder(appname=self.appname)
 
@@ -54065,7 +54079,7 @@ class BubbleCLI:
         )
         print(f"➕ Adding action at index: {new_index}")
 
-        from bubble_sdk import ActionBuilder, BubbleIDGenerator
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder, BubbleIDGenerator
         ab = ActionBuilder()
         pb = PayloadBuilder(appname=self.appname)
 
@@ -54655,7 +54669,7 @@ class BubbleCLI:
         if not wf_info: print(f"❌ No workflow found for '{element_name}'. Create one first."); return False
 
         # 3. Create Action
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         new_index = self._get_next_action_index(wf_info['workflow'])
 
@@ -54693,7 +54707,7 @@ class BubbleCLI:
         if not wf_info: print(f"❌ No workflow found for '{element_name}'. Create one first."); return False
 
         # 3. Create Action
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         new_index = self._get_next_action_index(wf_info['workflow'])
 
@@ -54719,7 +54733,7 @@ class BubbleCLI:
         wf_info = self.discovery.find_workflow_for_element(context_id, element['id'], event, context_type)
         if not wf_info: print(f"❌ No workflow found for '{element_name}'. Create one first."); return False
 
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         new_index = self._get_next_action_index(wf_info['workflow'])
 
@@ -54768,7 +54782,7 @@ class BubbleCLI:
                      "%e": {"0": val_expression}
                  }
 
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         new_index = self._get_next_action_index(wf_info['workflow'])
 
@@ -54817,7 +54831,7 @@ class BubbleCLI:
                      "%e": {"0": val_expression}
                  }
 
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         new_index = self._get_next_action_index(wf_info['workflow'])
 
@@ -54847,7 +54861,7 @@ class BubbleCLI:
         if thing_name.lower() == "current user":
             thing_expr = {"%x": "CurrentUser", "%p": None, "%n": None}
 
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         new_index = self._get_next_action_index(wf_info['workflow'])
 
@@ -54873,7 +54887,7 @@ class BubbleCLI:
         wf_info = self.discovery.find_workflow_for_element(context_id, element['id'], event, context_type)
         if not wf_info: print(f"❌ No workflow found for '{element_name}'. Create one first."); return False
 
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         new_index = self._get_next_action_index(wf_info['workflow'])
 
@@ -54899,7 +54913,7 @@ class BubbleCLI:
         wf_info = self.discovery.find_workflow_for_element(context_id, element['id'], event, context_type)
         if not wf_info: print(f"❌ No workflow found for '{element_name}'. Create one first."); return False
 
-        from bubble_sdk import ActionBuilder
+        from bubble_mcp.aria_runtime.bubble_sdk import ActionBuilder
         ab = ActionBuilder()
         new_index = self._get_next_action_index(wf_info['workflow'])
 

@@ -125,8 +125,8 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "manage_workflows",
         "when": "The user asks to create events, add actions, wire buttons, change conditions, or inspect workflow refs.",
-        "tools": ["create_workflow", "create_event", "add_action", "list_events", "resolve_refs", "map_workflow_ref"],
-        "notes": "For page load workflows, target element_name='Page'. For element events, resolve the element first when ambiguous. To add actions to an existing workflow (including ConditionTrue/CustomEvent/DoEvery), pass event_ref (workflow key/id/name/alias) to add_action instead of element_name; never fall back to manual bubble_editor_write payloads. Expression encodings (APIEventParameter, Message, param ids) are NOT derivable from the .bubble export and /appeditor/write accepts any body with HTTP 200 — for unsupported/expression-heavy actions, capture the real editor write via bubble_tool_wizard_start or configure one action by hand and Copy/Paste it in the editor.",
+        "tools": ["create_workflow", "create_event", "add_action", "list_events", "resolve_refs", "map_workflow_ref", "bubble_live_node_read", "bubble_node_edit"],
+        "notes": "For page load workflows, target element_name='Page'. For element events, resolve the element first when ambiguous. To add actions to an existing workflow (including ConditionTrue/CustomEvent/DoEvery), pass event_ref (workflow key/id/name/alias) to add_action instead of element_name; never fall back to manual bubble_editor_write payloads. Expression encodings (APIEventParameter, Message, param ids) are NOT derivable from the .bubble export and /appeditor/write accepts any body with HTTP 200. To EDIT an action that already exists, use bubble_node_edit: it reads the node from the live editor, changes one leaf (op='patch', pointer = ONE action node such as ['api','<wf_id>','actions','3']), and re-reads to prove the write landed. To change the ORDER of existing actions in a workflow, use the same tool with op='reorder', pointer = the actions map (['api','<wf_id>','actions']) and order = every existing action key exactly once; it renumbers the map and repoints _index.id_to_path, and refuses an order that would drop a step. Never recompose an existing action from the export - the expression encoding is not derivable from it. Use bubble_live_node_read first when you need to see the real shape of an action type. For creating a new expression-heavy action, capturing real editor traffic with bubble_tool_wizard_start is still the route.",
     },
     {
         "intent": "manage_data_schema",
@@ -162,8 +162,8 @@ ROUTES: tuple[dict[str, Any], ...] = (
     {
         "intent": "execute_exact_payload_or_plan",
         "when": "A previous step produced a validated Bubble payload or structured plan.",
-        "tools": ["bubble_compile_plan", "bubble_execute_plan", "bubble_editor_write"],
-        "notes": "Use bubble_execute_plan for structured plans and bubble_editor_write only for exact /appeditor/write payloads.",
+        "tools": ["bubble_compile_plan", "bubble_execute_plan", "bubble_editor_write", "bubble_live_node_read", "bubble_node_edit"],
+        "notes": "Use bubble_execute_plan for structured plans and bubble_editor_write only for exact /appeditor/write payloads. To edit a single leaf value on an action that already exists, prefer bubble_node_edit (read-modify-verify against the live editor) over hand-building a bubble_editor_write payload; use bubble_live_node_read to inspect the node's real shape first.",
     },
 )
 
@@ -1467,6 +1467,7 @@ def agent_guide(task: str = "", *, include_knowledge_advice: bool = True) -> dic
             "use_mcp_tools_directly": True,
             "avoid_shell_cli_discovery": True,
             "preview_default": "Leave execute=false unless the user explicitly asked to apply the change in Bubble.",
+            "main_is_read_only": "Main (app_version test or live) is never written: pass the branch id as app_version on every executed write. A write resolved to main is refused with main_is_read_only; previews still run.",
             "profile_first": "Prefer profile-based calls so the server can use stored session, context, and mutation overlay.",
             "refresh_context_when_stale": "Run bubble_profile_cache_refresh with force=true for routine profile cache refresh; use bubble_context_detect only for lower-level context-specific options.",
             "reusable_definition_modules": REUSABLE_DEFINITION_MODULE_GUIDANCE,

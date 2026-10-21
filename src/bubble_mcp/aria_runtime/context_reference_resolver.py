@@ -11,8 +11,8 @@ try:
     from .bubble_sdk import logger
     from .context_alias_registry import ContextAliasRegistry
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import logger
-    from context_alias_registry import ContextAliasRegistry
+    from bubble_mcp.aria_runtime.bubble_sdk import logger
+    from bubble_mcp.aria_runtime.context_alias_registry import ContextAliasRegistry
 
 
 class ReferenceResolverHost(Protocol):

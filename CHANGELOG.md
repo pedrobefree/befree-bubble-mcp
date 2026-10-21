@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Read-back verification distinguishes JSON booleans from numbers, including nested values,
+  so true/1 and false/0 mismatches cannot be reported as verified writes or confirm a target version.
+
+- Reliability integration preserves the fork node/read-back foundation and upstream #42/#44
+  reference contracts. Live reads, node edits and catalog writes report persisted-state
+  verification separately from editor rendering. Session checks reject a known expired login;
+  login validates app access rather than a cookie. Raw writes retain their requested version
+  and editor headers. Profiles update only supplied fields. Main is writable only for apps
+  without branches; live and unknown branch state remain blocked. The isolated native catalog
+  now contains 328 tools. E2E, savepoints, cloning, tester and autoupdate remain deferred.
+
 - Local verification is independent of personal extension packs: each test gets a temporary
   configuration, and catalog snapshots cover the 325 built-in tools. Scheduled-deploy CLI
   tests use a future timestamp and a synthetic executor. Sensitive-source auditing excludes
@@ -27,6 +38,33 @@
   with a proven page object id; reusable instances emit `%ci` with the reusable root id; root
   `issues_sub` updates use the owner object id. The plan compiler follows the same contracts and
   fails closed when compact context cannot prove an internal id.
+- `bubble_editor_write` writes to the version it is asked to. The profile's version was
+  injected into the arguments and then written over the payload body, so on the team server a
+  write whose body said branch `93k8b` went to main. The target is now the top-level
+  `app_version` (newly in the schema), else the body's `app_version`/`appVersion`, else the
+  profile's; a top-level version that disagrees with the body is an error. `referer` and
+  `x-bubble-r` are rebuilt with `version=<target>` instead of copying the URL the session was
+  captured on. An executed write is read back from the target version: a divergence returns
+  `ok: false` with `write_not_verified`, and the response names `app_version` (sent) and
+  `confirmed_app_version` (confirmed by the read-back, or null). `verify=false` skips it.
+- Catalog tools resolve names against the version they edit. The cached `.bubble` export is
+  one version's, and its `.meta.json` says which; when it is another version's, it is
+  downloaded again for the target before use, and a failed download is an error instead of a
+  silent fallback (`delete_event` on a branch reported "Workflow not found" from main's export).
+  The mutation overlay applies only the entries recorded for the target version.
+- Catalog schemas match the runtime signatures. `create_button` without `name` failed as a
+  Python `TypeError`; create tools now derive a missing name the way the compiler does
+  (`bt_<label>`, returned as `element_name`), and a call that still lacks a runtime argument
+  gets a `ValueError` naming it. The schemas that let a runtime-required argument be
+  omitted, or did not declare it under any name dispatch reads (`clone_page`,
+  `clone_reusable`, `update_reusable_type`, `delete_reusable`, the API token and app text
+  tools, `upload_asset`), were fixed. `bubble_catalog_quality` has a
+  `runtime_signature_parity` check that keeps them in step.
+- `bubble_live_node_read` returns leaf values (`node_kind: "scalar"`): an
+  `_index.id_to_path` entry is a string and an `_index.issues_sub` entry a list, and reading
+  them failed with `unexpected_node_shape`. `bubble_node_edit` and `bubble_clone_workflow`
+  still require a node and say so.
+
 - Canonical raw form of APIEventParameter expressions recovered from live editor memory
   (Playwright + appquery child-node raw()): the parameter only resolves with btype_id +
   event_id + param_id (the parameter KEY, not the internal id) + param_name together, with

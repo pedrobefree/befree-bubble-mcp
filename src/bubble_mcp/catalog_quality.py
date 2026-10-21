@@ -174,6 +174,39 @@ def _check_tool_schemas(tools: list[dict[str, Any]]) -> tuple[list[dict[str, Any
             )
     _record_check(checks, "legacy_required_fields", before, issues)
 
+    # A schema that lets the caller omit what the runtime method needs fails as a Python
+    # TypeError at call time (create_button without `name`); one that does not declare it under
+    # any name dispatch reads can never succeed through its published arguments.
+    before = len(issues)
+    from bubble_mcp.aria_dispatch import runtime_schema_gaps
+
+    for tool in tools:
+        name = str(tool.get("name") or "<missing>")
+        if name not in aria_names:
+            continue
+        gaps = runtime_schema_gaps(name, tool)
+        for parameter in gaps["unreachable"]:
+            _add_issue(
+                issues,
+                check="runtime_signature_parity",
+                scope="tool",
+                name=name,
+                field=f"inputSchema.properties.{parameter}",
+                message=f"The runtime requires '{parameter}', and the schema declares it under no name dispatch reads.",
+            )
+        for parameter in gaps["not_required"]:
+            if parameter in gaps["unreachable"]:
+                continue
+            _add_issue(
+                issues,
+                check="runtime_signature_parity",
+                scope="tool",
+                name=name,
+                field=f"inputSchema.required.{parameter}",
+                message=f"The runtime requires '{parameter}', and the schema lets the caller omit it.",
+            )
+    _record_check(checks, "runtime_signature_parity", before, issues)
+
     before = len(issues)
     for tool in tools:
         name = str(tool.get("name") or "<missing>")

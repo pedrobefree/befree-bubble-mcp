@@ -23,7 +23,7 @@ def synthetic_session():
             "appId": "synthetic-app",
             "url": "https://bubble.io/page?name=synthetic-app",
             "headers": {"Cookie": "sid=secret", "User-Agent": "pytest"},
-            "appVersion": "test",
+            "appVersion": "dev01",
         }
     )
 
@@ -31,7 +31,7 @@ def synthetic_session():
 def write_payload():
     return {
         "appname": "synthetic-app",
-        "app_version": "test",
+        "app_version": "dev01",
         "changes": [
             {
                 "intent": {"name": "CreateElement"},
@@ -62,8 +62,8 @@ def test_editor_client_posts_write_payload_with_fake_transport() -> None:
     assert result["ok"] is True
     assert result["valid_shape"] is True
     assert calls[0][1]["changes"][0]["body"]["%p"]["%3"] == "Hello"
-    assert calls[0][1]["app_version"] == "test"
-    assert calls[0][1]["appVersion"] == "test"
+    assert calls[0][1]["app_version"] == "dev01"
+    assert calls[0][1]["appVersion"] == "dev01"
     assert calls[0][2]["cookie"] == "sid=secret"
 
 
@@ -88,7 +88,7 @@ def test_editor_client_can_run_calculate_derived_after_write() -> None:
     assert calls[1][1] == {
         "derived": [{"function_name": "ElementTypeToPath", "args": [], "verbose": False}],
         "appname": "synthetic-app",
-        "app_version": "test",
+        "app_version": "dev01",
     }
     assert result["derived"]["response"]["fingerprints"] == ["abc123"]
 
@@ -202,7 +202,7 @@ def test_editor_client_uses_aria_editor_write_headers() -> None:
     assert headers["cache-control"] == "no-cache"
     assert headers["content-type"] == "application/json"
     assert headers["origin"] == "https://bubble.io"
-    assert headers["referer"] == "https://bubble.io/page?name=synthetic-app"
+    assert headers["referer"] == "https://bubble.io/page?name=synthetic-app&version=dev01"
     assert headers["sec-fetch-dest"] == "empty"
     assert headers["sec-fetch-mode"] == "cors"
     assert headers["sec-fetch-site"] == "same-origin"
@@ -210,7 +210,7 @@ def test_editor_client_uses_aria_editor_write_headers() -> None:
     assert headers["x-requested-with"] == "XMLHttpRequest"
     assert headers["x-bubble-platform"] == "web"
     assert headers["x-bubble-breaking-revision"] == "5"
-    assert headers["x-bubble-r"] == "https://bubble.io/page?name=synthetic-app"
+    assert headers["x-bubble-r"] == "https://bubble.io/page?name=synthetic-app&version=dev01"
     assert headers["x-bubble-utm-data"] == "{}"
     assert headers["cookie"] == "sid=secret"
     assert headers["x-bubble-fiber-id"]
@@ -244,7 +244,7 @@ def test_editor_client_returns_structured_auth_block() -> None:
 def test_editor_write_headers_use_session_url_as_referer() -> None:
     headers = build_editor_write_headers(synthetic_session(), write_payload())
 
-    assert headers["referer"] == "https://bubble.io/page?name=synthetic-app"
+    assert headers["referer"] == "https://bubble.io/page?name=synthetic-app&version=dev01"
 
 
 def test_execute_plan_runs_write_payload_steps_with_fake_client() -> None:
@@ -294,8 +294,7 @@ def test_execute_plan_uses_profile_app_version_for_existing_write_payload(tmp_pa
             return {"ok": True, "payload": payload, "dry_run": dry_run}
 
     fake_client = FakeClient()
-    payload = write_payload()
-    assert payload["app_version"] == "test"
+    payload = {**write_payload(), "app_version": "test"}
 
     result = execute_plan(
         {"steps": [{"id": "s1", "args": {"write_payload": payload}}]},

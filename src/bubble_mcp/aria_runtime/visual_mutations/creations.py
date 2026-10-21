@@ -9,7 +9,7 @@ from typing import Any
 try:
     from ..bubble_sdk import BubbleIDGenerator, PayloadBuilder, logger
 except ImportError:  # pragma: no cover - direct BubbleCLI execution compatibility
-    from bubble_sdk import BubbleIDGenerator, PayloadBuilder, logger
+    from bubble_mcp.aria_runtime.bubble_sdk import BubbleIDGenerator, PayloadBuilder, logger
 
 from .protocols import VisualCreationTarget, VisualMutationHost
 

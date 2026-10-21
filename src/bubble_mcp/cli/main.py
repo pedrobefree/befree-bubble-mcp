@@ -814,6 +814,7 @@ def command_session_login(args: argparse.Namespace) -> int:
         user_data_dir=browser_profile_dir,
         app_version=app_version or "test",
         progress=None if args.quiet else emit_progress,
+        login_first=getattr(args, "login_first", True),
     )
     target = save_session(args.profile, session)
     if not args.quiet:
@@ -2213,6 +2214,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     session_login_parser.add_argument("--headless", action="store_true")
+    session_login_parser.add_argument(
+        "--no-login-first",
+        dest="login_first",
+        action="store_false",
+        help=(
+            "Open the editor directly instead of Bubble's login page when the browser profile is "
+            "not logged in. By default the login page opens first and the editor once login is detected."
+        ),
+    )
     session_login_parser.add_argument(
         "--quiet",
         action="store_true",
