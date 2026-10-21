@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- MCP workflow cloning resolves the same app version as its guard and session savepoint.
+  E2E run/scaffold keeps a suite's branch ahead of the profile default, while explicit
+  caller branch/app_version overrides still take precedence. Regression tests exercise
+  reads, writes, previews, and persisted suite updates through the MCP dispatcher.
+
 - Delivery/validation integration adds session savepoints, explicit savepoint restore,
   workflow cloning and element subtree duplication with remapped references, deploy
   previews, development-version impersonation, and E2E suites/inline flows. Shared

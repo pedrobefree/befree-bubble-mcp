@@ -1185,6 +1185,9 @@ def _call_tool(
     """Call a supported tool and return a JSON-serializable payload."""
 
     caller_argument_names = frozenset((arguments or {}).keys())
+    # E2E resolves suite branch before profile defaults. Preserve only a caller-supplied
+    # version alias as an override, rather than promoting an injected profile default.
+    caller_app_version = str((arguments or {}).get("app_version") or "").strip()
     arguments = _arguments_with_profile_defaults(arguments)
     trusted_profile_defaults = frozenset(arguments) - caller_argument_names
     _ = arguments
@@ -1648,7 +1651,7 @@ def _call_tool(
             suite=str(args.get("suite") or ""),
             cases=_string_list(args.get("cases") or args.get("case_ids")),
             tags=_string_list(args.get("tags")),
-            branch=str(args.get("branch") or args.get("app_version") or ""),
+            branch=str(args.get("branch") or "").strip() or caller_app_version,
             execute=bool(args.get("execute")),
             headless=_optional_bool(args.get("headless")),
             video=_optional_bool(args.get("video")),
@@ -1692,7 +1695,7 @@ def _call_tool(
             tags=_string_list(args.get("tags")),
             start_path=str(args.get("start_path") or "index"),
             app_id=str(args.get("app_id") or ""),
-            branch=str(args.get("branch") or args.get("app_version") or ""),
+            branch=str(args.get("branch") or "").strip() or caller_app_version,
             base_url=str(args.get("base_url") or ""),
             cases_root=str(args.get("cases_root") or ""),
             user_id=str(args.get("user_id") or ""),
@@ -2347,7 +2350,7 @@ def _call_tool(
             id_counter=int(args["id_counter"]) if args.get("id_counter") is not None else None,
             execute=bool(args.get("execute")),
             app_id=str(args.get("app_id") or "") or None,
-            app_version=str(args.get("app_version") or "test"),
+            app_version=_resolved_write_version(args),
         )
         clone_write = clone_result.get("write") if isinstance(clone_result, dict) else None
         if bool(args.get("execute")) and isinstance(clone_write, dict) and clone_write.get("ok"):
