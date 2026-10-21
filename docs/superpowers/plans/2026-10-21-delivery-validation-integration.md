@@ -18,19 +18,19 @@ No edits to the original checkout; no live Bubble action, remote merge or deploy
 
 Files: execution/{node_edit,raw_node_edit,version_control,session_savepoint,deploy_preview}.py; server tools/schema/catalog/guide; tests/unit counterparts; tests/conftest.py.
 
-- [ ] Run baseline raw-node/verifier/main-policy regressions; expected PASS.
-- [ ] Merge19418ec without squash. Keep upstream types/null/supersession fixes and both test sets. Retain session/version guards before savepoint side effects.
-- [ ] Run clone, version_control, session_savepoint, deploy_preview, node_edit and old reliability tests; fix only reproduced integration failures.
-- [ ] Commit merge retaining both parents.
+- [x] Run baseline raw-node/verifier/main-policy regressions; expected PASS.
+- [x] Merge19418ec without squash. Keep upstream types/null/supersession fixes and both test sets. Retain session/version guards before savepoint side effects.
+- [x] Run clone, version_control, session_savepoint, deploy_preview, node_edit and old reliability tests; fix only reproduced integration failures.
+- [x] Commit merge retaining both parents.
 
 ### Task2: Impersonation, E2E and duplication
 
 Files: execution/{run_as,data_api,duplicate_element,editor_user_lookup}.py; e2e package; core/config.py; harness visual capture; server tools/schema/catalog/guide/completion; associated unit/UI fixtures and docs.
 
-- [ ] Cherry-pick -x f563173,f22c21d,e3b3164,aeb8ac4,2a749cb,abdb4c5,0a9a882,e2446f3,cfdf02b,273dec1 in dependency order.
-- [ ] Reconcile collisions against upstream actual schemas and current native count. Combine fixture isolation for settings/session/version/savepoint. Omit deferred core-toolset/provisioning/autoupdate/context_query/global-expression hunks.
-- [ ] Preserve preview credential fields across updates and redact secrets in returned status. Compare real code paths to existing test patterns before any repair.
-- [ ] Run focused impersonation, E2E, duplication, savepoint and reliability regressions. For defects, add failing regression first, repair minimally, rerun.
+- [x] Cherry-pick -x f563173,f22c21d,e3b3164,aeb8ac4,2a749cb,abdb4c5,0a9a882,e2446f3,cfdf02b,273dec1 in dependency order.
+- [x] Reconcile collisions against upstream actual schemas and current native count. Combine fixture isolation for settings/session/version/savepoint. Omit deferred core-toolset/provisioning/autoupdate/context_query/global-expression hunks.
+- [x] Preserve preview credential fields across updates and redact secrets in returned status. Compare real code paths to existing test patterns before any repair.
+- [x] Run focused impersonation, E2E, duplication, savepoint and reliability regressions. For defects, add failing regression first, repair minimally, rerun.
 
 ### Task3: Full gate, independent review and PR
 

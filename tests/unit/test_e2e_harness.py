@@ -215,7 +215,7 @@ def test_resolve_case_module_tolerates_a_cases_prefix_and_a_missing_suffix(
 
 @pytest.mark.parametrize(
     "module_ref",
-    ["../../settings.json", "/etc/passwd", "C:\\Windows\\system32\\evil.py", "a/../../b.py", ""],
+    ["../../settings.json", "/etc/passwd", "C:\\Windows\\system32\\evil.py", "a/../../b.py", r"C:evil.py", r"a\..\evil.py", ""],
 )
 def test_resolve_case_module_refuses_to_escape_the_cases_directory(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, module_ref: str
@@ -763,6 +763,7 @@ def test_a_run_previews_cases_from_the_declared_checkout(
     checkout.mkdir(parents=True)
     for module in ("ks1_t23_notes.py", "ks1_t29_org.py"):
         (checkout / module).write_text("def run(ctx):\n    return None\n", encoding="utf-8")
+    monkeypatch.setattr(runner, "playwright_available", lambda: True)
     _settings(tmp_path)
     suites = paths.suites_dir("kaimia")
     suites.mkdir(parents=True, exist_ok=True)

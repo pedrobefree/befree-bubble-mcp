@@ -41,11 +41,11 @@ def test_packaged_cli_has_no_unmapped_bubble_operation_commands() -> None:
 def test_parity_report_is_derived_from_complete_inventory() -> None:
     report = cli_catalog_parity_report(tool["name"] for tool in list_tool_schemas())
 
-    assert report["mcp_tool_count"] == 333
+    assert report["mcp_tool_count"] == 340
     assert report["direct_match_count"] == 205
     assert report["alias_count"] == 1
     assert report["excluded_count"] == 1
-    assert report["mcp_only_count"] == 128
+    assert report["mcp_only_count"] == 135
 
 
 def test_parity_report_reports_an_incomplete_catalog_without_raising() -> None:

@@ -268,4 +268,4 @@ def read_nodes_over_http(
 
 
 # This reader loses null-valued keys; it must never feed a write. See the docstring.
-read_nodes_over_http.for_rewrite = False
+setattr(read_nodes_over_http, "for_rewrite", False)

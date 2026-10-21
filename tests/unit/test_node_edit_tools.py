@@ -328,7 +328,7 @@ def test_savepoint_restore_passes_confirm_through(monkeypatch) -> None:  # type:
 
     call_tool(
         "bubble_savepoint_restore",
-        {"profile": "mcp-test", "timestamp": 1787834752581, "execute": True, "confirm": True},
+        {"profile": "mcp-test", "app_version": "dev01", "timestamp": 1787834752581, "execute": True, "confirm": True},
     )
 
     assert seen["timestamp"] == 1787834752581
@@ -406,3 +406,15 @@ def test_edit_tool_passes_keys_through_for_a_remove(monkeypatch) -> None:  # typ
 
     assert seen["op"] == "remove"
     assert seen["keys"] == ["1"]
+
+
+def test_deploy_preview_fields_do_not_override_visual_or_language_schemas() -> None:
+    visual = _schema("bubble_visual_capture")["inputSchema"]["properties"]["source"]
+    language = _schema("bubble_language_diff")["inputSchema"]["properties"]["since"]
+    deploy = _schema("bubble_deploy_preview")["inputSchema"]["properties"]
+
+    assert "enum" not in visual
+    assert "URL" in visual["description"]
+    assert language["examples"] == ["sha256:old"]
+    assert deploy["source"]["enum"] == ["overlay", "full_scan"]
+    assert "UTC" in deploy["since"]["description"]

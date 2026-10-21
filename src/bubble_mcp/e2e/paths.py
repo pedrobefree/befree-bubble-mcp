@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import re
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from uuid import uuid4
 
 from bubble_mcp.core.config import get_config_dir
@@ -163,11 +163,12 @@ def resolve_case_module(
     if not raw:
         raise ValueError("A case needs a module path, relative to the suite's cases directory.")
     candidate = Path(raw)
-    if candidate.is_absolute() or candidate.drive or raw.startswith(("/", "\\")):
+    windows_candidate = PureWindowsPath(raw)
+    if candidate.is_absolute() or windows_candidate.drive or raw.startswith(("/", "\\")):
         raise ValueError(
             f"Case module {raw!r} must be relative to the cases directory, not an absolute path."
         )
-    if any(part == ".." for part in candidate.parts):
+    if any(part == ".." for part in (*candidate.parts, *windows_candidate.parts)):
         raise ValueError(f"Case module {raw!r} must not step outside the cases directory with '..'.")
 
     base = resolve_cases_root(profile, cases_root, config_dir)

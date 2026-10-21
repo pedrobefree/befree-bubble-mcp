@@ -27,7 +27,7 @@ import copy
 import json
 import random
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any
+from typing import Any, cast
 
 from bubble_mcp.aria_runtime.bubble_sdk import BubbleIDGenerator
 from bubble_mcp.compiler.payload import bubble_session_id
@@ -115,7 +115,7 @@ def duplicate_live_element(
         if session is None:
             raise ValueError(f"No Bubble session stored for profile '{profile}'.")
         write = BubbleEditorClient().write
-    write_result = write(payload, session, dry_run=not execute)
+    write_result = cast(Writer, write)(payload, session, dry_run=not execute)
 
     result: dict[str, Any] = {
         "ok": True,

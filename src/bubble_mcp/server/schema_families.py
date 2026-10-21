@@ -1005,19 +1005,6 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "read by, so it must say what was about to change.",
         examples=["sync:Started merging changes from staging", "before adding the login workflow"],
     ),
-    "source": _prop(
-        "string",
-        "Where the list of changed paths comes from: 'overlay' uses what the MCP itself wrote "
-        "(precise, free, blind to hand edits made directly in the editor); 'full_scan' walks the "
-        "app roots in both versions (sees everything, pulls both trees).",
-        enum=["overlay", "full_scan"],
-        default="overlay",
-    ),
-    "since": _prop(
-        "string",
-        "ISO-8601 UTC instant. Only changes recorded at or after it are considered.",
-        examples=["2026-08-27T00:00:00+00:00"],
-    ),
     "timestamp": _prop(
         "integer",
         "Epoch-ms instant to restore the app version to, as returned by bubble_savepoint_list "
@@ -2150,6 +2137,21 @@ def branch_changelog_tools() -> list[ToolSchema]:
             "difference matters.",
             ["profile", "source", "since", "app_id", "app_version"],
             required=["profile"],
+            field_overrides={
+                "source": _prop(
+                    "string",
+                    "Where the list of changed paths comes from: 'overlay' uses what the MCP itself wrote "
+                    "(precise, free, blind to hand edits made directly in the editor); 'full_scan' walks the "
+                    "app roots in both versions (sees everything, pulls both trees).",
+                    enum=["overlay", "full_scan"],
+                    default="overlay",
+                ),
+                "since": _prop(
+                    "string",
+                    "ISO-8601 UTC instant. Only changes recorded at or after it are considered.",
+                    examples=["2026-08-27T00:00:00+00:00"],
+                ),
+            },
         ),
         tool_schema(
             "bubble_savepoint_create",

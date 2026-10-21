@@ -19,7 +19,7 @@ from bubble_mcp.browser_automation import (
 )
 from bubble_mcp.catalog_quality import catalog_quality_report
 from bubble_mcp.catalog_schema_precision import normalize_catalog_schema_precision_args
-from bubble_mcp.compiler.payload import bubble_session_id, compile_plan_to_write_payloads
+from bubble_mcp.compiler.payload import compile_plan_to_write_payloads
 from bubble_mcp.context.importers import import_context_artifact
 from bubble_mcp.context.detector import (
     default_bubble_export_path,
@@ -913,6 +913,8 @@ EDITOR_SESSION_TOOLS = frozenset(
         "bubble_live_node_read",
         "bubble_node_edit",
         "bubble_clone_workflow",
+        "bubble_duplicate_element",
+        "bubble_run_as",
         "bubble_savepoint_create",
         "bubble_savepoint_list",
         "bubble_savepoint_restore",
@@ -2302,16 +2304,16 @@ def _call_tool(
         profile = str(args.get("profile") or "").strip()
         if not profile:
             raise ValueError(f"{name} requires a profile.")
-        app_id = str(args.get("app_id") or "") or None
-        app_version = str(args.get("app_version") or "") or None
+        savepoint_app_id = str(args.get("app_id") or "") or None
+        savepoint_app_version = str(args.get("app_version") or "") or None
         if name == "bubble_savepoint_list":
-            return list_restore_history(profile=profile, app_id=app_id, app_version=app_version)
+            return list_restore_history(profile=profile, app_id=savepoint_app_id, app_version=savepoint_app_version)
         if name == "bubble_savepoint_create":
             return create_savepoint(
                 profile=profile,
                 message=str(args.get("savepoint_message") or args.get("message") or ""),
-                app_id=app_id,
-                app_version=app_version,
+                app_id=savepoint_app_id,
+                app_version=savepoint_app_version,
                 session_id=str(args.get("session_id") or "") or None,
                 execute=bool(args.get("execute")),
             )
@@ -2323,8 +2325,8 @@ def _call_tool(
         return restore_to_timestamp(
             profile=profile,
             timestamp=raw_timestamp,
-            app_id=app_id,
-            app_version=app_version,
+            app_id=savepoint_app_id,
+            app_version=savepoint_app_version,
             execute=bool(args.get("execute")),
             confirm=bool(args.get("confirm")),
         )

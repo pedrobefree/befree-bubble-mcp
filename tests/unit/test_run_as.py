@@ -560,7 +560,7 @@ def test_a_resolved_email_impersonates_the_id_it_found(
 
     assert result["ok"] is True
     assert result["user_id"] == USER_ID
-    assert f"/true/index" in transport.calls[0][0]
+    assert "/true/index" in transport.calls[0][0]
     assert USER_ID in transport.calls[0][0]
 
 

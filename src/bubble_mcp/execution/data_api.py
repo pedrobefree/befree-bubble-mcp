@@ -171,7 +171,8 @@ def _urllib_fetch(url: str, headers: dict[str, str]) -> str:
     request = urllib.request.Request(url, headers=headers, method="GET")
     try:
         with urllib.request.urlopen(request, timeout=DEFAULT_TIMEOUT_SEC) as response:
-            return response.read().decode("utf-8", errors="replace")
+            response_body: bytes = response.read()
+            return response_body.decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")[:300]
         raise DataApiError(f"Data API answered {exc.code}: {body}") from exc
