@@ -86,7 +86,7 @@ LEGACY_TOOL_DESCRIPTIONS: dict[str, str] = {
         "schedule_api_workflow, custom_event) to an existing workflow. Target it by element_name+event for "
         "click/change/load, or by event_ref (workflow key/id/name/alias, or shorthand like 'ButtonClicked my-button') "
         "for any workflow, including ConditionTrue, CustomEvent, and DoEvery. Reuses the workflow; does not create a "
-        "new one when the event already exists. Prefer event_ref over manual bubble_editor_write payloads; for action types this tool does not support (especially expression-heavy ones), capture the real editor write with bubble_tool_wizard_start instead of composing bodies from the export."
+        "new one when the event already exists. Prefer event_ref over manual bubble_editor_write payloads; for action types this tool does not support (especially expression-heavy ones), capture the real editor write with bubble_tool_wizard_start instead of composing bodies from the export. To change an action that already exists, use bubble_node_edit rather than adding a replacement."
     ),
     "replace_action": "Replace an existing action in a workflow (by event/element and action_type) with new parameters, keeping its position.",
     "delete_action": "Delete one action (action_ref) from a workflow after explicit confirm=true. Does not delete the event.",

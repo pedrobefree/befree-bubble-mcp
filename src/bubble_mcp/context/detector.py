@@ -920,6 +920,12 @@ def _crawl_page(api: BubblePathApiClient, name: str, page_id: str, encoded_path:
         "elements": elements,
         "workflows": workflows,
         "crawledAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        # The page's node key in the app tree is not always its id (e.g. tooling-created
+        # pages). `encoded_path` is the real address used to fetch it above; carry it and
+        # its decoded last segment through so the importer can key/path elements correctly
+        # instead of assuming key == id.
+        "path": encoded_path,
+        "key": segments[-1] if segments else page_id,
     }
 
 

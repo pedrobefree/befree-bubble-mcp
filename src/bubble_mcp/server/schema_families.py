@@ -651,6 +651,53 @@ FIELD_LIBRARY: dict[str, JsonSchema] = {
         "Set true only when the user asked to apply the change in Bubble. Leave false to preview the authenticated request.",
         default=False,
     ),
+    "verify": _prop(
+        "boolean",
+        "After an executed write, read every changed path back from the live editor and report divergences from what was sent. On by default because /appeditor/write answers 200 for any body with no semantic validation, so a 200 alone is not evidence the write landed as intended. Set false to skip the extra read-back for speed.",
+        default=True,
+    ),
+    "pointer": _prop(
+        "array",
+        "Child keys addressing a node in the live editor tree, from the app root: "
+        '["api", "<workflow_id>", "actions", "3"] for one action, ["api", "<workflow_id>", '
+        '"actions"] for the map holding it.',
+        items={"type": "string"},
+    ),
+    "leaf_pointer": _prop(
+        "array",
+        "Keys addressing the dict to patch, relative to the node at pointer. Every key must "
+        "already exist; a missing key is refused rather than created.",
+        items={"type": "string"},
+    ),
+    "patch": _prop(
+        "object",
+        "Values merged into the dict at leaf_pointer. A value may be a whole subtree, which "
+        "is how a field is retargeted from an action that already works.",
+        additional_properties=True,
+    ),
+    "order": _prop(
+        "array",
+        "Every existing action key, each exactly once, in the new order. An order that would "
+        "drop a step is refused.",
+        items={"type": "string"},
+    ),
+    "op": _prop(
+        "string",
+        "Which in-place edit to run: 'patch' replaces one leaf inside a node, 'reorder' "
+        "renumbers an actions map.",
+        enum=["patch", "reorder"],
+    ),
+    "read_headless": _prop(
+        "boolean",
+        "Run the editor browser without a visible window while reading the node.",
+        default=True,
+    ),
+    "read_timeout_sec": _prop(
+        "integer",
+        "Seconds to wait for the editor page to expose window.appquery.",
+        default=90,
+        minimum=10,
+    ),
     "calculate_derived": _prop(
         "boolean",
         "After a successful Bubble editor write, call /appeditor/calculate_derived to refresh derived schema indexes. Use for manual schema writes such as deleting data fields.",
@@ -1598,6 +1645,41 @@ def planning_execution_tools() -> list[ToolSchema]:
             "Send a Bubble /appeditor/write payload using a stored local session. Set execute=true to mutate Bubble; otherwise it previews the request. Node bodies must use encoded keys (%x/%p/%nm/%dn); decoded export keys (type/properties) are rejected unless allow_decoded_keys=true. WARNING: the endpoint returns HTTP 200 for ANY body without semantic validation, and expression encodings (APIEventParameter, Message chains, param ids) are NOT derivable from the .bubble export — compose expression-bearing actions from captured editor traffic (bubble_tool_wizard_start) or via add_action, never from export-derived bodies; results carry warnings when such nodes are detected.",
             ["profile", "payload", "execute", "calculate_derived", "allow_decoded_keys"],
             required=["profile", "payload"],
+        ),
+        tool_schema(
+            "bubble_live_node_read",
+            "Read one node exactly as the running Bubble editor holds it, through window.appquery in "
+            "a browser driven with the stored session. This is the only source for the raw expression "
+            "encoding: the .bubble export is the decoded projection and cannot be inverted. Use it to "
+            "inspect a working action before editing one, or to learn the shape of an action type the "
+            "compiler does not support.",
+            ["profile", "pointer", "app_id", "app_version", "read_headless", "read_timeout_sec"],
+            required=["profile", "pointer"],
+        ),
+        tool_schema(
+            "bubble_node_edit",
+            "Edit a live Bubble node in place: read it from the editor, change one leaf (op='patch') or "
+            "renumber an actions map (op='reorder'), write it back with only the node root re-encoded, "
+            "then read it again and report where the result diverged from the intent. Prefer this over "
+            "recomposing an action, which cannot reproduce expression encodings. execute=false previews; "
+            "execute=true mutates and verifies. For op='patch' the pointer must address ONE action node "
+            "(e.g. [\"api\",\"<wf>\",\"actions\",\"3\"]), never the actions map: only the node root is "
+            "re-encoded, so a container pointer would write every action with decoded keys. "
+            "verified=true proves the written bytes were read back unchanged; it does NOT prove the "
+            "editor renders the node (render_unverified stays true), because a wrongly decoded interior "
+            "round-trips identically - a human must confirm the step in the editor.",
+            [
+                "profile",
+                "pointer",
+                "op",
+                "leaf_pointer",
+                "patch",
+                "order",
+                "app_id",
+                "app_version",
+                "execute",
+            ],
+            required=["profile", "pointer", "op"],
         ),
         tool_schema(
             "bubble_plugin_install",

@@ -60,9 +60,12 @@ from bubble_mcp.execution.editor_api import (
     start_bubble_branch_merge,
 )
 from bubble_mcp.execution.executor import execute_plan
+from bubble_mcp.execution.live_node_read import read_live_node
+from bubble_mcp.execution.node_edit import edit_live_node
 from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import permanent_data_type_delete_targets, validate_structure
+from bubble_mcp.execution.write_verify import verify_changes
 from bubble_mcp.extensions.store import (
     disable_extension,
     enable_extension,
@@ -683,6 +686,71 @@ def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
             else "Profile cache refreshed but is not ready. Follow status.next_actions to complete missing context sources or session requirements."
         ),
     }
+
+
+def _executed_write_changes(runtime_result: dict[str, Any]) -> list[dict[str, Any]]:
+    """Collect the change lists from every write that actually executed in a runtime result.
+
+    ``dispatch_aria_runtime_tool`` records one entry per write under ``results``; an executed,
+    successful write carries its normalized payload at ``result.request.payload.changes``
+    (``BubbleEditorClient.write`` builds ``request.payload`` from the exact body it POSTed - see
+    ``execution/client.py``). A dry run or a failed write contributes nothing: there is nothing
+    to verify, or nothing landed to compare against.
+    """
+
+    changes: list[dict[str, Any]] = []
+    for item in runtime_result.get("results") or []:
+        if not isinstance(item, dict) or not item.get("executed") or not item.get("ok"):
+            continue
+        write_result = item.get("result")
+        if not isinstance(write_result, dict):
+            continue
+        request = write_result.get("request")
+        payload = request.get("payload") if isinstance(request, dict) else None
+        item_changes = payload.get("changes") if isinstance(payload, dict) else None
+        if isinstance(item_changes, list):
+            changes.extend(change for change in item_changes if isinstance(change, dict))
+    return changes
+
+
+def _attach_write_verification(
+    runtime_result: dict[str, Any], *, profile: str, args: dict[str, Any]
+) -> dict[str, Any]:
+    """Read every path an executed aria-runtime write touched back and report divergences.
+
+    Only runs when the tool actually executed (never on a dry run/preview) and when there is at
+    least one successful write to verify. Opts out via ``verify=false``. A verification failure
+    (including the verifier itself raising) must never turn a successful write into a reported
+    failure: it is attached as a report under ``write_verification``, and the caller decides what
+    to do with it.
+
+    Attached under ``write_verification``, deliberately distinct from ``verification``: some
+    tools (``delete_data_type_permanently`` - see ``aria_dispatch.py``) already set their own
+    tool-specific ``verification`` key with evidence this generic pass cannot reproduce (a fresh
+    export confirming the data type is actually gone). Writing to that same key would silently
+    clobber that evidence with this generic re-read report every time such a tool executes.
+    """
+
+    if not runtime_result.get("executed") or args.get("verify") is False:
+        return runtime_result
+    changes = _executed_write_changes(runtime_result)
+    if not changes or not profile:
+        return runtime_result
+    try:
+        verification = verify_changes(
+            profile,
+            changes,
+            app_id=str(runtime_result.get("app_id") or "") or None,
+            app_version=str(runtime_result.get("app_version") or "test"),
+        )
+    except Exception as exc:  # noqa: BLE001 - verification must never turn a success into a raise
+        verification = {
+            "ok": False,
+            "error": "verification_failed",
+            "message": f"{type(exc).__name__}: {exc}",
+        }
+    runtime_result["write_verification"] = verification
+    return runtime_result
 
 
 def call_tool(
@@ -1625,6 +1693,79 @@ def call_tool(
         if expression_warnings:
             write_result = {**write_result, "warnings": expression_warnings}
         return write_result
+    if name == "bubble_live_node_read":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_live_node_read requires a profile.")
+        pointer = args.get("pointer")
+        if not isinstance(pointer, list) or not pointer:
+            raise ValueError("bubble_live_node_read requires a non-empty pointer array.")
+        raw_timeout = args.get("read_timeout_sec")
+        try:
+            timeout_sec = int(raw_timeout) if raw_timeout not in (None, "") else 90
+        except (TypeError, ValueError):
+            return {
+                "ok": False,
+                "error": "invalid_read_timeout_sec",
+                "message": f"read_timeout_sec must be a number of seconds; got {raw_timeout!r}.",
+            }
+        if timeout_sec <= 0:
+            return {
+                "ok": False,
+                "error": "invalid_read_timeout_sec",
+                "message": (
+                    f"read_timeout_sec must be a positive number of seconds; got {raw_timeout!r}."
+                ),
+            }
+        return read_live_node(
+            profile,
+            [str(part) for part in pointer],
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+            headless=bool(args.get("read_headless", True)),
+            timeout_sec=timeout_sec,
+        )
+    if name == "bubble_node_edit":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_node_edit requires a profile.")
+        pointer = args.get("pointer")
+        if not isinstance(pointer, list) or not pointer:
+            raise ValueError("bubble_node_edit requires a non-empty pointer array.")
+        leaf_pointer = args.get("leaf_pointer")
+        order = args.get("order")
+        execute = bool(args.get("execute"))
+        edit_result = edit_live_node(
+            profile=profile,
+            pointer=[str(part) for part in pointer],
+            op=str(args.get("op") or ""),
+            leaf_pointer=[str(part) for part in leaf_pointer] if isinstance(leaf_pointer, list) else None,
+            patch=args.get("patch") if isinstance(args.get("patch"), dict) else None,
+            order=[str(part) for part in order] if isinstance(order, list) else None,
+            execute=execute,
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=str(args.get("app_version") or "test"),
+        )
+        edit_write = edit_result.get("write") if isinstance(edit_result, dict) else None
+        if execute and isinstance(edit_write, dict) and edit_write.get("ok"):
+            edit_request = edit_write.get("request")
+            overlay_payload = edit_request.get("payload") if isinstance(edit_request, dict) else None
+            if isinstance(overlay_payload, dict):
+                overlay_session = load_session(profile)
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(
+                        overlay_payload.get("appname")
+                        or args.get("app_id")
+                        or (overlay_session.app_id if overlay_session else "")
+                    ),
+                    payload=overlay_payload,
+                    source="bubble_node_edit",
+                    response=edit_write.get("response"),
+                )
+        return edit_result
     if name == "bubble_plugin_install":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()
@@ -2139,13 +2280,24 @@ def call_legacy_catalog_tool(
 
     runtime_result = dispatch_aria_runtime_tool(name, args)
     if runtime_result is not None:
-        return runtime_result
+        return _attach_write_verification(runtime_result, profile=profile, args=args)
 
     app_id = str(args.get("app_id") or args.get("appname") or "").strip()
     plan = {"steps": [{"id": "step_1", "tool_name": name, "args": dict(args)}]}
     if app_id:
         context = None
         context_file = str(args.get("context_file") or "").strip()
+        if not context_file and profile:
+            # Without a context the compiler trusts element/page refs as if they were already ids,
+            # which is how `log_the_user_in` once wrote `%ei: "in_email"` and a path keyed by the
+            # page NAME. The profile already knows where its context lives; use it.
+            try:
+                configured = resolve_profile(load_settings(), profile)
+            except Exception:  # noqa: BLE001 - a config problem must not break compilation
+                configured = None
+            profile_context = str(getattr(configured, "context_path", "") or "").strip()
+            if profile_context and Path(profile_context).exists():
+                context_file = profile_context
         if context_file:
             context = load_context_with_overlay(
                 Path(context_file),
