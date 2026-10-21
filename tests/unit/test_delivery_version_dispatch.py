@@ -15,8 +15,8 @@ from bubble_mcp.server import tools
 from bubble_mcp.sessions.store import save_session, session_from_payload
 
 
-def _profile(version: str | None) -> None:
-    save_settings(BubbleMcpSettings(get_config_dir(), "p", {"p": BubbleProfile("p", "synthetic", "synthetic", app_version=version)}))
+def _profile(version: str | None, app_id: str = "synthetic") -> None:
+    save_settings(BubbleMcpSettings(get_config_dir(), "p", {"p": BubbleProfile("p", app_id, app_id, app_version=version)}))
 
 
 def _suite(branch: str) -> Path:
@@ -120,3 +120,31 @@ def test_extending_e2e_suite_does_not_replace_its_branch_with_profile_default(
     stored = json.loads(path.read_text())
     assert stored["branch"] == want
     assert [case["id"] for case in stored["cases"]] == ["case1", "case2"]
+
+
+@pytest.mark.parametrize(("overrides", "want"), [
+    ({}, "synthetic"),
+    ({"app_id": ""}, "synthetic"),
+    ({"app_id": "  "}, "synthetic"),
+    ({"app_id": "call-app"}, "call-app"),
+])
+def test_extending_e2e_suite_preserves_its_app_unless_caller_overrides(
+    overrides: dict[str, str], want: str,
+) -> None:
+    _profile("test", app_id="profile-app")
+    path = _suite("suite-branch")
+    result = tools.call_tool("bubble_e2e_scaffold", {"profile": "p", "suite": "smoke", "case_id": "case2", "execute": True, **overrides})
+    assert result["ok"] is True
+    assert json.loads(path.read_text())["app_id"] == want
+
+
+def test_new_e2e_suite_can_still_inherit_the_profile_app() -> None:
+    from bubble_mcp.e2e.suite import load_suite
+    from bubble_mcp.e2e.target import resolve_target
+
+    _profile("profile-branch", app_id="profile-app")
+    result = tools.call_tool("bubble_e2e_scaffold", {"profile": "p", "suite": "new-suite", "case_id": "case1", "execute": True})
+    assert result["ok"] is True
+    target = resolve_target(load_suite("p", "new-suite"))
+    assert target.app_id == "profile-app"
+    assert target.branch == "profile-branch"

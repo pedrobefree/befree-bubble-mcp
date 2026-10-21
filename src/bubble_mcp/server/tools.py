@@ -1188,6 +1188,7 @@ def _call_tool(
     # E2E resolves suite branch before profile defaults. Preserve only a caller-supplied
     # version alias as an override, rather than promoting an injected profile default.
     caller_app_version = str((arguments or {}).get("app_version") or "").strip()
+    caller_app_id = str((arguments or {}).get("app_id") or "").strip()
     arguments = _arguments_with_profile_defaults(arguments)
     trusted_profile_defaults = frozenset(arguments) - caller_argument_names
     _ = arguments
@@ -1694,7 +1695,7 @@ def _call_tool(
             description=str(args.get("description") or ""),
             tags=_string_list(args.get("tags")),
             start_path=str(args.get("start_path") or "index"),
-            app_id=str(args.get("app_id") or ""),
+            app_id=caller_app_id,
             branch=str(args.get("branch") or "").strip() or caller_app_version,
             base_url=str(args.get("base_url") or ""),
             cases_root=str(args.get("cases_root") or ""),
