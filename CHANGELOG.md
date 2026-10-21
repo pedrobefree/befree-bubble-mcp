@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- Local verification is independent of personal extension packs: each test gets a temporary
+  configuration, and catalog snapshots cover the 325 built-in tools. Scheduled-deploy CLI
+  tests use a future timestamp and a synthetic executor. Sensitive-source auditing excludes
+  directories relative to the audited root, so projects under /tmp are still inspected.
+  The Ruff correctness profile is explicit to preserve the original 0.6 gate across upgrades.
+- Workflow listing merges every context root instead of stopping at the first one: the
+  mutation overlay injects raw roots (%ed for reusables, %p3 for pages) carrying ONLY the
+  workflows a write touched, and that partial root used to shadow the .bubble export root
+  entirely. On a reusable with 33 workflows, list_events and inspect_context reported 1 as
+  soon as any write had touched the context - and because the same listing feeds workflow
+  matching by event type, add_action could no longer see the existing workflow and would
+  auto-create a duplicate. Reads now union the raw, discovery and module roots (raw first,
+  so overlay rows still win per key); writes keep resolving a single root through the write
+  root token. Listing returns detached snapshots, preserves replacement action/parameter/return
+  maps (including empty maps), and respects workflow tombstones across older roots and cached
+  events, so reads cannot restore deleted events/actions or mutate discovery/cache data.
+  Wire patches now resolve index-proven context aliases to the existing local source record
+  before replay: item/leaf writes retain their siblings, whole-map replacements still remove
+  them, and action rewrites retain the physical root token in payloads and index updates.
 - Page/reusable/workflow references now retain structural keys and internal/root ids separately.
   Partial wire overlays are deep-merged with normalized discovery data, parsed caches are versioned
   and exclude overlays, and dry-runs no longer mutate discovery. ChangePage writers emit only `%ei`

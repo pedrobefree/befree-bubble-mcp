@@ -3111,7 +3111,7 @@ def test_sync_figma_tokens_schema_matches_import_and_option_discovery_runtime_si
     tools = {tool["name"]: tool for tool in listed_tools}
     schema = tools["sync_figma_tokens"]["inputSchema"]
 
-    assert len(listed_tools) == 327
+    assert len(listed_tools) == 325
     assert schema["required"] == ["profile", "tokens_path"]
     assert {
         "tokens_path",

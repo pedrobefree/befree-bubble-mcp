@@ -115,6 +115,56 @@ class DiscoveryDataBoundary:
                     normalized.append(text)
         return normalized
 
+    @classmethod
+    def resolve_local_context_path(cls, data: JsonObject, path_parts: list[str]) -> list[str]:
+        """Route a wire patch to its proven source record, without changing the wire path.
+
+        Exports may use a context key different from its physical write-root token.
+        Creating a new root for that token would turn an item/leaf patch into a
+        partial snapshot. Resolve only index-proven identities, then follow existing
+        container aliases so ordinary path assignment retains untouched siblings.
+        """
+        aliases = {
+            "%p3": "pages",
+            "%ed": "element_definitions",
+            "%wf": "workflows",
+            "%el": "elements",
+            "%p": "properties",
+        }
+        resolved = list(path_parts)
+        if len(resolved) >= 2 and resolved[0] in {"%p3", "%ed"}:
+            prefix, wire_key = resolved[:2]
+            bucket = data.get(prefix)
+            if not isinstance(bucket, dict):
+                bucket = data.get(aliases[prefix])
+            index = data.get("_index")
+            paths = index.get("id_to_path") if isinstance(index, dict) else None
+            if isinstance(bucket, dict) and wire_key not in bucket and isinstance(paths, dict):
+                candidates: set[str] = set()
+                for key, record in bucket.items():
+                    if not isinstance(record, dict):
+                        continue
+                    for identity in (key, record.get("root_id"), record.get("id")):
+                        if identity is None:
+                            continue
+                        raw_path = paths.get(str(identity))
+                        if isinstance(raw_path, str):
+                            raw_path = raw_path.strip("/").split("." if "." in raw_path else "/")
+                        if cls._normalize_overlay_path_array(raw_path) == [prefix, wire_key]:
+                            candidates.add(str(key))
+                if len(candidates) == 1:
+                    resolved[1] = next(iter(candidates))
+
+        cursor: Any = data
+        for i, token in enumerate(resolved):
+            if not isinstance(cursor, dict):
+                break
+            alternate = aliases.get(token)
+            if token not in cursor and alternate and isinstance(cursor.get(alternate), dict):
+                resolved[i] = alternate
+            cursor = cursor.get(resolved[i])
+        return resolved
+
     @staticmethod
     def _set_nested_overlay_value(
         target: JsonObject,
@@ -216,6 +266,7 @@ class DiscoveryDataBoundary:
                 path_parts = self._normalize_overlay_path_array(change.get("path_array"))
                 if not path_parts:
                     continue
+                path_parts = self.resolve_local_context_path(data, path_parts)
                 raw_intent = change.get("intent")
                 intent = raw_intent if isinstance(raw_intent, dict) else {}
                 intent_name = str(intent.get("name") or "").strip()

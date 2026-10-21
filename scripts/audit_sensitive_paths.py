@@ -106,7 +106,7 @@ def is_text_candidate(path: Path) -> bool:
 
 def iter_files(root: Path):
     for path in root.rglob("*"):
-        if any(part in SKIP_DIRS for part in path.parts):
+        if any(part in SKIP_DIRS for part in path.relative_to(root).parts[:-1]):
             continue
         if path.is_file() and is_text_candidate(path):
             yield path

@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from scripts.audit_sensitive_paths import audit_path
 
 
@@ -24,12 +26,24 @@ def test_sensitive_audit_allows_safe_file(tmp_path: Path) -> None:
 def test_sensitive_audit_skips_tmp_directory(tmp_path: Path) -> None:
     tmp_dir = tmp_path / "tmp"
     tmp_dir.mkdir()
-    local_file = tmp_dir / "implementation-control.md"
-    local_file.write_text("mutation-overlay local note", encoding="utf-8")
+    local_file = tmp_dir / "config.py"
+    local_file.write_text('access_token = "live_opaque_value_12345"', encoding="utf-8")
 
     findings = audit_path(tmp_path)
 
     assert findings == []
+
+
+@pytest.mark.parametrize("ancestor", ["tmp", ".venv", "node_modules"])
+def test_sensitive_audit_scans_explicit_root_inside_ignored_ancestor(tmp_path, ancestor) -> None:
+    root = tmp_path / ancestor / "project"
+    root.mkdir(parents=True)
+    (root / "config.py").write_text('access_token = "live_opaque_value_12345"', encoding="utf-8")
+
+    findings = audit_path(root)
+
+    assert len(findings) == 1
+    assert findings[0].startswith("config.py: matched")
 
 
 def test_sensitive_audit_allows_runtime_cookie_expression(tmp_path: Path) -> None:

@@ -85,6 +85,10 @@ extend-exclude = [
   "src/bubble_mcp/aria_runtime/visual_mutations",
 ]
 
+[tool.ruff.lint]
+# Preserve the Ruff 0.6 correctness gate instead of inheriting changing defaults.
+select = ["E4", "E7", "E9", "F"]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true

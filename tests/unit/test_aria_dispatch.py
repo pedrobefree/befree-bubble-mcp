@@ -269,7 +269,7 @@ def test_sensitive_mcp_dispatch_preserves_remote_request_without_local_secret_eg
             {
                 "appId": "literal-app",
                 "appVersion": "test",
-                "headers": {"Cookie": "sid=" + "session-only"},
+                "headers": {"Cookie": "sid=" + "synthetic-session"},
             }
         ),
     )
@@ -340,7 +340,7 @@ def test_sensitive_mcp_dispatch_with_short_secret_preserves_trusted_response_met
             {
                 "appId": "literal-app",
                 "appVersion": "test",
-                "headers": {"Cookie": "sid=" + "session-only"},
+                "headers": {"Cookie": "sid=" + "synthetic-session"},
             }
         ),
     )
@@ -410,7 +410,7 @@ def test_sensitive_batch_sends_secret_once_without_returning_or_persisting_it(
             {
                 "appId": "literal-app",
                 "appVersion": "test",
-                "headers": {"Cookie": "sid=session-only"},
+                "headers": {"Cookie": "sid=synthetic-session"},
             }
         ),
     )
@@ -486,7 +486,7 @@ def test_batch_reports_remote_success_when_overlay_persistence_fails(
             {
                 "appId": "literal-app",
                 "appVersion": "test",
-                "headers": {"Cookie": "sid=session-only"},
+                "headers": {"Cookie": "sid=synthetic-session"},
             }
         ),
     )

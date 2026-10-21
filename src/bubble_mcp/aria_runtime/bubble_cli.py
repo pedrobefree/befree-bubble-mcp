@@ -1893,6 +1893,7 @@ class BubbleCLI:
                 continue
             object_id = str(path[2] or "").strip()
             resolved = self._normalize_capture_path(change.get("body"))
+            resolved = self.discovery.resolve_local_context_path(data, resolved)
             if object_id and resolved:
                 path_to_object_id[".".join(resolved)] = object_id
 
@@ -1902,6 +1903,8 @@ class BubbleCLI:
             path = self._normalize_capture_path(change.get("path_array"))
             if not path:
                 continue
+
+            path = self.discovery.resolve_local_context_path(data, path)
 
             intent = change.get("intent") if isinstance(change.get("intent"), dict) else {}
             intent_name = str(intent.get("name") or "").strip()
@@ -1968,6 +1971,11 @@ class BubbleCLI:
             str(context_id or "").strip(),
             str(self._lookup_cached_context_object_id(context_type, context_id) or "").strip(),
         ]
+        context_root = self.discovery._get_context_root(context_id, context_type)
+        if isinstance(context_root, dict):
+            candidate_ids.extend(
+                str(context_root.get(field) or "").strip() for field in ("root_id", "id")
+            )
         for candidate_id in candidate_ids:
             if not candidate_id:
                 continue
@@ -49346,6 +49354,53 @@ class BubbleCLI:
             return module_payload
         return None
 
+    def _context_roots_for_workflow_listing(
+        self, context_id: str, context_type: str
+    ) -> List[Dict[str, Any]]:
+        """Every root that can hold workflows for a context, newest-first.
+
+        Reads must merge them instead of stopping at the first hit: the mutation overlay
+        injects raw roots (%ed/%p3) carrying ONLY the workflows a write touched, so a root
+        with one %wf entry can sit in front of an export root holding all of them. Writes
+        still resolve a single root via _get_context_root_for_workflows - the write root
+        token decides where a mutation lands, and merging is a read-side concern.
+        """
+
+        roots: List[Dict[str, Any]] = []
+        seen: set[int] = set()
+
+        def add(candidate: Any) -> None:
+            if not isinstance(candidate, dict):
+                return
+            if not (
+                isinstance(candidate.get("%wf"), dict)
+                or isinstance(candidate.get("workflows"), dict)
+            ):
+                return
+            if id(candidate) in seen:
+                return
+            seen.add(id(candidate))
+            roots.append(candidate)
+
+        context_root_token = self._resolve_context_write_root_token(context_id, context_type)
+        plain_context_id = str(context_id or "").strip()
+        tokens = [context_root_token]
+        if plain_context_id and plain_context_id != context_root_token:
+            tokens.append(plain_context_id)
+
+        data = self.discovery.data if isinstance(self.discovery.data, dict) else {}
+        raw_bucket = data.get(self._workflow_prefix(context_type))
+        if isinstance(raw_bucket, dict):
+            for token in tokens:
+                add(raw_bucket.get(token))
+        for token in tokens:
+            add(self.discovery._get_context_root(token, context_type))
+        if not roots:
+            # Last resort, as before: reading a module payload can walk the modules directory.
+            for token in tokens:
+                add(self._load_module_context_payload(token, context_type))
+        return roots
+
     # Cached workflow refs recorded up to this long before the local .bubble export was
     # downloaded may still be missing from that export (generation lag); newer ones always are.
     _WORKFLOW_CACHE_ROOT_TOLERANCE_MS = 15 * 60 * 1000
@@ -49662,14 +49717,17 @@ class BubbleCLI:
 
     def _list_context_workflows(self, context_id: str, context_type: str) -> List[Dict[str, Any]]:
         """List workflows in a context with their dict key and id."""
-        root = self._get_context_root_for_workflows(context_id, context_type)
+        roots = self._context_roots_for_workflow_listing(context_id, context_type)
         rows: List[Dict[str, Any]] = []
         row_by_key: Dict[str, Dict[str, Any]] = {}
+        deleted_keys: set[str] = set()
 
         def push(row: Dict[str, Any]) -> None:
             key = str(row.get("key") or "")
-            if not key:
+            if not key or key in deleted_keys:
                 return
+            # Listing must not change roots or cached snapshots, including nested maps.
+            row = copy.deepcopy(row)
             existing = row_by_key.get(key)
             if not existing:
                 row_by_key[key] = row
@@ -49699,15 +49757,10 @@ class BubbleCLI:
                 if not existing_wf:
                     existing["workflow"] = dict(new_wf)
                 else:
-                    existing_actions = existing_wf.get("actions") if isinstance(existing_wf.get("actions"), dict) else {}
-                    new_actions = new_wf.get("actions") if isinstance(new_wf.get("actions"), dict) else {}
-                    if isinstance(new_actions, dict) and new_actions:
-                        if not isinstance(existing_actions, dict) or not existing_actions:
-                            existing_wf["actions"] = dict(new_actions)
-                        else:
-                            merged_actions = dict(existing_actions)
-                            merged_actions.update(new_actions)
-                            existing_wf["actions"] = merged_actions
+                    # Roots arrive newest-first, then cache-only rows. An action map
+                    # is a replacement snapshot: even an empty map must stay empty.
+                    if "actions" not in existing_wf and "actions" in new_wf:
+                        existing_wf["actions"] = new_wf["actions"]
                     existing_props = (
                         existing_wf.get("%p")
                         if isinstance(existing_wf.get("%p"), dict)
@@ -49725,17 +49778,11 @@ class BubbleCLI:
                     if isinstance(new_props, dict) and new_props:
                         if not isinstance(existing_props, dict):
                             existing_props = {}
-                        # Always merge custom-event structural maps from cache/discovery;
-                        # these are frequently updated by CLI/MCP and must not be dropped.
+                        # Structural maps are replacement snapshots too. Older roots
+                        # and cache rows may fill an absent map, never undo removals.
                         for map_key in ("parameters", "return_types"):
-                            existing_map = existing_props.get(map_key)
-                            incoming_map = new_props.get(map_key)
-                            if isinstance(existing_map, dict) and isinstance(incoming_map, dict):
-                                merged_map = dict(existing_map)
-                                merged_map.update(incoming_map)
-                                existing_props[map_key] = merged_map
-                            elif not existing_map and isinstance(incoming_map, dict):
-                                existing_props[map_key] = dict(incoming_map)
+                            if map_key not in existing_props and map_key in new_props:
+                                existing_props[map_key] = new_props[map_key]
                         # Do not let cache-only rows override/introduce target bindings on top of
                         # discovery-root workflow objects; this can create false-positive element matches.
                         allow_binding_merge = not (row.get("from_cache") and not existing.get("from_cache"))
@@ -49743,7 +49790,7 @@ class BubbleCLI:
                         if allow_binding_merge:
                             merge_keys = ("%ei", "element_id", "%et", "event_type", "%en")
                         for prop_key in merge_keys:
-                            if not existing_props.get(prop_key) and new_props.get(prop_key):
+                            if prop_key not in existing_props and prop_key in new_props:
                                 existing_props[prop_key] = new_props.get(prop_key)
                         if "%p" in existing_wf and isinstance(existing_wf.get("%p"), dict):
                             existing_wf["%p"] = existing_props
@@ -49761,28 +49808,29 @@ class BubbleCLI:
                         existing_wf["id"] = new_wf.get("id")
                     existing["workflow"] = existing_wf
 
-        if not isinstance(root, dict):
-            for cached in self._list_cached_context_workflows(context_id, context_type):
-                push(cached)
-            return rows
-
-        # Prefer raw Bubble keyspace (%wf). Parsed 'workflows' keys can diverge and create ghost writes.
-        container_key = "%wf" if isinstance(root.get("%wf"), dict) else "workflows"
-        workflows = root.get(container_key)
-        if not isinstance(workflows, dict):
-            workflows = {}
-        for wf_key, wf in workflows.items():
-            if wf_key == "length" or not isinstance(wf, dict):
-                continue
-            props = wf.get("%p") if isinstance(wf.get("%p"), dict) else wf.get("properties", {})
-            push({
-                "key": str(wf_key),
-                "id": str(wf.get("id") or wf_key),
-                "type": wf.get("%x") or wf.get("type"),
-                "name": props.get("%en") if isinstance(props, dict) else None,
-                "from_cache": False,
-                "workflow": wf
-            })
+        for root in roots:
+            # Prefer raw Bubble keyspace (%wf). Parsed 'workflows' keys can diverge and create ghost writes.
+            container_key = "%wf" if isinstance(root.get("%wf"), dict) else "workflows"
+            workflows = root.get(container_key)
+            if not isinstance(workflows, dict):
+                workflows = {}
+            for wf_key, wf in workflows.items():
+                # None is an explicit overlay deletion, not a missing workflow.
+                # Retain it across older roots and the cache fallback. A tombstone
+                # in an older root cannot hide a newer, recreated workflow.
+                if wf is None and str(wf_key) not in row_by_key:
+                    deleted_keys.add(str(wf_key))
+                if wf_key == "length" or not isinstance(wf, dict):
+                    continue
+                props = wf.get("%p") if isinstance(wf.get("%p"), dict) else wf.get("properties", {})
+                push({
+                    "key": str(wf_key),
+                    "id": str(wf.get("id") or wf_key),
+                    "type": wf.get("%x") or wf.get("type"),
+                    "name": props.get("%en") if isinstance(props, dict) else None,
+                    "from_cache": False,
+                    "workflow": wf
+                })
         for cached in self._list_cached_context_workflows(context_id, context_type):
             push(cached)
         return rows
@@ -51753,8 +51801,9 @@ class BubbleCLI:
         success_message: str = "",
     ) -> bool:
         prefix = self._workflow_prefix(context_type)
+        context_root_token = self._resolve_context_write_root_token(context_id, context_type)
         pb = PayloadBuilder(appname=self.appname)
-        actions_path = [prefix, context_id, "%wf", wf_key, "actions"]
+        actions_path = [prefix, context_root_token, "%wf", wf_key, "actions"]
 
         for removed_id in removed_action_ids or []:
             rid = str(removed_id or "").strip()
@@ -51779,7 +51828,7 @@ class BubbleCLI:
                 continue
             pb.add_update_index(
                 ["_index", "id_to_path", action_id],
-                f"{prefix}.{context_id}.%wf.{wf_key}.actions.{idx_key}",
+                f"{prefix}.{context_root_token}.%wf.{wf_key}.actions.{idx_key}",
             )
 
         if wf_id:
