@@ -48,3 +48,12 @@ PR de revisão: https://github.com/pedrobefree/befree-bubble-mcp/pull/47
 Pipeline local completo aprovado em2393ca8: 2765 testes, 2 UI opt-in ignorados,
 cobertura49.6%. Evidências e limites em docs/delivery-validation-local-validation.md.
 Revisão independente dos reparos e fixture sem P1/P2 pendentes. Sem merge ou deploy.
+
+## Revisão pós-abertura e reparos autorizados
+
+Os dois P2 de versão foram corrigidos em ef51286; a revisão encontrou ainda troca
+indevida de app_id do scaffold, reparada em0b1bd66. São24 regressões novas,
+187 testes focados e nova revisão independente com134 testes aprovados, sem P1/P2.
+Pipeline completo de0b1bd66: 2789 testes aprovados, 2 UI opt-in ignorados, cobertura49.7%,
+demais etapas PASS. O usuário autorizou merge após essas condições, substituindo
+a restrição de somente abrir PR da etapa original. Sem deploy ou GitHub Actions.

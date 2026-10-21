@@ -36,3 +36,11 @@ configuração/sessão/savepoint e não dependem de Playwright instalado para pr
 Os sete achados da revisão independente foram reparados com regressões; detalhes e
 resultados em docs/delivery-validation-local-validation.md. O pipeline local passou
 em2393ca8, e o PR47 está aberto para revisão humana. Aceitação Bubble real não executada.
+
+## Revisão pós-abertura
+
+Clone usa a versão resolvida por chamada/perfil/sessão. Defaults do perfil não viram
+overrides de branch/app_id ao executar ou estender uma suíte E2E. Esses reparos
+têm24 regressões novas e nova revisão sem P1/P2 em0b1bd66. O pipeline local completo
+passou (2789 testes, 2 UI opt-in ignorados, cobertura49.7%). A autorização posterior
+do usuário permite merge após essas verificações; o escopo continua sem deploy.
