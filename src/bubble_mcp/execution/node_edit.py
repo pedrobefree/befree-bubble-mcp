@@ -345,5 +345,3 @@ def _not_a_node(segments: Sequence[str], value: Any) -> dict[str, Any]:
             "node that contains it."
         ),
     }
-
-
