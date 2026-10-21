@@ -103,7 +103,7 @@ def test_schedule_deploy_confirm_persists_record_and_history(tmp_path, monkeypat
     preview_id = preview_result["preview"]["preview_id"]
     result = schedule_deploy(
         profile="client",
-        scheduled_at=_future_iso(),
+        scheduled_at=preview_result["preview"]["scheduled_at"],
         message="Main branch release",
         execute=True,
         confirm=True,
@@ -140,7 +140,7 @@ def test_schedule_deploy_persists_objective_issue_auto_fix_authorization(tmp_pat
 
     result = schedule_deploy(
         profile="client",
-        scheduled_at=_future_iso(),
+        scheduled_at=preview_result["preview"]["scheduled_at"],
         message="Main branch release",
         execute=True,
         confirm=True,
@@ -185,7 +185,7 @@ def test_cancel_scheduled_deploy_moves_record_to_history(tmp_path, monkeypatch) 
     )
     scheduled = schedule_deploy(
         profile="client",
-        scheduled_at=_future_iso(),
+        scheduled_at=preview_result["preview"]["scheduled_at"],
         message="Main branch release",
         execute=True,
         confirm=True,
@@ -224,7 +224,7 @@ def test_history_limit_returns_latest_records(tmp_path, monkeypatch) -> None:
         )
         schedule_deploy(
             profile="client",
-            scheduled_at=_future_iso(offset_seconds=index),
+            scheduled_at=preview["preview"]["scheduled_at"],
             message=f"Release {index}",
             execute=True,
             confirm=True,
@@ -275,7 +275,7 @@ def test_execute_scheduled_deploy_reports_missing_playwright(tmp_path, monkeypat
     )
     scheduled = schedule_deploy(
         profile="client",
-        scheduled_at=_future_iso(),
+        scheduled_at=record["preview"]["scheduled_at"],
         message="Main branch release",
         execute=True,
         confirm=True,
@@ -347,7 +347,7 @@ def test_execute_scheduled_deploy_direct_uses_stored_session_without_browser(tmp
     )
     scheduled = schedule_deploy(
         profile="client",
-        scheduled_at=_future_iso(),
+        scheduled_at=record["preview"]["scheduled_at"],
         message="Direct release",
         execute=True,
         confirm=True,

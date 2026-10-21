@@ -15,7 +15,7 @@
 - Nothing in `src/bubble_mcp/execution/` may import from `bubble_mcp.server`.
 - `raw_node_edit.py` and `tests/unit/test_raw_node_edit.py` are not modified by this plan.
 - No test in this plan launches a browser or contacts Bubble. Playwright is imported lazily, inside the function that needs it, exactly as `browser_automation/scheduled_deploy.py:834` already does.
-- Manual validation runs only against profile `mcp-test` (app `mcp-test-app`). Never `orana` (`~/.bubble-mcp`), never `auto-on`.
+- Manual validation runs only against profile `mcp-test` (app `mcp-test-app`). Never the client profile (`~/.bubble-mcp`), never `auto-on`.
 - This machine has 14 unit tests that fail on Windows regardless of this work (symlink / chmod / path separator / routing count). Verification compares against the pre-change baseline captured in Task 0, never against an absolute pass count.
 - Type annotations use `from __future__ import annotations` and PEP 604 unions, matching the surrounding modules.
 
@@ -1432,7 +1432,7 @@ git commit -m "docs: route existing-action edits to bubble_node_edit"
 - Consumes: both tools, working end to end.
 - Produces: the evidence that decides whether the encoding contract in `node_keys.py` is right.
 
-This task needs a human at the Bubble editor and a real profile. It runs only against `mcp-test` (`mcp-test-app`) — never `orana` (`~/.bubble-mcp`), never `auto-on`. Do not start it without the user present.
+This task needs a human at the Bubble editor and a real profile. It runs only against `mcp-test` (`mcp-test-app`) — never the client profile (`~/.bubble-mcp`), never `auto-on`. Do not start it without the user present.
 
 - [ ] **Step 1: Confirm the browser extra is installed**
 

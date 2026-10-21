@@ -194,3 +194,21 @@ def test_the_server_instructions_say_to_check_the_session_first() -> None:
     from bubble_mcp.server.instructions import SERVER_INSTRUCTIONS
 
     assert "bubble_session_check" in SERVER_INSTRUCTIONS
+
+
+@pytest.mark.parametrize("tool_name", ["bubble_duplicate_element", "bubble_run_as"])
+def test_delivery_tools_refuse_expired_session_before_editor_access(
+    monkeypatch: pytest.MonkeyPatch, tool_name: str,
+) -> None:
+    from bubble_mcp.server.tools import call_tool
+
+    _gate(monkeypatch, logged_in=False)
+
+    def must_not_run(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("expired sessions must not reach delivery operations")
+
+    monkeypatch.setattr("bubble_mcp.server.tools.duplicate_live_element", must_not_run)
+    monkeypatch.setattr("bubble_mcp.server.tools.run_as_user", must_not_run)
+    result = call_tool(tool_name, {"profile": "mcp-test", "element_ids": ["node"], "user_id": "user"})
+    assert result["error"] == "session_expired"
+    assert result["executed"] is False

@@ -63,6 +63,7 @@ def run_readiness_check(
     app_version: str = "test",
     max_age_hours: int = 24,
     include_family_preview: bool = False,
+    include_e2e: bool = False,
     include_details: bool = False,
     stop_on_failure: bool = False,
 ) -> dict[str, Any]:
@@ -99,6 +100,13 @@ def run_readiness_check(
             )
         )
         sequence.append(("safe_read", "bubble_runtime_smoke", {**profile_args, "suite": "safe-read"}))
+        if include_e2e:
+            # Only meaningful once the profile has suites: it reports whether Playwright is
+            # installed and whether each suite's run-as session is still in date, which is
+            # what a run would otherwise discover the slow way.
+            sequence.append(
+                ("e2e_suites", "bubble_e2e_list", {"profile": profile, "include_runs": False})
+            )
         if include_family_preview:
             sequence.append(
                 (
@@ -123,6 +131,7 @@ def run_readiness_check(
         "app_version": app_version,
         "max_age_hours": max_age_hours,
         "include_family_preview": include_family_preview,
+        "include_e2e": include_e2e,
         "include_details": include_details,
         "summary": {
             "checks": len(checks),

@@ -27,6 +27,10 @@ class BubbleProfile:
     consolelog_json_path: str | None = None
     context_path: str | None = None
     crawler_index_path: str | None = None
+    # The dev version's preview password page (HTTP Basic). Browser tools send it when the app
+    # asks; see execution/run_as.resolve_preview_credentials for the order sources are tried in.
+    preview_username: str | None = None
+    preview_password: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,8 @@ def load_settings(config_dir: Path | None = None) -> BubbleMcpSettings:
             consolelog_json_path=str(raw_profile.get("consolelog_json_path") or "").strip() or None,
             context_path=str(raw_profile.get("context_path") or "").strip() or None,
             crawler_index_path=str(raw_profile.get("crawler_index_path") or "").strip() or None,
+            preview_username=str(raw_profile.get("preview_username") or "").strip() or None,
+            preview_password=str(raw_profile.get("preview_password") or "").strip() or None,
         )
 
     default_profile = str(payload.get("default_profile") or "").strip() or None
@@ -144,6 +150,8 @@ def save_settings(settings: BubbleMcpSettings) -> None:
                     if profile.crawler_index_path
                     else {}
                 ),
+                **({"preview_username": profile.preview_username} if profile.preview_username else {}),
+                **({"preview_password": profile.preview_password} if profile.preview_password else {}),
             }
             for name, profile in sorted(settings.profiles.items())
         },

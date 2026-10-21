@@ -37,3 +37,14 @@ def _no_version_list_network(monkeypatch: pytest.MonkeyPatch) -> None:
         "_fetch_versions",
         lambda session, app_id: {"ok": True, "response": {"test": {}, "live": {}, "stub-branch": {}}},
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_savepoint_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the savepoint guard from reaching Bubble, and from writing a marker file."""
+
+    monkeypatch.setattr(
+        "bubble_mcp.server.tools.ensure_session_savepoint",
+        lambda **kwargs: {"created": False, "reason": "savepoint_disabled_in_tests"},
+        raising=False,
+    )

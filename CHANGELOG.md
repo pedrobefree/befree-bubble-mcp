@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+- MCP workflow cloning resolves the same app version as its guard and session savepoint.
+  E2E run/scaffold keeps a suite's branch ahead of the profile default, while explicit
+  caller branch/app_version overrides still take precedence. Extending a suite also keeps
+  its app_id unless the caller explicitly replaces it. Regression tests exercise
+  reads, writes, previews, and persisted suite updates through the MCP dispatcher.
+
+- Delivery/validation integration adds session savepoints, explicit savepoint restore,
+  workflow cloning and element subtree duplication with remapped references, deploy
+  previews, development-version impersonation, and E2E suites/inline flows. Shared
+  version/session guards remain in force, including expired-session refusal before
+  duplication previews or impersonation. Preview credentials are preserved on profile
+  updates and passwords are redacted from returned profile status. Native catalog: 340 tools.
+- Integration regressions cover scalar clone sources, savepoint guard ordering,
+  Windows E2E case-path traversal on POSIX, and deploy-preview schema fields without
+  overriding visual-capture or language-diff fields. E2E refuses production targets and
+  navigation outside the selected development version; run-as state is private and scoped
+  by app/version/user. Cloning refuses occupied slots, deploy diffs distinguish JSON
+  booleans/numbers, and savepoints resolve the same version as the write.
+  Browser/runtime acceptance against
+  a real Bubble app remains separate from the offline local pipeline.
+
 - Read-back verification distinguishes JSON booleans from numbers, including nested values,
   so true/1 and false/0 mismatches cannot be reported as verified writes or confirm a target version.
 
@@ -71,7 +92,7 @@
   is_slidable: false on every expression node. Frozen as a golden fixture
   (tests/fixtures/expressions/api-event-parameter-golden.json), and bubble_editor_write now
   flags APIEventParameter nodes missing any of the four context fields with the exact fix.
-- bubble_editor_write warns on hand-composed expression nodes in workflow actions (Orana report
+- bubble_editor_write warns on hand-composed expression nodes in workflow actions (the client report
   bug 8): expression encodings (APIEventParameter, Message chains, param ids) are not derivable
   from the .bubble export, and /appeditor/write returns HTTP 200 for any body — results now
   carry `warnings` steering agents to captured editor traffic (bubble_tool_wizard_start),

@@ -38,6 +38,12 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "notes": "Use bubble_readiness_check first for the compact health, coverage, catalog-quality, and routing sequence. Use individual smoke suites only for deeper diagnosis.",
     },
     {
+        "intent": "run_browser_e2e_tests",
+        "when": "The user asks to run, write, or read the result of an end-to-end / UAT test that drives the app in a browser.",
+        "tools": ["bubble_e2e_flow", "bubble_e2e_list", "bubble_e2e_run", "bubble_e2e_report", "bubble_e2e_scaffold", "bubble_run_as"],
+        "notes": "For before/after evidence of a change - open a page, click, confirm, check a text - use bubble_e2e_flow with the steps inline and versions=[main, branch]: it records each version and returns the videos side by side, with no Playwright script and no suite. Never write Playwright scripts by hand for that. For suites, call bubble_e2e_list first for the suite and case ids. bubble_e2e_run defaults to execute=false, which previews without opening a browser; execute=true creates real records in the app. A missing or expired session is fixed with bubble_run_as, never with a password inside a case.",
+    },
+    {
         "intent": "find_profile_session_or_context",
         "when": "The user names a project/profile, asks what projects are available, or a target cannot be resolved.",
         "tools": ["bubble_profile_cache_refresh", "bubble_project_bootstrap", "bubble_profile_status", "bubble_profile_add", "bubble_profile_list", "bubble_session_login", "bubble_session_list", "bubble_session_inspect", "bubble_context_detect", "bubble_context_find"],
@@ -126,7 +132,7 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "intent": "manage_workflows",
         "when": "The user asks to create events, add actions, wire buttons, change conditions, or inspect workflow refs.",
         "tools": ["create_workflow", "create_event", "add_action", "list_events", "resolve_refs", "map_workflow_ref", "bubble_live_node_read", "bubble_node_edit"],
-        "notes": "For page load workflows, target element_name='Page'. For element events, resolve the element first when ambiguous. To add actions to an existing workflow (including ConditionTrue/CustomEvent/DoEvery), pass event_ref (workflow key/id/name/alias) to add_action instead of element_name; never fall back to manual bubble_editor_write payloads. Expression encodings (APIEventParameter, Message, param ids) are NOT derivable from the .bubble export and /appeditor/write accepts any body with HTTP 200. To EDIT an action that already exists, use bubble_node_edit: it reads the node from the live editor, changes one leaf (op='patch', pointer = ONE action node such as ['api','<wf_id>','actions','3']), and re-reads to prove the write landed. To change the ORDER of existing actions in a workflow, use the same tool with op='reorder', pointer = the actions map (['api','<wf_id>','actions']) and order = every existing action key exactly once; it renumbers the map and repoints _index.id_to_path, and refuses an order that would drop a step. Never recompose an existing action from the export - the expression encoding is not derivable from it. Use bubble_live_node_read first when you need to see the real shape of an action type. For creating a new expression-heavy action, capturing real editor traffic with bubble_tool_wizard_start is still the route.",
+        "notes": "For page load workflows, target element_name='Page'. For element events, resolve the element first when ambiguous. To add actions to an existing workflow (including ConditionTrue/CustomEvent/DoEvery), pass event_ref (workflow key/id/name/alias) to add_action instead of element_name; never fall back to manual bubble_editor_write payloads. Expression encodings (APIEventParameter, Message, param ids) are NOT derivable from the .bubble export and /appeditor/write accepts any body with HTTP 200. To EDIT an action that already exists, use bubble_node_edit: it reads the node from the live editor, changes one leaf (op='patch', pointer = ONE action node such as ['api','<wf_id>','actions','3']), and re-reads to prove the write landed. To change the ORDER of existing actions in a workflow, use the same tool with op='reorder', pointer = the actions map (['api','<wf_id>','actions']) and order = every existing action key exactly once; it renumbers the map and repoints _index.id_to_path, and refuses an order that would drop a step. Never recompose an existing action from the export - the expression encoding is not derivable from it. Before deploying, run bubble_deploy_preview to show the user what the deploy would push: it diffs the deployed live version against test. Ask which source they want when it matters - source='overlay' (default) covers only what this MCP wrote, source='full_scan' also catches edits made by hand in the editor. The MCP takes one Bubble savepoint automatically before a session's first executed write; bubble_savepoint_create adds an explicitly labelled one, and bubble_savepoint_restore reverts the WHOLE version to an instant, so never reach for it to undo a single edit. To DUPLICATE a whole workflow, use bubble_clone_workflow with pointer = the workflow root (['api','<wf_id>'] for a backend workflow, ['%p3','<page>','%wf','<wf_id>'] for a page one); it copies the raw node and remints only the event and action ids, which is what the editor itself does - never rebuild a workflow with create_workflow plus add_action to copy it. To DUPLICATE an element (a button, a popup, a group) together with the workflows it triggers, use bubble_duplicate_element with element_ids = every root of the copy (the button AND the popup it opens, so the copied button opens the copied popup); it remints every id and writes the _index entries itself - never hand-build _index.id_to_path or issues_sub entries in a bubble_editor_write payload. Use bubble_live_node_read first when you need to see the real shape of an action type. For creating a new expression-heavy action, capturing real editor traffic with bubble_tool_wizard_start is still the route.",
     },
     {
         "intent": "manage_data_schema",
@@ -169,6 +175,24 @@ ROUTES: tuple[dict[str, Any], ...] = (
 
 
 KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        (
+            "e2e",
+            "end to end",
+            "end-to-end",
+            "ponta a ponta",
+            "uat",
+            "playwright",
+            "browser test",
+            "teste de interface",
+            "teste de aceitacao",
+            "teste de aceitação",
+            "teste no navegador",
+            "suite de teste",
+            "suíte de teste",
+        ),
+        ("run_browser_e2e_tests",),
+    ),
     (
         (
             "api connector",
@@ -852,6 +876,42 @@ RECIPES: dict[str, dict[str, Any]] = {
             },
         ],
     },
+    "e2e_suite": {
+        "when": "Run, read or create a browser end-to-end / UAT test that drives the real app as a test user.",
+        "tools": ["bubble_e2e_flow", "bubble_e2e_list", "bubble_e2e_run", "bubble_e2e_report", "bubble_e2e_scaffold", "bubble_run_as"],
+        "steps": [
+            {
+                "tool": "bubble_e2e_list",
+                "purpose": "Learn the suite and case ids for the profile, and whether Playwright and the run-as session are ready.",
+                "args": {"profile": "$profile"},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_run_as",
+                "purpose": "Recapture the impersonated session when bubble_e2e_list reports it missing or expired. Skip it otherwise.",
+                "args": {"profile": "$profile"},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_e2e_run",
+                "purpose": "Preview the run: resolve branch and base URL and check every precondition without opening a browser.",
+                "args": {"profile": "$profile", "suite": "$suite", "execute": False},
+                "required_before_execute": True,
+            },
+            {
+                "tool": "bubble_e2e_run",
+                "purpose": "Drive the cases for real. Only with the user's agreement: passing cases create records in the app.",
+                "args": {"profile": "$profile", "suite": "$suite", "execute": True},
+                "required_before_execute": False,
+            },
+            {
+                "tool": "bubble_e2e_report",
+                "purpose": "Read a finished run by run_id instead of running the suite again.",
+                "args": {"profile": "$profile", "run_id": "$run_id"},
+                "required_before_execute": False,
+            },
+        ],
+    },
     "quality_gate": {
         "when": "Verify install health, catalog coverage, runtime behavior, or safe profile integration.",
         "tools": ["bubble_readiness_check", "bubble_runtime_smoke", "bubble_health_check", "bubble_tool_coverage", "bubble_catalog_quality"],
@@ -874,6 +934,24 @@ RECIPES: dict[str, dict[str, Any]] = {
 
 
 RECIPE_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (
+        (
+            "e2e",
+            "end to end",
+            "end-to-end",
+            "ponta a ponta",
+            "uat",
+            "playwright",
+            "browser test",
+            "teste de interface",
+            "teste de aceitacao",
+            "teste de aceitação",
+            "teste no navegador",
+            "suite de teste",
+            "suíte de teste",
+        ),
+        "e2e_suite",
+    ),
     (
         (
             "api connector",
@@ -1185,6 +1263,7 @@ RUNBOOK_SEARCH_QUERIES: dict[str, str] = {
     "html_style_import": "create_styles_from_html html css style hover focus disabled pressed border radius",
     "page_or_reusable": "create page reusable clone delete context",
     "project_transfer": "project transfer copy reusable page element source target profile inventory preview execute",
+    "e2e_suite": "e2e end-to-end uat browser test playwright suite case run_as run report scaffold",
     "quality_gate": "readiness coverage catalog smoke health",
     "performance_logs_usage": "performance workload usage WU logs jetstream workflow runs storage plan usage audit",
     "setup_or_refresh_context": "bubble_profile_cache_refresh refresh cache atualizar recarregar sync profile context detect find status .bubble",

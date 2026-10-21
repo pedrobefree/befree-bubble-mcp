@@ -524,6 +524,11 @@ DOC_ENRICHMENT_TOOL = "bubble_manual_context_for_tool_authoring"
 
 
 NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "bubble_run_as": (
+        "Impersonate an app user by Bubble unique id or email using the stored editor session. "
+        "Capture private Playwright storage state scoped to app, version and user, returning "
+        "cookie metadata without values. Select the intended development version for E2E."
+    ),
     "delete_data_type": (
         "Soft-delete a Bubble data type using Bubble's normal schema delete marker. The type remains recoverable "
         "in Bubble's internal schema. After a successful write, ask the user whether they also want permanent "
@@ -683,6 +688,33 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Bubble writes. Add verify_context=true to refresh the Bubble context and confirm the temporary objects "
         "materialized."
     ),
+    "bubble_e2e_list": (
+        "List the browser end-to-end suites and cases declared for a profile, the branch each targets, and whether "
+        "each could run now: Playwright installed, run-as session present and unexpired. Use it before "
+        "bubble_e2e_run to learn the suite and case ids instead of guessing them. Read-only."
+    ),
+    "bubble_e2e_flow": (
+        "Run a short browser flow declared inline (goto, click, fill, expect_text, screenshot) on one or more app "
+        "versions as an app user, and get the recordings side by side: before/after evidence of a change without "
+        "writing a Playwright script. execute=false previews; execute=true clicks for real in development data. "
+        "live is refused."
+    ),
+    "bubble_e2e_run": (
+        "Run a browser end-to-end suite, or named cases from it, against a Bubble branch as the impersonated run-as "
+        "user. Leave execute=false to preview: it resolves branch and base URL, checks the session and the case "
+        "modules, and reports what would run without opening a browser. Use execute=true only when the user wants "
+        "the cases driven for real, because they create records in the app under test."
+    ),
+    "bubble_e2e_report": (
+        "Read a previous end-to-end run by run_id: per-case status, duration, the step that failed, and the paths of "
+        "its screenshots and video. Use this instead of running the suite again when the user asks what happened in "
+        "an earlier run. Read-only."
+    ),
+    "bubble_e2e_scaffold": (
+        "Create or extend a browser end-to-end suite: directories, manifest, and a case module skeleton written "
+        "against the runner's context API. Use this when someone describes a test in plain language and a file has "
+        "to exist before the selectors and assertions can be filled in. execute=false reports the files it would write."
+    ),
     "bubble_context_summary": (
         "Summarize a compact Bubble project context file: pages, reusable elements, styles, data types, and indexed "
         "elements. Use before planning changes against a local context artifact. Read-only."
@@ -783,6 +815,38 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "actions map: only the node root is re-encoded. verified=true proves the bytes were read back "
         "unchanged, not that the editor renders the node - render_unverified stays true until a human "
         "checks the step in the editor."
+    ),
+    "bubble_deploy_preview": (
+        "Show what a deploy would push: the diff between the deployed live version and test. "
+        "Read-only, never deploys. source='overlay' compares only what this MCP wrote; "
+        "source='full_scan' walks both trees and also sees hand edits."
+    ),
+    "bubble_savepoint_create": (
+        "Create a Bubble savepoint on the selected app version so the work that follows has a "
+        "point to return to. One HTTP call, not a branch. The MCP takes one automatically before "
+        "a session's first executed write."
+    ),
+    "bubble_savepoint_list": (
+        "List the savepoints the app version can be restored to, with the epoch-ms timestamp each "
+        "is addressed by. Read-only."
+    ),
+    "bubble_savepoint_restore": (
+        "Revert the app version to a savepoint instant. Whole-version time travel: every change "
+        "after that instant is discarded. Requires confirm=true with execute=true."
+    ),
+    "bubble_clone_workflow": (
+        "Duplicate a whole workflow the way the editor does: read the source node raw, remint the "
+        "event and action ids, apply that mapping recursively over the body including expressions, "
+        "and write the copy into a sibling slot, then re-read and report divergences. Use instead of "
+        "recomposing with create_workflow plus add_action, which cannot reproduce expression "
+        "encodings. execute=false previews."
+    ),
+    "bubble_duplicate_element": (
+        "Duplicate (copy/paste) live elements - a button, a popup, a group with its children - "
+        "together with the workflows they trigger: remints every id, repoints references inside "
+        "the copy and maintains _index (id_to_path, issues_list, issues_sub) itself. Pass a button "
+        "and the popup it opens together in element_ids. execute=false previews every new id and "
+        "index entry; execute=true writes to a branch and reads it all back."
     ),
     "bubble_plugin_install": (
         "Preview or install one Bubble plugin in a target app using the stored editor session. Use this when transfer "
@@ -1989,6 +2053,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_framework_status",
         "bubble_list_scheduled_deploys",
         "bubble_deploy_history",
+        "bubble_savepoint_list",
+        "bubble_deploy_preview",
     }
     read_only = _is_read_only(name) or name in agent_read_only
     destructive = name.startswith(("delete_", "clear_", "regenerate_")) or name in {
@@ -1998,6 +2064,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_branch_merge_resolve_conflicts",
         "bubble_branch_merge_finalize",
         "bubble_schedule_deploy",
+        "bubble_savepoint_restore",
     }
     return {
         "readOnlyHint": read_only,
@@ -2031,6 +2098,8 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_live_node_read",
             "bubble_node_edit",
             "bubble_session_check",
+            "bubble_clone_workflow",
+            "bubble_duplicate_element",
             "bubble_visual_capture",
         "bubble_visual_capture_actual",
         "bubble_visual_audit",
@@ -2046,6 +2115,10 @@ def tool_annotations(name: str) -> dict[str, bool]:
             "bubble_branch_merge_finalize",
             "bubble_extension_companion_start",
             "bubble_schedule_deploy",
+            # Drives the app under test in a browser over the network. The read-only E2E
+            # tools stay closed-world: they only read local manifests and run results.
+            "bubble_e2e_run",
+            "bubble_e2e_flow",
             "upload_asset",
         },
     }
@@ -2153,6 +2226,8 @@ def _is_read_only(name: str) -> bool:
         "bubble_health_check",
         "bubble_tool_coverage",
         "bubble_runtime_smoke",
+        "bubble_e2e_list",
+        "bubble_e2e_report",
         "bubble_context_summary",
         "bubble_context_find",
         "bubble_session_check",
@@ -2229,6 +2304,8 @@ def _is_mutating(name: str) -> bool:
         "bubble_plugin_install",
         "bubble_execute_plan",
         "bubble_node_edit",
+        "bubble_clone_workflow",
+        "bubble_duplicate_element",
         "batch",
         "natural",
     }

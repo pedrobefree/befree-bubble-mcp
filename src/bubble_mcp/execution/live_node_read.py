@@ -439,7 +439,7 @@ def diagnose_stuck_gate(
 
 @contextlib.contextmanager
 def _open_editor_page(
-    *, profile: str, app_id: str, app_version: str, headless: bool, timeout_sec: int
+    *, profile: str, app_id: str, app_version: str, headless: bool, timeout_sec: int, url: str | None = None
 ) -> Iterator[Any]:
     """Launch one persistent browser context for this app/profile and yield its page.
 
@@ -476,7 +476,7 @@ def _open_editor_page(
             f"bubble_session_login for profile '{profile}' first (an imported session is not "
             "enough)."
         )
-    url = EDITOR_URL_TEMPLATE.format(app_id=app_id, app_version=app_version)
+    url = url or EDITOR_URL_TEMPLATE.format(app_id=app_id, app_version=app_version)
     timeout_ms = timeout_sec * 1000
     with sync_playwright() as playwright:
         context = playwright.chromium.launch_persistent_context(str(user_data_dir), headless=headless)

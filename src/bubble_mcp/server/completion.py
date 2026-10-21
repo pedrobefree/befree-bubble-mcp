@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import Any
 
 from bubble_mcp.core.config import load_settings
+from bubble_mcp.e2e.suite import list_suites as list_e2e_suite_files
 from bubble_mcp.server.agent_guide import RECIPES
 from bubble_mcp.server.prompts import PROMPTS
 from bubble_mcp.server.schemas import list_tool_schemas
@@ -67,6 +68,19 @@ def _profile_names() -> list[str]:
     except Exception:
         return []
     return sorted(settings.profiles)
+
+
+def _e2e_suite_names() -> list[str]:
+    """Suite names across every configured profile, since the argument carries no profile yet."""
+
+    try:
+        settings = load_settings()
+    except Exception:
+        return []
+    names: set[str] = set()
+    for profile in settings.profiles:
+        names.update(suite.name for suite in list_e2e_suite_files(profile))
+    return sorted(names)
 
 
 @lru_cache(maxsize=1)
@@ -179,6 +193,8 @@ def complete(params: dict[str, Any]) -> dict[str, Any]:
             return _completion(schema_suggestions, value)
         if ref_name == "bubble_runtime_smoke" and argument_name == "suite":
             return _completion(RUNTIME_SMOKE_SUITE_SUGGESTIONS, value)
+        if ref_name.startswith("bubble_e2e_") and argument_name == "suite":
+            return _completion(_e2e_suite_names(), value)
         if ref_name == "bubble_task_recipe" and argument_name == "recipe":
             return _completion(sorted(RECIPES), value)
 

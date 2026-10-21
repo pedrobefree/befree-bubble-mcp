@@ -1,0 +1,10 @@
+{
+  "seq": 130,
+  "url": "https://bubble.io/appeditor/get_restore_history",
+  "method": "POST",
+  "raw_body": "{\"appname\":\"mcp-test-app\",\"app_version\":\"test\"}",
+  "parsed": {
+    "appname": "mcp-test-app",
+    "app_version": "test"
+  }
+}

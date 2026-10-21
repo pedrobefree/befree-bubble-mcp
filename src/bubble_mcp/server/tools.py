@@ -28,7 +28,7 @@ from bubble_mcp.context.detector import (
     default_crawler_index_path,
     detect_project_context,
 )
-from bubble_mcp.context.mutation_overlay import record_mutation_overlay
+from bubble_mcp.context.mutation_overlay import read_mutation_overlay, record_mutation_overlay
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import context_find_payload
 from bubble_mcp.context.source import load_context, save_context
@@ -63,10 +63,23 @@ from bubble_mcp.execution.editor_api import (
 )
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.live_node_read import read_live_node
-from bubble_mcp.execution.node_edit import edit_live_node
 from bubble_mcp.sessions.health import check_session, forget as forget_session_check
 from bubble_mcp.server.agent_catalog import _is_mutating
 from bubble_mcp.execution.version_policy import forget as forget_branches, main_write_allowed, write_policy
+from bubble_mcp.execution.run_as import run_as_user
+from bubble_mcp.execution.node_edit import clone_live_workflow, edit_live_node
+from bubble_mcp.execution.duplicate_element import duplicate_live_element
+from bubble_mcp.e2e.flow import run_e2e_flow
+from bubble_mcp.execution.deploy_preview import preview_deploy, read_nodes_over_http
+from bubble_mcp.execution.session_savepoint import (
+    ensure_session_savepoint,
+    process_session_id,
+)
+from bubble_mcp.execution.version_control import (
+    create_savepoint,
+    list_restore_history,
+    restore_to_timestamp,
+)
 from bubble_mcp.execution.plugins import install_plugin
 from bubble_mcp.execution.state import next_user_action, operation_snapshot
 from bubble_mcp.execution.structural import permanent_data_type_delete_targets, validate_structure
@@ -108,6 +121,9 @@ from bubble_mcp.harness.visual import compare_visual_snapshot_files
 from bubble_mcp.harness.visual_audit import audit_visual_from_inputs
 from bubble_mcp.harness.visual_bubble import capture_bubble_visual_snapshot
 from bubble_mcp.harness.visual_capture import capture_visual_snapshot
+from bubble_mcp.e2e.report import list_e2e_suites, read_e2e_report
+from bubble_mcp.e2e.runner import run_e2e_suite
+from bubble_mcp.e2e.scaffold import scaffold_e2e
 from bubble_mcp.html_runtime import create_from_html_runtime
 from bubble_mcp.knowledge.advisor import knowledge_advice
 from bubble_mcp.knowledge.cache import fetch_knowledge_record, import_knowledge_records, knowledge_search
@@ -221,6 +237,37 @@ def _required_string_arg(arguments: dict[str, Any] | None, key: str, tool_name: 
     if not value:
         raise ValueError(f"{tool_name} requires {key}.")
     return value
+
+
+def _string_list(value: Any) -> list[str]:
+    """Accept a list, a comma-separated string or nothing, and return a clean list of strings."""
+
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [part.strip() for part in value.split(",") if part.strip()]
+    if isinstance(value, list | tuple):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return []
+
+
+def _optional_bool(value: Any) -> bool | None:
+    """Keep "not supplied" distinct from "supplied as false", so a suite default can win."""
+
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"true", "1", "yes", "on"}
+
+
+def _optional_int(value: Any) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _cache_artifact_status(path: Path) -> dict[str, Any]:
@@ -754,6 +801,55 @@ def _executed_write_changes(runtime_result: dict[str, Any]) -> list[dict[str, An
     return changes
 
 
+SAVEPOINT_EXEMPT_TOOLS = frozenset(
+    {"bubble_savepoint_create", "bubble_savepoint_list", "bubble_savepoint_restore"}
+)
+
+
+def savepoint_guard_report(name: str, args: dict[str, Any]) -> dict[str, Any] | None:
+    """Take this session's savepoint before its first executed write, and report what happened.
+
+    Returns None when no savepoint is called for - a preview, a read-only tool, a call with no
+    profile to save, or one of the savepoint tools themselves (restoring a savepoint must not
+    first create another on top of the state being undone).
+
+    Never raises. The savepoint is a safety net for the write that follows; failing to take one is
+    something the caller should see, not something that should stop the work.
+    """
+
+    if name in SAVEPOINT_EXEMPT_TOOLS or not args.get("execute"):
+        return None
+    if not _is_mutating(name):
+        return None
+    profile = str(args.get("profile") or "").strip()
+    if not profile:
+        return None
+    app_id = str(args.get("app_id") or args.get("appname") or "").strip()
+    if not app_id:
+        session = load_session(profile)
+        app_id = str(getattr(session, "app_id", "") or "").strip()
+    if not app_id:
+        return None
+    version = _resolved_write_version(args)
+    try:
+        return ensure_session_savepoint(
+            profile=profile,
+            app_id=app_id,
+            app_version=version,
+            session_id=process_session_id(),
+            message=f"before {name}",
+            create=lambda *, message: create_savepoint(
+                profile=profile,
+                message=message,
+                app_id=app_id,
+                app_version=version,
+                execute=True,
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001 - see the docstring: never block the write
+        return {"created": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 def _attach_write_verification(
     runtime_result: dict[str, Any], *, profile: str, args: dict[str, Any]
 ) -> dict[str, Any]:
@@ -796,7 +892,7 @@ def _attach_write_verification(
 
 # Tools that execute a change in the Bubble editor although their names do not say so, and
 # mutating-named tools whose only effect is on local files.
-MAIN_GUARDED_EXTRA_TOOLS = frozenset({"bubble_runtime_smoke"})
+MAIN_GUARDED_EXTRA_TOOLS = frozenset({"bubble_runtime_smoke", "bubble_savepoint_restore"})
 MAIN_GUARD_LOCAL_ONLY_TOOLS = frozenset({"clear_cache"})
 
 
@@ -817,6 +913,13 @@ EDITOR_SESSION_TOOLS = frozenset(
     {
         "bubble_live_node_read",
         "bubble_node_edit",
+        "bubble_clone_workflow",
+        "bubble_duplicate_element",
+        "bubble_run_as",
+        "bubble_savepoint_create",
+        "bubble_savepoint_list",
+        "bubble_savepoint_restore",
+        "bubble_deploy_preview",
         "bubble_editor_write",
         "bubble_branch_list",
         "bubble_branch_contributors",
@@ -894,7 +997,11 @@ PROFILE_FIELDS = (
     "consolelog_json_path",
     "context_path",
     "crawler_index_path",
+    "preview_username",
+    "preview_password",
 )
+# Stored, never echoed back.
+SECRET_PROFILE_FIELDS = frozenset({"preview_password"})
 # Arguments bubble_profile_add accepts without storing them as profile fields.
 PROFILE_ADD_ARGUMENTS = frozenset({"name", "profile", "app_id", *PROFILE_FIELDS})
 
@@ -950,7 +1057,11 @@ def _add_or_update_profile(args: dict[str, Any]) -> dict[str, Any]:
         "app_id": new_profile.app_id,
         "created": existing is None,
         "changed": changed,
-        "stored": {key: value for key, value in asdict(new_profile).items() if value is not None},
+        "stored": {
+            key: ("[REDACTED]" if key in SECRET_PROFILE_FIELDS else value)
+            for key, value in asdict(new_profile).items()
+            if value is not None
+        },
         "settings": str(settings.config_dir / "settings.json"),
     }
 
@@ -1054,7 +1165,14 @@ def call_tool(
     refusal = session_refusal(name, _arguments_with_profile_defaults(arguments))
     if refusal is not None:
         return refusal
-    return _call_tool(name, arguments, cancelled=cancelled, progress=progress)
+    # A savepoint marks the start of a working session, not a precondition for each write. When
+    # one cannot be taken the caller is told through `session_savepoint`, and the work goes ahead:
+    # a hiccup on commit_test_version must not stop an author from editing their own app.
+    report = savepoint_guard_report(name, _arguments_with_profile_defaults(arguments))
+    result = _call_tool(name, arguments, cancelled=cancelled, progress=progress)
+    if report is not None and isinstance(result, dict):
+        result.setdefault("session_savepoint", report)
+    return result
 
 
 def _call_tool(
@@ -1067,6 +1185,10 @@ def _call_tool(
     """Call a supported tool and return a JSON-serializable payload."""
 
     caller_argument_names = frozenset((arguments or {}).keys())
+    # E2E resolves suite branch before profile defaults. Preserve only a caller-supplied
+    # version alias as an override, rather than promoting an injected profile default.
+    caller_app_version = str((arguments or {}).get("app_version") or "").strip()
+    caller_app_id = str((arguments or {}).get("app_id") or "").strip()
     arguments = _arguments_with_profile_defaults(arguments)
     trusted_profile_defaults = frozenset(arguments) - caller_argument_names
     _ = arguments
@@ -1465,6 +1587,7 @@ def _call_tool(
             app_version=str(args.get("app_version") or "test"),
             max_age_hours=int(args.get("max_age_hours") or 24),
             include_family_preview=bool(args.get("include_family_preview")),
+            include_e2e=bool(args.get("include_e2e")),
             include_details=bool(args.get("include_details")),
             stop_on_failure=bool(args.get("stop_on_failure")),
         )
@@ -1514,6 +1637,71 @@ def _call_tool(
             run_id=str(args.get("run_id") or ""),
             verify_context=bool(args.get("verify_context")),
             verification_output=str(args.get("verification_output") or ""),
+        )
+    if name == "bubble_e2e_list":
+        args = arguments or {}
+        return list_e2e_suites(
+            profile=str(args.get("profile") or ""),
+            suite=str(args.get("suite") or ""),
+            include_runs=bool(args.get("include_runs", True)),
+        )
+    if name == "bubble_e2e_run":
+        args = arguments or {}
+        return run_e2e_suite(
+            profile=str(args.get("profile") or ""),
+            suite=str(args.get("suite") or ""),
+            cases=_string_list(args.get("cases") or args.get("case_ids")),
+            tags=_string_list(args.get("tags")),
+            branch=str(args.get("branch") or "").strip() or caller_app_version,
+            execute=bool(args.get("execute")),
+            headless=_optional_bool(args.get("headless")),
+            video=_optional_bool(args.get("video")),
+            cursor=_optional_bool(args.get("cursor")),
+            slow_mo=_optional_int(args.get("slow_mo")),
+            timeout_ms=_optional_int(args.get("timeout_ms")),
+            run_id=str(args.get("run_id") or ""),
+            stop_on_failure=bool(args.get("stop_on_failure")),
+            include_details=bool(args.get("include_details")),
+        )
+    if name == "bubble_e2e_flow":
+        args = arguments or {}
+        return run_e2e_flow(
+            profile=str(args.get("profile") or ""),
+            steps=args.get("steps"),
+            versions=_string_list(args.get("versions")),
+            user_id=str(args.get("user_id") or ""),
+            email=str(args.get("email") or ""),
+            name=str(args.get("name") or "flow"),
+            execute=bool(args.get("execute")),
+            headless=args.get("headless") is not False,
+            video=args.get("video") is not False,
+            cursor=args.get("cursor") is not False,
+            timeout_ms=int(args.get("timeout_ms") or 30000),
+            base_url=str(args.get("base_url") or ""),
+        )
+    if name == "bubble_e2e_report":
+        args = arguments or {}
+        return read_e2e_report(
+            profile=str(args.get("profile") or ""),
+            run_id=str(args.get("run_id") or ""),
+            include_details=bool(args.get("include_details")),
+        )
+    if name == "bubble_e2e_scaffold":
+        args = arguments or {}
+        return scaffold_e2e(
+            profile=str(args.get("profile") or ""),
+            suite=str(args.get("suite") or ""),
+            case_id=str(args.get("case_id") or ""),
+            description=str(args.get("description") or ""),
+            tags=_string_list(args.get("tags")),
+            start_path=str(args.get("start_path") or "index"),
+            app_id=caller_app_id,
+            branch=str(args.get("branch") or "").strip() or caller_app_version,
+            base_url=str(args.get("base_url") or ""),
+            cases_root=str(args.get("cases_root") or ""),
+            user_id=str(args.get("user_id") or ""),
+            execute=bool(args.get("execute")),
+            overwrite=bool(args.get("overwrite")),
         )
     if name == "bubble_project_bootstrap":
         args = arguments or {}
@@ -2000,6 +2188,29 @@ def _call_tool(
         if expression_warnings:
             write_result = {**write_result, "warnings": expression_warnings}
         return write_result
+    if name == "bubble_run_as":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_run_as requires a profile.")
+        user_id = str(args.get("user_id") or "").strip()
+        email = str(args.get("email") or "").strip()
+        if not user_id and not email:
+            raise ValueError(
+                "bubble_run_as requires user_id (the Bubble unique id of the row in the app's "
+                "User type) or email, which is resolved through the app's Data API or, without a "
+                "token, the editor's Data tab."
+            )
+        return run_as_user(
+            profile,
+            user_id,
+            email=email or None,
+            data_api_dir=str(args.get("data_api_dir") or "").strip() or None,
+            page=str(args.get("page") or "index").strip() or "index",
+            app_id=str(args.get("app_id") or "").strip() or None,
+            app_version=str(args.get("app_version") or "test").strip() or "test",
+            write_storage_state=args.get("write_storage_state", True) is not False,
+        )
     if name == "bubble_live_node_read":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()
@@ -2043,6 +2254,7 @@ def _call_tool(
             raise ValueError("bubble_node_edit requires a non-empty pointer array.")
         leaf_pointer = args.get("leaf_pointer")
         order = args.get("order")
+        remove_keys = args.get("keys")
         execute = bool(args.get("execute"))
         edit_result = edit_live_node(
             profile=profile,
@@ -2051,6 +2263,7 @@ def _call_tool(
             leaf_pointer=[str(part) for part in leaf_pointer] if isinstance(leaf_pointer, list) else None,
             patch=args.get("patch") if isinstance(args.get("patch"), dict) else None,
             order=[str(part) for part in order] if isinstance(order, list) else None,
+            keys=[str(part) for part in remove_keys] if isinstance(remove_keys, list) else None,
             execute=execute,
             app_id=str(args.get("app_id") or "") or None,
             app_version=str(args.get("app_version") or "test"),
@@ -2073,6 +2286,135 @@ def _call_tool(
                     response=edit_write.get("response"),
                 )
         return edit_result
+    if name == "bubble_deploy_preview":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_deploy_preview requires a profile.")
+        preview_session = load_session(profile)
+        app_id = str(
+            args.get("app_id") or (preview_session.app_id if preview_session else "") or ""
+        ).strip()
+        return preview_deploy(
+            profile=profile,
+            app_id=app_id or None,
+            overlay=read_mutation_overlay(profile, app_id),
+            source=str(args.get("source") or "overlay"),
+            since=str(args.get("since") or "") or None,
+            test_version=str(args.get("app_version") or "test"),
+            reader=read_nodes_over_http,
+        )
+    if name in {"bubble_savepoint_create", "bubble_savepoint_list", "bubble_savepoint_restore"}:
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError(f"{name} requires a profile.")
+        savepoint_app_id = str(args.get("app_id") or "") or None
+        savepoint_app_version = str(args.get("app_version") or "") or None
+        if name == "bubble_savepoint_list":
+            return list_restore_history(profile=profile, app_id=savepoint_app_id, app_version=savepoint_app_version)
+        if name == "bubble_savepoint_create":
+            return create_savepoint(
+                profile=profile,
+                message=str(args.get("savepoint_message") or args.get("message") or ""),
+                app_id=savepoint_app_id,
+                app_version=savepoint_app_version,
+                session_id=str(args.get("session_id") or "") or None,
+                execute=bool(args.get("execute")),
+            )
+        raw_timestamp = args.get("timestamp", args.get("savepoint_timestamp"))
+        if raw_timestamp is None or str(raw_timestamp).strip() == "":
+            raise ValueError(
+                "bubble_savepoint_restore requires a timestamp; list them with bubble_savepoint_list."
+            )
+        return restore_to_timestamp(
+            profile=profile,
+            timestamp=raw_timestamp,
+            app_id=savepoint_app_id,
+            app_version=savepoint_app_version,
+            execute=bool(args.get("execute")),
+            confirm=bool(args.get("confirm")),
+        )
+    if name == "bubble_clone_workflow":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_clone_workflow requires a profile.")
+        pointer = args.get("pointer")
+        if not isinstance(pointer, list) or not pointer:
+            raise ValueError("bubble_clone_workflow requires a non-empty pointer array.")
+        clone_result = clone_live_workflow(
+            profile=profile,
+            pointer=[str(part) for part in pointer],
+            new_slot=str(args.get("new_slot") or "") or None,
+            wf_name=str(args["wf_name"]) if args.get("wf_name") is not None else None,
+            id_counter=int(args["id_counter"]) if args.get("id_counter") is not None else None,
+            execute=bool(args.get("execute")),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=_resolved_write_version(args),
+        )
+        clone_write = clone_result.get("write") if isinstance(clone_result, dict) else None
+        if bool(args.get("execute")) and isinstance(clone_write, dict) and clone_write.get("ok"):
+            clone_request = clone_write.get("request")
+            clone_payload = clone_request.get("payload") if isinstance(clone_request, dict) else None
+            if isinstance(clone_payload, dict):
+                clone_session = load_session(profile)
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(
+                        clone_payload.get("appname")
+                        or args.get("app_id")
+                        or (clone_session.app_id if clone_session else "")
+                    ),
+                    payload=clone_payload,
+                    source="bubble_clone_workflow",
+                    response=clone_write.get("response"),
+                )
+        return clone_result
+    if name == "bubble_duplicate_element":
+        args = arguments or {}
+        profile = str(args.get("profile") or "").strip()
+        if not profile:
+            raise ValueError("bubble_duplicate_element requires a profile.")
+        element_ids = args.get("element_ids")
+        if isinstance(element_ids, str):
+            element_ids = [element_ids]
+        if not isinstance(element_ids, list) or not element_ids:
+            raise ValueError("bubble_duplicate_element requires element_ids, a non-empty array of element ids.")
+        rename = args.get("rename")
+        if rename is not None and not isinstance(rename, (str, dict)):
+            raise ValueError("bubble_duplicate_element rename must be a string or an object.")
+        duplicate_version = _resolved_write_version(args)
+        duplicate_result = duplicate_live_element(
+            profile=profile,
+            element_ids=[str(value) for value in element_ids],
+            target_parent=str(args.get("target_parent") or "").strip() or None,
+            rename=rename,
+            include_workflows=args.get("include_workflows") is not False,
+            execute=bool(args.get("execute")),
+            app_id=str(args.get("app_id") or "") or None,
+            app_version=duplicate_version,
+        )
+        duplicate_write = duplicate_result.get("write") if isinstance(duplicate_result, dict) else None
+        if bool(args.get("execute")) and isinstance(duplicate_write, dict) and duplicate_write.get("ok"):
+            duplicate_request = duplicate_write.get("request")
+            duplicate_payload = (
+                duplicate_request.get("payload") if isinstance(duplicate_request, dict) else None
+            )
+            if isinstance(duplicate_payload, dict):
+                duplicate_session = load_session(profile)
+                record_mutation_overlay(
+                    profile=profile,
+                    app_id=str(
+                        duplicate_payload.get("appname")
+                        or args.get("app_id")
+                        or (duplicate_session.app_id if duplicate_session else "")
+                    ),
+                    payload=duplicate_payload,
+                    source="bubble_duplicate_element",
+                    response=duplicate_write.get("response"),
+                )
+        return duplicate_result
     if name == "bubble_plugin_install":
         args = arguments or {}
         profile = str(args.get("profile") or "").strip()
