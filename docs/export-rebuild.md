@@ -6,7 +6,7 @@ file; the profile cache is never overwritten.
 
 ## Why the export is not enough
 
-Measured on `bovichain-g3` (346 reusables, 601 API workflows, 45 pages) on 2026-10-30:
+Measured on a production app (346 reusables, 601 API workflows, 45 pages) on 2026-10-30:
 
 1. **The export leaves reusables out.** The 14 MB export carried 2 stubs and no other reusable
    body. The existing hydration (`context/hydration.py`) fills them from the editor path API.
@@ -39,7 +39,7 @@ Measured on `bovichain-g3` (346 reusables, 601 API workflows, 45 pages) on 2026-
    editor spells some absent keys as `null` and the export never writes one). Where the editor's
    entry is complete (`type` for api, reusables, styles and pages; `display` for data types and
    option sets) and different, it replaces the export's; a complete entry only the editor has is
-   added. `null` entries, loose fragments (`bbsCj1` with only `elements`, `bcBub2` with only
+   added. `null` entries, loose fragments (an entry with only `elements` or only
    `properties`) and the `length` counter are never added. Entries only the export has are kept
    and listed.
 5. Validates: no `%` key left in any reusable, every reusable has a `type` and a `name` (a

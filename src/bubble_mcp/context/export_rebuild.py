@@ -1,6 +1,6 @@
 """Rebuild an importable ``.bubble`` file when Bubble's own export comes back incomplete or wrong.
 
-Three measured problems make a downloaded export fail on import (bovichain-g3, 2026-10-30):
+Three measured problems make a downloaded export fail on import (production app, 2026-10-30):
 
 1. The export leaves reusables out (the 14 MB file of a 346-reusable app carried two stubs).
    ``context/hydration.py`` already fills them from the editor path API.
@@ -165,7 +165,7 @@ def decode_reusables(data: dict[str, Any]) -> DecodeStats:
 def editor_nameless_reusables(snapshot: dict[str, Any]) -> set[str]:
     """Complete reusables the live editor itself holds without a name.
 
-    Measured: two reusables of bovichain-g3 (``type: ReusableElement``) have no name in the editor
+    Measured: two reusables of a production app (``type: ReusableElement``) have no name in the editor
     either. Naming them would be inventing data, so validation reports them instead of failing.
     """
 
