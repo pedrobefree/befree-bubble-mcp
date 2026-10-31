@@ -1385,6 +1385,74 @@ def _profile_cache_refresh_tool() -> ToolSchema:
     return schema
 
 
+def _export_rebuild_tool() -> ToolSchema:
+    return tool_schema(
+        "bubble_export_rebuild",
+        "Rebuild an importable .bubble file for a profile when Bubble's own export comes back "
+        "incomplete or corrupted (reusables empty or nameless after import, API workflow issues). "
+        "Downloads the export the same way bubble_profile_cache_refresh does (with reusable "
+        "hydration), expands the editor's shrunk keys (%el, %p, %x, %nm...) that the import does "
+        "not understand, then compares every section with the live editor read headless and takes "
+        "the editor's entry wherever it is complete and different. Read-only on Bubble: it never "
+        "writes to the editor and never overwrites the profile cache. execute=false (default) "
+        "returns only the report; execute=true validates and writes a NEW file and returns its path.",
+        [
+            "profile",
+            "app_id",
+            "app_version",
+            "bubble_file",
+            "output",
+            "read_headless",
+            "read_timeout_sec",
+            "execute",
+        ],
+        required=["profile"],
+        field_overrides={
+            "app_version": _prop(
+                "string",
+                "Version to export and read. Defaults to test (main) and does NOT fall back to the "
+                "profile's version. Reading main is allowed even in an app with branches.",
+                default="test",
+                examples=["test", "23347"],
+            ),
+            "bubble_file": _prop(
+                "string",
+                "Start from this local .bubble instead of downloading a new export. A preview "
+                "returns the path of the export it downloaded, to reuse here with execute=true.",
+            ),
+            "output": _prop(
+                "string",
+                "Where to write the rebuilt .bubble. Must not exist yet and must not be the "
+                "profile cache or the input file. Defaults to a timestamped file under the "
+                "profile's rebuild folder.",
+            ),
+            "sections": _prop(
+                "array",
+                "Sections to compare with the live editor. Defaults to all of them.",
+                items={
+                    "type": "string",
+                    "enum": [
+                        "api",
+                        "element_definitions",
+                        "user_types",
+                        "option_sets",
+                        "styles",
+                        "settings",
+                        "_index",
+                        "pages",
+                    ],
+                },
+            ),
+            "execute": _prop(
+                "boolean",
+                "false returns the report only. true also validates and writes the rebuilt file "
+                "locally; nothing is ever written to Bubble.",
+                default=False,
+            ),
+        },
+    )
+
+
 def profile_session_context_tools() -> list[ToolSchema]:
     return [
         tool_schema(
@@ -1446,6 +1514,7 @@ def profile_session_context_tools() -> list[ToolSchema]:
             ["profile", "max_age_hours"],
         ),
         _profile_cache_refresh_tool(),
+        _export_rebuild_tool(),
         _empty_tool(
             "bubble_health_check",
             "Return local Bubble MCP server health and capability metadata.",

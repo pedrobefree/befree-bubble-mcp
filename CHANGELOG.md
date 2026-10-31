@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `bubble_export_rebuild` rebuilds an importable `.bubble` from a profile when Bubble's export
+  comes back incomplete or corrupted. It downloads and hydrates the export into its own file,
+  expands the editor's shrunk keys (`%el`, `%p`, `%x`, ...) with a versioned key table, compares
+  every section with the live editor read headless, and takes the editor's complete entries where
+  they differ. Read-only on Bubble; `execute=true` writes a new validated file. See
+  docs/export-rebuild.md, including how to re-extract the key table. Native catalog: 341 tools.
+
 - MCP workflow cloning resolves the same app version as its guard and session savepoint.
   E2E run/scaffold keeps a suite's branch ahead of the profile default, while explicit
   caller branch/app_version overrides still take precedence. Extending a suite also keeps

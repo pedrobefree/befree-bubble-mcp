@@ -25,9 +25,12 @@ from bubble_mcp.context.detector import (
     default_bubble_export_path,
     default_bubble_modules_dir,
     default_context_path,
+    context_cache_dir,
     default_crawler_index_path,
     detect_project_context,
+    download_hydrated_export,
 )
+from bubble_mcp.context.export_rebuild import rebuild_export
 from bubble_mcp.context.mutation_overlay import read_mutation_overlay, record_mutation_overlay
 from bubble_mcp.context.freshness import context_freshness, load_context_with_overlay
 from bubble_mcp.context.queries import context_find_payload
@@ -63,6 +66,7 @@ from bubble_mcp.execution.editor_api import (
 )
 from bubble_mcp.execution.executor import execute_plan
 from bubble_mcp.execution.live_node_read import read_live_node
+from bubble_mcp.execution.live_section_read import EditorSetupFailed, read_live_editor_snapshot
 from bubble_mcp.sessions.health import check_session, forget as forget_session_check
 from bubble_mcp.server.agent_catalog import _is_mutating
 from bubble_mcp.execution.version_policy import forget as forget_branches, main_write_allowed, write_policy
@@ -776,6 +780,62 @@ def _profile_cache_refresh(arguments: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
+def _export_rebuild(arguments: dict[str, Any] | None, *, caller_app_version: str) -> dict[str, Any]:
+    args = dict(arguments or {})
+    profile_name = _required_string_arg(args, "profile", "bubble_export_rebuild")
+    settings = load_settings()
+    configured = resolve_profile(settings, profile_name)
+    session = load_session(profile_name)
+    app_id = str(
+        args.get("app_id")
+        or (configured.app_id if configured else "")
+        or (getattr(session, "app_id", "") or "")
+    ).strip()
+    if not app_id:
+        raise ValueError("bubble_export_rebuild requires app_id or a profile with one.")
+    # Explicit on purpose: the profile's own version may be a branch, and the rebuild is usually
+    # wanted from main. It never falls back to the profile's version, which call_tool has already
+    # merged into ``arguments`` - so only what the caller passed counts.
+    app_version = caller_app_version or "test"
+    raw_timeout = args.get("read_timeout_sec")
+    timeout_sec = int(raw_timeout) if raw_timeout not in (None, "") else 90
+    headless = bool(args.get("read_headless", True))
+    raw_sections = args.get("sections")
+    sections = [str(item) for item in raw_sections] if isinstance(raw_sections, list) else None
+
+    def download(profile: str, app: str, version: str, target: Path) -> dict[str, Any]:
+        return download_hydrated_export(profile=profile, app_id=app, app_version=version, target=target)
+
+    def read_snapshot(**kwargs: Any) -> dict[str, Any]:
+        try:
+            return read_live_editor_snapshot(
+                profile=profile_name,
+                app_id=app_id,
+                app_version=app_version,
+                headless=headless,
+                timeout_sec=timeout_sec,
+                **kwargs,
+            )
+        except EditorSetupFailed as exc:
+            return {"setup_error": exc.error, "message": str(exc)}
+
+    bubble_file = str(args.get("bubble_file") or "").strip()
+    output = str(args.get("output") or "").strip()
+    return rebuild_export(
+        profile=profile_name,
+        app_id=app_id,
+        app_version=app_version,
+        bubble_file=Path(bubble_file) if bubble_file else None,
+        output=Path(output) if output else None,
+        sections=sections,
+        execute=bool(args.get("execute")),
+        work_dir=context_cache_dir() / profile_name / "rebuild",
+        protected_paths=[default_bubble_export_path(profile_name, app_id)],
+        download=download,
+        read_snapshot=read_snapshot,
+    )
+
+
 def _executed_write_changes(runtime_result: dict[str, Any]) -> list[dict[str, Any]]:
     """Collect the change lists from every write that actually executed in a runtime result.
 
@@ -944,6 +1004,7 @@ EDITOR_SESSION_TOOLS = frozenset(
         "bubble_time_series_read",
         "bubble_plugin_install",
         "bubble_profile_cache_refresh",
+        "bubble_export_rebuild",
     }
 )
 SESSION_CHECK_TOOL = "bubble_session_check"
@@ -1799,6 +1860,8 @@ def _call_tool(
         )
     if name == "bubble_profile_cache_refresh":
         return _profile_cache_refresh(arguments)
+    if name == "bubble_export_rebuild":
+        return _export_rebuild(arguments, caller_app_version=caller_app_version)
     if name == "bubble_context_summary":
         summary_path = Path(str((arguments or {}).get("file") or ""))
         context = load_context(summary_path)
