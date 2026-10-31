@@ -13,9 +13,13 @@ Measured on a production app (346 reusables, 601 API workflows, 45 pages) on 202
 2. **Hydration stores them in the editor's shrunk key space** (`%el`, `%p`, `%x`, `%nm`, ...).
    The import does not expand those keys: it escapes them once more (`%el` lands as `%%el`) and
    the reusables arrive empty or nameless.
-3. **The export disagrees with the live editor** on some nodes: reusables exported as a stub
-   (only `workflows`, only `elements`), reusables with stale data, and, on a staging app, an API
-   workflow with no `wf_name`/`parameters`.
+3. **The export disagrees with the live editor.** Some nodes carry a field in both forms
+   (`%ds` and `data_source`, `%co` and `constraints`, `%x` and `type`). The shrunk form is what
+   the editor uses and shows; the long copy is a stale leftover, often a single item with no
+   `key`. The server-side export lets the stale copy win: on the measured app, 7 API workflows
+   came out wrong (one lost its `wf_name`/`parameters`, another had 22 constraints instead of 13).
+   The editor's decoded `raw()` makes the same mistake. Reusables also come as a stub (only
+   `workflows`, only `elements`).
 
 ## What the tool does
 
@@ -23,18 +27,20 @@ Measured on a production app (346 reusables, 601 API workflows, 45 pages) on 202
    `bubble_profile_cache_refresh` does, into `contexts/<profile>/rebuild/` instead of the cache.
    `app_version` defaults to `test` and never falls back to the profile's version. Pass
    `bubble_file` to start from an export already on disk (a preview returns the one it downloaded).
-2. Expands the shrunk keys in `element_definitions` with the versioned key table
-   (`src/bubble_mcp/context/data/editor_key_table.json`). `%%key` is an escape for the literal
-   key `%key`. When a node carries a key in both forms (`%x` and `type`), the two are merged
-   recursively and the shrunk value wins a conflict; collisions and conflicts are reported. A
+2. Expands the shrunk keys of the export's reusables (the only shrunk part: the rest of the
+   server-side export is long-form, so a `%` key there is a literal) with the versioned key
+   table (`src/bubble_mcp/context/data/editor_key_table.json`). `%%key` is an escape for the
+   literal key `%key`. When a node carries a key in both forms, only the decoded shrunk value is
+   kept and the long one is DISCARDED, with no merging; every discarded path is reported. A
    shrunk key the table does not know is kept and fails validation (see below).
-3. Reads the live editor headless with the profile's stored browser session, through the public
-   accessors that return the decoded form: `root.child('<section>').raw()` for `api`,
-   `element_definitions`, `user_types`, `option_sets`, `styles`, `settings` and `_index`, and
-   `root.child('pages').child(<id>).raw()` for each page (`child_names()` is refused by the
-   editor). Sections load lazily, so each read waits for its node to stop throwing
-   `NotReadyError`; a reusable the export knows about that the bulk read left incomplete is
-   read again on its own path.
+3. Reads the live editor headless with the profile's stored browser session, in the form the
+   editor stores: `root.child('<section>')._raw()` for `api`, `element_definitions`,
+   `user_types`, `option_sets`, `styles`, `settings` and `_index`, and
+   `root.child('pages').child(<id>)._raw()` for each page of the export (`child_names()` is
+   refused by the editor). Each section is decoded whole, top-level keys included (a data type
+   named `event` is stored as `%e1`), with the same rule. Sections load lazily, so each read
+   waits for its node to stop throwing `NotReadyError`; a reusable the export knows about that
+   the bulk read left incomplete is read again on its own path.
 4. Compares each entry as canonical JSON (sorted keys, null-valued keys dropped, since the
    editor spells some absent keys as `null` and the export never writes one). Where the editor's
    entry is complete (`type` for api, reusables, styles and pages; `display` for data types and
@@ -42,12 +48,13 @@ Measured on a production app (346 reusables, 601 API workflows, 45 pages) on 202
    added. `null` entries, loose fragments (an entry with only `elements` or only
    `properties`) and the `length` counter are never added. Entries only the export has are kept
    and listed.
-5. Validates: no `%` key left in any reusable, every reusable has a `type` and a `name` (a
+5. Validates: no `%` key left in any rebuilt section (escaped and literal ones aside), every reusable has a `type` and a `name` (a
    reusable the editor itself holds without a name is listed under `nameless_in_editor` instead
    of failing, since naming it would be inventing data). With `execute=true` it writes to a
    temporary file, reads it back, validates the copy again, and only then moves it into place.
 
-The report gives, per section, how many entries were the same, different (replaced), only in the
+The report gives the long-form keys discarded on each side (`decode.export`, `decode.editor`)
+and, per section, how many entries were the same, different (replaced), only in the
 export and only in the editor, plus the replaced and added ids with their names.
 
 The output reflects the live editor and nothing else. Business fixes that are not in the editor

@@ -14,10 +14,14 @@ long key that itself starts with ``%`` is stored escaped as ``%%<key>`` and expa
 
 Two deliberate differences from the editor's ``expand_object``:
 
-* Collisions. A node can carry the same key in both forms (a hydrated ``%x`` next to an exported
-  ``type``). The editor just lets the later entry win; here both are merged recursively and the
-  shrunk value wins on a conflict, because the shrunk form is what the editor itself last wrote.
-  Every collision and every conflicting leaf is counted, so the report shows it.
+* Collisions. A node can carry the same key in both forms (``%ds`` next to ``data_source``,
+  ``%co`` next to ``constraints``, ``%x`` next to ``type``). Measured on a live app: the shrunk
+  form is what the editor uses and shows; the long copy is a stale leftover, often a single item
+  with no ``key`` (an element whose ``%ds.%p.%co`` held the 9 constraints visible in the editor
+  carried ``data_source.%p.constraints`` with one). The editor's own expansion lets whichever
+  entry comes later win, which is how both its decoded ``raw()`` and the server-side export end up
+  with the stale copy. Here the shrunk value is kept and the long one is DISCARDED, with no
+  merging; every discarded path is reported.
 * Unknown abbreviations. The editor would turn ``%zz`` into ``zz``. A shrunk key the table does not
   know only appears when Bubble added an abbreviation after the table was extracted, and ``zz`` would
   then be the wrong long name. It is kept as-is and reported, which fails validation and points at
@@ -94,32 +98,22 @@ class DecodeStats:
 
     decoded_keys: int = 0
     escaped_keys: int = 0
-    collisions: int = 0
-    collision_conflicts: int = 0
     unknown_keys: dict[str, int] = field(default_factory=dict)
     escaped_paths: set[Path_] = field(default_factory=set)
-    collision_paths: list[Path_] = field(default_factory=list)
+    # Long-form keys dropped because the same node also carried the shrunk form.
+    discarded_paths: list[Path_] = field(default_factory=list)
+    # How many of those held a value different from the shrunk one kept in their place.
+    discarded_differing: int = 0
 
-    def to_dict(self, *, sample: int = 20) -> dict[str, Any]:
+    def to_dict(self, *, sample: int = 200) -> dict[str, Any]:
         return {
             "decoded_keys": self.decoded_keys,
             "escaped_keys": self.escaped_keys,
-            "collisions": self.collisions,
-            "collision_conflicts": self.collision_conflicts,
+            "collisions": len(self.discarded_paths),
+            "discarded_differing": self.discarded_differing,
             "unknown_keys": dict(sorted(self.unknown_keys.items())),
-            "collision_paths": [list(path) for path in self.collision_paths[:sample]],
+            "discarded_long_paths": [list(path) for path in self.discarded_paths[:sample]],
         }
-
-
-def _merge_collision(shrunk: Any, long_form: Any, stats: DecodeStats) -> Any:
-    if isinstance(shrunk, dict) and isinstance(long_form, dict):
-        merged = dict(long_form)
-        for key, value in shrunk.items():
-            merged[key] = _merge_collision(value, merged[key], stats) if key in merged else value
-        return merged
-    if shrunk != long_form:
-        stats.collision_conflicts += 1
-    return shrunk
 
 
 def _decode(value: Any, path: Path_, reverse: dict[str, str], stats: DecodeStats) -> Any:
@@ -134,23 +128,26 @@ def _decode(value: Any, path: Path_, reverse: dict[str, str], stats: DecodeStats
             literal = key[1:]
             stats.escaped_keys += 1
             stats.escaped_paths.add(path + (literal,))
-            long_form[literal] = _decode(item, path + (literal,), reverse, stats)
+            long_form[literal] = item
         elif key.startswith(ESCAPE) and key[1:] in reverse:
-            name = reverse[key[1:]]
             stats.decoded_keys += 1
-            expanded[name] = _decode(item, path + (name,), reverse, stats)
+            expanded[reverse[key[1:]]] = item
         else:
             if key.startswith(ESCAPE):
                 stats.unknown_keys[key] = stats.unknown_keys.get(key, 0) + 1
-            long_form[key] = _decode(item, path + (key,), reverse, stats)
-    decoded = dict(long_form)
+            long_form[key] = item
+    decoded: dict[str, Any] = {}
+    for key, item in long_form.items():
+        if key in expanded:
+            # Stale long copy next to the shrunk key the editor actually uses: drop it.
+            stats.discarded_paths.append(path + (key,))
+            continue
+        decoded[key] = _decode(item, path + (key,), reverse, stats)
     for name, item in expanded.items():
-        if name in decoded:
-            stats.collisions += 1
-            stats.collision_paths.append(path + (name,))
-            decoded[name] = _merge_collision(item, decoded[name], stats)
-        else:
-            decoded[name] = item
+        decoded_item = _decode(item, path + (name,), reverse, stats)
+        if name in long_form and _decode(long_form[name], (), reverse, DecodeStats()) != decoded_item:
+            stats.discarded_differing += 1
+        decoded[name] = decoded_item
     return decoded
 
 

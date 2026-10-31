@@ -141,8 +141,9 @@ def test_build_rebuilt_export_decodes_completes_and_validates() -> None:
     assert data["api"]["a2"]["properties"] == {"wf_name": "sync", "parameters": []}
     assert "is_mobile_view" not in data["pages"]["pg"]
 
-    assert report["decode"]["collisions"] == 1
-    assert report["decode"]["decoded_keys"] == 3
+    assert report["decode"]["export"]["collisions"] == 1
+    assert report["decode"]["export"]["discarded_long_paths"] == [["element_definitions", "rA", "type"]]
+    assert report["decode"]["export"]["decoded_keys"] == 3
     sections = report["sections"]
     assert sections["element_definitions"]["same"] == 1
     assert {item["id"] for item in sections["element_definitions"]["replaced"]} == {"rB", "rC"}
@@ -166,7 +167,7 @@ def test_validation_flags_undecoded_nameless_and_typeless_reusables() -> None:
     )
 
     assert validation["ok"] is False
-    assert validation["percent_key_paths"] == [["pct", "%el"]]
+    assert validation["percent_key_paths"] == [["element_definitions", "pct", "%el"]]
     assert validation["missing_name"] == ["noname"]
     assert validation["missing_type"] == ["notype"]
 
@@ -295,12 +296,12 @@ def _fake_reader(tree: dict[str, Any], *, failing: Sequence[str] = ()) -> Any:
     return reader
 
 
-def test_read_editor_snapshot_refetches_lazy_reusables_and_finds_pages() -> None:
+def test_read_editor_snapshot_refetches_lazy_reusables_and_reads_export_pages() -> None:
     tree = {
-        "api": {"a": {"type": "APIEvent"}},
-        "element_definitions": {"r1": None, "r2": {"type": "CustomDefinition"}},
+        "api": {"a": {"%x": "APIEvent"}},
+        "element_definitions": {"r1": None, "r2": {"%x": "CustomDefinition"}},
         "_index": {"page_name_to_id": {"index": "p1", "extra": "p2"}},
-        "pages": {"p1": {"type": "Page"}, "p2": {"type": "Page"}},
+        "pages": {"p1": {"%x": "Page"}, "p2": {"%x": "Page"}},
     }
     reader = _fake_reader(tree)
 
@@ -312,7 +313,7 @@ def test_read_editor_snapshot_refetches_lazy_reusables_and_finds_pages() -> None
     )
 
     assert snapshot["refetched_reusables"] == ["r1"]
-    assert set(snapshot["pages"]) == {"p1", "p2"}
+    assert set(snapshot["pages"]) == {"p1"}
     assert ["pages"] not in reader.seen
     assert snapshot["errors"] == {}
 
@@ -332,7 +333,7 @@ def test_read_editor_snapshot_records_errors_and_stops_on_setup_failure() -> Non
 def test_section_scripts_use_the_decoded_public_accessors() -> None:
     script = build_section_script(["pages", "bTGbC"])
     assert 'node.child("pages")' in script and 'node.child("bTGbC")' in script
-    assert "node.raw()" in script and "_raw" not in script
+    assert "node._raw()" in script and "node.raw()" not in script
     assert "appname: root.appname()" in script
 
     gate = build_section_ready_script(["element_definitions"], "my-app")
@@ -430,3 +431,47 @@ def test_a_reusable_nameless_in_the_editor_too_is_reported_not_failed() -> None:
     del snapshot["sections"]["element_definitions"]["rN"]
     _, failing = build_rebuilt_export(exported, snapshot)
     assert failing["validation"]["missing_name"] == ["rN"]
+
+
+def test_editor_stored_form_is_decoded_with_the_shrunk_copy_winning() -> None:
+    """The editor's _raw() carries both forms; the export kept the stale long copy."""
+
+    exported = _export()
+    exported["api"]["a3"] = {
+        "type": "APIEvent",
+        "properties": {"wf_name": "old", "constraints": {"1": {"value": "stale"}}},
+    }
+    exported["user_types"]["event"] = {"display": "Event", "fields": {}}
+    snapshot = _snapshot()
+    snapshot["sections"]["api"]["a3"] = {
+        "%x": "APIEvent",
+        "%p": {"wf_name": "real", "%co": {"0": {"%k": "a"}, "1": {"%k": "b"}}},
+        "properties": {"wf_name": "old", "constraints": {"1": {"value": "stale"}}},
+    }
+    snapshot["sections"]["user_types"]["%e1"] = {"%d": "Event", "%f3": {}}
+    snapshot["pages"]["pg"]["style"] = None
+
+    data, report = build_rebuilt_export(exported, snapshot)
+
+    assert data["api"]["a3"] == {
+        "type": "APIEvent",
+        "properties": {"wf_name": "real", "constraints": {"0": {"key": "a"}, "1": {"key": "b"}}},
+    }
+    assert report["decode"]["editor"]["discarded_long_paths"] == [["api", "a3", "properties"]]
+    assert report["sections"]["user_types"]["same"] == 2
+    assert report["sections"]["pages"]["same"] == 1
+    assert report["validation"]["ok"] is True
+
+
+def test_literal_percent_keys_in_the_long_form_export_are_not_decoded() -> None:
+    exported = _export()
+    exported["styles"]["s1"] = {"type": "Text", "properties": {"bgcolor": {"%p": {"%x": "Literal"}}}}
+    snapshot = _snapshot()
+    # The editor stores the same literal keys escaped.
+    snapshot["sections"]["styles"]["s1"] = {"%x": "Text", "%p": {"%bgc": {"%%p": {"%%x": "Literal"}}}}
+
+    data, report = build_rebuilt_export(exported, snapshot)
+
+    assert data["styles"]["s1"]["properties"]["bgcolor"] == {"%p": {"%x": "Literal"}}
+    assert report["sections"]["styles"]["same"] == 1
+    assert report["validation"]["ok"] is True

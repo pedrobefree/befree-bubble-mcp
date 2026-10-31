@@ -7,11 +7,13 @@ Three measured problems make a downloaded export fail on import (production app,
 2. Hydration stores them in the editor's SHRUNK key space (``%el``, ``%p``, ``%x``...), which the
    import does not expand: it escapes the keys again and the reusables arrive empty or nameless.
    ``editor_keys.decode_keys`` expands them back.
-3. The export disagrees with the live editor on some nodes: reusables that come only as a stub
-   (``workflows`` alone, ``elements`` alone), reusables with stale data, and an API workflow with no
-   ``wf_name``/``parameters``. The editor is the source of truth, so every section is compared
-   with what ``root.child(<section>).raw()`` returns (``execution/live_section_read.py``) and the
-   editor's entry wins where it is complete and different.
+3. The export disagrees with the live editor on some nodes. When a node carries a field in both
+   forms (``%ds`` and ``data_source``), the server-side export and the editor's decoded ``raw()``
+   both let the stale long copy win, so API workflows lose their ``wf_name``/``parameters`` or come
+   out with the wrong constraints, and some reusables come only as a stub. The source of truth is
+   what the editor stores, ``_raw()`` (``execution/live_section_read.py``), decoded here with the
+   shrunk-form-wins rule of ``editor_keys``; the editor's entry wins where it is complete and
+   different.
 
 This tool only READS Bubble. It writes one new local file and never overwrites the profile cache.
 It also never invents a fix: the output reflects the live editor, nothing else.
@@ -57,8 +59,9 @@ SAMPLE = 25
 def strip_nulls(value: Any) -> Any:
     """Drop null-valued object keys, recursively.
 
-    The editor's ``raw()`` spells some absent keys as null (every page carries
-    ``is_mobile_view: null``) while the export never writes a null key at all (measured: zero in
+    The editor's stored form spells some absent keys as null (every page carries
+    ``is_mobile_view: null``; also ``style: null`` and null workflows) while the export never
+    writes a null key at all (measured: zero in
     every section of a 116 MB export). Comparing and writing without them keeps a page that only
     differs by that from counting as changed.
     """
@@ -150,26 +153,29 @@ def merge_section(
     return merged, report
 
 
-def decode_reusables(data: dict[str, Any]) -> DecodeStats:
-    """Expand the shrunk keys of ``data['element_definitions']`` in place."""
+def decode_sections(data: dict[str, Any], names: Iterable[str]) -> DecodeStats:
+    """Expand the shrunk keys of every section in ``names``, top-level keys included, in place.
+
+    Top-level keys are shrunk too: a data type named ``event`` is stored as ``%e1``.
+    """
 
     stats = DecodeStats()
-    section = data.get("element_definitions")
-    if isinstance(section, dict):
-        data["element_definitions"] = {
-            key: decode_keys(entry, stats=stats, path=(key,))[0] for key, entry in section.items()
-        }
+    for name in names:
+        section = data.get(name)
+        if isinstance(section, dict):
+            data[name] = decode_keys(section, stats=stats, path=(name,))[0]
     return stats
 
 
-def editor_nameless_reusables(snapshot: dict[str, Any]) -> set[str]:
+def editor_nameless_reusables(editor: dict[str, Any]) -> set[str]:
     """Complete reusables the live editor itself holds without a name.
 
-    Measured: two reusables of a production app (``type: ReusableElement``) have no name in the editor
-    either. Naming them would be inventing data, so validation reports them instead of failing.
+    Measured: two reusables of a production app (``type: ReusableElement``) have no name in the
+    editor either. Naming them would be inventing data, so validation reports them instead of
+    failing.
     """
 
-    section = (snapshot.get("sections") or {}).get("element_definitions")
+    section = editor.get("element_definitions")
     if not isinstance(section, dict):
         return set()
     return {
@@ -185,7 +191,7 @@ def validate_rebuilt(
     escaped_paths: set[Any] | None = None,
     editor_nameless: set[str] | None = None,
 ) -> dict[str, Any]:
-    """Check the rebuilt export is importable: decoded, named and typed reusables.
+    """Check the rebuilt export is importable: decoded sections, named and typed reusables.
 
     A reusable without a name fails, unless the live editor has it without a name too
     (``editor_nameless``): then the file reflects the editor and the id is only reported.
@@ -193,7 +199,8 @@ def validate_rebuilt(
 
     section = data.get("element_definitions")
     reusables = section if isinstance(section, dict) else {}
-    percent = percent_key_paths(reusables, allowed=escaped_paths or set())
+    rebuilt = {name: data[name] for name in REBUILD_SECTIONS if isinstance(data.get(name), dict)}
+    percent = percent_key_paths(rebuilt, allowed=escaped_paths or set())
     nameless = [
         key
         for key, entry in reusables.items()
@@ -229,30 +236,44 @@ def build_rebuilt_export(
     *,
     sections: Iterable[str] = REBUILD_SECTIONS,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """Decode, compare with the editor snapshot and merge. Pure: no I/O."""
+    """Decode both sides, compare with the editor snapshot and merge. Pure: no I/O.
+
+    The snapshot holds the editor's ENCODED nodes (``_raw()``); they are decoded here with the
+    same table and collision rule as the export, so both sides are compared in one key space.
+    """
 
     data = dict(exported)
-    stats = decode_reusables(data)
-    editor_sections = snapshot.get("sections") or {}
+    # Only the export's reusables are shrunk (hydrated from the path API). Every other section of
+    # the server-side export is already long-form, so a `%` key there is a literal (a style's
+    # expression carries one) and decoding it would invent a `properties`.
+    export_stats = decode_sections(data, ["element_definitions"])
+    literal_paths = set(
+        percent_key_paths(
+            {name: data[name] for name in REBUILD_SECTIONS if name != "element_definitions" and isinstance(data.get(name), dict)}
+        )
+    )
+    editor: dict[str, Any] = dict(snapshot.get("sections") or {})
+    if isinstance(snapshot.get("pages"), dict):
+        editor["pages"] = snapshot["pages"]
+    editor_stats = decode_sections(editor, REBUILD_SECTIONS)
     report_sections: dict[str, Any] = {}
     for name in sections:
-        live = snapshot.get("pages") if name == "pages" else editor_sections.get(name)
+        live = editor.get(name)
         current = data.get(name)
         if not isinstance(live, dict) or not isinstance(current, dict):
             report_sections[name] = {"skipped": "not read from the editor" if not isinstance(live, dict) else "not in the export"}
             continue
         data[name], report_sections[name] = merge_section(name, current, live)
-    nameless = editor_nameless_reusables(snapshot)
+    nameless = editor_nameless_reusables(editor)
+    escaped = export_stats.escaped_paths | editor_stats.escaped_paths | literal_paths
     report = {
-        "decode": stats.to_dict(),
+        "decode": {"export": export_stats.to_dict(), "editor": editor_stats.to_dict()},
         "sections": report_sections,
         "refetched_reusables": list(snapshot.get("refetched_reusables") or []),
         "editor_errors": dict(snapshot.get("errors") or {}),
-        "validation": validate_rebuilt(
-            data, escaped_paths=stats.escaped_paths, editor_nameless=nameless
-        ),
+        "validation": validate_rebuilt(data, escaped_paths=escaped, editor_nameless=nameless),
         "counts": section_counts(data),
-        "_validation_scope": {"escaped_paths": stats.escaped_paths, "editor_nameless": nameless},
+        "_validation_scope": {"escaped_paths": escaped, "editor_nameless": nameless},
     }
     return data, report
 

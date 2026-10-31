@@ -64,7 +64,7 @@ def test_hydrated_reusable_decodes_recursively() -> None:
             }
         },
     }
-    assert stats.collisions == 0
+    assert stats.discarded_paths == []
 
 
 def test_double_percent_is_an_escape_for_a_literal_key() -> None:
@@ -79,28 +79,39 @@ def test_double_percent_is_an_escape_for_a_literal_key() -> None:
     assert percent_key_paths(decoded) == [("%el",), ("%custom",)]
 
 
-def test_collision_merges_and_the_shrunk_form_wins_a_conflict() -> None:
+def test_collision_keeps_the_shrunk_form_and_discards_the_long_copy() -> None:
+    # Measured shape: the shrunk data source holds the constraints the editor shows; the long copy
+    # is a stale leftover with a single keyless item. Merging would resurrect it.
     node = {
+        "%ds": {"%p": {"%co": {"0": {"key": "a"}, "1": {"key": "b"}}}},
+        "data_source": {"properties": {"constraints": {"1": {"value": "stale"}}}, "extra": 1},
         "%x": "Group",
         "type": "Text",
-        "%p": {"a": 1, "b": 2},
-        "properties": {"b": 3, "c": 4},
     }
 
-    decoded, stats = decode_keys(node)
+    decoded, stats = decode_keys(node, path=("el",))
 
-    assert decoded == {"type": "Group", "properties": {"a": 1, "b": 2, "c": 4}}
-    assert stats.collisions == 2
-    assert stats.collision_conflicts == 2
-    assert stats.collision_paths == [("type",), ("properties",)]
+    assert decoded == {
+        "data_source": {"properties": {"constraints": {"0": {"key": "a"}, "1": {"key": "b"}}}},
+        "type": "Group",
+    }
+    assert stats.discarded_paths == [("el", "data_source"), ("el", "type")]
+    assert stats.discarded_differing == 2
+    assert stats.to_dict()["collisions"] == 2
 
 
-def test_collision_with_equal_values_is_counted_without_a_conflict() -> None:
+def test_collision_with_an_equal_long_copy_is_counted_but_not_differing() -> None:
     decoded, stats = decode_keys({"%nm": "header", "name": "header"})
 
     assert decoded == {"name": "header"}
-    assert stats.collisions == 1
-    assert stats.collision_conflicts == 0
+    assert stats.discarded_paths == [("name",)]
+    assert stats.discarded_differing == 0
+
+
+def test_top_level_keys_are_decoded_too() -> None:
+    decoded, _ = decode_keys({"%e1": {"%d": "Event"}, "user": {"%d": "User"}})
+
+    assert decoded == {"event": {"display": "Event"}, "user": {"display": "User"}}
 
 
 def test_unknown_abbreviation_is_kept_and_reported() -> None:

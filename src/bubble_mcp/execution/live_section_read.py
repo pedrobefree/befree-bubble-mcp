@@ -1,18 +1,21 @@
-"""Read whole app sections, decoded, out of the running Bubble editor.
+"""Read whole app sections, in the form the editor stores them, out of the running Bubble editor.
 
-``live_node_read`` reads one node in the editor's SHRUNK form (``_child``/``_raw``), which is what
-``/appeditor/write`` wants. Rebuilding an importable ``.bubble`` needs the opposite: the LONG form
-the export and the import use. The editor gives that through the public accessors, ``child()`` and
-``raw()``: ``root.child('<section>').raw()`` returns the section already expanded, for ``api``,
-``element_definitions``, ``user_types``, ``option_sets``, ``styles``, ``settings`` and ``_index``.
+The editor exposes each node two ways: ``raw()`` (decoded, long key names) and ``_raw()``
+(shrunk keys, exactly what the editor stores and writes). ``raw()`` is NOT a trustworthy source
+for rebuilding an export: when a node carries a field in both forms (``%ds`` and ``data_source``),
+its expansion lets the stale long copy win, the same mistake the server-side export makes. So this
+module reads ``_raw()`` - ``root.child('<section>')._raw()`` for ``api``, ``element_definitions``,
+``user_types``, ``option_sets``, ``styles``, ``settings`` and ``_index``, and
+``root.child('pages').child(<id>)._raw()`` per page - and leaves decoding to
+``context/editor_keys.py``, whose collision rule keeps the shrunk form.
 
 Measured on the live editor:
 
-* ``child_names()`` on the root throws ("loading the entire app object is disabled"), and on
-  ``pages`` it throws too, so pages are read one at a time by id (``child('pages').child(id)``).
+* ``child_names()`` throws on the root ("loading the entire app object is disabled") and,
+  sometimes, on ``pages``, so page ids come from the export.
 * Every section first throws ``NotReadyError`` in a fresh headless page: the tree loads lazily.
   ``element_definitions`` took about 10s to arrive on a 346-reusable app. The ready gate below
-  primes each node with ``ensure_loading()`` and keeps polling until ``raw()`` stops throwing.
+  primes each node with ``ensure_loading()`` and keeps polling until ``_raw()`` stops throwing.
 * ``element_definitions`` comes back with ``null`` for deleted reusables, loose fragments (an entry
   with only ``elements`` or only ``properties``) and a ``length`` counter. They are returned as-is;
   deciding what to keep is ``context/export_rebuild.py``'s job.
@@ -76,7 +79,8 @@ def build_section_ready_script(path: Sequence[str], app_id: str) -> str:
     """Return the gate that is true once the node at ``path`` stops throwing NotReadyError.
 
     Same contract as ``live_node_read.build_pointer_ready_script`` (app-aware, NotReadyError
-    detected structurally because it is not a real Error in the editor), on the public accessors.
+    detected structurally because it is not a real Error in the editor), walking by long section
+    names with ``child()``.
     """
 
     return (
@@ -86,7 +90,7 @@ def build_section_ready_script(path: Sequence[str], app_id: str) -> str:
         f"  if (root.appname() !== {json.dumps(app_id)}) return false;\n"
         "  let node = root;\n"
         f"{_walk(path)}"
-        "  if (node) node.raw();\n"
+        "  if (node) node._raw();\n"
         "  return true;\n"
         "  } catch (error) {\n"
         "    const isNotReady = Boolean(error && typeof error === 'object' && (\n"
@@ -99,14 +103,14 @@ def build_section_ready_script(path: Sequence[str], app_id: str) -> str:
 
 
 def build_section_script(path: Sequence[str]) -> str:
-    """Return the script that reads the decoded node at ``path`` plus the app it came from."""
+    """Return the script that reads the stored (shrunk) node at ``path`` plus the app it came from."""
 
     return (
         "() => {\n"
         "  const root = window.appquery.app().json;\n"
         "  let node = root;\n"
         f"{_walk(path)}"
-        "  const raw = node ? node.raw() : null;\n"
+        "  const raw = node ? node._raw() : null;\n"
         "  return {appname: root.appname(), app_version: root.app_version(), "
         "node: raw === undefined ? null : raw};\n"
         "}\n"
@@ -122,10 +126,10 @@ def read_editor_snapshot(
 ) -> dict[str, Any]:
     """Read ``sections``, then each page, then any reusable the bulk read left incomplete.
 
-    ``page_ids`` are the pages to read one by one; the editor's own ``_index.page_name_to_id`` is
-    added to them when ``_index`` was read, so a page the export lost is still found.
-    ``reusable_ids`` are the ids the export knows about: when the bulk ``element_definitions`` read
-    did not bring one complete (lazy loading), it is read again on its own path.
+    ``page_ids`` are the pages to read one by one (the export's: listing them in the editor is
+    refused). ``reusable_ids`` are the ids the export knows about: when the bulk
+    ``element_definitions`` read did not bring one complete (lazy loading), it is read again on
+    its own path. Completeness is judged on the stored form, where ``type`` is ``%x``.
     """
 
     wanted = list(dict.fromkeys(sections))
@@ -142,7 +146,7 @@ def read_editor_snapshot(
     if isinstance(definitions, dict):
         for reusable_id in dict.fromkeys(str(item) for item in reusable_ids):
             current = definitions.get(reusable_id)
-            if isinstance(current, dict) and "type" in current:
+            if isinstance(current, dict) and ("%x" in current or "type" in current):
                 continue
             try:
                 definitions[reusable_id] = reader(["element_definitions", reusable_id])
@@ -154,12 +158,7 @@ def read_editor_snapshot(
             snapshot["refetched_reusables"].append(reusable_id)
 
     if "pages" in wanted:
-        ids = [str(item) for item in page_ids]
-        index = snapshot["sections"].get("_index")
-        name_to_id = index.get("page_name_to_id") if isinstance(index, dict) else None
-        if isinstance(name_to_id, dict):
-            ids.extend(str(value) for value in name_to_id.values() if isinstance(value, str))
-        for page_id in dict.fromkeys(ids):
+        for page_id in dict.fromkeys(str(item) for item in page_ids):
             try:
                 snapshot["pages"][page_id] = reader(["pages", page_id])
             except EditorSetupFailed:
