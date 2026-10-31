@@ -504,6 +504,20 @@ DOC_ENRICHMENT_PROFILES: dict[str, dict[str, Any]] = {
             "Manual documentation can explain the deploy flow, but Playwright/browser execution remains the operational source of truth.",
         ],
     },
+    "export_import": {
+        "priority": 3,
+        "recommended_queries": [
+            "Bubble export app .bubble file import application",
+            "Bubble reusable elements import export missing",
+            "Bubble copy application import app json",
+        ],
+        "schema_effect": "Improve export/import argument descriptions, version selection, and what an import accepts.",
+        "validation_effect": "Require a read-only rebuild, a report before writing, a new output path, and a re-read of the written file.",
+        "safety_notes": [
+            "The rebuild reads Bubble only; importing the file into the target app is the user's step.",
+            "The output reflects the live editor; never add business fixes that are not in the editor.",
+        ],
+    },
     "extension_authoring": {
         "priority": 4,
         "recommended_queries": [
@@ -573,6 +587,12 @@ NATIVE_TOOL_DESCRIPTIONS: dict[str, str] = {
         "Force refresh local cache/context artifacts for one configured Bubble MCP profile in one call. Use this "
         "directly for routine requests such as refresh cache, atualizar cache, recarregar profile, baixar novamente "
         "o .bubble, or sincronizar cache do profile. Do not inspect local directories or CLI help first."
+    ),
+    "bubble_export_rebuild": (
+        "Rebuild an importable .bubble from a profile when Bubble's export is incomplete or corrupted: "
+        "reusables empty or nameless after import, API workflow issues. Decodes the editor's shrunk keys "
+        "(%el, %p, %x) and completes every section from the live editor. Reads Bubble only; "
+        "execute=false reports, execute=true writes a new local file."
     ),
     "bubble_health_check": (
         "Report server version and capability flags for profiles, session capture, context, planning, mutations, "
@@ -1774,6 +1794,8 @@ def _documentation_family_for_name(name: str) -> str | None:
         return "style_design"
     if name.startswith(("list_colors", "create_color", "update_color", "delete_color", "delete_colors", "clear_custom_colors", "reorder_colors", "list_fonts", "create_font", "update_font", "delete_font")):
         return "style_design"
+    if name == "bubble_export_rebuild":
+        return "export_import"
     if name.startswith(("bubble_branch_", "bubble_changelog_")):
         return "branch_version"
     if name.startswith(("bubble_extension_", "bubble_tool_wizard_", "bubble_skill_", "bubble_learning_")):
@@ -2104,6 +2126,7 @@ def tool_annotations(name: str) -> dict[str, bool]:
         "bubble_visual_capture_actual",
         "bubble_visual_audit",
         "bubble_profile_cache_refresh",
+        "bubble_export_rebuild",
         "bubble_branch_list",
             "bubble_branch_contributors",
             "bubble_changelog_fetch",

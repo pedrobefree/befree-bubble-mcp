@@ -22,6 +22,7 @@ NATIVE_SPECIAL_TOOLS = {
     "bubble_profile_list",
     "bubble_profile_status",
     "bubble_profile_cache_refresh",
+    "bubble_export_rebuild",
     "bubble_readiness_check",
     "bubble_agent_guide",
     "bubble_tool_search",

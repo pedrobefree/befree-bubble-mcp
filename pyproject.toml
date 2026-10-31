@@ -46,6 +46,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 "bubble_mcp.planner" = ["*.json"]
 "bubble_mcp.harness" = ["data/*.json"]
+"bubble_mcp.context" = ["data/*.json"]
 "bubble_mcp.aria_runtime.figma_bridge" = ["*.json"]
 "bubble_mcp.aria_runtime" = ["package.json", "scripts/*.mjs", "scripts/*.py"]
 

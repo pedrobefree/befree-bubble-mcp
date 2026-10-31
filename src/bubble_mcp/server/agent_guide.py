@@ -50,6 +50,12 @@ ROUTES: tuple[dict[str, Any], ...] = (
         "notes": "Use bubble_profile_cache_refresh directly when the user asks to refresh/update/reload/sync a profile cache or download the .bubble again. Use bubble_project_bootstrap when profile/app setup is needed. Call bubble_profile_status first only when the user asks for readiness/status rather than refresh.",
     },
     {
+        "intent": "rebuild_importable_export",
+        "when": "The user wants to import or copy one Bubble app into another and the export is incomplete or broken: reusables come in empty or without a name, API workflows show issues after import, or the .bubble is missing parts.",
+        "tools": ["bubble_export_rebuild", "bubble_session_check"],
+        "notes": "Use bubble_export_rebuild with the SOURCE app's profile; app_version defaults to test (main) and is never taken from the profile. Run execute=false first and show the report (per section: same, different, export-only, editor-only, plus replaced reusables and decode collisions). Then run execute=true with bubble_file set to the export path the preview returned, so the export is not downloaded twice. It only reads Bubble and writes a new local file; importing that file into the target app is the user's step. It reflects the live editor as-is: never patch business logic into the file.",
+    },
+    {
         "intent": "create_or_update_visual_editor_elements",
         "when": "The user asks to create, update, rename, move, or delete Bubble visual elements.",
         "tools": ["create_group", "create_text", "create_button", "create_input", "update_text", "delete_group"],
@@ -175,6 +181,31 @@ ROUTES: tuple[dict[str, Any], ...] = (
 
 
 KEYWORDS: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        (
+            "importar app",
+            "importar o app",
+            "importar aplicativo",
+            "import app",
+            "import the app",
+            "importavel",
+            "importável",
+            "importable",
+            "reconstruir exportacao",
+            "reconstruir exportação",
+            "reconstruir o .bubble",
+            "rebuild export",
+            "exportacao incompleta",
+            "exportação incompleta",
+            "export incompleto",
+            "incomplete export",
+            "corrupted export",
+            "reutilizaveis vazios",
+            "reutilizáveis vazios",
+            "empty reusables",
+        ),
+        ("rebuild_importable_export",),
+    ),
     (
         (
             "e2e",
@@ -1133,6 +1164,11 @@ SEARCH_SYNONYMS: dict[str, tuple[str, ...]] = {
     "hovered": ("condition", "style"),
     "imagem": ("image",),
     "importar": ("import",),
+    "importavel": ("importable", "import"),
+    "exportacao": ("export",),
+    "exportar": ("export",),
+    "reconstruir": ("rebuild",),
+    "reconstrua": ("rebuild",),
     "liste": ("list",),
     "listar": ("list",),
     "opcao": ("option",),
@@ -1727,6 +1763,11 @@ def _semantic_tool_bonus(name: str, raw_query: str) -> int:
 
     def has_any(*values: str) -> bool:
         return bool(terms.intersection(values))
+
+    if name == "bubble_export_rebuild" and has_any("import", "importable", "export", "rebuild") and has_any(
+        "reusable", "reusables", "bubble", "app", "empty", "vazios", "incomplete", "incompleta"
+    ):
+        return 40
 
     if has_any("cache", "cached"):
         if name == "sync_element_ref_cache" and has_any("element") and has_any(

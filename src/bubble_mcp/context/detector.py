@@ -194,6 +194,39 @@ def refresh_bubble_export(*, profile: str, app_id: str, app_version: str) -> Pat
     return downloaded
 
 
+def download_hydrated_export(
+    *, profile: str, app_id: str, app_version: str, target: Path
+) -> dict[str, Any]:
+    """Download the export into ``target`` and hydrate its reusables, leaving the profile cache alone.
+
+    Same download and hydration ``bubble_profile_cache_refresh`` runs, into a separate file: the
+    cache belongs to the profile's own version, and a rebuild may ask for another one.
+    """
+
+    session = load_session(profile)
+    if session is None:
+        return {"ok": False, "reason": f"No Bubble session stored for profile '{profile}'."}
+    attempts: list[dict[str, Any]] = []
+    downloaded = _try_download_bubble_export(
+        session=session,
+        app_id=app_id,
+        app_version=app_version,
+        profile=profile,
+        attempts=attempts,
+        target_path=target,
+    )
+    if downloaded is None:
+        return {"ok": False, "attempts": attempts}
+    _hydrate_sparse_export(
+        downloaded,
+        session=session,
+        app_id=app_id,
+        app_version=app_version,
+        attempts=attempts,
+    )
+    return {"ok": True, "path": str(downloaded), "attempts": attempts}
+
+
 def detect_project_context(
     *,
     profile: str,
@@ -976,11 +1009,12 @@ def _try_download_bubble_export(
     app_version: str,
     profile: str,
     attempts: list[dict[str, Any]],
+    target_path: Path | None = None,
 ) -> Path | None:
     version = app_version or session.app_version or "test"
     export_url = f"https://bubble.io/appeditor/export/{version}/{app_id}.bubble"
     headers = _export_headers(session)
-    target_path = default_bubble_export_path(profile, app_id)
+    target_path = target_path or default_bubble_export_path(profile, app_id)
     try:
         response = requests.get(export_url, headers=headers, timeout=60)
     except requests.RequestException as exc:
