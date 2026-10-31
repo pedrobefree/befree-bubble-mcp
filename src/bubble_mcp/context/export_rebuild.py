@@ -36,13 +36,15 @@ REBUILD_SECTIONS = (
     "option_sets",
     "styles",
     "settings",
-    "_index",
     "pages",
 )
+# `_index` is NOT rebuilt: it is bookkeeping (id paths, issue lists) the editor recomputes as it
+# works, and its live copy can carry holes the export never has (measured: an issues_sub list
+# stored as a JSON string with three `null` items). The export's own `_index` is kept as-is.
 # What makes an editor entry "complete" enough to replace the export's, per section. The editor
 # returns null for deleted reusables and loose fragments (only `elements`, only `properties`) for
 # half-loaded ones; none of those carry the marker, so none of them can displace or be added.
-# None means any non-null value counts (settings and _index have no marker key).
+# None means any non-null value counts (settings has no marker key).
 COMPLETENESS_KEY: dict[str, str | None] = {
     "api": "type",
     "element_definitions": "type",
@@ -51,7 +53,6 @@ COMPLETENESS_KEY: dict[str, str | None] = {
     "user_types": "display",
     "option_sets": "display",
     "settings": None,
-    "_index": None,
 }
 SAMPLE = 25
 

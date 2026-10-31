@@ -5,7 +5,7 @@ The editor exposes each node two ways: ``raw()`` (decoded, long key names) and `
 for rebuilding an export: when a node carries a field in both forms (``%ds`` and ``data_source``),
 its expansion lets the stale long copy win, the same mistake the server-side export makes. So this
 module reads ``_raw()`` - ``root.child('<section>')._raw()`` for ``api``, ``element_definitions``,
-``user_types``, ``option_sets``, ``styles``, ``settings`` and ``_index``, and
+``user_types``, ``option_sets``, ``styles`` and ``settings``, and
 ``root.child('pages').child(<id>)._raw()`` per page - and leaves decoding to
 ``context/editor_keys.py``, whose collision rule keeps the shrunk form.
 
@@ -45,7 +45,6 @@ EDITOR_SECTIONS = (
     "option_sets",
     "styles",
     "settings",
-    "_index",
 )
 
 # Reads one decoded node at a path and returns it (None when absent); raises when it cannot.

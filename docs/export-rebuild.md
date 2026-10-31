@@ -35,12 +35,14 @@ Measured on a production app (346 reusables, 601 API workflows, 45 pages) on 202
    shrunk key the table does not know is kept and fails validation (see below).
 3. Reads the live editor headless with the profile's stored browser session, in the form the
    editor stores: `root.child('<section>')._raw()` for `api`, `element_definitions`,
-   `user_types`, `option_sets`, `styles`, `settings` and `_index`, and
+   `user_types`, `option_sets`, `styles` and `settings`, and
    `root.child('pages').child(<id>)._raw()` for each page of the export (`child_names()` is
    refused by the editor). Each section is decoded whole, top-level keys included (a data type
    named `event` is stored as `%e1`), with the same rule. Sections load lazily, so each read
    waits for its node to stop throwing `NotReadyError`; a reusable the export knows about that
-   the bulk read left incomplete is read again on its own path.
+   the bulk read left incomplete is read again on its own path. `_index` is not read: it is
+   bookkeeping the editor recomputes as it works, and its live copy can carry holes the export
+   never has (an issues list with `null` items), so the export's own `_index` is kept.
 4. Compares each entry as canonical JSON (sorted keys, null-valued keys dropped, since the
    editor spells some absent keys as `null` and the export never writes one). Where the editor's
    entry is complete (`type` for api, reusables, styles and pages; `display` for data types and

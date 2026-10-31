@@ -475,3 +475,18 @@ def test_literal_percent_keys_in_the_long_form_export_are_not_decoded() -> None:
     assert data["styles"]["s1"]["properties"]["bgcolor"] == {"%p": {"%x": "Literal"}}
     assert report["sections"]["styles"]["same"] == 1
     assert report["validation"]["ok"] is True
+
+
+def test_index_is_kept_from_the_export_and_cannot_be_requested() -> None:
+    exported = _export()
+    snapshot = _snapshot()
+    snapshot["sections"]["_index"] = {"issues_sub": {"x": '["a",null,"b"]'}}
+
+    data, report = build_rebuilt_export(exported, snapshot)
+
+    assert data["_index"] == exported["_index"]
+    assert "_index" not in report["sections"]
+
+
+def test_index_is_not_a_rebuildable_section(tmp_path: Path) -> None:
+    assert _run(tmp_path, sections=["_index"])["error"] == "unknown_sections"

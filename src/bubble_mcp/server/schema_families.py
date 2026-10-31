@@ -1428,7 +1428,8 @@ def _export_rebuild_tool() -> ToolSchema:
             ),
             "sections": _prop(
                 "array",
-                "Sections to compare with the live editor. Defaults to all of them.",
+                "Sections to compare with the live editor. Defaults to all of them. _index is "
+                "never rebuilt: the export's own copy is kept.",
                 items={
                     "type": "string",
                     "enum": [
@@ -1438,7 +1439,6 @@ def _export_rebuild_tool() -> ToolSchema:
                         "option_sets",
                         "styles",
                         "settings",
-                        "_index",
                         "pages",
                     ],
                 },
