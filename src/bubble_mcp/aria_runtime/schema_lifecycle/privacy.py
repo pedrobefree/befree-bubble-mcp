@@ -79,7 +79,7 @@ class PrivacyLifecycleService:
             return False
         rule_payload: dict[str, Any] = {"%d": rule_name, "permissions": permissions}
         if condition_json is not None:
-            rule_payload["%c"] = self._parse_json_value(condition_json, "condition_json")
+            rule_payload["%c"] = self._parse_condition(condition_json)
         resolved_rule_key = rule_key or self._next_rule_key(resolved_type)
         add_default = self._parse_bool(include_everyone_default, "include_everyone_default") and not current_rules
         payload = self._payload()
@@ -102,7 +102,7 @@ class PrivacyLifecycleService:
         return self._set_path(data_type_key, rule_key, ["%d"], new_name, dry_run, f"Privacy rule '{rule_key}' renamed to '{new_name}'.")
 
     def set_privacy_rule_condition(self, data_type_key: str, rule_key: str, condition_json: Any, dry_run: bool = False) -> bool:
-        return self._set_path(data_type_key, rule_key, ["%c"], self._parse_json_value(condition_json, "condition_json"), dry_run, f"Privacy rule '{rule_key}' condition updated.")
+        return self._set_path(data_type_key, rule_key, ["%c"], self._parse_condition(condition_json), dry_run, f"Privacy rule '{rule_key}' condition updated.")
 
     def set_privacy_rule_permission(self, data_type_key: str, rule_key: str, permission: str, value: bool, dry_run: bool = False) -> bool:
         if permission not in self._PERMISSIONS:
@@ -354,6 +354,30 @@ class PrivacyLifecycleService:
     def parse_bool(self, value: Any, label: str) -> bool:
         """Compatibility parser boundary used by BubbleCLI batch routing."""
         return self._parse_bool(value, label)
+
+    # The .bubble export shows expressions expanded (type/next/name/args/properties), but the editor stores and
+    # evaluates the compact keys. An expanded condition is saved as an ObjectLiteral and the rule never matches.
+    _EXPRESSION_KEYS = {"type": "%x", "next": "%n", "name": "%nm", "args": "%a", "properties": "%p"}
+    _PROPERTY_KEYS = {"element_id": "%ei"}
+
+    @classmethod
+    def _compact_expression(cls, node: Any) -> Any:
+        """Convert an expanded export expression to the editor's compact form; compact input is unchanged."""
+        if not isinstance(node, dict) or not ("type" in node or "%x" in node):
+            return node
+        compact: dict[str, Any] = {}
+        for key, value in node.items():
+            target = cls._EXPRESSION_KEYS.get(key, key)
+            if target in ("%n", "%a"):
+                value = cls._compact_expression(value)
+            elif target == "%p" and isinstance(value, dict):
+                value = {cls._PROPERTY_KEYS.get(name, name): item for name, item in value.items()}
+            compact[target] = value
+        return compact
+
+    @classmethod
+    def _parse_condition(cls, value: Any) -> Any:
+        return cls._compact_expression(cls._parse_json_value(value, "condition_json"))
 
     @staticmethod
     def _parse_json_value(value: Any, label: str) -> Any:
